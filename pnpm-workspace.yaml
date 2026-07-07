@@ -1,0 +1,11 @@
+packages:
+  - 'apps/*'
+  - 'packages/*'
+
+# Scripts de build aprobados explícitamente (pnpm los bloquea por defecto por seguridad).
+# esbuild prepara su binario nativo de plataforma; lo usan Vite y tsx.
+allowBuilds:
+  '@prisma/client': true
+  '@prisma/engines': true
+  esbuild: true
+  prisma: true

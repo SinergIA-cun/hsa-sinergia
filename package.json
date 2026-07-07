@@ -1,0 +1,30 @@
+{
+  "name": "hacienda-san-andres",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Cotizador y apartado de Hacienda San Andrés (SinergIA)",
+  "packageManager": "pnpm@11.6.0",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "build": "turbo run build",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "db:generate": "pnpm --filter @hsa/database run generate",
+    "db:migrate": "pnpm --filter @hsa/database run migrate",
+    "db:seed": "pnpm --filter @hsa/database run seed",
+    "db:studio": "pnpm --filter @hsa/database run studio"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.0.0",
+    "dotenv-cli": "^7.4.0",
+    "eslint": "^9.0.0",
+    "globals": "^15.0.0",
+    "prettier": "^3.3.0",
+    "turbo": "^2.0.0",
+    "typescript": "^5.5.0",
+    "typescript-eslint": "^8.0.0"
+  }
+}
