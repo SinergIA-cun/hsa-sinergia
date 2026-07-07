@@ -138,7 +138,18 @@ Derivación de `tipoDía`: a partir de la fecha (día de semana) y temporada (vi
 - Confirmar textos legales/condiciones para cotización y recibo.
 - Datos completos de precios 2027 de todos los tipos de evento (ya tenemos Boda, Empresarial, Bautizo; faltan XV, Cumpleaños, Renta, TB) para el seed del catálogo.
 
-## 9. Preguntas resueltas (decisiones)
+## 9. Marca (referencia inicial)
+
+Fuente: sitio `haciendasanandres.com.mx` + folletos de cotización. Tokens exactos (hex/fuentes) se afinan al construir `packages/ui`; extraer de los assets del sitio/folletos.
+
+- **Aesthetic:** elegante, clásico hacienda, aspiracional. "Un oasis dentro de la ciudad".
+- **Logo:** grabado line-art de la hacienda + wordmark script "Hacienda San Andrés · 1894", subtítulo "SALONES · JARDINES · CAPILLA".
+- **Paleta (de folletos):** azul marino profundo (headers), azul pizarra/acero (subheaders), crema/marfil (fondos), texto marrón/carbón. Detalle decorativo tipo flecha.
+- **Tipografía:** títulos en serif display elegante; cuerpo sans; wordmark script.
+- **Imagery:** fotografía cálida de jardines y arquitectura.
+- **Taglines:** "Todo tu evento en un sólo lugar" / "El día más importante de tu vida, en un sólo lugar".
+
+## 10. Preguntas resueltas (decisiones)
 
 - **Alcance MVP:** cotizador + apartado (recibo digital con comprobante).
 - **Entrega al cliente:** link web + PDF; el cliente puede apartar desde el link.
