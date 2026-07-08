@@ -33,25 +33,24 @@ El proxy del VPS (Traefik/Nginx/EasyPanel) debe terminar TLS y apuntar al puerto
 `http` con el contenedor aunque de cara al cliente sea `https`; está bien —
 `COOKIE_SECURE=true` aplica a la conexión navegador↔proxy (https).
 
-## Opción B — EasyPanel
+## Opción B — EasyPanel (recomendada, es el método probado con Motipreca)
 
-1. Crea 3 servicios en el proyecto:
-   - **postgres**: plantilla Postgres 16 (define usuario/contraseña/BD).
-   - **api**: App desde este repo, Dockerfile `apps/api/Dockerfile`. Variables:
-     `DATABASE_URL`, `JWT_SECRET`, `PORT=3001`, `PUBLIC_WEB_URL`, `COOKIE_SECURE=true`.
-   - **web**: App desde este repo, Dockerfile `apps/web/Dockerfile`. Apunta el **dominio** aquí.
-2. En `apps/web/nginx.conf`, `proxy_pass http://api:3001;` asume que el servicio de la
-   API se llama `api` en la red interna. Ajusta el host si tu servicio tiene otro nombre.
-3. Primer deploy: ejecuta el seed una vez en el contenedor `api`:
-   `pnpm --filter @hsa/database run seed:deploy`.
+EasyPanel en este VPS despliega **un servicio por Dockerfile con dominios separados**
+(no Docker Compose). Ver la guía paso a paso completa: **[`EASYPANEL.md`](./EASYPANEL.md)**
+— incluye variables exactas, el gotcha del proxy `http://` interno, y cómo hornear
+`VITE_API_URL` en el build de la web.
 
 ## Variables de entorno
 
 Ver `.env.production.example`. Mínimas:
 - `DATABASE_URL` — conexión a Postgres.
 - `JWT_SECRET` — ≥16 caracteres, aleatorio.
-- `PUBLIC_WEB_URL` — dominio público (para CORS y links del cliente).
+- `PUBLIC_WEB_URL` — dominio público de la web (para CORS y links del cliente).
 - `COOKIE_SECURE=true` en producción.
+- `COOKIE_SAME_SITE` — `lax` (default) si web y API comparten dominio raíz; `none` si son
+  dominios totalmente distintos (requiere `COOKIE_SECURE=true`).
+- `VITE_API_URL` (solo build de la web, Opción B) — dominio público de la API si vive en
+  un dominio distinto al de la web. Vacío en la Opción A (mismo dominio vía nginx).
 
 ## Post-deploy
 

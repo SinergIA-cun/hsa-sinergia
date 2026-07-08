@@ -33,6 +33,7 @@ services:
       HOST: '0.0.0.0'
       PUBLIC_WEB_URL: ${PUBLIC_WEB_URL}
       COOKIE_SECURE: 'true'
+      COOKIE_SAME_SITE: ${COOKIE_SAME_SITE:-lax}
     depends_on:
       postgres:
         condition: service_healthy
