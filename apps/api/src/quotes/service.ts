@@ -42,6 +42,19 @@ export async function createQuote(
   };
   const breakdown = computeQuote(catalog, selection);
 
+  // Enriquecer las líneas de renta con el nombre del espacio (el motor solo
+  // conoce el id) para que el desglose persistido sea legible.
+  const spaces = await db.space.findMany({ where: { id: { in: input.spaceIds } } });
+  const nameById = new Map(spaces.map((s) => [s.id, s.nombre]));
+  const enrichedBreakdown = {
+    ...breakdown,
+    lines: breakdown.lines.map((l) => {
+      const m = /^Renta (.+)$/.exec(l.concepto);
+      const nombre = m ? nameById.get(m[1]!) : undefined;
+      return nombre ? { ...l, concepto: `Renta ${nombre}` } : l;
+    }),
+  };
+
   let clientId = input.clientId;
   if (!clientId && input.client) {
     const created = await db.client.create({ data: input.client });
@@ -60,7 +73,7 @@ export async function createQuote(
       horasExtra: input.horasExtra,
       foodPackageId: input.foodPackageId ?? null,
       addOns: input.addOns as unknown as Prisma.InputJsonValue,
-      breakdown: breakdown as unknown as Prisma.InputJsonValue,
+      breakdown: enrichedBreakdown as unknown as Prisma.InputJsonValue,
       total: Math.round(breakdown.total),
       rentaTotal: Math.round(breakdown.rentaTotal),
       publicToken,
