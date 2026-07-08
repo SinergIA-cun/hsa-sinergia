@@ -58,12 +58,14 @@ export function PublicQuotePage() {
               'radial-gradient(circle at 20% 10%, rgba(199,163,103,0.35), transparent 45%), radial-gradient(circle at 90% 90%, rgba(199,163,103,0.15), transparent 40%)',
           }}
         />
-        <div className="relative mx-auto max-w-3xl px-6 py-14 text-center">
+        <div className="relative mx-auto max-w-3xl px-6 py-10 text-center sm:py-14">
           <Logo tone="cream" />
-          <p className="mt-10 text-xs uppercase tracking-[0.35em] text-gold-200">
+          <p className="mt-8 text-xs uppercase tracking-[0.35em] text-gold-200">
             Cotización de evento
           </p>
-          <h1 className="mt-3 font-display text-5xl leading-tight">{quote.client?.nombre}</h1>
+          <h1 className="mt-3 font-display text-4xl leading-tight sm:text-5xl">
+            {quote.client?.nombre}
+          </h1>
           <p className="mt-2 font-display text-2xl text-gold-200">{quote.eventType?.nombre}</p>
 
           <div className="mt-8 flex flex-wrap items-center justify-center gap-x-8 gap-y-3 text-sm text-cream/80">
@@ -77,7 +79,7 @@ export function PublicQuotePage() {
         </div>
       </header>
 
-      <main className="mx-auto -mt-8 max-w-3xl px-6 pb-16">
+      <main className="mx-auto max-w-3xl px-6 pb-16 pt-10">
         {/* Estado de cuenta */}
         <div className="rounded-[var(--radius-card)] border border-cream-300 bg-white shadow-[var(--shadow-card)]">
           <div className="grid grid-cols-3 divide-x divide-cream-300 text-center">
