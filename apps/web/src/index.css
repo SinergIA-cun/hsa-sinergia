@@ -1,0 +1,82 @@
+@import 'tailwindcss';
+
+/* ── Marca Hacienda San Andrés ─────────────────────────────────────────
+   Lujo heredado / editorial. Marino profundo + marfil + acento dorado.
+   Display serif de alto contraste (Cormorant), UI en grotesque (Archivo). */
+@theme {
+  --font-display: 'Cormorant Garamond', Georgia, serif;
+  --font-sans: 'Archivo', system-ui, -apple-system, sans-serif;
+
+  --color-ink: #14304d; /* marino profundo */
+  --color-ink-700: #1d3f63;
+  --color-ink-500: #3a5f83;
+  --color-ink-300: #7d99b4;
+
+  --color-cream: #f7f2e8; /* marfil de fondo */
+  --color-cream-200: #efe7d6;
+  --color-cream-300: #e4d9c2;
+
+  --color-gold: #b0894e; /* latón/dorado */
+  --color-gold-400: #c7a367;
+  --color-gold-200: #e6d4ac;
+
+  --color-charcoal: #23201b;
+  --color-charcoal-soft: #4a4640;
+
+  --color-wine: #7a2f3a; /* acento cálido puntual */
+
+  --radius-card: 14px;
+  --shadow-card: 0 1px 2px rgba(20, 48, 77, 0.06), 0 12px 30px -12px rgba(20, 48, 77, 0.18);
+}
+
+@layer base {
+  html {
+    color-scheme: light;
+  }
+  body {
+    margin: 0;
+    background-color: var(--color-cream);
+    color: var(--color-charcoal);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  h1,
+  h2,
+  h3 {
+    font-family: var(--font-display);
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+  /* Textura sutil de papel para dar atmósfera de hacienda */
+  .bg-paper {
+    background-color: var(--color-cream);
+    background-image:
+      radial-gradient(circle at 15% 15%, rgba(176, 137, 78, 0.05), transparent 40%),
+      radial-gradient(circle at 85% 0%, rgba(20, 48, 77, 0.05), transparent 45%);
+  }
+  .divider-arrow {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: var(--color-gold);
+  }
+  .divider-arrow::before,
+  .divider-arrow::after {
+    content: '';
+    height: 1px;
+    width: 2.5rem;
+    background: currentColor;
+    opacity: 0.6;
+  }
+}
+
+/* Scrollbar discreto */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-cream-300);
+  border-radius: 999px;
+}

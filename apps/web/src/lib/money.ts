@@ -1,0 +1,22 @@
+const mxn = new Intl.NumberFormat('es-MX', {
+  style: 'currency',
+  currency: 'MXN',
+  maximumFractionDigits: 0,
+});
+
+const mxnCents = new Intl.NumberFormat('es-MX', {
+  style: 'currency',
+  currency: 'MXN',
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
+
+/** Formatea pesos sin centavos (para totales redondeados). */
+export function formatMXN(n: number): string {
+  return mxn.format(n);
+}
+
+/** Formatea pesos con centavos (para líneas de desglose). */
+export function formatMXNCents(n: number): string {
+  return mxnCents.format(n);
+}
