@@ -85,6 +85,45 @@ model EventType {
   slug         String        @unique
   foodPackages FoodPackage[]
   paymentRule  PaymentRule?
+  quotes       Quote[]
+}
+
+model Client {
+  id             String   @id @default(cuid())
+  nombre         String
+  telefono       String?
+  correo         String?
+  empresa        String?
+  domicilio      String?
+  identificacion String?
+  createdAt      DateTime @default(now())
+  quotes         Quote[]
+}
+
+model Quote {
+  id            String      @id @default(cuid())
+  client        Client      @relation(fields: [clientId], references: [id])
+  clientId      String
+  eventType     EventType   @relation(fields: [eventTypeId], references: [id])
+  eventTypeId   String
+  fechaEvento   DateTime
+  horasEvento   Int?
+  invitados     Int
+  spaceIds      String[]
+  horasExtra    Int         @default(0)
+  foodPackageId String?
+  addOns        Json        @default("[]")
+  breakdown     Json
+  total         Int
+  rentaTotal    Int
+  status        QuoteStatus @default(borrador)
+  publicToken   String      @unique
+  vigenciaHasta DateTime?
+  createdById   String?
+  createdAt     DateTime    @default(now())
+
+  @@index([clientId])
+  @@index([status])
 }
 
 model FoodPackage {
