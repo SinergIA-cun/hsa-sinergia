@@ -6,6 +6,7 @@ import { AppShell } from './components/AppShell.tsx';
 import { LoginPage } from './pages/LoginPage.tsx';
 import { QuotesListPage } from './pages/QuotesListPage.tsx';
 import { NewQuotePage } from './pages/NewQuotePage.tsx';
+import { EditQuotePage } from './pages/EditQuotePage.tsx';
 import { PublicQuotePage } from './pages/PublicQuotePage.tsx';
 
 const queryClient = new QueryClient({
@@ -46,6 +47,14 @@ export function App() {
               element={
                 <Protected>
                   <NewQuotePage />
+                </Protected>
+              }
+            />
+            <Route
+              path="/cotizaciones/:id"
+              element={
+                <Protected>
+                  <EditQuotePage />
                 </Protected>
               }
             />

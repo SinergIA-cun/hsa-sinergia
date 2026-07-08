@@ -1,6 +1,6 @@
 import { useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { CalendarDays, Users, MapPin } from 'lucide-react';
+import { CalendarDays, Users, MapPin, Printer } from 'lucide-react';
 import { api } from '../lib/api.ts';
 import { formatMXN, formatMXNCents } from '../lib/money.ts';
 import { Logo } from '../components/Logo.tsx';
@@ -135,6 +135,15 @@ export function PublicQuotePage() {
             </div>
           </div>
         </section>
+
+        <div className="no-print mt-8 text-center">
+          <button
+            onClick={() => window.print()}
+            className="inline-flex items-center gap-2 rounded-lg border border-ink/20 px-4 py-2.5 text-sm font-medium text-ink transition-colors hover:bg-ink/5"
+          >
+            <Printer size={16} /> Imprimir / Guardar PDF
+          </button>
+        </div>
 
         <footer className="mt-12 text-center text-xs text-charcoal-soft">
           <div className="mb-2 inline-flex items-center gap-1.5">

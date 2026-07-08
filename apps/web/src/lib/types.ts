@@ -65,6 +65,17 @@ export interface Client {
   empresa: string | null;
 }
 
+export const QUOTE_STATUSES = [
+  'borrador',
+  'enviada',
+  'aceptada',
+  'apartada',
+  'formalizada',
+  'liquidada',
+  'vencida',
+] as const;
+export type QuoteStatus = (typeof QUOTE_STATUSES)[number];
+
 export interface Quote {
   id: string;
   clientId: string;
@@ -76,12 +87,14 @@ export interface Quote {
   spaceIds: string[];
   horasExtra: number;
   foodPackageId: string | null;
+  addOns?: { addOnId: string; cantidad: number }[];
   breakdown: QuoteBreakdown;
   total: number;
   rentaTotal: number;
-  status: string;
+  status: QuoteStatus;
   publicToken: string;
   createdAt: string;
+  createdBy?: { id: string; nombre: string } | null;
 }
 
 export interface EstadoCuenta {

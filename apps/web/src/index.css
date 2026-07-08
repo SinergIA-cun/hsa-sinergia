@@ -71,6 +71,20 @@
   }
 }
 
+/* Impresión / PDF: ocultar controles y forzar colores de marca */
+@media print {
+  .no-print {
+    display: none !important;
+  }
+  body {
+    background: #fff !important;
+  }
+  header {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}
+
 /* Scrollbar discreto */
 ::-webkit-scrollbar {
   width: 10px;
