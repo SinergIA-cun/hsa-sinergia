@@ -10,6 +10,10 @@ const envSchema = z.object({
     .enum(['true', 'false'])
     .default('false')
     .transform((v) => v === 'true'),
+  // 'lax' funciona si web y api comparten dominio raíz (p.ej. subdominios de
+  // somossinergia.com). Si terminan en dominios totalmente distintos, usar
+  // 'none' (requiere COOKIE_SECURE=true, que los navegadores exigen para None).
+  COOKIE_SAME_SITE: z.enum(['lax', 'none', 'strict']).default('lax'),
 });
 
 export type AppConfig = z.infer<typeof envSchema>;

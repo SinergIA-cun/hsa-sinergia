@@ -1,5 +1,17 @@
-# Web HSA — build de Vite servido por nginx (con proxy /api => api:3001).
+# Web HSA — build de Vite servido por nginx.
+#
+# Dos modos de despliegue (ver docs/DEPLOY.md y docs/EASYPANEL.md):
+#  1. Mismo dominio (docker-compose en VPS): deja VITE_API_URL vacío; nginx
+#     hace proxy de /api al contenedor `api` (ver nginx.conf).
+#  2. Dominios separados (EasyPanel, un servicio por Dockerfile): define
+#     VITE_API_URL con el dominio público de la API al construir la imagen
+#     (EasyPanel no siempre expone "Build Args" en la UI — si no los expone,
+#     edita el default de abajo y vuelve a desplegar).
+ARG VITE_API_URL=""
+
 FROM node:24-slim AS build
+ARG VITE_API_URL
+ENV VITE_API_URL=${VITE_API_URL}
 RUN corepack enable
 WORKDIR /app
 COPY pnpm-workspace.yaml package.json pnpm-lock.yaml tsconfig.base.json ./

@@ -24,7 +24,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
     const token = await signToken({ sub: user.id, role: user.role }, app.config.JWT_SECRET);
     reply.setCookie(COOKIE_NAME, token, {
       httpOnly: true,
-      sameSite: 'lax',
+      sameSite: app.config.COOKIE_SAME_SITE,
       secure: app.config.COOKIE_SECURE,
       path: '/',
       maxAge: 60 * 60 * 24 * 7,
