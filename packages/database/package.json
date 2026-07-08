@@ -15,7 +15,7 @@
     "studio": "dotenv -e ../../.env -- prisma studio",
     "typecheck": "tsc --noEmit"
   },
-  "dependencies": { "@prisma/client": "^6.0.0" },
+  "dependencies": { "@node-rs/argon2": "^2.0.0", "@prisma/client": "^6.0.0" },
   "devDependencies": {
     "dotenv-cli": "^7.4.0",
     "prisma": "^6.0.0",

@@ -1,4 +1,5 @@
-import { PrismaClient, AddOnKind } from '@prisma/client';
+import { PrismaClient, AddOnKind, UserRole } from '@prisma/client';
+import { hash } from '@node-rs/argon2';
 
 const prisma = new PrismaClient();
 
@@ -121,6 +122,15 @@ async function main() {
       { nombre: 'DJ', kind: AddOnKind.fijo, price: 2950 },
       { nombre: 'Mesa de dulces (por persona)', kind: AddOnKind.porPersona, price: 110 },
     ],
+  });
+
+  // Usuario admin de arranque (dev). Cambiar contraseña en producción.
+  const adminEmail = 'admin@haciendasanandres.com.mx';
+  const passwordHash = await hash('admin1234');
+  await prisma.user.upsert({
+    where: { email: adminEmail },
+    update: {},
+    create: { nombre: 'Administrador', email: adminEmail, passwordHash, role: UserRole.admin },
   });
 
   console.log('Seed HSA 2027 completado.');
