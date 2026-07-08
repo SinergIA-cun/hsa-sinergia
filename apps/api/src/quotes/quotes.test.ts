@@ -64,14 +64,14 @@ describe('quotes HTTP', () => {
     const { eventTypeId, arcosId } = await ids();
     const login = await app.inject({
       method: 'POST',
-      url: '/auth/login',
+      url: '/api/auth/login',
       payload: { email: 'admin@haciendasanandres.com.mx', password: 'admin1234' },
     });
     const cookie = login.cookies[0]!;
 
     const res = await app.inject({
       method: 'POST',
-      url: '/quotes',
+      url: '/api/quotes',
       cookies: { [cookie.name]: cookie.value },
       payload: {
         fecha: '2027-05-08',
@@ -86,13 +86,13 @@ describe('quotes HTTP', () => {
     createdQuoteIds.push(quote.id);
     createdClientIds.push(quote.clientId);
 
-    const pub = await app.inject({ method: 'GET', url: `/c/${quote.publicToken}` });
+    const pub = await app.inject({ method: 'GET', url: `/api/c/${quote.publicToken}` });
     expect(pub.statusCode).toBe(200);
     expect(pub.json().estadoCuenta.total).toBe(quote.total);
   });
 
   it('POST /quotes sin auth => 401', async () => {
-    const res = await app.inject({ method: 'POST', url: '/quotes', payload: {} });
+    const res = await app.inject({ method: 'POST', url: '/api/quotes', payload: {} });
     expect(res.statusCode).toBe(401);
   });
 });

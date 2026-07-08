@@ -28,7 +28,7 @@ describe('auth', () => {
   it('login con credenciales válidas devuelve user y set-cookie', async () => {
     const res = await app.inject({
       method: 'POST',
-      url: '/auth/login',
+      url: '/api/auth/login',
       payload: { email, password: 'admin1234' },
     });
     expect(res.statusCode).toBe(200);
@@ -40,27 +40,27 @@ describe('auth', () => {
   it('login con contraseña incorrecta => 401', async () => {
     const res = await app.inject({
       method: 'POST',
-      url: '/auth/login',
+      url: '/api/auth/login',
       payload: { email, password: 'incorrecta' },
     });
     expect(res.statusCode).toBe(401);
   });
 
   it('GET /auth/me sin cookie => 401', async () => {
-    const res = await app.inject({ method: 'GET', url: '/auth/me' });
+    const res = await app.inject({ method: 'GET', url: '/api/auth/me' });
     expect(res.statusCode).toBe(401);
   });
 
   it('GET /auth/me con cookie válida => user', async () => {
     const login = await app.inject({
       method: 'POST',
-      url: '/auth/login',
+      url: '/api/auth/login',
       payload: { email, password: 'admin1234' },
     });
     const cookie = login.cookies[0]!;
     const res = await app.inject({
       method: 'GET',
-      url: '/auth/me',
+      url: '/api/auth/me',
       cookies: { [cookie.name]: cookie.value },
     });
     expect(res.statusCode).toBe(200);

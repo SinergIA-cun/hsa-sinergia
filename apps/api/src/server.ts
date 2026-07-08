@@ -50,11 +50,14 @@ export async function buildServer(opts: BuildOptions = {}): Promise<FastifyInsta
     return reply.send({ error: message });
   });
 
+  // /health en la raíz para healthchecks de infraestructura.
   app.get('/health', async () => ({ ok: true }));
 
-  await app.register(authRoutes, { prefix: '/auth' });
-  await app.register(catalogRoutes);
-  await app.register(quoteRoutes);
+  // Todas las rutas de la app bajo /api (así el front puede tener su propia
+  // página /c/:token sin chocar con el JSON de la API).
+  await app.register(authRoutes, { prefix: '/api/auth' });
+  await app.register(catalogRoutes, { prefix: '/api' });
+  await app.register(quoteRoutes, { prefix: '/api' });
 
   return app;
 }
