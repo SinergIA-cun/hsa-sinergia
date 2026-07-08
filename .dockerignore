@@ -1,0 +1,11 @@
+**/node_modules
+**/dist
+**/.turbo
+**/.git
+**/*.log
+.env
+.env.*
+!.env.example
+!.env.production.example
+apps/web/dist
+scratchpad

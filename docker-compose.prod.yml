@@ -1,0 +1,51 @@
+# Producción — Postgres + API + Web (nginx).
+# El único servicio expuesto públicamente es `web`; nginx sirve el SPA y hace
+# proxy de /api a la API (mismo dominio => cookies first-party, sin CORS).
+#
+#   docker compose -f docker-compose.prod.yml up -d --build
+#
+# En EasyPanel: crear un servicio por Dockerfile y apuntar el dominio a `web`.
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-hsa}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?define POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-hsa}
+    volumes:
+      - hsa-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-hsa} -d ${POSTGRES_DB:-hsa}']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      JWT_SECRET: ${JWT_SECRET:?define JWT_SECRET}
+      PORT: '3001'
+      HOST: '0.0.0.0'
+      PUBLIC_WEB_URL: ${PUBLIC_WEB_URL}
+      COOKIE_SECURE: 'true'
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    restart: unless-stopped
+    ports:
+      - '${WEB_PORT:-8080}:80'
+    depends_on:
+      - api
+
+volumes:
+  hsa-pgdata:
