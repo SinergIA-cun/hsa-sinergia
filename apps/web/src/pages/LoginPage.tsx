@@ -3,6 +3,15 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/auth.tsx';
 import { Logo } from '../components/Logo.tsx';
 import { Button, Field, TextInput } from '../components/ui.tsx';
+import { ApiError } from '../lib/api.ts';
+
+function loginErrorMessage(err: unknown): string {
+  if (err instanceof ApiError) {
+    if (err.status === 401) return 'Credenciales inválidas. Verifica tu correo y contraseña.';
+    return `Error del servidor (${err.status}): ${err.message}`;
+  }
+  return 'No se pudo conectar con el servidor. Verifica tu conexión o inténtalo de nuevo.';
+}
 
 export function LoginPage() {
   const { login, user } = useAuth();
@@ -23,8 +32,8 @@ export function LoginPage() {
     try {
       await login(email, password);
       navigate('/cotizaciones', { replace: true });
-    } catch {
-      setError('Credenciales inválidas. Verifica tu correo y contraseña.');
+    } catch (err) {
+      setError(loginErrorMessage(err));
     } finally {
       setBusy(false);
     }
