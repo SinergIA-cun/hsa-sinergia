@@ -3,7 +3,15 @@ import { hash } from '@node-rs/argon2';
 
 const prisma = new PrismaClient();
 
-async function main() {
+async function seedCatalog() {
+  // Idempotente: si ya hay espacios, el catálogo ya está sembrado. No re-crear
+  // (evita duplicados si el seed corre más de una vez).
+  const existing = await prisma.space.count();
+  if (existing > 0) {
+    console.log(`Catálogo ya sembrado (${existing} espacios) — se omite.`);
+    return;
+  }
+
   // Config global
   await prisma.pricingConfig.upsert({
     where: { id: 'default' },
@@ -123,8 +131,13 @@ async function main() {
       { nombre: 'Mesa de dulces (por persona)', kind: AddOnKind.porPersona, price: 110 },
     ],
   });
+}
+
+async function main() {
+  await seedCatalog();
 
   // Usuario admin de arranque (dev). Cambiar contraseña en producción.
+  // Siempre se asegura (upsert), aunque el catálogo ya estuviera sembrado.
   const adminEmail = 'admin@haciendasanandres.com.mx';
   const passwordHash = await hash('admin1234');
   await prisma.user.upsert({
@@ -133,7 +146,7 @@ async function main() {
     create: { nombre: 'Administrador', email: adminEmail, passwordHash, role: UserRole.admin },
   });
 
-  console.log('Seed HSA 2027 completado.');
+  console.log('Seed HSA completado.');
 }
 
 main()
