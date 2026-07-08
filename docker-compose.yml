@@ -1,0 +1,27 @@
+# Desarrollo local — PostgreSQL 16
+# Arrancar:  docker compose up -d
+# Detener:   docker compose down
+# Reset BD:  docker compose down -v   (borra el volumen de datos)
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: hsa-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: hsa
+      POSTGRES_PASSWORD: hsa
+      POSTGRES_DB: hsa
+    ports:
+      # Host 5434 -> contenedor 5432 (5432 lo ocupa el Postgres nativo de la Mac;
+      # 5433 lo usa Motipreca). HSA usa 5434.
+      - '5434:5432'
+    volumes:
+      - hsa-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U hsa -d hsa']
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  hsa-pgdata:
