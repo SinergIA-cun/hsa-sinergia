@@ -7,7 +7,7 @@
 #     VITE_API_URL con el dominio público de la API al construir la imagen
 #     (EasyPanel no siempre expone "Build Args" en la UI — si no los expone,
 #     edita el default de abajo y vuelve a desplegar).
-ARG VITE_API_URL=""
+ARG VITE_API_URL="https://hsaapi.somossinergia.com"
 
 FROM node:24-slim AS build
 ARG VITE_API_URL
