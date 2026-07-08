@@ -20,4 +20,8 @@ describe('findBracket', () => {
   it('respeta max=null como sin tope', () => {
     expect(findBracket([{ min: 301, max: null, v: 679 }], 800)?.v).toBe(679);
   });
+  it('incluye la frontera min del rango', () => {
+    expect(findBracket(rows, 51)?.v).toBe(76000);
+    expect(findBracket(rows, 201)?.v).toBe(108500);
+  });
 });

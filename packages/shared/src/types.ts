@@ -42,26 +42,20 @@ export interface Catalog {
   addOns: AddOn[];
 }
 
-export interface QuoteSelection {
-  fecha: string;                // ISO 'YYYY-MM-DD'
-  invitados: number;
-  spaceIds: string[];
-  horasExtra: number;
-  foodPackageId?: string;
-  addOns: { addOnId: string; cantidad: number }[];
-}
+// QuoteSelection se define en schemas.ts (derivado del esquema zod) para evitar
+// duplicar la forma. Ver `./schemas.ts`.
 
 export interface QuoteLine {
   concepto: string;
   detalle?: string;
-  monto: number;                // sin IVA salvo renta (que ya trae IVA)
+  monto: number;                // por línea; la renta ya trae IVA, las bases no
   ivaIncluido: boolean;
 }
 
 export interface QuoteBreakdown {
   lines: QuoteLine[];
-  subtotal: number;             // suma de montos sin IVA (bases)
-  iva: number;
-  total: number;
-  rentaTotal: number;           // renta con IVA (para el plan de pagos)
+  subtotal: number;             // genuinamente pre-IVA (interno, no fiscal/CFDI)
+  iva: number;                  // impuesto total real (renta embebido + bases)
+  total: number;                // subtotal + iva
+  rentaTotal: number;           // renta con IVA (base del plan de pagos)
 }
