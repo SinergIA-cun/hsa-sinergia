@@ -30,6 +30,7 @@ enum QuoteStatus {
   enviada
   aceptada
   apartada
+  formalizada
   liquidada
   vencida
 }
@@ -119,11 +120,14 @@ model Quote {
   status        QuoteStatus @default(borrador)
   publicToken   String      @unique
   vigenciaHasta DateTime?
+  createdBy     User?       @relation("QuoteCreatedBy", fields: [createdById], references: [id])
   createdById   String?
   createdAt     DateTime    @default(now())
 
   @@index([clientId])
   @@index([status])
+  @@index([createdById])
+  @@index([fechaEvento])
 }
 
 model FoodPackage {
@@ -170,11 +174,12 @@ model PaymentRule {
 }
 
 model User {
-  id           String   @id @default(cuid())
-  nombre       String
-  email        String   @unique
-  passwordHash String
-  role         UserRole @default(vendedora)
-  activo       Boolean  @default(true)
-  createdAt    DateTime @default(now())
+  id            String   @id @default(cuid())
+  nombre        String
+  email         String   @unique
+  passwordHash  String
+  role          UserRole @default(vendedora)
+  activo        Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  quotesCreated Quote[]  @relation("QuoteCreatedBy")
 }
