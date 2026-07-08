@@ -1,0 +1,32 @@
+{
+  "name": "@hsa/api",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "dotenv -e ../../.env -- tsx watch src/index.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "dotenv -e ../../.env -- node dist/index.js",
+    "typecheck": "tsc --noEmit",
+    "test": "dotenv -e ../../.env -- vitest run"
+  },
+  "dependencies": {
+    "@fastify/cookie": "^11.0.0",
+    "@fastify/cors": "^10.0.0",
+    "@fastify/helmet": "^12.0.0",
+    "@fastify/rate-limit": "^10.0.0",
+    "@hsa/database": "workspace:*",
+    "@hsa/shared": "workspace:*",
+    "@node-rs/argon2": "^2.0.0",
+    "fastify": "^5.0.0",
+    "jose": "^5.9.0",
+    "zod": "^3.23.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "dotenv-cli": "^7.4.0",
+    "tsx": "^4.16.0",
+    "typescript": "^5.5.0",
+    "vitest": "^2.0.0"
+  }
+}
