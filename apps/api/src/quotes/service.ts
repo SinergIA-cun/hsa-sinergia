@@ -107,7 +107,7 @@ export async function createQuote(db: PrismaClient, rawInput: unknown, actor: Ac
     data: {
       clientId: clientId!,
       eventTypeId: input.eventTypeId,
-      fechaEvento: new Date(`${input.fecha}T00:00:00`),
+      fechaEvento: new Date(`${input.fecha}T00:00:00.000Z`),
       horasEvento: input.horasEvento ?? null,
       invitados: input.invitados,
       spaceIds: input.spaceIds,
@@ -149,7 +149,7 @@ export async function updateQuote(db: PrismaClient, id: string, rawInput: unknow
     where: { id },
     data: {
       eventTypeId: input.eventTypeId,
-      fechaEvento: new Date(`${input.fecha}T00:00:00`),
+      fechaEvento: new Date(`${input.fecha}T00:00:00.000Z`),
       horasEvento: input.horasEvento ?? null,
       invitados: input.invitados,
       spaceIds: input.spaceIds,

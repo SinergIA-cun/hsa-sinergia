@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { CalendarDays, Users, MapPin, Printer } from 'lucide-react';
 import { api } from '../lib/api.ts';
 import { formatMXN, formatMXNCents } from '../lib/money.ts';
+import { formatEventDate } from '../lib/date.ts';
 import { Logo } from '../components/Logo.tsx';
 import type { Quote, EstadoCuenta } from '../lib/types.ts';
 
@@ -40,12 +41,7 @@ export function PublicQuotePage() {
   }
 
   const { quote, estadoCuenta } = data;
-  const fecha = new Date(quote.fechaEvento).toLocaleDateString('es-MX', {
-    weekday: 'long',
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-  });
+  const fecha = formatEventDate(quote.fechaEvento, 'long');
 
   return (
     <div className="min-h-screen bg-paper">

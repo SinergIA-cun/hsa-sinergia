@@ -12,9 +12,9 @@ export interface SpaceAvailability {
 
 /** Rango [inicio, finExclusivo) del día local para la fecha ISO. */
 function dayRange(fechaISO: string): { gte: Date; lt: Date } {
-  const gte = new Date(`${fechaISO}T00:00:00`);
+  const gte = new Date(`${fechaISO}T00:00:00.000Z`);
   const lt = new Date(gte);
-  lt.setDate(lt.getDate() + 1);
+  lt.setUTCDate(lt.getUTCDate() + 1);
   return { gte, lt };
 }
 
@@ -89,9 +89,9 @@ export async function getAgenda(
   fromISO: string,
   toISO: string,
 ): Promise<{ events: AgendaEvent[] }> {
-  const gte = new Date(`${fromISO}T00:00:00`);
-  const lt = new Date(`${toISO}T00:00:00`);
-  lt.setDate(lt.getDate() + 1);
+  const gte = new Date(`${fromISO}T00:00:00.000Z`);
+  const lt = new Date(`${toISO}T00:00:00.000Z`);
+  lt.setUTCDate(lt.getUTCDate() + 1);
   const quotes = await db.quote.findMany({
     where: { fechaEvento: { gte, lt }, status: { not: 'vencida' } },
     include: { client: { select: { nombre: true } }, eventType: { select: { nombre: true } } },

@@ -7,6 +7,7 @@ import { formatMXN, formatMXNCents } from '../lib/money.ts';
 import { Button, Card, SelectInput, ArrowDivider } from '../components/ui.tsx';
 import { QuoteForm, type QuotePayload, type QuoteFormInitial } from '../components/QuoteForm.tsx';
 import { STATUS_LABEL, STATUS_STYLE, EDITABLE_STATUSES } from '../lib/status.ts';
+import { formatEventDate } from '../lib/date.ts';
 import { QUOTE_STATUSES, type Catalog, type Quote, type QuoteStatus } from '../lib/types.ts';
 
 function toInitial(q: Quote): Partial<QuoteFormInitial> {
@@ -81,12 +82,8 @@ export function EditQuotePage() {
           <ArrowDivider>{quote.eventType?.nombre ?? 'Evento'}</ArrowDivider>
           <h1 className="mt-2 font-display text-4xl text-ink">{quote.client?.nombre}</h1>
           <p className="mt-1 text-sm text-charcoal-soft">
-            {new Date(quote.fechaEvento).toLocaleDateString('es-MX', {
-              day: '2-digit',
-              month: 'long',
-              year: 'numeric',
-            })}{' '}
-            · {quote.invitados} invitados · {formatMXN(quote.total)}
+            {formatEventDate(quote.fechaEvento, 'long')} · {quote.invitados} invitados ·{' '}
+            {formatMXN(quote.total)}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">

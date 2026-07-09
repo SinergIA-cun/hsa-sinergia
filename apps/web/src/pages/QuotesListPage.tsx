@@ -6,6 +6,7 @@ import { api } from '../lib/api.ts';
 import { formatMXN } from '../lib/money.ts';
 import { Button, Card, ArrowDivider } from '../components/ui.tsx';
 import { STATUS_LABEL, STATUS_STYLE } from '../lib/status.ts';
+import { formatEventDate, formatTimestamp } from '../lib/date.ts';
 import { useAuth } from '../auth/auth.tsx';
 import type { Quote, QuoteStatus } from '../lib/types.ts';
 
@@ -15,10 +16,6 @@ const SECTIONS: { title: string; statuses: QuoteStatus[]; defaultOpen: boolean }
   { title: 'Eventos Formalizados', statuses: ['formalizada'], defaultOpen: false },
   { title: 'Eventos Liquidados', statuses: ['liquidada'], defaultOpen: false },
 ];
-
-function fmtDate(iso: string): string {
-  return new Date(iso).toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric' });
-}
 
 function QuoteRow({ q, showSeller }: { q: Quote; showSeller: boolean }) {
   const navigate = useNavigate();
@@ -42,10 +39,10 @@ function QuoteRow({ q, showSeller }: { q: Quote; showSeller: boolean }) {
       >
         <span className="flex flex-col">
           <span className="inline-flex items-center gap-1.5">
-            <CalendarDays size={14} className="text-ink-300" /> {fmtDate(q.fechaEvento)}
+            <CalendarDays size={14} className="text-ink-300" /> {formatEventDate(q.fechaEvento)}
           </span>
           <span className="mt-0.5 text-[0.7rem] text-charcoal-soft/70">
-            creada {fmtDate(q.createdAt)}
+            creada {formatTimestamp(q.createdAt)}
           </span>
         </span>
         <span className="inline-flex items-center gap-1.5">

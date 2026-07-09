@@ -5,6 +5,7 @@ import { CalendarDays, MapPin } from 'lucide-react';
 import { api } from '../lib/api.ts';
 import { Card, ArrowDivider } from '../components/ui.tsx';
 import { STATUS_LABEL, STATUS_STYLE } from '../lib/status.ts';
+import { formatEventDate } from '../lib/date.ts';
 import type { AgendaEvent, Catalog } from '../lib/types.ts';
 
 function iso(d: Date): string {
@@ -67,12 +68,7 @@ export function AgendaPage() {
             <div className="mb-2 flex items-center gap-2 text-ink">
               <CalendarDays size={16} className="text-gold" />
               <span className="font-display text-lg capitalize">
-                {new Date(`${date}T00:00:00`).toLocaleDateString('es-MX', {
-                  weekday: 'long',
-                  day: 'numeric',
-                  month: 'long',
-                  year: 'numeric',
-                })}
+                {formatEventDate(date, 'long')}
               </span>
             </div>
             <div className="grid gap-2">
