@@ -79,9 +79,18 @@ export const SelectInput = forwardRef<HTMLSelectElement, SelectHTMLAttributes<HT
   },
 );
 
-export function Card({ className, children }: { className?: string; children: ReactNode }) {
+export function Card({
+  className,
+  children,
+  onClick,
+}: {
+  className?: string;
+  children: ReactNode;
+  onClick?: () => void;
+}) {
   return (
     <div
+      onClick={onClick}
       className={cn(
         'rounded-[var(--radius-card)] border border-cream-300/80 bg-white/80 backdrop-blur',
         'shadow-[var(--shadow-card)]',

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { Plus, ExternalLink, CalendarDays, Users, ChevronDown, UserCircle } from 'lucide-react';
+import { Plus, ExternalLink, CalendarDays, Users, UserCircle } from 'lucide-react';
 import { api } from '../lib/api.ts';
 import { formatMXN } from '../lib/money.ts';
 import { Button, Card, ArrowDivider } from '../components/ui.tsx';
@@ -89,18 +89,21 @@ function Section({
     <section className="mb-4">
       <button
         onClick={() => setOpen((o) => !o)}
-        className="flex w-full items-center justify-between rounded-lg px-1 py-2 text-left"
+        className="flex w-full items-center gap-3 rounded-lg px-1 py-2 text-left"
+        aria-expanded={open}
       >
-        <span className="flex items-baseline gap-3">
-          <span className="font-display text-2xl text-ink">{title}</span>
-          <span className="rounded-full bg-ink/10 px-2 py-0.5 text-xs font-semibold text-ink">
-            {quotes.length}
-          </span>
+        <span
+          className={`text-[0.7rem] leading-none text-gold transition-transform duration-200 ${
+            open ? 'rotate-90' : ''
+          }`}
+          aria-hidden
+        >
+          ▶
         </span>
-        <ChevronDown
-          size={20}
-          className={`text-ink-500 transition-transform ${open ? 'rotate-180' : ''}`}
-        />
+        <span className="font-display text-2xl text-ink">{title}</span>
+        <span className="rounded-full bg-ink/10 px-2 py-0.5 text-xs font-semibold text-ink">
+          {quotes.length}
+        </span>
       </button>
       {open && (
         <div className="mt-3 grid gap-3">

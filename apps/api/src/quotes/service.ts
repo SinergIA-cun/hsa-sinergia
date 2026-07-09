@@ -35,13 +35,16 @@ export const createQuoteSchema = quoteSelectionSchema
   })
   .refine((d) => Boolean(d.clientId ?? d.client), {
     message: 'Se requiere clientId o datos de client',
-  });
+  })
+  .refine((d) => d.spaceIds.length === 1, { message: 'Solo se permite un espacio por evento' });
 
-export const updateQuoteSchema = quoteSelectionSchema.extend({
-  eventTypeId: z.string(),
-  horasEvento: z.number().int().positive().nullable().optional(),
-  client: clientSchema.optional(),
-});
+export const updateQuoteSchema = quoteSelectionSchema
+  .extend({
+    eventTypeId: z.string(),
+    horasEvento: z.number().int().positive().nullable().optional(),
+    client: clientSchema.optional(),
+  })
+  .refine((d) => d.spaceIds.length === 1, { message: 'Solo se permite un espacio por evento' });
 
 export const statusSchema = z.object({ status: z.enum(QUOTE_STATUSES) });
 

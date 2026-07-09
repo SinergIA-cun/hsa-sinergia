@@ -11,6 +11,7 @@ import { authRoutes } from './auth/routes.js';
 import { catalogRoutes } from './catalog/routes.js';
 import { quoteRoutes } from './quotes/routes.js';
 import { userRoutes } from './users/routes.js';
+import { availabilityRoutes } from './availability/routes.js';
 
 declare module 'fastify' {
   interface FastifyInstance {
@@ -60,6 +61,7 @@ export async function buildServer(opts: BuildOptions = {}): Promise<FastifyInsta
   await app.register(catalogRoutes, { prefix: '/api' });
   await app.register(quoteRoutes, { prefix: '/api' });
   await app.register(userRoutes, { prefix: '/api' });
+  await app.register(availabilityRoutes, { prefix: '/api' });
 
   return app;
 }

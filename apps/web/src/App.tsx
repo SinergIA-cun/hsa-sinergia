@@ -7,6 +7,7 @@ import { LoginPage } from './pages/LoginPage.tsx';
 import { QuotesListPage } from './pages/QuotesListPage.tsx';
 import { NewQuotePage } from './pages/NewQuotePage.tsx';
 import { EditQuotePage } from './pages/EditQuotePage.tsx';
+import { AgendaPage } from './pages/AgendaPage.tsx';
 import { PublicQuotePage } from './pages/PublicQuotePage.tsx';
 
 const queryClient = new QueryClient({
@@ -55,6 +56,14 @@ export function App() {
               element={
                 <Protected>
                   <EditQuotePage />
+                </Protected>
+              }
+            />
+            <Route
+              path="/agenda"
+              element={
+                <Protected>
+                  <AgendaPage />
                 </Protected>
               }
             />

@@ -125,6 +125,7 @@ export function EditQuotePage() {
             submitLabel="Guardar cambios"
             onSubmit={handleSave}
             errorMsg={error}
+            excludeQuoteId={quote.id}
           />
         </>
       ) : (

@@ -1,6 +1,6 @@
 import { type ReactNode } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { LogOut, FileText, Plus } from 'lucide-react';
+import { LogOut, FileText, Plus, CalendarDays } from 'lucide-react';
 import { useAuth } from '../auth/auth.tsx';
 import { Logo } from './Logo.tsx';
 import { cn } from '../lib/cn.ts';
@@ -34,6 +34,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           </Link>
           <nav className="hidden items-center gap-1 sm:flex">
             {navItem('/cotizaciones', <FileText size={16} />, 'Cotizaciones')}
+            {navItem('/agenda', <CalendarDays size={16} />, 'Agenda')}
             {navItem('/cotizaciones/nueva', <Plus size={16} />, 'Nueva')}
           </nav>
           <div className="flex items-center gap-3">

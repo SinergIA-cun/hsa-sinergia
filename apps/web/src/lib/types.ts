@@ -104,3 +104,28 @@ export interface EstadoCuenta {
   pagos: unknown[];
   plan: unknown[];
 }
+
+export type AvailabilityLevel = 'libre' | 'cotizaciones' | 'apartada' | 'bloqueada';
+
+export interface SpaceAvailability {
+  spaceId: string;
+  nombre: string;
+  level: AvailabilityLevel;
+  counts: { cotizaciones: number; apartadas: number; formalizadas: number; liquidadas: number };
+  quotes: { id: string; cliente: string; status: string }[];
+}
+
+export interface Availability {
+  fecha: string;
+  spaces: SpaceAvailability[];
+  blocked: boolean;
+}
+
+export interface AgendaEvent {
+  quoteId: string;
+  cliente: string;
+  eventoNombre: string;
+  fechaEvento: string;
+  spaceIds: string[];
+  status: QuoteStatus;
+}

@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { computeQuote, type QuoteBreakdown } from '@hsa/shared';
-import { Sparkles, RotateCcw } from 'lucide-react';
+import { Sparkles, RotateCcw, AlertTriangle, CheckCircle2, Ban } from 'lucide-react';
+import { api } from '../lib/api.ts';
 import { formatMXN, formatMXNCents } from '../lib/money.ts';
 import { Button, Card, Field, TextInput, SelectInput } from './ui.tsx';
-import type { Catalog } from '../lib/types.ts';
+import type { Catalog, Availability, SpaceAvailability } from '../lib/types.ts';
 
 const VALET_RATIO = 2.5; // 1 auto por cada 2.5 personas
 
@@ -37,9 +39,18 @@ interface Props {
   submitLabel: string;
   onSubmit: (payload: QuotePayload) => Promise<void>;
   errorMsg?: string;
+  /** Al editar, excluye la propia cotización del chequeo de disponibilidad. */
+  excludeQuoteId?: string;
 }
 
-export function QuoteForm({ catalog, initial, submitLabel, onSubmit, errorMsg }: Props) {
+export function QuoteForm({
+  catalog,
+  initial,
+  submitLabel,
+  onSubmit,
+  errorMsg,
+  excludeQuoteId,
+}: Props) {
   const valetAddOn = catalog.addOns.find((a) => a.nombre.toLowerCase().includes('valet'));
 
   const [nombre, setNombre] = useState(initial?.nombre ?? '');
@@ -108,10 +119,27 @@ export function QuoteForm({ catalog, initial, submitLabel, onSubmit, errorMsg }:
     return nombreEsp ? `Renta ${nombreEsp}` : concepto;
   };
 
-  const canSave = Boolean(nombre && eventTypeId && fecha && spaceIds.length > 0 && breakdown && !calcError);
+  // Disponibilidad del espacio en la fecha (global, todas las vendedoras).
+  const spaceId = spaceIds[0];
+  const { data: availability } = useQuery({
+    queryKey: ['availability', fecha, spaceId, excludeQuoteId],
+    queryFn: () =>
+      api.get<Availability>(
+        `/api/availability?fecha=${fecha}&spaceIds=${spaceId}` +
+          (excludeQuoteId ? `&excludeQuoteId=${excludeQuoteId}` : ''),
+      ),
+    enabled: Boolean(fecha && spaceId),
+  });
+  const avail = availability?.spaces[0];
+  const blocked = availability?.blocked ?? false;
 
-  function toggleSpace(id: string) {
-    setSpaceIds((prev) => (prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id]));
+  const canSave = Boolean(
+    nombre && eventTypeId && fecha && spaceIds.length === 1 && breakdown && !calcError && !blocked,
+  );
+
+  // Un solo espacio por evento: seleccionar reemplaza; volver a hacer clic deselecciona.
+  function selectSpace(id: string) {
+    setSpaceIds((prev) => (prev[0] === id ? [] : [id]));
   }
 
   function toggleAddOn(id: string, kind: string) {
@@ -196,15 +224,16 @@ export function QuoteForm({ catalog, initial, submitLabel, onSubmit, errorMsg }:
         </Card>
 
         <Card className="space-y-3 p-6">
-          <h2 className="font-display text-xl text-ink">Espacio(s)</h2>
+          <h2 className="font-display text-xl text-ink">Espacio</h2>
+          <p className="-mt-1 text-xs text-charcoal-soft">Un solo espacio por evento.</p>
           <div className="grid gap-2 sm:grid-cols-2">
             {catalog.spaces.map((s) => {
-              const active = spaceIds.includes(s.id);
+              const active = spaceIds[0] === s.id;
               return (
                 <button
                   key={s.id}
                   type="button"
-                  onClick={() => toggleSpace(s.id)}
+                  onClick={() => selectSpace(s.id)}
                   className={`flex items-center justify-between rounded-lg border px-4 py-3 text-left text-sm transition-colors ${
                     active ? 'border-gold bg-gold/10 text-ink' : 'border-ink/12 bg-white/50 text-charcoal hover:border-ink/30'
                   }`}
@@ -215,6 +244,7 @@ export function QuoteForm({ catalog, initial, submitLabel, onSubmit, errorMsg }:
               );
             })}
           </div>
+          <AvailabilityBanner avail={avail} fecha={fecha} />
         </Card>
 
         <Card className="space-y-3 p-6">
@@ -373,6 +403,59 @@ export function QuoteForm({ catalog, initial, submitLabel, onSubmit, errorMsg }:
           </div>
         </Card>
       </div>
+    </div>
+  );
+}
+
+function AvailabilityBanner({
+  avail,
+  fecha,
+}: {
+  avail?: SpaceAvailability;
+  fecha: string;
+}) {
+  if (!fecha || !avail) return null;
+
+  if (avail.level === 'bloqueada') {
+    return (
+      <div className="flex items-start gap-2 rounded-lg border border-wine/30 bg-wine/10 px-3 py-2.5 text-sm text-wine">
+        <Ban size={16} className="mt-0.5 shrink-0" />
+        <span>
+          <strong>{avail.nombre}</strong> ya está{' '}
+          {avail.counts.liquidadas > 0 ? 'liquidado' : 'formalizado'} en esta fecha. No se puede
+          cotizar este espacio para el {fecha}.
+        </span>
+      </div>
+    );
+  }
+  if (avail.level === 'apartada') {
+    return (
+      <div className="flex items-start gap-2 rounded-lg border border-gold/40 bg-gold/10 px-3 py-2.5 text-sm text-gold">
+        <AlertTriangle size={16} className="mt-0.5 shrink-0" />
+        <span>
+          Ya hay un <strong>apartado</strong> para <strong>{avail.nombre}</strong> en esta fecha
+          (aún sin formalizar el 30%). Confirma con coordinación antes de comprometerlo.
+        </span>
+      </div>
+    );
+  }
+  if (avail.level === 'cotizaciones') {
+    return (
+      <div className="flex items-start gap-2 rounded-lg border border-ink/15 bg-ink/5 px-3 py-2.5 text-sm text-ink-500">
+        <AlertTriangle size={16} className="mt-0.5 shrink-0" />
+        <span>
+          Hay {avail.counts.cotizaciones} cotización(es) para <strong>{avail.nombre}</strong> en
+          esta fecha, ninguna apartada aún.
+        </span>
+      </div>
+    );
+  }
+  return (
+    <div className="flex items-center gap-2 rounded-lg border border-emerald-600/20 bg-emerald-600/5 px-3 py-2.5 text-sm text-emerald-700">
+      <CheckCircle2 size={16} className="shrink-0" />
+      <span>
+        <strong>{avail.nombre}</strong> está disponible el {fecha}.
+      </span>
     </div>
   );
 }
