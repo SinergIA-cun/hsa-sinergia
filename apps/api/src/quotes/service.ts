@@ -3,6 +3,8 @@ import { z } from 'zod';
 import type { PrismaClient, Prisma } from '@hsa/database';
 import { computeQuote, quoteSelectionSchema, type QuoteSelection } from '@hsa/shared';
 import { loadCatalog } from '../catalog/loader.js';
+import { logActivity } from './activityLog.js';
+import { computeEstadoCuenta } from './estadoCuenta.js';
 
 export interface Actor {
   id: string;
@@ -50,8 +52,9 @@ export const statusSchema = z.object({ status: z.enum(QUOTE_STATUSES) });
 
 const includeRels = { client: true, eventType: true, createdBy: { select: { id: true, nombre: true } } };
 
-// Solo se puede editar el desglose mientras la cotización no tenga compromiso de pago.
-const EDITABLE_STATUSES = new Set(['borrador', 'enviada', 'aceptada']);
+// Se permite editar el desglose incluso con compromiso de pago (apartada/formalizada);
+// las ediciones en esos estatus quedan registradas en la bitácora de actividad.
+const EDITABLE_STATUSES = new Set(['borrador', 'enviada', 'aceptada', 'apartada', 'formalizada']);
 
 /** Calcula el desglose y enriquece las líneas de renta con el nombre del espacio. */
 async function computeAndEnrich(db: PrismaClient, selection: QuoteSelection) {
@@ -89,8 +92,32 @@ function toSelection(input: {
 }
 
 /** Vendedora solo ve/edita lo suyo; admin todo. */
-function ownershipWhere(actor: Actor): Prisma.QuoteWhereInput {
+export function ownershipWhere(actor: Actor): Prisma.QuoteWhereInput {
   return actor.role === 'admin' ? {} : { createdById: actor.id };
+}
+
+/** Carga regla del espacio + pagos y arma el estado de cuenta de una cotización. */
+export async function loadEstadoCuenta(db: PrismaClient, quote: {
+  id: string; total: number; fechaEvento: Date; status: string; spaceIds: string[];
+}) {
+  const spaceId = quote.spaceIds[0];
+  const [rule, payments, firstApartado] = await Promise.all([
+    spaceId ? db.spacePaymentRule.findUnique({ where: { spaceId } }) : Promise.resolve(null),
+    db.payment.findMany({ where: { quoteId: quote.id }, orderBy: { fecha: 'asc' } }),
+    db.activityLog.findFirst({
+      where: { quoteId: quote.id, tipo: 'estatus', descripcion: { contains: 'apartada' } },
+      orderBy: { createdAt: 'asc' }, select: { createdAt: true },
+    }),
+  ]);
+  const ec = computeEstadoCuenta({
+    total: quote.total,
+    fechaEvento: quote.fechaEvento,
+    status: quote.status,
+    rule: rule ? { anticipo: rule.anticipo, complementoPct: rule.complementoPct, liquidarDiasAntes: rule.liquidarDiasAntes } : null,
+    payments: payments.map((p) => ({ monto: p.monto, anuladoAt: p.anuladoAt })),
+    fechaApartado: firstApartado?.createdAt ?? null,
+  });
+  return { estadoCuenta: ec, payments };
 }
 
 export async function createQuote(db: PrismaClient, rawInput: unknown, actor: Actor) {
@@ -103,7 +130,7 @@ export async function createQuote(db: PrismaClient, rawInput: unknown, actor: Ac
     clientId = created.id;
   }
 
-  return db.quote.create({
+  const created = await db.quote.create({
     data: {
       clientId: clientId!,
       eventTypeId: input.eventTypeId,
@@ -122,6 +149,8 @@ export async function createQuote(db: PrismaClient, rawInput: unknown, actor: Ac
     },
     include: includeRels,
   });
+  await logActivity(db, { quoteId: created.id, tipo: 'creada', descripcion: 'Cotización creada', actorId: actor.id });
+  return created;
 }
 
 export class QuoteError extends Error {
@@ -145,7 +174,7 @@ export async function updateQuote(db: PrismaClient, id: string, rawInput: unknow
     await db.client.update({ where: { id: existing.clientId }, data: input.client });
   }
 
-  return db.quote.update({
+  const updated = await db.quote.update({
     where: { id },
     data: {
       eventTypeId: input.eventTypeId,
@@ -162,6 +191,18 @@ export async function updateQuote(db: PrismaClient, id: string, rawInput: unknow
     },
     include: includeRels,
   });
+
+  if (existing.status === 'apartada' || existing.status === 'formalizada') {
+    await logActivity(db, {
+      quoteId: id,
+      tipo: 'edicion',
+      descripcion: `Edición en ${existing.status}: total ${existing.total} → ${updated.total}`,
+      meta: { totalAntes: existing.total, totalDespues: updated.total },
+      actorId: actor.id,
+    });
+  }
+
+  return updated;
 }
 
 export async function updateStatus(
@@ -172,7 +213,15 @@ export async function updateStatus(
 ) {
   const existing = await db.quote.findFirst({ where: { id, ...ownershipWhere(actor) } });
   if (!existing) throw new QuoteError(404, 'Cotización no encontrada');
-  return db.quote.update({ where: { id }, data: { status }, include: includeRels });
+  const updated = await db.quote.update({ where: { id }, data: { status }, include: includeRels });
+  await logActivity(db, {
+    quoteId: id,
+    tipo: 'estatus',
+    descripcion: `Estatus: ${existing.status} → ${status}`,
+    meta: { de: existing.status, a: status },
+    actorId: actor.id,
+  });
+  return updated;
 }
 
 export function listQuotes(db: PrismaClient, actor: Actor) {
@@ -184,22 +233,20 @@ export function listQuotes(db: PrismaClient, actor: Actor) {
 }
 
 export async function getQuote(db: PrismaClient, id: string, actor: Actor) {
-  return db.quote.findFirst({ where: { id, ...ownershipWhere(actor) }, include: includeRels });
+  const quote = await db.quote.findFirst({ where: { id, ...ownershipWhere(actor) }, include: includeRels });
+  if (!quote) return null;
+  const { estadoCuenta, payments } = await loadEstadoCuenta(db, quote);
+  const activityLog = await db.activityLog.findMany({ where: { quoteId: id }, orderBy: { createdAt: 'desc' }, include: { actor: { select: { nombre: true } } } });
+  return { quote, estadoCuenta, payments, activityLog };
 }
 
-/** Vista pública por token: cotización + estado de cuenta (pagos llegan en Fase 5). */
+/** Vista pública por token: cotización + estado de cuenta con pagos. */
 export async function getByToken(db: PrismaClient, token: string) {
   const quote = await db.quote.findUnique({ where: { publicToken: token }, include: includeRels });
   if (!quote) return null;
-  const pagado = 0;
-  return {
-    quote,
-    estadoCuenta: {
-      total: quote.total,
-      pagado,
-      saldo: quote.total - pagado,
-      pagos: [] as unknown[],
-      plan: [] as unknown[],
-    },
-  };
+  const { estadoCuenta, payments } = await loadEstadoCuenta(db, quote);
+  const pagosPublicos = payments
+    .filter((p) => p.anuladoAt == null)
+    .map((p) => ({ id: p.id, monto: p.monto, concepto: p.concepto, fecha: p.fecha.toISOString(), tieneComprobante: Boolean(p.comprobanteUrl) }));
+  return { quote, estadoCuenta: { ...estadoCuenta, pagos: pagosPublicos } };
 }

@@ -26,6 +26,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  await prisma.activityLog.deleteMany({ where: { quoteId: { in: createdQuoteIds } } });
   await prisma.quote.deleteMany({ where: { id: { in: createdQuoteIds } } });
   await prisma.client.deleteMany({ where: { id: { in: createdClientIds } } });
   await app.close();
@@ -101,7 +102,7 @@ describe('quotes HTTP', () => {
     expect(res.statusCode).toBe(401);
   });
 
-  it('PATCH status + PUT edit: se puede cambiar estatus; editar se bloquea tras apartar', async () => {
+  it('PATCH status + PUT edit: se puede cambiar estatus; editar se permite tras apartar y se bloquea tras liquidar', async () => {
     const { eventTypeId, arcosId } = await ids();
     const q = await createQuote(
       prisma,
@@ -138,13 +139,23 @@ describe('quotes HTTP', () => {
     expect(status.statusCode).toBe(200);
     expect(status.json().quote.status).toBe('apartada');
 
-    // Editar tras apartar: bloqueado (409)
+    // Editar tras apartar: ahora SE PERMITE (deja registro en bitácora)
     const edit2 = await app.inject({
+      method: 'PUT',
+      url: `/api/quotes/${q.id}`,
+      cookies: auth,
+      payload: { fecha: '2027-05-08', invitados: 260, spaceIds: [arcosId], eventTypeId },
+    });
+    expect(edit2.statusCode).toBe(200);
+
+    // Editar tras liquidar: bloqueado (409)
+    await app.inject({ method: 'PATCH', url: `/api/quotes/${q.id}/status`, cookies: auth, payload: { status: 'liquidada' } });
+    const edit3 = await app.inject({
       method: 'PUT',
       url: `/api/quotes/${q.id}`,
       cookies: auth,
       payload: { fecha: '2027-05-08', invitados: 250, spaceIds: [arcosId], eventTypeId },
     });
-    expect(edit2.statusCode).toBe(409);
+    expect(edit3.statusCode).toBe(409);
   });
 });

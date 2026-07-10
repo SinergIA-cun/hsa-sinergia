@@ -9,11 +9,18 @@ export interface SessionUser {
   role: 'vendedora' | 'admin';
 }
 
+export interface SpacePaymentRule {
+  anticipo: number;
+  complementoPct: number;
+  liquidarDiasAntes: number;
+}
+
 export interface Space {
   id: string;
   nombre: string;
   capacidadMax: number | null;
   activo: boolean;
+  paymentRule?: SpacePaymentRule | null;
 }
 
 export interface FoodPackageBracket {
@@ -35,11 +42,6 @@ export interface EventType {
   nombre: string;
   slug: string;
   foodPackages: FoodPackage[];
-  paymentRule: {
-    apartarMonto: number;
-    formalizarPct: number;
-    liquidarDias: number;
-  } | null;
 }
 
 export interface AddOn {
@@ -97,12 +99,52 @@ export interface Quote {
   createdBy?: { id: string; nombre: string } | null;
 }
 
+export interface Payment {
+  id: string;
+  monto: number;
+  metodo: 'efectivo' | 'transferencia' | 'tarjeta';
+  concepto: 'anticipo' | 'complemento' | 'aCuenta' | 'finiquito';
+  fecha: string;
+  referencia: string | null;
+  comprobanteUrl: string | null;
+  comprobantePendiente: boolean;
+  anuladoAt: string | null;
+  motivoAnulacion: string | null;
+}
+
+export interface Milestone {
+  key: 'apartar' | 'complemento' | 'finiquito';
+  label: string;
+  objetivo: number;
+  cubierto: number;
+  completo: boolean;
+  venceISO: string | null;
+}
+
 export interface EstadoCuenta {
   total: number;
   pagado: number;
   saldo: number;
-  pagos: unknown[];
-  plan: unknown[];
+  plan: Milestone[] | null;
+  planPendiente: boolean;
+  sugerido: 'apartada' | 'formalizada' | 'liquidada' | null;
+  desfase: boolean;
+  pagos?: unknown[];
+}
+
+export interface ActivityEntry {
+  id: string;
+  tipo: 'creada' | 'estatus' | 'pago' | 'pagoAnulado' | 'edicion';
+  descripcion: string;
+  createdAt: string;
+  actor?: { nombre: string } | null;
+}
+
+export interface QuoteDetail {
+  quote: Quote;
+  estadoCuenta: EstadoCuenta;
+  payments: Payment[];
+  activityLog: ActivityEntry[];
 }
 
 export type AvailabilityLevel = 'libre' | 'cotizaciones' | 'apartada' | 'bloqueada';

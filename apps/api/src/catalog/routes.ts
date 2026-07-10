@@ -10,9 +10,13 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
   app.get('/catalog', { preHandler: requireAuth }, async () => {
     const [engine, spaces, eventTypes, addOns] = await Promise.all([
       loadCatalog(app.prisma),
-      app.prisma.space.findMany({ where: { activo: true }, orderBy: { nombre: 'asc' } }),
+      app.prisma.space.findMany({
+        where: { activo: true },
+        include: { paymentRule: true },
+        orderBy: { nombre: 'asc' },
+      }),
       app.prisma.eventType.findMany({
-        include: { foodPackages: { include: { brackets: true } }, paymentRule: true },
+        include: { foodPackages: { include: { brackets: true } } },
         orderBy: { nombre: 'asc' },
       }),
       app.prisma.addOn.findMany({ where: { activo: true }, orderBy: { nombre: 'asc' } }),

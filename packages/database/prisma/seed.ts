@@ -59,15 +59,23 @@ async function seedCatalog() {
     data: { priceListId: priceList.id, spaceId: capilla.id, min: 1, max: 170, viernes: 0, viernesEspecial: 0, sabado: 5000, domAJue: 0 },
   });
 
+  // Reglas de pago por espacio (sección H del contrato). La Capilla queda sin
+  // regla (pendiente de datos del cliente) — el sistema la maneja como "plan pendiente".
+  const spaceRules = [
+    { space: cupula, anticipo: 25000, complementoPct: 0.25 },
+    { space: arcos, anticipo: 20000, complementoPct: 0.1 },
+    { space: campos, anticipo: 15000, complementoPct: 0.15 },
+  ];
+  for (const r of spaceRules) {
+    await prisma.spacePaymentRule.create({
+      data: { spaceId: r.space.id, anticipo: r.anticipo, complementoPct: r.complementoPct },
+    });
+  }
+
   // Tipos de evento
   const boda = await prisma.eventType.create({ data: { nombre: 'Boda', slug: 'boda' } });
   const empresarial = await prisma.eventType.create({ data: { nombre: 'Empresarial', slug: 'empresarial' } });
   const bautizo = await prisma.eventType.create({ data: { nombre: 'Bautizo', slug: 'bautizo' } });
-
-  // Regla de pago por evento (default 5000 / 30% renta / 30 días)
-  for (const et of [boda, empresarial, bautizo]) {
-    await prisma.paymentRule.create({ data: { eventTypeId: et.id } });
-  }
 
   // Boda: SUPREME / SUPREME plus
   const supreme = await prisma.foodPackage.create({ data: { eventTypeId: boda.id, nombre: 'SUPREME', ivaIncluido: false } });

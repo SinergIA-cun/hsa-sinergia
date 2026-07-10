@@ -6,9 +6,11 @@ import { api } from '../lib/api.ts';
 import { formatMXN, formatMXNCents } from '../lib/money.ts';
 import { Button, Card, SelectInput, ArrowDivider } from '../components/ui.tsx';
 import { QuoteForm, type QuotePayload, type QuoteFormInitial } from '../components/QuoteForm.tsx';
+import { PagosPanel } from '../components/PagosPanel.tsx';
 import { STATUS_LABEL, STATUS_STYLE, EDITABLE_STATUSES } from '../lib/status.ts';
 import { formatEventDate } from '../lib/date.ts';
-import { QUOTE_STATUSES, type Catalog, type Quote, type QuoteStatus } from '../lib/types.ts';
+import { QUOTE_STATUSES, type Catalog, type Quote, type QuoteDetail, type QuoteStatus } from '../lib/types.ts';
+import { useAuth } from '../auth/auth.tsx';
 
 function toInitial(q: Quote): Partial<QuoteFormInitial> {
   return {
@@ -28,17 +30,22 @@ function toInitial(q: Quote): Partial<QuoteFormInitial> {
 export function EditQuotePage() {
   const { id } = useParams<{ id: string }>();
   const qc = useQueryClient();
+  const { user } = useAuth();
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState('');
 
   const quoteQ = useQuery({
     queryKey: ['quote', id],
-    queryFn: () => api.get<{ quote: Quote }>(`/api/quotes/${id}`),
+    queryFn: () => api.get<QuoteDetail>(`/api/quotes/${id}`),
   });
   const catalogQ = useQuery({ queryKey: ['catalog'], queryFn: () => api.get<Catalog>('/api/catalog') });
 
   const quote = quoteQ.data?.quote;
+  const estadoCuenta = quoteQ.data?.estadoCuenta;
+  const payments = quoteQ.data?.payments;
+  const activityLog = quoteQ.data?.activityLog;
   const catalog = catalogQ.data;
+  const isAdmin = user?.role === 'admin';
 
   async function changeStatus(status: QuoteStatus) {
     if (!quote) return;
@@ -63,7 +70,9 @@ export function EditQuotePage() {
   }
 
   if (quoteQ.isLoading || catalogQ.isLoading) return <p className="text-charcoal-soft">Cargando…</p>;
-  if (!quote || !catalog) return <p className="text-wine">No se encontró la cotización.</p>;
+  if (!quote || !catalog || !estadoCuenta || !payments || !activityLog) {
+    return <p className="text-wine">No se encontró la cotización.</p>;
+  }
 
   const editable = EDITABLE_STATUSES.includes(quote.status);
   const publicUrl = `${window.location.origin}/c/${quote.publicToken}`;
@@ -124,6 +133,13 @@ export function EditQuotePage() {
             errorMsg={error}
             excludeQuoteId={quote.id}
           />
+          <PagosPanel
+            quoteId={quote.id}
+            isAdmin={isAdmin}
+            estadoCuenta={estadoCuenta}
+            payments={payments}
+            activityLog={activityLog}
+          />
         </>
       ) : (
         <Card className="p-6">
@@ -158,6 +174,16 @@ export function EditQuotePage() {
             </Button>
           </a>
         </Card>
+      )}
+
+      {!editable && (
+        <PagosPanel
+          quoteId={quote.id}
+          isAdmin={isAdmin}
+          estadoCuenta={estadoCuenta}
+          payments={payments}
+          activityLog={activityLog}
+        />
       )}
     </div>
   );

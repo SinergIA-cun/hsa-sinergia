@@ -20,6 +20,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  await prisma.activityLog.deleteMany({ where: { quoteId: { in: created } } });
   await prisma.quote.deleteMany({ where: { id: { in: created } } });
   await prisma.client.deleteMany({ where: { id: { in: createdClients } } });
 });

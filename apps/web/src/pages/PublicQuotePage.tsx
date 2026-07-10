@@ -5,7 +5,15 @@ import { api } from '../lib/api.ts';
 import { formatMXN, formatMXNCents } from '../lib/money.ts';
 import { formatEventDate } from '../lib/date.ts';
 import { Logo } from '../components/Logo.tsx';
-import type { Quote, EstadoCuenta } from '../lib/types.ts';
+import type { Quote, EstadoCuenta, Milestone } from '../lib/types.ts';
+
+interface PublicPago {
+  id: string;
+  monto: number;
+  concepto: string;
+  fecha: string;
+  tieneComprobante: boolean;
+}
 
 interface PublicResponse {
   quote: Quote;
@@ -42,6 +50,8 @@ export function PublicQuotePage() {
 
   const { quote, estadoCuenta } = data;
   const fecha = formatEventDate(quote.fechaEvento, 'long');
+  const plan: Milestone[] | null = estadoCuenta.plan;
+  const pagos = (estadoCuenta.pagos ?? []) as PublicPago[];
 
   return (
     <div className="min-h-screen bg-paper">
@@ -93,6 +103,59 @@ export function PublicQuotePage() {
             </div>
           </div>
         </div>
+
+        {/* Plan de pagos */}
+        {!estadoCuenta.planPendiente && plan && plan.length > 0 && (
+          <section className="mt-10">
+            <div className="mb-4 flex items-center justify-center">
+              <span className="divider-arrow text-[0.7rem] uppercase tracking-[0.25em]">
+                Plan de pagos
+              </span>
+            </div>
+            <div className="rounded-[var(--radius-card)] border border-cream-300 bg-white/80 p-6 shadow-sm">
+              <ul className="space-y-3">
+                {plan.map((m) => (
+                  <li key={m.key} className="flex items-center justify-between gap-4 text-sm">
+                    <span className={m.completo ? 'text-ink' : 'text-charcoal-soft'}>
+                      {m.completo ? '✓' : '○'} {m.label}
+                      {m.venceISO && (
+                        <span className="ml-1 text-xs text-charcoal-soft/60">
+                          · vence {formatEventDate(m.venceISO)}
+                        </span>
+                      )}
+                    </span>
+                    <span className="tabular-nums text-charcoal">
+                      {formatMXN(m.cubierto)} / {formatMXN(m.objetivo)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </section>
+        )}
+
+        {/* Pagos */}
+        {pagos.length > 0 && (
+          <section className="mt-10">
+            <div className="mb-4 flex items-center justify-center">
+              <span className="divider-arrow text-[0.7rem] uppercase tracking-[0.25em]">
+                Pagos
+              </span>
+            </div>
+            <div className="rounded-[var(--radius-card)] border border-cream-300 bg-white/80 p-6 shadow-sm">
+              <ul className="divide-y divide-cream-200">
+                {pagos.map((p) => (
+                  <li key={p.id} className="flex justify-between gap-4 py-2.5 text-sm">
+                    <span className="text-charcoal-soft">
+                      {formatEventDate(p.fecha)} · {p.concepto}
+                    </span>
+                    <span className="tabular-nums text-charcoal">{formatMXN(p.monto)}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </section>
+        )}
 
         {/* Desglose */}
         <section className="mt-10">
