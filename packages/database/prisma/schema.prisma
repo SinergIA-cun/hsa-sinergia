@@ -99,15 +99,16 @@ model EventType {
 }
 
 model Client {
-  id             String   @id @default(cuid())
-  nombre         String
-  telefono       String?
-  correo         String?
-  empresa        String?
-  domicilio      String?
-  identificacion String?
-  createdAt      DateTime @default(now())
-  quotes         Quote[]
+  id               String   @id @default(cuid())
+  nombre           String
+  telefono         String?
+  correo           String?
+  empresa          String?
+  domicilio        String?
+  identificacion   String?
+  numeroReferencia Int      @unique @default(dbgenerated("nextval('client_ref_seq')"))
+  createdAt        DateTime @default(now())
+  quotes           Quote[]
 }
 
 model Quote {
@@ -197,6 +198,9 @@ model Payment {
   concepto             PaymentConcept
   fecha                DateTime
   referencia           String?
+  folio                Int            @unique @default(dbgenerated("nextval('recibo_folio_seq')"))
+  comprobanteKey       String?
+  comprobanteMime      String?
   registradoBy         User?          @relation("PaymentRegistradoBy", fields: [registradoById], references: [id])
   registradoById       String?
   anuladoAt            DateTime?
