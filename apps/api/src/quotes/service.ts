@@ -4,6 +4,7 @@ import type { PrismaClient, Prisma } from '@hsa/database';
 import { computeQuote, quoteSelectionSchema, type QuoteSelection } from '@hsa/shared';
 import { loadCatalog } from '../catalog/loader.js';
 import { logActivity } from './activityLog.js';
+import { computeEstadoCuenta } from './estadoCuenta.js';
 
 export interface Actor {
   id: string;
@@ -91,8 +92,32 @@ function toSelection(input: {
 }
 
 /** Vendedora solo ve/edita lo suyo; admin todo. */
-function ownershipWhere(actor: Actor): Prisma.QuoteWhereInput {
+export function ownershipWhere(actor: Actor): Prisma.QuoteWhereInput {
   return actor.role === 'admin' ? {} : { createdById: actor.id };
+}
+
+/** Carga regla del espacio + pagos y arma el estado de cuenta de una cotización. */
+export async function loadEstadoCuenta(db: PrismaClient, quote: {
+  id: string; total: number; fechaEvento: Date; status: string; spaceIds: string[];
+}) {
+  const spaceId = quote.spaceIds[0];
+  const [rule, payments, firstApartado] = await Promise.all([
+    spaceId ? db.spacePaymentRule.findUnique({ where: { spaceId } }) : Promise.resolve(null),
+    db.payment.findMany({ where: { quoteId: quote.id }, orderBy: { fecha: 'asc' } }),
+    db.activityLog.findFirst({
+      where: { quoteId: quote.id, tipo: 'estatus', descripcion: { contains: 'apartada' } },
+      orderBy: { createdAt: 'asc' }, select: { createdAt: true },
+    }),
+  ]);
+  const ec = computeEstadoCuenta({
+    total: quote.total,
+    fechaEvento: quote.fechaEvento,
+    status: quote.status,
+    rule: rule ? { anticipo: rule.anticipo, complementoPct: rule.complementoPct, liquidarDiasAntes: rule.liquidarDiasAntes } : null,
+    payments: payments.map((p) => ({ monto: p.monto, anuladoAt: p.anuladoAt })),
+    fechaApartado: firstApartado?.createdAt ?? null,
+  });
+  return { estadoCuenta: ec, payments };
 }
 
 export async function createQuote(db: PrismaClient, rawInput: unknown, actor: Actor) {
