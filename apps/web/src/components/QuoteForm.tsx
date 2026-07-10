@@ -381,14 +381,14 @@ export function QuoteForm({
                         <span className="tabular-nums">{formatMXN(plan.apartar)}</span>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-charcoal-soft">Formalizar (30% renta)</span>
+                        <span className="text-charcoal-soft">Complemento (formalizar)</span>
                         <span className="tabular-nums">{formatMXN(plan.formalizar)}</span>
                       </div>
                       <div className="flex justify-between">
                         <span className="text-charcoal-soft">
                           Liquidación{' '}
                           {plan.liqFecha
-                            ? `(${plan.liqFecha.toLocaleDateString('es-MX', { day: '2-digit', month: 'short' })})`
+                            ? `(${plan.liqFecha.toLocaleDateString('es-MX', { day: '2-digit', month: 'short', timeZone: 'UTC' })})`
                             : `(${plan.dias}d antes)`}
                         </span>
                         <span className="tabular-nums">{formatMXN(plan.liquidacion)}</span>
