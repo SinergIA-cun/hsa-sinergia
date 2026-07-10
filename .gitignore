@@ -7,3 +7,7 @@ dist/
 .turbo/
 *.log
 .DS_Store
+
+# Comprobantes de pago guardados localmente (COMPROBANTES_DIR)
+apps/api/data/
+data/comprobantes/
