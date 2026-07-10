@@ -176,6 +176,7 @@ model PricingConfig {
   ivaRate          Float  @default(0.16)
   extraHourRate    Float  @default(0.05)
   foodDiscountRate Float  @default(0.05)
+  valetRatio       Float  @default(2.5)
 }
 
 model SpacePaymentRule {
