@@ -64,22 +64,22 @@ describe('registerPayment / anularPayment', () => {
     expect(after.estadoCuenta.pagado).toBe(0);
   });
 
-  it('vendedora no puede anular', async () => {
+  it('ventas no puede anular', async () => {
     const q = await nuevaQuote();
     const { payment } = await registerPayment(prisma, q.id, {
       monto: 5000, metodo: 'efectivo', concepto: 'aCuenta', fecha: '2027-01-10',
     }, actor);
     await expect(
-      anularPayment(prisma, q.id, payment.id, 'x', { id: actor.id, role: 'vendedora' }),
+      anularPayment(prisma, q.id, payment.id, 'x', { id: actor.id, role: 'ventas' }),
     ).rejects.toThrow();
   });
 
-  it('rechaza registrar pago si la cotización no pertenece a la vendedora (404 antes de crear el pago)', async () => {
+  it('rechaza registrar pago si la cotización no pertenece a ventas (404 antes de crear el pago)', async () => {
     const q = await nuevaQuote();
     await expect(
       registerPayment(prisma, q.id, {
         monto: 5000, metodo: 'efectivo', concepto: 'aCuenta', fecha: '2027-01-10',
-      }, { id: 'no-existe-vendedora', role: 'vendedora' }),
+      }, { id: 'no-existe-ventas', role: 'ventas' }),
     ).rejects.toThrow();
 
     const count = await prisma.payment.count({ where: { quoteId: q.id } });

@@ -21,7 +21,7 @@ declare module 'fastify' {
     prisma: PrismaClient;
   }
   interface FastifyRequest {
-    user?: { id: string; role: 'vendedora' | 'admin' };
+    user?: { id: string; role: 'ventas' | 'admin' };
   }
 }
 

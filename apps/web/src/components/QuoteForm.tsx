@@ -67,7 +67,7 @@ export function QuoteForm({
   const [busy, setBusy] = useState(false);
 
   // Valet: sugerencia = ceil(invitados / 2.5). Se recalcula al cambiar invitados
-  // mientras la vendedora no lo haya ajustado a mano.
+  // mientras ventas no lo haya ajustado a mano.
   const valetManual = useRef(false);
   const valetSuggestion = Math.ceil(invitados / valetRatio);
   useEffect(() => {
@@ -123,7 +123,7 @@ export function QuoteForm({
     return nombreEsp ? `Renta ${nombreEsp}` : concepto;
   };
 
-  // Disponibilidad del espacio en la fecha (global, todas las vendedoras).
+  // Disponibilidad del espacio en la fecha (global, todo el equipo de ventas).
   const spaceId = spaceIds[0];
   const { data: availability } = useQuery({
     queryKey: ['availability', fecha, spaceId, excludeQuoteId],

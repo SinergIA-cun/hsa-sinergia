@@ -8,7 +8,7 @@ import { computeEstadoCuenta } from './estadoCuenta.js';
 
 export interface Actor {
   id: string;
-  role: 'vendedora' | 'admin';
+  role: 'ventas' | 'admin';
 }
 
 export const QUOTE_STATUSES = [
@@ -91,7 +91,7 @@ function toSelection(input: {
   };
 }
 
-/** Vendedora solo ve/edita lo suyo; admin todo. */
+/** Ventas solo ve/edita lo suyo; admin todo. */
 export function ownershipWhere(actor: Actor): Prisma.QuoteWhereInput {
   return actor.role === 'admin' ? {} : { createdById: actor.id };
 }

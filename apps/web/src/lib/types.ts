@@ -6,7 +6,7 @@ export interface SessionUser {
   id: string;
   nombre: string;
   email: string;
-  role: 'vendedora' | 'admin';
+  role: 'ventas' | 'admin';
 }
 
 export interface SpacePaymentRule {
@@ -64,7 +64,7 @@ export interface User {
   id: string;
   nombre: string;
   email: string;
-  role: 'vendedora' | 'admin';
+  role: 'ventas' | 'admin';
   activo: boolean;
   createdAt: string;
 }

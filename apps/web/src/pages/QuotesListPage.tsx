@@ -124,7 +124,7 @@ export function QuotesListPage() {
   });
   const quotes = data?.quotes ?? [];
 
-  // CRM por vendedora (solo admin)
+  // CRM por ventas (solo admin)
   const perSeller = new Map<string, number>();
   if (isAdmin) {
     for (const q of quotes) {

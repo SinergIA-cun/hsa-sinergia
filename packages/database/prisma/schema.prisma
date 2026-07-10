@@ -21,7 +21,7 @@ enum AddOnKind {
 }
 
 enum UserRole {
-  vendedora
+  ventas
   admin
 }
 
@@ -227,7 +227,7 @@ model User {
   nombre              String
   email               String        @unique
   passwordHash        String
-  role                UserRole      @default(vendedora)
+  role                UserRole      @default(ventas)
   activo              Boolean       @default(true)
   createdAt           DateTime      @default(now())
   quotesCreated       Quote[]       @relation("QuoteCreatedBy")

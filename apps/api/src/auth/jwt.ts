@@ -1,6 +1,6 @@
 import { SignJWT, jwtVerify } from 'jose';
 
-export type UserRole = 'vendedora' | 'admin';
+export type UserRole = 'ventas' | 'admin';
 
 export interface TokenPayload {
   sub: string;
@@ -25,7 +25,7 @@ export async function verifyToken(token: string, secret: string): Promise<TokenP
     const { payload } = await jwtVerify(token, key(secret));
     const role = payload.role;
     if (typeof payload.sub !== 'string') return null;
-    if (role !== 'vendedora' && role !== 'admin') return null;
+    if (role !== 'ventas' && role !== 'admin') return null;
     return { sub: payload.sub, role };
   } catch {
     return null;

@@ -14,7 +14,7 @@ const ADDON_KIND_LABEL: Record<AddOn['kind'], string> = {
 
 const ROLE_LABEL: Record<User['role'], string> = {
   admin: 'Admin',
-  vendedora: 'Vendedora',
+  ventas: 'Ventas',
 };
 
 function apiErrorMessage(err: unknown, fallback: string): string {
@@ -47,7 +47,7 @@ function UsersSection() {
   const [nombre, setNombre] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [role, setRole] = useState<User['role']>('vendedora');
+  const [role, setRole] = useState<User['role']>('ventas');
   const [error, setError] = useState('');
 
   const createUser = useMutation({
@@ -57,7 +57,7 @@ function UsersSection() {
       setNombre('');
       setEmail('');
       setPassword('');
-      setRole('vendedora');
+      setRole('ventas');
       setError('');
       await qc.invalidateQueries({ queryKey: ['users'] });
     },
@@ -117,7 +117,7 @@ function UsersSection() {
         </Card>
 
         <Card className="space-y-4 p-6">
-          <h3 className="font-display text-lg text-ink">Nueva vendedora</h3>
+          <h3 className="font-display text-lg text-ink">Nueva usuaria de ventas</h3>
           <form onSubmit={onSubmit} className="space-y-4">
             <Field label="Nombre">
               <TextInput value={nombre} onChange={(e) => setNombre(e.target.value)} placeholder="Nombre completo" />
@@ -140,7 +140,7 @@ function UsersSection() {
             </Field>
             <Field label="Rol">
               <SelectInput value={role} onChange={(e) => setRole(e.target.value as User['role'])}>
-                <option value="vendedora">Vendedora</option>
+                <option value="ventas">Ventas</option>
                 <option value="admin">Admin</option>
               </SelectInput>
             </Field>

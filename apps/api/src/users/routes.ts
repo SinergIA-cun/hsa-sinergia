@@ -7,7 +7,7 @@ const createUserSchema = z.object({
   nombre: z.string().min(1),
   email: z.string().email(),
   password: z.string().min(8, 'La contraseña debe tener al menos 8 caracteres'),
-  role: z.enum(['vendedora', 'admin']).default('vendedora'),
+  role: z.enum(['ventas', 'admin']).default('ventas'),
 });
 
 const select = { id: true, nombre: true, email: true, role: true, activo: true, createdAt: true };
