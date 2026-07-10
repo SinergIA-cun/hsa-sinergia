@@ -3,7 +3,7 @@ import type { FastifyInstance } from 'fastify';
 import { prisma } from '@hsa/database';
 import { buildServer } from '../server.js';
 import { loadConfig } from '../config.js';
-import { createQuote, type Actor } from '../quotes/service.js';
+import { createQuote, getByToken, loadEstadoCuenta, type Actor } from '../quotes/service.js';
 import { registerPayment, anularPayment } from './service.js';
 import { PendingStorage } from './storage.js';
 
@@ -36,6 +36,16 @@ async function nuevaQuote() {
   return q;
 }
 
+async function adminAuthCookie() {
+  const login = await app.inject({
+    method: 'POST',
+    url: '/api/auth/login',
+    payload: { email: 'admin@haciendasanandres.com.mx', password: 'admin1234' },
+  });
+  const cookie = login.cookies[0]!;
+  return { [cookie.name]: cookie.value };
+}
+
 describe('registerPayment / anularPayment', () => {
   it('registra un pago y recalcula estado de cuenta', async () => {
     const q = await nuevaQuote();
@@ -64,6 +74,82 @@ describe('registerPayment / anularPayment', () => {
     await expect(
       anularPayment(prisma, q.id, payment.id, 'x', { id: actor.id, role: 'vendedora' }),
     ).rejects.toThrow();
+  });
+
+  it('rechaza registrar pago si la cotización no pertenece a la vendedora (404 antes de crear el pago)', async () => {
+    const q = await nuevaQuote();
+    await expect(
+      registerPayment(prisma, new PendingStorage(), q.id, {
+        monto: 5000, metodo: 'efectivo', concepto: 'aCuenta', fecha: '2027-01-10',
+      }, { id: 'no-existe-vendedora', role: 'vendedora' }),
+    ).rejects.toThrow();
+
+    const count = await prisma.payment.count({ where: { quoteId: q.id } });
+    expect(count).toBe(0);
+  });
+
+  it('rechaza anular un pago que no pertenece a la cotización indicada (404) y no lo anula', async () => {
+    const q1 = await nuevaQuote();
+    const q2 = await nuevaQuote();
+    const { payment } = await registerPayment(prisma, new PendingStorage(), q1.id, {
+      monto: 5000, metodo: 'efectivo', concepto: 'aCuenta', fecha: '2027-01-10',
+    }, actor);
+
+    await expect(anularPayment(prisma, q2.id, payment.id, 'motivo', actor)).rejects.toThrow();
+
+    const { estadoCuenta } = await loadEstadoCuenta(prisma, q1);
+    expect(estadoCuenta.pagado).toBe(5000);
+  });
+});
+
+describe('getByToken (vista pública)', () => {
+  it('expone solo campos públicos en pagos y excluye los anulados', async () => {
+    const q = await nuevaQuote();
+    const { payment: p1 } = await registerPayment(prisma, new PendingStorage(), q.id, {
+      monto: 20000, metodo: 'transferencia', concepto: 'anticipo', fecha: '2027-01-10', referencia: 'ref-123',
+    }, actor);
+    await registerPayment(prisma, new PendingStorage(), q.id, {
+      monto: 5000, metodo: 'efectivo', concepto: 'aCuenta', fecha: '2027-01-15',
+    }, actor);
+    await anularPayment(prisma, q.id, p1.id, 'anulado de prueba', actor);
+
+    const result = await getByToken(prisma, q.publicToken);
+    expect(result?.estadoCuenta.pagado).toBe(5000);
+    expect(result?.estadoCuenta.pagos).toHaveLength(1);
+
+    const pago = result!.estadoCuenta.pagos[0]! as Record<string, unknown>;
+    expect(Object.keys(pago).sort()).toEqual(['concepto', 'fecha', 'id', 'monto', 'tieneComprobante']);
+    expect('referencia' in pago).toBe(false);
+    expect('comprobanteUrl' in pago).toBe(false);
+    expect('registradoById' in pago).toBe(false);
+  });
+});
+
+describe('validación HTTP de pagos', () => {
+  it('POST /quotes/:id/payments con monto negativo devuelve 400', async () => {
+    const q = await nuevaQuote();
+    const auth = await adminAuthCookie();
+
+    const post = await app.inject({
+      method: 'POST',
+      url: `/api/quotes/${q.id}/payments`,
+      cookies: auth,
+      payload: { monto: -5, metodo: 'efectivo', concepto: 'aCuenta', fecha: '2027-01-10' },
+    });
+    expect(post.statusCode).toBe(400);
+  });
+
+  it('PATCH .../anular sin motivo devuelve 400', async () => {
+    const q = await nuevaQuote();
+    const auth = await adminAuthCookie();
+
+    const patch = await app.inject({
+      method: 'PATCH',
+      url: `/api/quotes/${q.id}/payments/no-existe-payment-id/anular`,
+      cookies: auth,
+      payload: {},
+    });
+    expect(patch.statusCode).toBe(400);
   });
 });
 

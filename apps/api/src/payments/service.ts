@@ -11,7 +11,11 @@ export const registerPaymentSchema = z.object({
   concepto: z.enum(['anticipo', 'complemento', 'aCuenta', 'finiquito']),
   fecha: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   referencia: z.string().optional(),
-  comprobanteUrl: z.string().url().optional(),
+  comprobanteUrl: z
+    .string()
+    .url()
+    .refine((u) => /^https?:\/\//i.test(u), 'La URL debe ser http o https')
+    .optional(),
 });
 
 export const anularSchema = z.object({ motivo: z.string().min(3) });
