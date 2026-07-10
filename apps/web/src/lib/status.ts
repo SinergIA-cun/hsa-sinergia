@@ -20,4 +20,4 @@ export const STATUS_STYLE: Record<QuoteStatus, string> = {
   vencida: 'bg-wine/10 text-wine',
 };
 
-export const EDITABLE_STATUSES: QuoteStatus[] = ['borrador', 'enviada', 'aceptada'];
+export const EDITABLE_STATUSES: QuoteStatus[] = ['borrador', 'enviada', 'aceptada', 'apartada', 'formalizada'];
