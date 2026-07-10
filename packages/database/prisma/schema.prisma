@@ -21,7 +21,7 @@ enum AddOnKind {
 }
 
 enum UserRole {
-  vendedora
+  ventas
   admin
 }
 
@@ -99,15 +99,16 @@ model EventType {
 }
 
 model Client {
-  id             String   @id @default(cuid())
-  nombre         String
-  telefono       String?
-  correo         String?
-  empresa        String?
-  domicilio      String?
-  identificacion String?
-  createdAt      DateTime @default(now())
-  quotes         Quote[]
+  id               String   @id @default(cuid())
+  nombre           String
+  telefono         String?
+  correo           String?
+  empresa          String?
+  domicilio        String?
+  identificacion   String?
+  numeroReferencia Int      @unique @default(dbgenerated("nextval('client_ref_seq')"))
+  createdAt        DateTime @default(now())
+  quotes           Quote[]
 }
 
 model Quote {
@@ -176,6 +177,7 @@ model PricingConfig {
   ivaRate          Float  @default(0.16)
   extraHourRate    Float  @default(0.05)
   foodDiscountRate Float  @default(0.05)
+  valetRatio       Float  @default(2.5)
 }
 
 model SpacePaymentRule {
@@ -196,8 +198,9 @@ model Payment {
   concepto             PaymentConcept
   fecha                DateTime
   referencia           String?
-  comprobanteUrl       String?
-  comprobantePendiente Boolean        @default(false)
+  folio                Int            @unique @default(dbgenerated("nextval('recibo_folio_seq')"))
+  comprobanteKey       String?
+  comprobanteMime      String?
   registradoBy         User?          @relation("PaymentRegistradoBy", fields: [registradoById], references: [id])
   registradoById       String?
   anuladoAt            DateTime?
@@ -228,7 +231,7 @@ model User {
   nombre              String
   email               String        @unique
   passwordHash        String
-  role                UserRole      @default(vendedora)
+  role                UserRole      @default(ventas)
   activo              Boolean       @default(true)
   createdAt           DateTime      @default(now())
   quotesCreated       Quote[]       @relation("QuoteCreatedBy")

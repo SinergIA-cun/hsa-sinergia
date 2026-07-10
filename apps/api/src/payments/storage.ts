@@ -1,21 +1,44 @@
-export interface UploadResult {
-  url: string | null;
-  pendiente: boolean;
+import { mkdir, writeFile, readFile } from 'node:fs/promises';
+import { join } from 'node:path';
+import { randomUUID } from 'node:crypto';
+
+export interface StoredFile {
+  key: string;
+  mime: string;
 }
 
-/** Abstracción de almacenamiento del comprobante. El adaptador Drive real
- *  (googleapis) se implementa en un sub-plan aparte, gated por credencial. */
 export interface ComprobanteStorage {
-  upload(data: Buffer, contentType: string): Promise<UploadResult>;
-  stream(ref: string): Promise<NodeJS.ReadableStream | null>;
+  save(data: Buffer, mime: string): Promise<StoredFile>;
+  load(key: string): Promise<Buffer | null>;
 }
 
-/** Default sin credencial: no sube nada, deja el pago con comprobante pendiente. */
-export class PendingStorage implements ComprobanteStorage {
-  async upload(_data: Buffer, _contentType: string): Promise<UploadResult> {
-    return { url: null, pendiente: true };
+const EXT: Record<string, string> = {
+  'image/jpeg': '.jpg',
+  'image/png': '.png',
+  'image/webp': '.webp',
+  'image/heic': '.heic',
+};
+
+/** Guarda el comprobante en un directorio del VPS. Reemplazable por un
+ *  adaptador de Drive a futuro (misma interfaz `ComprobanteStorage`). */
+export class ServerStorage implements ComprobanteStorage {
+  constructor(private dir: string) {}
+
+  async save(data: Buffer, mime: string): Promise<StoredFile> {
+    await mkdir(this.dir, { recursive: true });
+    const key = randomUUID() + (EXT[mime] ?? '');
+    await writeFile(join(this.dir, key), data);
+    return { key, mime };
   }
-  async stream(_ref: string): Promise<NodeJS.ReadableStream | null> {
-    return null;
+
+  async load(key: string): Promise<Buffer | null> {
+    // Anti path-traversal: solo se permite el basename tal cual se generó.
+    const safe = key.replace(/[^a-zA-Z0-9._-]/g, '');
+    if (!safe || safe !== key) return null;
+    try {
+      return await readFile(join(this.dir, safe));
+    } catch {
+      return null;
+    }
   }
 }

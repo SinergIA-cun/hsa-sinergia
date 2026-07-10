@@ -14,6 +14,10 @@ const envSchema = z.object({
   // somossinergia.com). Si terminan en dominios totalmente distintos, usar
   // 'none' (requiere COOKIE_SECURE=true, que los navegadores exigen para None).
   COOKIE_SAME_SITE: z.enum(['lax', 'none', 'strict']).default('lax'),
+  // Directorio donde se guardan las fotos de comprobante de pago. En producción
+  // debe apuntar a un volumen persistente del VPS. (El adaptador Drive futuro
+  // ignorará este valor.)
+  COMPROBANTES_DIR: z.string().default('./data/comprobantes'),
 });
 
 export type AppConfig = z.infer<typeof envSchema>;

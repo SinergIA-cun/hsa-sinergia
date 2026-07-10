@@ -24,7 +24,7 @@ const COTIZACION = new Set(['borrador', 'enviada', 'aceptada']);
 const BLOQUEO = new Set(['formalizada', 'liquidada']);
 
 /**
- * Disponibilidad por espacio+fecha. GLOBAL (no filtra por vendedora): cualquiera
+ * Disponibilidad por espacio+fecha. GLOBAL (no filtra por ventas): cualquiera
  * necesita ver si otra persona ya tiene esa fecha para no sobre-vender.
  */
 export async function getAvailability(

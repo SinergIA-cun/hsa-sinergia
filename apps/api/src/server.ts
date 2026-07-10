@@ -3,6 +3,7 @@ import cookie from '@fastify/cookie';
 import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
 import rateLimit from '@fastify/rate-limit';
+import multipart from '@fastify/multipart';
 import { prisma, type PrismaClient } from '@hsa/database';
 import { ZodError } from 'zod';
 import { loadConfig, type AppConfig } from './config.js';
@@ -13,6 +14,7 @@ import { quoteRoutes } from './quotes/routes.js';
 import { userRoutes } from './users/routes.js';
 import { availabilityRoutes } from './availability/routes.js';
 import { paymentRoutes } from './payments/routes.js';
+import { adminRoutes } from './admin/routes.js';
 
 declare module 'fastify' {
   interface FastifyInstance {
@@ -20,7 +22,7 @@ declare module 'fastify' {
     prisma: PrismaClient;
   }
   interface FastifyRequest {
-    user?: { id: string; role: 'vendedora' | 'admin' };
+    user?: { id: string; role: 'ventas' | 'admin' };
   }
 }
 
@@ -41,6 +43,7 @@ export async function buildServer(opts: BuildOptions = {}): Promise<FastifyInsta
   await app.register(cors, { origin: [config.PUBLIC_WEB_URL], credentials: true });
   await app.register(cookie);
   await app.register(rateLimit, { max: 200, timeWindow: '1 minute' });
+  await app.register(multipart, { limits: { fileSize: 8 * 1024 * 1024 } });
 
   setupAuth(app);
 
@@ -64,6 +67,7 @@ export async function buildServer(opts: BuildOptions = {}): Promise<FastifyInsta
   await app.register(userRoutes, { prefix: '/api' });
   await app.register(availabilityRoutes, { prefix: '/api' });
   await app.register(paymentRoutes, { prefix: '/api' });
+  await app.register(adminRoutes, { prefix: '/api' });
 
   return app;
 }

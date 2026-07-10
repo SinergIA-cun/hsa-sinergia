@@ -9,6 +9,9 @@ import { NewQuotePage } from './pages/NewQuotePage.tsx';
 import { EditQuotePage } from './pages/EditQuotePage.tsx';
 import { AgendaPage } from './pages/AgendaPage.tsx';
 import { PublicQuotePage } from './pages/PublicQuotePage.tsx';
+import { ContratoPage } from './pages/ContratoPage.tsx';
+import { ReciboPage } from './pages/ReciboPage.tsx';
+import { AdminPage } from './pages/AdminPage.tsx';
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { refetchOnWindowFocus: false } },
@@ -27,6 +30,21 @@ function Protected({ children }: { children: ReactNode }) {
   return <AppShell>{children}</AppShell>;
 }
 
+/** Requiere sesión pero sin el shell de la app (vista de impresión limpia). */
+function ProtectedBare({ children }: { children: ReactNode }) {
+  const { user, loading } = useAuth();
+  if (loading) return null;
+  if (!user) return <Navigate to="/login" replace />;
+  return <>{children}</>;
+}
+
+/** Restringe a usuarios con role === 'admin'; redirige al resto. */
+function AdminOnly({ children }: { children: ReactNode }) {
+  const { user } = useAuth();
+  if (user?.role !== 'admin') return <Navigate to="/cotizaciones" replace />;
+  return <>{children}</>;
+}
+
 export function App() {
   return (
     <QueryClientProvider client={queryClient}>
@@ -35,6 +53,7 @@ export function App() {
           <Routes>
             <Route path="/login" element={<LoginPage />} />
             <Route path="/c/:token" element={<PublicQuotePage />} />
+            <Route path="/c/:token/recibo/:paymentId" element={<ReciboPage />} />
             <Route
               path="/cotizaciones"
               element={
@@ -60,10 +79,28 @@ export function App() {
               }
             />
             <Route
+              path="/cotizaciones/:id/contrato"
+              element={
+                <ProtectedBare>
+                  <ContratoPage />
+                </ProtectedBare>
+              }
+            />
+            <Route
               path="/agenda"
               element={
                 <Protected>
                   <AgendaPage />
+                </Protected>
+              }
+            />
+            <Route
+              path="/admin"
+              element={
+                <Protected>
+                  <AdminOnly>
+                    <AdminPage />
+                  </AdminOnly>
                 </Protected>
               }
             />

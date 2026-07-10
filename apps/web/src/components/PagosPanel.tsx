@@ -22,33 +22,49 @@ export function PagosPanel({ quoteId, isAdmin, estadoCuenta, payments, activityL
   const [concepto, setConcepto] = useState('anticipo');
   const [fecha, setFecha] = useState(() => new Date().toISOString().slice(0, 10));
   const [referencia, setReferencia] = useState('');
-  const [comprobanteUrl, setComprobanteUrl] = useState('');
+  const [comprobante, setComprobante] = useState<File | null>(null);
+  const [fileKey, setFileKey] = useState(0);
   const [sugerido, setSugerido] = useState<QuoteStatus | null>(null);
   const [err, setErr] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const apiBase = (import.meta.env.VITE_API_URL ?? '').replace(/\/$/, '');
 
   async function refresh() {
     await qc.invalidateQueries({ queryKey: ['quote', quoteId] });
     await qc.invalidateQueries({ queryKey: ['quotes'] });
   }
 
+  // Se envía multipart (FormData) para poder anexar la foto de comprobante
+  // (cámara en tablet o archivo). El backend acepta multipart y JSON.
   async function registrar(e: React.FormEvent) {
     e.preventDefault();
     setErr('');
+    setBusy(true);
     try {
-      const res = await api.post<{ sugerenciaUpgrade: QuoteStatus | null }>(
-        `/api/quotes/${quoteId}/payments`,
-        {
-          monto: Number(monto),
-          metodo, concepto, fecha,
-          referencia: referencia || undefined,
-          comprobanteUrl: comprobanteUrl || undefined,
-        },
-      );
-      setMonto(''); setReferencia(''); setComprobanteUrl('');
-      setSugerido(res.sugerenciaUpgrade);
+      const fd = new FormData();
+      fd.set('monto', monto);
+      fd.set('metodo', metodo);
+      fd.set('concepto', concepto);
+      fd.set('fecha', fecha);
+      if (referencia) fd.set('referencia', referencia);
+      if (comprobante) fd.set('comprobante', comprobante);
+
+      const res = await fetch(`${apiBase}/api/quotes/${quoteId}/payments`, {
+        method: 'POST',
+        credentials: 'include',
+        body: fd,
+      });
+      if (!res.ok) throw new Error(String(res.status));
+      const body = (await res.json()) as { sugerenciaUpgrade: QuoteStatus | null };
+
+      setMonto(''); setReferencia(''); setComprobante(null); setFileKey((k) => k + 1);
+      setSugerido(body.sugerenciaUpgrade);
       await refresh();
     } catch {
       setErr('No se pudo registrar el pago. Revisa los datos.');
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -123,10 +139,19 @@ export function PagosPanel({ quoteId, isAdmin, estadoCuenta, payments, activityL
             </SelectInput>
           </Field>
           <Field label="Referencia (opcional)"><TextInput value={referencia} onChange={(e) => setReferencia(e.target.value)} /></Field>
-          <Field label="Link del comprobante (Drive, opcional)"><TextInput type="url" value={comprobanteUrl} onChange={(e) => setComprobanteUrl(e.target.value)} placeholder="https://drive.google.com/…" /></Field>
+          <Field label="Comprobante (foto, opcional)" hint="En tablet abre la cámara.">
+            <input
+              key={fileKey}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              onChange={(e) => setComprobante(e.target.files?.[0] ?? null)}
+              className="block w-full text-sm text-charcoal file:mr-3 file:rounded-lg file:border-0 file:bg-ink file:px-3 file:py-2 file:text-sm file:text-cream hover:file:bg-ink-700"
+            />
+          </Field>
           <div className="sm:col-span-2">
             {err && <p className="mb-2 text-sm text-wine">{err}</p>}
-            <Button type="submit" variant="primary">Guardar pago</Button>
+            <Button type="submit" variant="primary" disabled={busy}>{busy ? 'Guardando…' : 'Guardar pago'}</Button>
           </div>
         </form>
       </Card>
@@ -137,10 +162,23 @@ export function PagosPanel({ quoteId, isAdmin, estadoCuenta, payments, activityL
           <h3 className="mb-4 font-display text-xl text-ink">Pagos</h3>
           <ul className="divide-y divide-cream-200">
             {payments.map((p) => (
-              <li key={p.id} className={`flex items-center justify-between gap-4 py-2.5 text-sm ${p.anuladoAt ? 'opacity-50 line-through' : ''}`}>
-                <span>{formatEventDate(p.fecha)} · {p.concepto} · {p.metodo}{p.referencia && ` · ${p.referencia}`}{p.comprobantePendiente && ' · comprobante pendiente'}</span>
+              <li key={p.id} className={`flex flex-wrap items-center justify-between gap-x-4 gap-y-1 py-2.5 text-sm ${p.anuladoAt ? 'opacity-50 line-through' : ''}`}>
+                <span>
+                  <span className="text-charcoal-soft/70">#{p.folio}</span> · {formatEventDate(p.fecha)} · {p.concepto} · {p.metodo}
+                  {p.referencia && ` · ${p.referencia}`}
+                </span>
                 <span className="flex items-center gap-3">
                   <span className="tabular-nums">{formatMXN(p.monto)}</span>
+                  {p.comprobanteKey && !p.anuladoAt && (
+                    <a
+                      href={`${apiBase}/api/quotes/${quoteId}/comprobante/${p.id}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-xs font-medium text-gold hover:underline"
+                    >
+                      Ver comprobante
+                    </a>
+                  )}
                   {isAdmin && !p.anuladoAt && <button onClick={() => anular(p.id)} className="text-xs text-wine hover:underline">Anular</button>}
                 </span>
               </li>

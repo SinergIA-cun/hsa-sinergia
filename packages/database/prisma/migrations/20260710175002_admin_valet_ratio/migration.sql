@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE "PricingConfig" ADD COLUMN     "valetRatio" DOUBLE PRECISION NOT NULL DEFAULT 2.5;

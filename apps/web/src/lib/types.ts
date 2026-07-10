@@ -6,7 +6,7 @@ export interface SessionUser {
   id: string;
   nombre: string;
   email: string;
-  role: 'vendedora' | 'admin';
+  role: 'ventas' | 'admin';
 }
 
 export interface SpacePaymentRule {
@@ -57,6 +57,23 @@ export interface Catalog {
   spaces: Space[];
   eventTypes: EventType[];
   addOns: AddOn[];
+  config?: { valetRatio: number };
+}
+
+export interface User {
+  id: string;
+  nombre: string;
+  email: string;
+  role: 'ventas' | 'admin';
+  activo: boolean;
+  createdAt: string;
+}
+
+export interface AdminConfig {
+  ivaRate: number;
+  extraHourRate: number;
+  foodDiscountRate: number;
+  valetRatio: number;
 }
 
 export interface Client {
@@ -65,6 +82,7 @@ export interface Client {
   telefono: string | null;
   correo: string | null;
   empresa: string | null;
+  numeroReferencia?: number;
 }
 
 export const QUOTE_STATUSES = [
@@ -88,6 +106,10 @@ export interface Quote {
   invitados: number;
   spaceIds: string[];
   horasExtra: number;
+  horasEvento?: number | null;
+  horarioCivil?: string | null;
+  horaInicio?: string | null;
+  horaTermino?: string | null;
   foodPackageId: string | null;
   addOns?: { addOnId: string; cantidad: number }[];
   breakdown: QuoteBreakdown;
@@ -101,13 +123,13 @@ export interface Quote {
 
 export interface Payment {
   id: string;
+  folio: number;
   monto: number;
   metodo: 'efectivo' | 'transferencia' | 'tarjeta';
   concepto: 'anticipo' | 'complemento' | 'aCuenta' | 'finiquito';
   fecha: string;
   referencia: string | null;
-  comprobanteUrl: string | null;
-  comprobantePendiente: boolean;
+  comprobanteKey: string | null;
   anuladoAt: string | null;
   motivoAnulacion: string | null;
 }
@@ -117,8 +139,10 @@ export interface Milestone {
   label: string;
   objetivo: number;
   cubierto: number;
+  restante: number;
   completo: boolean;
   venceISO: string | null;
+  porcentaje?: number;
 }
 
 export interface EstadoCuenta {

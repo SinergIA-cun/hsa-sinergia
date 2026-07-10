@@ -76,6 +76,9 @@ async function seedCatalog() {
   const boda = await prisma.eventType.create({ data: { nombre: 'Boda', slug: 'boda' } });
   const empresarial = await prisma.eventType.create({ data: { nombre: 'Empresarial', slug: 'empresarial' } });
   const bautizo = await prisma.eventType.create({ data: { nombre: 'Bautizo', slug: 'bautizo' } });
+  // Renta = solo espacio (sin paquetes de alimentos). Los tipos XV, Cumpleaños y
+  // Team Building quedan pendientes de sus precios de alimentos 2027.
+  await prisma.eventType.create({ data: { nombre: 'Renta', slug: 'renta' } });
 
   // Boda: SUPREME / SUPREME plus
   const supreme = await prisma.foodPackage.create({ data: { eventTypeId: boda.id, nombre: 'SUPREME', ivaIncluido: false } });
