@@ -101,16 +101,19 @@ export function QuoteForm({
     }
   }, [catalog, selection, spaceIds.length]);
 
+  // Preview del plan de pago según la regla del espacio seleccionado (sección H
+  // del contrato): anticipo fijo + complemento % sobre el TOTAL + finiquito.
+  const selectedSpace = catalog.spaces.find((s) => s.id === spaceIds[0]);
   const plan = useMemo(() => {
-    if (!breakdown || !eventType?.paymentRule) return null;
-    const rule = eventType.paymentRule;
-    const apartar = rule.apartarMonto;
-    const formalizar = Math.max(0, Math.round(breakdown.rentaTotal * rule.formalizarPct) - apartar);
+    const rule = selectedSpace?.paymentRule;
+    if (!breakdown || !rule) return null;
+    const apartar = rule.anticipo;
+    const formalizar = Math.round(breakdown.total * rule.complementoPct);
     const liquidacion = Math.round(breakdown.total) - apartar - formalizar;
-    const liqFecha = fecha ? new Date(`${fecha}T00:00:00`) : null;
-    if (liqFecha) liqFecha.setDate(liqFecha.getDate() - rule.liquidarDias);
-    return { apartar, formalizar, liquidacion, liqFecha, dias: rule.liquidarDias };
-  }, [breakdown, eventType, fecha]);
+    const liqFecha = fecha ? new Date(`${fecha}T00:00:00.000Z`) : null;
+    if (liqFecha) liqFecha.setUTCDate(liqFecha.getUTCDate() - rule.liquidarDiasAntes);
+    return { apartar, formalizar, liquidacion, liqFecha, dias: rule.liquidarDiasAntes };
+  }, [breakdown, selectedSpace, fecha]);
 
   const spaceNameById = new Map(catalog.spaces.map((s) => [s.id, s.nombre]));
   const lineLabel = (concepto: string): string => {

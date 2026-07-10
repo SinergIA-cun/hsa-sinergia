@@ -9,11 +9,18 @@ export interface SessionUser {
   role: 'vendedora' | 'admin';
 }
 
+export interface SpacePaymentRule {
+  anticipo: number;
+  complementoPct: number;
+  liquidarDiasAntes: number;
+}
+
 export interface Space {
   id: string;
   nombre: string;
   capacidadMax: number | null;
   activo: boolean;
+  paymentRule?: SpacePaymentRule | null;
 }
 
 export interface FoodPackageBracket {
@@ -35,11 +42,6 @@ export interface EventType {
   nombre: string;
   slug: string;
   foodPackages: FoodPackage[];
-  paymentRule: {
-    apartarMonto: number;
-    formalizarPct: number;
-    liquidarDias: number;
-  } | null;
 }
 
 export interface AddOn {
