@@ -7,7 +7,7 @@ import { formatMXN, formatMXNCents } from '../lib/money.ts';
 import { Button, Card, Field, TextInput, SelectInput } from './ui.tsx';
 import type { Catalog, Availability, SpaceAvailability } from '../lib/types.ts';
 
-const VALET_RATIO = 2.5; // 1 auto por cada 2.5 personas
+const DEFAULT_VALET_RATIO = 2.5; // 1 auto por cada 2.5 personas (fallback si no llega de catálogo)
 
 export interface QuoteFormInitial {
   nombre: string;
@@ -52,6 +52,7 @@ export function QuoteForm({
   excludeQuoteId,
 }: Props) {
   const valetAddOn = catalog.addOns.find((a) => a.nombre.toLowerCase().includes('valet'));
+  const valetRatio = catalog.config?.valetRatio ?? DEFAULT_VALET_RATIO;
 
   const [nombre, setNombre] = useState(initial?.nombre ?? '');
   const [telefono, setTelefono] = useState(initial?.telefono ?? '');
@@ -68,14 +69,14 @@ export function QuoteForm({
   // Valet: sugerencia = ceil(invitados / 2.5). Se recalcula al cambiar invitados
   // mientras la vendedora no lo haya ajustado a mano.
   const valetManual = useRef(false);
-  const valetSuggestion = Math.ceil(invitados / VALET_RATIO);
+  const valetSuggestion = Math.ceil(invitados / valetRatio);
   useEffect(() => {
     if (!valetAddOn) return;
     if (valetAddOn.id in addOns && !valetManual.current) {
       setAddOns((prev) => ({ ...prev, [valetAddOn.id]: valetSuggestion }));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [invitados]);
+  }, [invitados, valetRatio]);
 
   const eventType = catalog.eventTypes.find((e) => e.id === eventTypeId);
   const foodPackages = eventType?.foodPackages ?? [];
@@ -310,7 +311,7 @@ export function QuoteForm({
                       {isValet && (
                         <button
                           type="button"
-                          title={`Sugerir ${valetSuggestion} (1 auto por ${VALET_RATIO} personas)`}
+                          title={`Sugerir ${valetSuggestion} (1 auto por ${valetRatio} personas)`}
                           onClick={() => {
                             valetManual.current = false;
                             setAddOns((prev) => ({ ...prev, [a.id]: valetSuggestion }));

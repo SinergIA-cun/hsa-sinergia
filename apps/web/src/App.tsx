@@ -10,6 +10,7 @@ import { EditQuotePage } from './pages/EditQuotePage.tsx';
 import { AgendaPage } from './pages/AgendaPage.tsx';
 import { PublicQuotePage } from './pages/PublicQuotePage.tsx';
 import { ContratoPage } from './pages/ContratoPage.tsx';
+import { AdminPage } from './pages/AdminPage.tsx';
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { refetchOnWindowFocus: false } },
@@ -33,6 +34,13 @@ function ProtectedBare({ children }: { children: ReactNode }) {
   const { user, loading } = useAuth();
   if (loading) return null;
   if (!user) return <Navigate to="/login" replace />;
+  return <>{children}</>;
+}
+
+/** Restringe a usuarios con role === 'admin'; redirige al resto. */
+function AdminOnly({ children }: { children: ReactNode }) {
+  const { user } = useAuth();
+  if (user?.role !== 'admin') return <Navigate to="/cotizaciones" replace />;
   return <>{children}</>;
 }
 
@@ -81,6 +89,16 @@ export function App() {
               element={
                 <Protected>
                   <AgendaPage />
+                </Protected>
+              }
+            />
+            <Route
+              path="/admin"
+              element={
+                <Protected>
+                  <AdminOnly>
+                    <AdminPage />
+                  </AdminOnly>
                 </Protected>
               }
             />

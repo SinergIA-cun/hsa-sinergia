@@ -57,6 +57,23 @@ export interface Catalog {
   spaces: Space[];
   eventTypes: EventType[];
   addOns: AddOn[];
+  config?: { valetRatio: number };
+}
+
+export interface User {
+  id: string;
+  nombre: string;
+  email: string;
+  role: 'vendedora' | 'admin';
+  activo: boolean;
+  createdAt: string;
+}
+
+export interface AdminConfig {
+  ivaRate: number;
+  extraHourRate: number;
+  foodDiscountRate: number;
+  valetRatio: number;
 }
 
 export interface Client {
