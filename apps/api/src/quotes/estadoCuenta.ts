@@ -16,8 +16,10 @@ export interface Milestone {
   label: string;
   objetivo: number;
   cubierto: number;
+  restante: number;
   completo: boolean;
   venceISO: string | null;
+  porcentaje?: number; // solo el complemento: % sobre el total
 }
 
 export interface EstadoCuenta {
@@ -68,10 +70,21 @@ export function computeEstadoCuenta(args: {
   const complementoVence = fechaApartado ? addMonths(fechaApartado, 3) : null;
   const finiquitoVence = minusDays(fechaEvento, rule.liquidarDiasAntes);
 
+  const hito = (
+    key: Milestone['key'],
+    label: string,
+    objetivo: number,
+    venceISO: string | null,
+    porcentaje?: number,
+  ): Milestone => {
+    const cubierto = Math.min(pagado, objetivo);
+    return { key, label, objetivo, cubierto, restante: Math.max(0, objetivo - cubierto), completo: pagado >= objetivo, venceISO, porcentaje };
+  };
+
   const plan: Milestone[] = [
-    { key: 'apartar', label: 'Apartar fecha', objetivo: objApartar, cubierto: Math.min(pagado, objApartar), completo: pagado >= objApartar, venceISO: null },
-    { key: 'complemento', label: 'Complemento (formalizar)', objetivo: objComplemento, cubierto: Math.min(pagado, objComplemento), completo: pagado >= objComplemento, venceISO: complementoVence?.toISOString() ?? null },
-    { key: 'finiquito', label: 'Finiquito', objetivo: objFiniquito, cubierto: Math.min(pagado, objFiniquito), completo: pagado >= objFiniquito, venceISO: finiquitoVence.toISOString() },
+    hito('apartar', 'Apartar fecha', objApartar, null),
+    hito('complemento', 'Complemento (formalizar)', objComplemento, complementoVence?.toISOString() ?? null, Math.round(rule.complementoPct * 100)),
+    hito('finiquito', 'Finiquito', objFiniquito, finiquitoVence.toISOString()),
   ];
 
   let sugerido: PaymentStatus | null = null;

@@ -82,6 +82,7 @@ export interface Client {
   telefono: string | null;
   correo: string | null;
   empresa: string | null;
+  numeroReferencia?: number;
 }
 
 export const QUOTE_STATUSES = [
@@ -122,11 +123,13 @@ export interface Quote {
 
 export interface Payment {
   id: string;
+  folio: number;
   monto: number;
   metodo: 'efectivo' | 'transferencia' | 'tarjeta';
   concepto: 'anticipo' | 'complemento' | 'aCuenta' | 'finiquito';
   fecha: string;
   referencia: string | null;
+  comprobanteKey: string | null;
   anuladoAt: string | null;
   motivoAnulacion: string | null;
 }
@@ -136,8 +139,10 @@ export interface Milestone {
   label: string;
   objetivo: number;
   cubierto: number;
+  restante: number;
   completo: boolean;
   venceISO: string | null;
+  porcentaje?: number;
 }
 
 export interface EstadoCuenta {

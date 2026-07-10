@@ -10,6 +10,7 @@ import { EditQuotePage } from './pages/EditQuotePage.tsx';
 import { AgendaPage } from './pages/AgendaPage.tsx';
 import { PublicQuotePage } from './pages/PublicQuotePage.tsx';
 import { ContratoPage } from './pages/ContratoPage.tsx';
+import { ReciboPage } from './pages/ReciboPage.tsx';
 import { AdminPage } from './pages/AdminPage.tsx';
 
 const queryClient = new QueryClient({
@@ -52,6 +53,7 @@ export function App() {
           <Routes>
             <Route path="/login" element={<LoginPage />} />
             <Route path="/c/:token" element={<PublicQuotePage />} />
+            <Route path="/c/:token/recibo/:paymentId" element={<ReciboPage />} />
             <Route
               path="/cotizaciones"
               element={

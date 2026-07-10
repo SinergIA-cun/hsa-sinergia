@@ -1,6 +1,6 @@
-import { useParams } from 'react-router-dom';
+import { useParams, Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { CalendarDays, Users, MapPin, Printer } from 'lucide-react';
+import { CalendarDays, Users, MapPin, Printer, Receipt } from 'lucide-react';
 import { api } from '../lib/api.ts';
 import { formatMXN, formatMXNCents } from '../lib/money.ts';
 import { formatEventDate } from '../lib/date.ts';
@@ -9,9 +9,28 @@ import type { Quote, EstadoCuenta, Milestone } from '../lib/types.ts';
 
 interface PublicPago {
   id: string;
+  folio: number;
   monto: number;
   concepto: string;
+  metodo: string;
   fecha: string;
+  tieneComprobante: boolean;
+}
+
+/** Frases legibles de las obligaciones de pago pendientes, calculadas del plan. */
+function condiciones(plan: Milestone[]): string[] {
+  return plan
+    .filter((m) => !m.completo)
+    .map((m) => {
+      const vence = m.venceISO ? ` a más tardar el ${formatEventDate(m.venceISO, 'long')}` : '';
+      if (m.key === 'apartar') return `Para apartar la fecha: ${formatMXN(m.objetivo)}${vence}.`;
+      if (m.key === 'complemento') {
+        const pct = m.porcentaje != null ? `el ${m.porcentaje}% del total (` : '';
+        const cierre = m.porcentaje != null ? ')' : '';
+        return `Para formalizar: cubrir ${pct}${formatMXN(m.objetivo)}${cierre}${vence}.`;
+      }
+      return `Liquidación: el total (${formatMXN(m.objetivo)}) debe quedar cubierto${vence} (30 días antes del evento).`;
+    });
 }
 
 interface PublicResponse {
@@ -103,6 +122,27 @@ export function PublicQuotePage() {
           </div>
         </div>
 
+        {/* Condiciones de pago (auto-calculadas) */}
+        {!estadoCuenta.planPendiente && plan && condiciones(plan).length > 0 && (
+          <div className="mt-6 rounded-[var(--radius-card)] border border-gold/30 bg-gold/5 p-5">
+            <p className="mb-2 text-xs font-semibold uppercase tracking-[0.15em] text-gold">Condiciones de pago</p>
+            <ul className="space-y-1.5 text-sm text-charcoal">
+              {condiciones(plan).map((c, i) => (
+                <li key={i} className="flex gap-2">
+                  <span className="text-gold">•</span> {c}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {quote.client?.numeroReferencia != null && (
+          <p className="mt-4 text-center text-sm text-charcoal-soft">
+            Número de referencia para transferencias:{' '}
+            <span className="font-semibold tracking-wide text-ink">{quote.client.numeroReferencia}</span>
+          </p>
+        )}
+
         {/* Plan de pagos */}
         {!estadoCuenta.planPendiente && plan && plan.length > 0 && (
           <section className="mt-10">
@@ -144,11 +184,19 @@ export function PublicQuotePage() {
             <div className="rounded-[var(--radius-card)] border border-cream-300 bg-white/80 p-6 shadow-sm">
               <ul className="divide-y divide-cream-200">
                 {pagos.map((p) => (
-                  <li key={p.id} className="flex justify-between gap-4 py-2.5 text-sm">
+                  <li key={p.id} className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 py-2.5 text-sm">
                     <span className="text-charcoal-soft">
                       {formatEventDate(p.fecha)} · {p.concepto}
                     </span>
-                    <span className="tabular-nums text-charcoal">{formatMXN(p.monto)}</span>
+                    <span className="flex items-center gap-4">
+                      <span className="tabular-nums text-charcoal">{formatMXN(p.monto)}</span>
+                      <Link
+                        to={`/c/${token}/recibo/${p.id}`}
+                        className="inline-flex items-center gap-1 text-xs font-medium text-gold hover:underline"
+                      >
+                        <Receipt size={13} /> Ver recibo
+                      </Link>
+                    </span>
                   </li>
                 ))}
               </ul>
