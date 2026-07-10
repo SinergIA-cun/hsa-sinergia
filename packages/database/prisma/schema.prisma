@@ -43,8 +43,17 @@ enum PaymentMethod {
 
 enum PaymentConcept {
   anticipo
+  complemento
   aCuenta
   finiquito
+}
+
+enum ActivityType {
+  creada
+  estatus
+  pago
+  pagoAnulado
+  edicion
 }
 
 model PriceList {
@@ -57,11 +66,12 @@ model PriceList {
 }
 
 model Space {
-  id           String        @id @default(cuid())
+  id           String             @id @default(cuid())
   nombre       String
   capacidadMax Int?
-  activo       Boolean       @default(true)
+  activo       Boolean            @default(true)
   rentalPrices RentalPrice[]
+  paymentRule  SpacePaymentRule?
 }
 
 model RentalPrice {
@@ -85,7 +95,6 @@ model EventType {
   nombre       String
   slug         String        @unique
   foodPackages FoodPackage[]
-  paymentRule  PaymentRule?
   quotes       Quote[]
 }
 
@@ -123,6 +132,11 @@ model Quote {
   createdBy     User?       @relation("QuoteCreatedBy", fields: [createdById], references: [id])
   createdById   String?
   createdAt     DateTime    @default(now())
+  horaInicio    String?
+  horaTermino   String?
+  horarioCivil  String?
+  payments      Payment[]
+  activityLog   ActivityLog[]
 
   @@index([clientId])
   @@index([status])
@@ -164,22 +178,61 @@ model PricingConfig {
   foodDiscountRate Float  @default(0.05)
 }
 
-model PaymentRule {
-  id            String    @id @default(cuid())
-  eventType     EventType @relation(fields: [eventTypeId], references: [id])
-  eventTypeId   String    @unique
-  apartarMonto  Int       @default(5000)
-  formalizarPct Float     @default(0.30)
-  liquidarDias  Int       @default(30)
+model SpacePaymentRule {
+  id                String @id @default(cuid())
+  space             Space  @relation(fields: [spaceId], references: [id])
+  spaceId           String @unique
+  anticipo          Int
+  complementoPct    Float
+  liquidarDiasAntes Int    @default(30)
+}
+
+model Payment {
+  id                   String         @id @default(cuid())
+  quote                Quote          @relation(fields: [quoteId], references: [id])
+  quoteId              String
+  monto                Int
+  metodo               PaymentMethod
+  concepto             PaymentConcept
+  fecha                DateTime
+  referencia           String?
+  comprobanteUrl       String?
+  comprobantePendiente Boolean        @default(false)
+  registradoBy         User?          @relation("PaymentRegistradoBy", fields: [registradoById], references: [id])
+  registradoById       String?
+  anuladoAt            DateTime?
+  anuladoBy            User?          @relation("PaymentAnuladoBy", fields: [anuladoById], references: [id])
+  anuladoById          String?
+  motivoAnulacion      String?
+  createdAt            DateTime       @default(now())
+
+  @@index([quoteId])
+}
+
+model ActivityLog {
+  id          String       @id @default(cuid())
+  quote       Quote        @relation(fields: [quoteId], references: [id])
+  quoteId     String
+  tipo        ActivityType
+  descripcion String
+  meta        Json?
+  actor       User?        @relation("ActivityActor", fields: [actorId], references: [id])
+  actorId     String?
+  createdAt   DateTime     @default(now())
+
+  @@index([quoteId])
 }
 
 model User {
-  id            String   @id @default(cuid())
-  nombre        String
-  email         String   @unique
-  passwordHash  String
-  role          UserRole @default(vendedora)
-  activo        Boolean  @default(true)
-  createdAt     DateTime @default(now())
-  quotesCreated Quote[]  @relation("QuoteCreatedBy")
+  id                  String        @id @default(cuid())
+  nombre              String
+  email               String        @unique
+  passwordHash        String
+  role                UserRole      @default(vendedora)
+  activo              Boolean       @default(true)
+  createdAt           DateTime      @default(now())
+  quotesCreated       Quote[]       @relation("QuoteCreatedBy")
+  paymentsRegistrados Payment[]     @relation("PaymentRegistradoBy")
+  paymentsAnulados    Payment[]     @relation("PaymentAnuladoBy")
+  actividades         ActivityLog[] @relation("ActivityActor")
 }
