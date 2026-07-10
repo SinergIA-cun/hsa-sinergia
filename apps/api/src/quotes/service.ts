@@ -233,22 +233,20 @@ export function listQuotes(db: PrismaClient, actor: Actor) {
 }
 
 export async function getQuote(db: PrismaClient, id: string, actor: Actor) {
-  return db.quote.findFirst({ where: { id, ...ownershipWhere(actor) }, include: includeRels });
+  const quote = await db.quote.findFirst({ where: { id, ...ownershipWhere(actor) }, include: includeRels });
+  if (!quote) return null;
+  const { estadoCuenta, payments } = await loadEstadoCuenta(db, quote);
+  const activityLog = await db.activityLog.findMany({ where: { quoteId: id }, orderBy: { createdAt: 'desc' }, include: { actor: { select: { nombre: true } } } });
+  return { quote, estadoCuenta, payments, activityLog };
 }
 
-/** Vista pública por token: cotización + estado de cuenta (pagos llegan en Fase 5). */
+/** Vista pública por token: cotización + estado de cuenta con pagos. */
 export async function getByToken(db: PrismaClient, token: string) {
   const quote = await db.quote.findUnique({ where: { publicToken: token }, include: includeRels });
   if (!quote) return null;
-  const pagado = 0;
-  return {
-    quote,
-    estadoCuenta: {
-      total: quote.total,
-      pagado,
-      saldo: quote.total - pagado,
-      pagos: [] as unknown[],
-      plan: [] as unknown[],
-    },
-  };
+  const { estadoCuenta, payments } = await loadEstadoCuenta(db, quote);
+  const pagosPublicos = payments
+    .filter((p) => p.anuladoAt == null)
+    .map((p) => ({ id: p.id, monto: p.monto, concepto: p.concepto, fecha: p.fecha.toISOString(), tieneComprobante: Boolean(p.comprobanteUrl) }));
+  return { quote, estadoCuenta: { ...estadoCuenta, pagos: pagosPublicos } };
 }

@@ -12,10 +12,10 @@ export interface ComprobanteStorage {
 
 /** Default sin credencial: no sube nada, deja el pago con comprobante pendiente. */
 export class PendingStorage implements ComprobanteStorage {
-  async upload(): Promise<UploadResult> {
+  async upload(_data: Buffer, _contentType: string): Promise<UploadResult> {
     return { url: null, pendiente: true };
   }
-  async stream(): Promise<NodeJS.ReadableStream | null> {
+  async stream(_ref: string): Promise<NodeJS.ReadableStream | null> {
     return null;
   }
 }

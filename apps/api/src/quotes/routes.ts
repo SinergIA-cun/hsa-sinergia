@@ -26,9 +26,9 @@ export async function quoteRoutes(app: FastifyInstance): Promise<void> {
     '/quotes/:id',
     { preHandler: requireAuth },
     async (req, reply) => {
-      const quote = await getQuote(app.prisma, req.params.id, req.user as Actor);
-      if (!quote) return reply.code(404).send({ error: 'Cotización no encontrada' });
-      return { quote };
+      const result = await getQuote(app.prisma, req.params.id, req.user as Actor);
+      if (!result) return reply.code(404).send({ error: 'Cotización no encontrada' });
+      return result;
     },
   );
 
