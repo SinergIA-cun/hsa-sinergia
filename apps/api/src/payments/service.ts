@@ -3,7 +3,6 @@ import type { PrismaClient } from '@hsa/database';
 import { QuoteError, ownershipWhere, loadEstadoCuenta, type Actor } from '../quotes/service.js';
 import { logActivity } from '../quotes/activityLog.js';
 import { esUpgrade } from '../quotes/estadoCuenta.js';
-import type { ComprobanteStorage } from './storage.js';
 
 export const registerPaymentSchema = z.object({
   monto: z.number().int().positive(),
@@ -11,11 +10,6 @@ export const registerPaymentSchema = z.object({
   concepto: z.enum(['anticipo', 'complemento', 'aCuenta', 'finiquito']),
   fecha: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   referencia: z.string().optional(),
-  comprobanteUrl: z
-    .string()
-    .url()
-    .refine((u) => /^https?:\/\//i.test(u), 'La URL debe ser http o https')
-    .optional(),
 });
 
 export const anularSchema = z.object({ motivo: z.string().min(3) });
@@ -28,22 +22,12 @@ async function findOwnedQuote(db: PrismaClient, id: string, actor: Actor) {
 
 export async function registerPayment(
   db: PrismaClient,
-  storage: ComprobanteStorage,
   quoteId: string,
   rawInput: unknown,
   actor: Actor,
-  file?: { data: Buffer; contentType: string },
 ) {
   const quote = await findOwnedQuote(db, quoteId, actor);
   const input = registerPaymentSchema.parse(rawInput);
-
-  let comprobanteUrl = input.comprobanteUrl ?? null;
-  let comprobantePendiente = false;
-  if (file) {
-    const r = await storage.upload(file.data, file.contentType);
-    comprobanteUrl = r.url;
-    comprobantePendiente = r.pendiente;
-  }
 
   const payment = await db.payment.create({
     data: {
@@ -53,8 +37,6 @@ export async function registerPayment(
       concepto: input.concepto,
       fecha: new Date(`${input.fecha}T00:00:00.000Z`),
       referencia: input.referencia ?? null,
-      comprobanteUrl,
-      comprobantePendiente,
       registradoById: actor.id,
     },
   });

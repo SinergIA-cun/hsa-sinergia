@@ -196,8 +196,6 @@ model Payment {
   concepto             PaymentConcept
   fecha                DateTime
   referencia           String?
-  comprobanteUrl       String?
-  comprobantePendiente Boolean        @default(false)
   registradoBy         User?          @relation("PaymentRegistradoBy", fields: [registradoById], references: [id])
   registradoById       String?
   anuladoAt            DateTime?

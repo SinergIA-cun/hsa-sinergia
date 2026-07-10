@@ -22,7 +22,6 @@ export function PagosPanel({ quoteId, isAdmin, estadoCuenta, payments, activityL
   const [concepto, setConcepto] = useState('anticipo');
   const [fecha, setFecha] = useState(() => new Date().toISOString().slice(0, 10));
   const [referencia, setReferencia] = useState('');
-  const [comprobanteUrl, setComprobanteUrl] = useState('');
   const [sugerido, setSugerido] = useState<QuoteStatus | null>(null);
   const [err, setErr] = useState('');
 
@@ -41,10 +40,9 @@ export function PagosPanel({ quoteId, isAdmin, estadoCuenta, payments, activityL
           monto: Number(monto),
           metodo, concepto, fecha,
           referencia: referencia || undefined,
-          comprobanteUrl: comprobanteUrl || undefined,
         },
       );
-      setMonto(''); setReferencia(''); setComprobanteUrl('');
+      setMonto(''); setReferencia('');
       setSugerido(res.sugerenciaUpgrade);
       await refresh();
     } catch {
@@ -123,7 +121,6 @@ export function PagosPanel({ quoteId, isAdmin, estadoCuenta, payments, activityL
             </SelectInput>
           </Field>
           <Field label="Referencia (opcional)"><TextInput value={referencia} onChange={(e) => setReferencia(e.target.value)} /></Field>
-          <Field label="Link del comprobante (Drive, opcional)"><TextInput type="url" value={comprobanteUrl} onChange={(e) => setComprobanteUrl(e.target.value)} placeholder="https://drive.google.com/…" /></Field>
           <div className="sm:col-span-2">
             {err && <p className="mb-2 text-sm text-wine">{err}</p>}
             <Button type="submit" variant="primary">Guardar pago</Button>
@@ -138,7 +135,7 @@ export function PagosPanel({ quoteId, isAdmin, estadoCuenta, payments, activityL
           <ul className="divide-y divide-cream-200">
             {payments.map((p) => (
               <li key={p.id} className={`flex items-center justify-between gap-4 py-2.5 text-sm ${p.anuladoAt ? 'opacity-50 line-through' : ''}`}>
-                <span>{formatEventDate(p.fecha)} · {p.concepto} · {p.metodo}{p.referencia && ` · ${p.referencia}`}{p.comprobantePendiente && ' · comprobante pendiente'}</span>
+                <span>{formatEventDate(p.fecha)} · {p.concepto} · {p.metodo}{p.referencia && ` · ${p.referencia}`}</span>
                 <span className="flex items-center gap-3">
                   <span className="tabular-nums">{formatMXN(p.monto)}</span>
                   {isAdmin && !p.anuladoAt && <button onClick={() => anular(p.id)} className="text-xs text-wine hover:underline">Anular</button>}

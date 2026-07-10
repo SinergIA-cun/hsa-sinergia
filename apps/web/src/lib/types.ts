@@ -106,8 +106,6 @@ export interface Payment {
   concepto: 'anticipo' | 'complemento' | 'aCuenta' | 'finiquito';
   fecha: string;
   referencia: string | null;
-  comprobanteUrl: string | null;
-  comprobantePendiente: boolean;
   anuladoAt: string | null;
   motivoAnulacion: string | null;
 }

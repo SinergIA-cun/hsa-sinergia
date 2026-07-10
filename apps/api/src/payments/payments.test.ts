@@ -5,7 +5,6 @@ import { buildServer } from '../server.js';
 import { loadConfig } from '../config.js';
 import { createQuote, getByToken, loadEstadoCuenta, type Actor } from '../quotes/service.js';
 import { registerPayment, anularPayment } from './service.js';
-import { PendingStorage } from './storage.js';
 
 let actor: Actor;
 let arcosId: string, eventTypeId: string;
@@ -49,17 +48,16 @@ async function adminAuthCookie() {
 describe('registerPayment / anularPayment', () => {
   it('registra un pago y recalcula estado de cuenta', async () => {
     const q = await nuevaQuote();
-    const res = await registerPayment(prisma, new PendingStorage(), q.id, {
+    const res = await registerPayment(prisma, q.id, {
       monto: 20000, metodo: 'transferencia', concepto: 'anticipo', fecha: '2027-01-10',
     }, actor);
     expect(res.estadoCuenta.pagado).toBe(20000);
-    expect(res.payment.comprobantePendiente).toBe(false);
     expect(res.sugerenciaUpgrade).toBe('apartada');
   });
 
   it('anular excluye el pago del acumulado (solo admin)', async () => {
     const q = await nuevaQuote();
-    const { payment } = await registerPayment(prisma, new PendingStorage(), q.id, {
+    const { payment } = await registerPayment(prisma, q.id, {
       monto: 20000, metodo: 'efectivo', concepto: 'anticipo', fecha: '2027-01-10',
     }, actor);
     const after = await anularPayment(prisma, q.id, payment.id, 'monto equivocado', actor);
@@ -68,7 +66,7 @@ describe('registerPayment / anularPayment', () => {
 
   it('vendedora no puede anular', async () => {
     const q = await nuevaQuote();
-    const { payment } = await registerPayment(prisma, new PendingStorage(), q.id, {
+    const { payment } = await registerPayment(prisma, q.id, {
       monto: 5000, metodo: 'efectivo', concepto: 'aCuenta', fecha: '2027-01-10',
     }, actor);
     await expect(
@@ -79,7 +77,7 @@ describe('registerPayment / anularPayment', () => {
   it('rechaza registrar pago si la cotización no pertenece a la vendedora (404 antes de crear el pago)', async () => {
     const q = await nuevaQuote();
     await expect(
-      registerPayment(prisma, new PendingStorage(), q.id, {
+      registerPayment(prisma, q.id, {
         monto: 5000, metodo: 'efectivo', concepto: 'aCuenta', fecha: '2027-01-10',
       }, { id: 'no-existe-vendedora', role: 'vendedora' }),
     ).rejects.toThrow();
@@ -91,7 +89,7 @@ describe('registerPayment / anularPayment', () => {
   it('rechaza anular un pago que no pertenece a la cotización indicada (404) y no lo anula', async () => {
     const q1 = await nuevaQuote();
     const q2 = await nuevaQuote();
-    const { payment } = await registerPayment(prisma, new PendingStorage(), q1.id, {
+    const { payment } = await registerPayment(prisma, q1.id, {
       monto: 5000, metodo: 'efectivo', concepto: 'aCuenta', fecha: '2027-01-10',
     }, actor);
 
@@ -105,10 +103,10 @@ describe('registerPayment / anularPayment', () => {
 describe('getByToken (vista pública)', () => {
   it('expone solo campos públicos en pagos y excluye los anulados', async () => {
     const q = await nuevaQuote();
-    const { payment: p1 } = await registerPayment(prisma, new PendingStorage(), q.id, {
+    const { payment: p1 } = await registerPayment(prisma, q.id, {
       monto: 20000, metodo: 'transferencia', concepto: 'anticipo', fecha: '2027-01-10', referencia: 'ref-123',
     }, actor);
-    await registerPayment(prisma, new PendingStorage(), q.id, {
+    await registerPayment(prisma, q.id, {
       monto: 5000, metodo: 'efectivo', concepto: 'aCuenta', fecha: '2027-01-15',
     }, actor);
     await anularPayment(prisma, q.id, p1.id, 'anulado de prueba', actor);
@@ -118,7 +116,7 @@ describe('getByToken (vista pública)', () => {
     expect(result?.estadoCuenta.pagos).toHaveLength(1);
 
     const pago = result!.estadoCuenta.pagos[0]! as Record<string, unknown>;
-    expect(Object.keys(pago).sort()).toEqual(['concepto', 'fecha', 'id', 'monto', 'tieneComprobante']);
+    expect(Object.keys(pago).sort()).toEqual(['concepto', 'fecha', 'id', 'monto']);
     expect('referencia' in pago).toBe(false);
     expect('comprobanteUrl' in pago).toBe(false);
     expect('registradoById' in pago).toBe(false);

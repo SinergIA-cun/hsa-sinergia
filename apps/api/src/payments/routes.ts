@@ -2,14 +2,11 @@ import type { FastifyInstance } from 'fastify';
 import { requireAuth } from '../auth/plugin.js';
 import { QuoteError, type Actor } from '../quotes/service.js';
 import { registerPayment, anularPayment, anularSchema } from './service.js';
-import { PendingStorage } from './storage.js';
-
-const storage = new PendingStorage(); // sustituible por DriveStorage cuando exista credencial
 
 export async function paymentRoutes(app: FastifyInstance): Promise<void> {
   app.post<{ Params: { id: string } }>('/quotes/:id/payments', { preHandler: requireAuth }, async (req, reply) => {
     try {
-      const result = await registerPayment(app.prisma, storage, req.params.id, req.body, req.user as Actor);
+      const result = await registerPayment(app.prisma, req.params.id, req.body, req.user as Actor);
       return reply.code(201).send(result);
     } catch (e) {
       if (e instanceof QuoteError) return reply.code(e.status).send({ error: e.message });

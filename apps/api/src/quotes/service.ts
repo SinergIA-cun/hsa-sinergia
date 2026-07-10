@@ -247,6 +247,6 @@ export async function getByToken(db: PrismaClient, token: string) {
   const { estadoCuenta, payments } = await loadEstadoCuenta(db, quote);
   const pagosPublicos = payments
     .filter((p) => p.anuladoAt == null)
-    .map((p) => ({ id: p.id, monto: p.monto, concepto: p.concepto, fecha: p.fecha.toISOString(), tieneComprobante: Boolean(p.comprobanteUrl) }));
+    .map((p) => ({ id: p.id, monto: p.monto, concepto: p.concepto, fecha: p.fecha.toISOString() }));
   return { quote, estadoCuenta: { ...estadoCuenta, pagos: pagosPublicos } };
 }

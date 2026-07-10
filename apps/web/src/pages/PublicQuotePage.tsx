@@ -12,7 +12,6 @@ interface PublicPago {
   monto: number;
   concepto: string;
   fecha: string;
-  tieneComprobante: boolean;
 }
 
 interface PublicResponse {
