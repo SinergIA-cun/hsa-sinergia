@@ -224,6 +224,29 @@ export async function updateStatus(
   return updated;
 }
 
+// Datos operativos (horarios) que se capturan al formalizar; alimentan el
+// contrato y, más adelante, la hoja operativa. No recalculan el desglose.
+export const operativaSchema = z.object({
+  horarioCivil: z.string().max(120).nullable().optional(),
+  horaInicio: z.string().max(20).nullable().optional(),
+  horaTermino: z.string().max(20).nullable().optional(),
+});
+
+export async function updateOperativa(db: PrismaClient, id: string, rawInput: unknown, actor: Actor) {
+  const existing = await db.quote.findFirst({ where: { id, ...ownershipWhere(actor) } });
+  if (!existing) throw new QuoteError(404, 'Cotización no encontrada');
+  const input = operativaSchema.parse(rawInput);
+  return db.quote.update({
+    where: { id },
+    data: {
+      horarioCivil: input.horarioCivil ?? null,
+      horaInicio: input.horaInicio ?? null,
+      horaTermino: input.horaTermino ?? null,
+    },
+    include: includeRels,
+  });
+}
+
 export function listQuotes(db: PrismaClient, actor: Actor) {
   return db.quote.findMany({
     where: ownershipWhere(actor),

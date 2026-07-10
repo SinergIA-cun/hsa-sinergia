@@ -7,6 +7,7 @@ import {
   getByToken,
   updateQuote,
   updateStatus,
+  updateOperativa,
   statusSchema,
   QuoteError,
   type Actor,
@@ -59,6 +60,20 @@ export async function quoteRoutes(app: FastifyInstance): Promise<void> {
           parsed.data.status,
           req.user as Actor,
         );
+        return { quote };
+      } catch (e) {
+        if (e instanceof QuoteError) return reply.code(e.status).send({ error: e.message });
+        throw e;
+      }
+    },
+  );
+
+  app.patch<{ Params: { id: string } }>(
+    '/quotes/:id/operativa',
+    { preHandler: requireAuth },
+    async (req, reply) => {
+      try {
+        const quote = await updateOperativa(app.prisma, req.params.id, req.body, req.user as Actor);
         return { quote };
       } catch (e) {
         if (e instanceof QuoteError) return reply.code(e.status).send({ error: e.message });

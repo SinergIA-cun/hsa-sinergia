@@ -88,6 +88,10 @@ export interface Quote {
   invitados: number;
   spaceIds: string[];
   horasExtra: number;
+  horasEvento?: number | null;
+  horarioCivil?: string | null;
+  horaInicio?: string | null;
+  horaTermino?: string | null;
   foodPackageId: string | null;
   addOns?: { addOnId: string; cantidad: number }[];
   breakdown: QuoteBreakdown;

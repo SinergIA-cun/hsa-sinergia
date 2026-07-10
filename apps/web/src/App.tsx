@@ -9,6 +9,7 @@ import { NewQuotePage } from './pages/NewQuotePage.tsx';
 import { EditQuotePage } from './pages/EditQuotePage.tsx';
 import { AgendaPage } from './pages/AgendaPage.tsx';
 import { PublicQuotePage } from './pages/PublicQuotePage.tsx';
+import { ContratoPage } from './pages/ContratoPage.tsx';
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { refetchOnWindowFocus: false } },
@@ -25,6 +26,14 @@ function Protected({ children }: { children: ReactNode }) {
   }
   if (!user) return <Navigate to="/login" replace />;
   return <AppShell>{children}</AppShell>;
+}
+
+/** Requiere sesión pero sin el shell de la app (vista de impresión limpia). */
+function ProtectedBare({ children }: { children: ReactNode }) {
+  const { user, loading } = useAuth();
+  if (loading) return null;
+  if (!user) return <Navigate to="/login" replace />;
+  return <>{children}</>;
 }
 
 export function App() {
@@ -57,6 +66,14 @@ export function App() {
                 <Protected>
                   <EditQuotePage />
                 </Protected>
+              }
+            />
+            <Route
+              path="/cotizaciones/:id/contrato"
+              element={
+                <ProtectedBare>
+                  <ContratoPage />
+                </ProtectedBare>
               }
             />
             <Route

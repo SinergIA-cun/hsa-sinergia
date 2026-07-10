@@ -1,12 +1,13 @@
 import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, ExternalLink, Printer } from 'lucide-react';
+import { ArrowLeft, ExternalLink, Printer, FileText } from 'lucide-react';
 import { api } from '../lib/api.ts';
 import { formatMXN, formatMXNCents } from '../lib/money.ts';
 import { Button, Card, SelectInput, ArrowDivider } from '../components/ui.tsx';
 import { QuoteForm, type QuotePayload, type QuoteFormInitial } from '../components/QuoteForm.tsx';
 import { PagosPanel } from '../components/PagosPanel.tsx';
+import { OperativaSection } from '../components/OperativaSection.tsx';
 import { STATUS_LABEL, STATUS_STYLE, EDITABLE_STATUSES } from '../lib/status.ts';
 import { formatEventDate } from '../lib/date.ts';
 import { QUOTE_STATUSES, type Catalog, type Quote, type QuoteDetail, type QuoteStatus } from '../lib/types.ts';
@@ -75,6 +76,7 @@ export function EditQuotePage() {
   }
 
   const editable = EDITABLE_STATUSES.includes(quote.status);
+  const contratoDisponible = ['apartada', 'formalizada', 'liquidada'].includes(quote.status);
   const publicUrl = `${window.location.origin}/c/${quote.publicToken}`;
 
   return (
@@ -115,6 +117,13 @@ export function EditQuotePage() {
               <ExternalLink size={15} /> Ver / Imprimir
             </Button>
           </a>
+          {contratoDisponible && (
+            <Link to={`/cotizaciones/${quote.id}/contrato`}>
+              <Button variant="gold">
+                <FileText size={15} /> Generar contrato
+              </Button>
+            </Link>
+          )}
         </div>
       </div>
 
@@ -185,6 +194,8 @@ export function EditQuotePage() {
           activityLog={activityLog}
         />
       )}
+
+      {contratoDisponible && <OperativaSection quote={quote} />}
     </div>
   );
 }
