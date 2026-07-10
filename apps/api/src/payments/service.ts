@@ -3,6 +3,7 @@ import type { PrismaClient } from '@hsa/database';
 import { QuoteError, ownershipWhere, loadEstadoCuenta, type Actor } from '../quotes/service.js';
 import { logActivity } from '../quotes/activityLog.js';
 import { esUpgrade } from '../quotes/estadoCuenta.js';
+import type { ComprobanteStorage } from './storage.js';
 
 export const registerPaymentSchema = z.object({
   monto: z.number().int().positive(),
@@ -22,12 +23,22 @@ async function findOwnedQuote(db: PrismaClient, id: string, actor: Actor) {
 
 export async function registerPayment(
   db: PrismaClient,
+  storage: ComprobanteStorage,
   quoteId: string,
   rawInput: unknown,
   actor: Actor,
+  file?: { data: Buffer; mime: string },
 ) {
   const quote = await findOwnedQuote(db, quoteId, actor);
   const input = registerPaymentSchema.parse(rawInput);
+
+  let comprobanteKey: string | null = null;
+  let comprobanteMime: string | null = null;
+  if (file) {
+    const stored = await storage.save(file.data, file.mime);
+    comprobanteKey = stored.key;
+    comprobanteMime = stored.mime;
+  }
 
   const payment = await db.payment.create({
     data: {
@@ -37,6 +48,8 @@ export async function registerPayment(
       concepto: input.concepto,
       fecha: new Date(`${input.fecha}T00:00:00.000Z`),
       referencia: input.referencia ?? null,
+      comprobanteKey,
+      comprobanteMime,
       registradoById: actor.id,
     },
   });
@@ -77,4 +90,48 @@ export async function anularPayment(
 
   const { estadoCuenta } = await loadEstadoCuenta(db, quote);
   return { estadoCuenta };
+}
+
+export interface ComprobanteData {
+  data: Buffer;
+  mime: string;
+}
+
+/** Comprobante de un pago para la vendedora/admin (respeta ownership). */
+export async function loadComprobanteInterno(
+  db: PrismaClient,
+  storage: ComprobanteStorage,
+  quoteId: string,
+  paymentId: string,
+  actor: Actor,
+): Promise<ComprobanteData | null> {
+  const quote = await db.quote.findFirst({ where: { id: quoteId, ...ownershipWhere(actor) }, select: { id: true } });
+  if (!quote) return null;
+  const payment = await db.payment.findFirst({
+    where: { id: paymentId, quoteId },
+    select: { comprobanteKey: true, comprobanteMime: true },
+  });
+  if (!payment?.comprobanteKey) return null;
+  const data = await storage.load(payment.comprobanteKey);
+  if (!data) return null;
+  return { data, mime: payment.comprobanteMime ?? 'application/octet-stream' };
+}
+
+/** Comprobante para el cliente vía token público (valida pertenencia y no anulado). */
+export async function loadComprobantePublico(
+  db: PrismaClient,
+  storage: ComprobanteStorage,
+  token: string,
+  paymentId: string,
+): Promise<ComprobanteData | null> {
+  const quote = await db.quote.findUnique({ where: { publicToken: token }, select: { id: true } });
+  if (!quote) return null;
+  const payment = await db.payment.findFirst({
+    where: { id: paymentId, quoteId: quote.id, anuladoAt: null },
+    select: { comprobanteKey: true, comprobanteMime: true },
+  });
+  if (!payment?.comprobanteKey) return null;
+  const data = await storage.load(payment.comprobanteKey);
+  if (!data) return null;
+  return { data, mime: payment.comprobanteMime ?? 'application/octet-stream' };
 }
