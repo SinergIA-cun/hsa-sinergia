@@ -227,11 +227,6 @@ export async function updateStatus(
 // Datos operativos que se capturan al formalizar; alimentan el contrato, la
 // hoja operativa por evento, el correo diario y el ERP futuro. No recalculan
 // el desglose. Los horarios son columnas; la "hoja" rica va en Json.
-const personalHsaSchema = z.object({
-  hora: z.string().max(20).optional(),
-  nombre: z.string().max(120).optional(),
-});
-
 export const hojaOperativaSchema = z.object({
   nombreFestejado: z.string().max(120).optional(),
   relacionCliente: z.string().max(60).optional(),
@@ -242,7 +237,7 @@ export const hojaOperativaSchema = z.object({
   banqueteroPaqHsa: z.boolean().optional(),
   estrado: z.string().max(60).optional(),
   pista: z.string().max(60).optional(),
-  personalHsa: z.array(personalHsaSchema).max(30).optional(),
+  personalHsa: z.string().max(600).optional(), // una línea por persona: "hora — nombre/rol"
   personalSeguridadHora: z.string().max(20).optional(),
   personalSeguridadElementos: z.number().int().min(0).max(50).optional(),
   limpiezaNocturna: z.boolean().optional(),

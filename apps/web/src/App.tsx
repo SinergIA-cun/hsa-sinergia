@@ -11,6 +11,7 @@ import { AgendaPage } from './pages/AgendaPage.tsx';
 import { PublicQuotePage } from './pages/PublicQuotePage.tsx';
 import { ContratoPage } from './pages/ContratoPage.tsx';
 import { ReciboPage } from './pages/ReciboPage.tsx';
+import { HojaOperativaPage } from './pages/HojaOperativaPage.tsx';
 import { AdminPage } from './pages/AdminPage.tsx';
 import { PapeleraPage } from './pages/PapeleraPage.tsx';
 
@@ -84,6 +85,14 @@ export function App() {
               element={
                 <ProtectedBare>
                   <ContratoPage />
+                </ProtectedBare>
+              }
+            />
+            <Route
+              path="/cotizaciones/:id/operativa"
+              element={
+                <ProtectedBare>
+                  <HojaOperativaPage />
                 </ProtectedBare>
               }
             />

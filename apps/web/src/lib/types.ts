@@ -110,6 +110,7 @@ export interface Quote {
   horarioCivil?: string | null;
   horaInicio?: string | null;
   horaTermino?: string | null;
+  operativa?: HojaOperativa | null;
   foodPackageId: string | null;
   addOns?: { addOnId: string; cantidad: number }[];
   breakdown: QuoteBreakdown;
@@ -133,6 +134,25 @@ export interface Payment {
   comprobanteKey: string | null;
   anuladoAt: string | null;
   motivoAnulacion: string | null;
+}
+
+export interface HojaOperativa {
+  nombreFestejado?: string;
+  relacionCliente?: string;
+  horaMisa?: string;
+  capilla?: boolean;
+  fotografia?: boolean;
+  banquetero?: string;
+  banqueteroPaqHsa?: boolean;
+  estrado?: string;
+  pista?: string;
+  personalHsa?: string;
+  personalSeguridadHora?: string;
+  personalSeguridadElementos?: number;
+  limpiezaNocturna?: boolean;
+  habitacion?: string;
+  seQuedaEquipo?: string;
+  maniobras?: string;
 }
 
 export interface Milestone {
