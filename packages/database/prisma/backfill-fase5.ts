@@ -51,6 +51,15 @@ async function main(): Promise<void> {
     console.log(`· Regla ${r.nombre}: creada (anticipo ${r.anticipo}, ${Math.round(r.complementoPct * 100)}%)`);
   }
 
+  // 3. DJ pasa a cobrarse por hora (kind fijo → porUnidad). Idempotente.
+  const dj = await prisma.addOn.findFirst({ where: { nombre: { startsWith: 'DJ' } } });
+  if (dj && dj.kind !== 'porUnidad') {
+    await prisma.addOn.update({ where: { id: dj.id }, data: { kind: 'porUnidad', nombre: 'DJ (por hora)' } });
+    console.log('· DJ: cambiado a por hora');
+  } else {
+    console.log('· DJ: ya es por hora (o no existe)');
+  }
+
   const rulesCount = await prisma.spacePaymentRule.count();
   const eventCount = await prisma.eventType.count();
   console.log(`\nListo. Reglas de pago: ${rulesCount} · Tipos de evento: ${eventCount}`);

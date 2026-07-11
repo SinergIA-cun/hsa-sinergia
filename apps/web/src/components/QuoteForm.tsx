@@ -293,7 +293,8 @@ export function QuoteForm({
                     <span className="text-xs text-charcoal-soft">
                       {formatMXN(a.price)}
                       {a.kind === 'porPersona' && ' /persona'}
-                      {a.kind === 'porUnidad' && ' /unidad'}
+                      {a.kind === 'porUnidad' &&
+                        (a.nombre.toLowerCase().includes('hora') ? ' /hora' : ' /unidad')}
                     </span>
                   </label>
                   {active && a.kind === 'porUnidad' && (

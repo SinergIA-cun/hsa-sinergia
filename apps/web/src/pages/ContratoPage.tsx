@@ -29,7 +29,11 @@ export function ContratoPage() {
     return <div className="grid min-h-screen place-items-center text-wine">No se encontró la cotización.</div>;
   }
 
-  const { quote } = data;
+  const { quote, estadoCuenta } = data;
+  const plan = estadoCuenta.plan;
+  const hitoApartar = plan?.find((m) => m.key === 'apartar');
+  const hitoComplemento = plan?.find((m) => m.key === 'complemento');
+  const hitoFiniquito = plan?.find((m) => m.key === 'finiquito');
   const lines = quote.breakdown.lines;
   const rentaLines = lines.filter(
     (l) => l.concepto.startsWith('Renta ') || l.concepto === 'Horas extra',
@@ -222,16 +226,32 @@ export function ContratoPage() {
             <b>H)</b> Para reservar el uso de las instalaciones en la fecha y horario requeridos por El Contratante, se
             debe cubrir los siguientes pagos:
           </p>
-          <table>
-            <thead>
-              <tr><th></th><th>Anticipo</th><th>Complemento<br />(3 meses después de contratar)</th><th>Finiquito</th></tr>
-            </thead>
-            <tbody>
-              <tr><td>Jardín Cúpula</td><td>$25,000</td><td>25% sobre el total</td><td rowSpan={3}>El monto final debe quedar cubierto 30 días antes del evento.</td></tr>
-              <tr><td>Salón Arcos</td><td>$20,000</td><td>10% sobre el total</td></tr>
-              <tr><td>Jardín Campos</td><td>$15,000</td><td>15% sobre el total</td></tr>
-            </tbody>
-          </table>
+          {estadoCuenta.planPendiente || !plan ? (
+            <p style={{ fontStyle: 'italic' }}>
+              El plan de pagos de este espacio se define por separado. Anticipo, complemento y finiquito conforme a lo
+              acordado con Hacienda San Andrés Atoto, S.A.
+            </p>
+          ) : (
+            <table>
+              <thead>
+                <tr><th>Espacio</th><th>Anticipo</th><th>Complemento<br />(3 meses después de contratar)</th><th>Finiquito</th></tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>{espacioNombre}</td>
+                  <td>{hitoApartar ? formatMXNCents(hitoApartar.objetivo) : '—'}</td>
+                  <td>
+                    {hitoComplemento?.porcentaje != null ? `${hitoComplemento.porcentaje}% sobre el total = ` : ''}
+                    {hitoComplemento ? formatMXNCents(hitoComplemento.objetivo) : '—'}
+                  </td>
+                  <td>
+                    {hitoFiniquito ? formatMXNCents(hitoFiniquito.objetivo) : '—'}, cubierto{' '}
+                    {hitoFiniquito?.venceISO ? `el ${formatEventDate(hitoFiniquito.venceISO, 'long')}` : '30 días antes del evento'}.
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          )}
           <p>
             Si no está liquidado El Evento en su totalidad para la fecha contratada, no se les permitirá el acceso al
             inmueble a ningún organizador, proveedor o invitado. Si algún cheque fuera devuelto por el banco El

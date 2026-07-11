@@ -17,20 +17,17 @@ interface PublicPago {
   tieneComprobante: boolean;
 }
 
-/** Frases legibles de las obligaciones de pago pendientes, calculadas del plan. */
-function condiciones(plan: Milestone[]): string[] {
-  return plan
-    .filter((m) => !m.completo)
-    .map((m) => {
-      const vence = m.venceISO ? ` a más tardar el ${formatEventDate(m.venceISO, 'long')}` : '';
-      if (m.key === 'apartar') return `Para apartar la fecha: ${formatMXN(m.objetivo)}${vence}.`;
-      if (m.key === 'complemento') {
-        const pct = m.porcentaje != null ? `el ${m.porcentaje}% del total (` : '';
-        const cierre = m.porcentaje != null ? ')' : '';
-        return `Para formalizar: cubrir ${pct}${formatMXN(m.objetivo)}${cierre}${vence}.`;
-      }
-      return `Liquidación: el total (${formatMXN(m.objetivo)}) debe quedar cubierto${vence} (30 días antes del evento).`;
-    });
+/** Frases legibles de los hitos de pago (montos, % y fechas), calculadas del plan. */
+function terminosPago(plan: Milestone[]): string[] {
+  return plan.map((m) => {
+    const vence = m.venceISO ? ` a más tardar el ${formatEventDate(m.venceISO, 'long')}` : '';
+    if (m.key === 'apartar') return `Apartado: ${formatMXN(m.objetivo)} para reservar la fecha.`;
+    if (m.key === 'complemento') {
+      const pct = m.porcentaje != null ? `${m.porcentaje}% del total = ` : '';
+      return `Complemento (formalizar): ${pct}${formatMXN(m.objetivo)}${vence}.`;
+    }
+    return `Liquidación: el total (${formatMXN(m.objetivo)}) debe quedar cubierto${vence} (30 días antes del evento).`;
+  });
 }
 
 interface PublicResponse {
@@ -121,20 +118,6 @@ export function PublicQuotePage() {
             </div>
           </div>
         </div>
-
-        {/* Condiciones de pago (auto-calculadas) */}
-        {!estadoCuenta.planPendiente && plan && condiciones(plan).length > 0 && (
-          <div className="mt-6 rounded-[var(--radius-card)] border border-gold/30 bg-gold/5 p-5">
-            <p className="mb-2 text-xs font-semibold uppercase tracking-[0.15em] text-gold">Condiciones de pago</p>
-            <ul className="space-y-1.5 text-sm text-charcoal">
-              {condiciones(plan).map((c, i) => (
-                <li key={i} className="flex gap-2">
-                  <span className="text-gold">•</span> {c}
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
 
         {quote.client?.numeroReferencia != null && (
           <p className="mt-4 text-center text-sm text-charcoal-soft">
@@ -239,6 +222,39 @@ export function PublicQuotePage() {
                 <span className="tabular-nums">{formatMXN(quote.breakdown.total)}</span>
               </div>
             </div>
+          </div>
+        </section>
+
+        {/* Términos de la renta (pie de la página) */}
+        <section className="mt-10">
+          <div className="mb-4 flex items-center justify-center">
+            <span className="divider-arrow text-[0.7rem] uppercase tracking-[0.25em]">Términos de la renta</span>
+          </div>
+          <div className="rounded-[var(--radius-card)] border border-cream-300 bg-white/70 p-6 text-sm text-charcoal">
+            <ul className="space-y-2">
+              <li className="flex gap-2">
+                <span className="text-gold">•</span>
+                El valet parking se cobra según el total de vehículos del día (costo por automóvil $100).
+              </li>
+              {quote.horasEvento != null && (
+                <li className="flex gap-2">
+                  <span className="text-gold">•</span>
+                  La renta del salón incluye 30 minutos antes y 30 minutos después de las {quote.horasEvento} horas
+                  contratadas.
+                </li>
+              )}
+              {!estadoCuenta.planPendiente &&
+                plan &&
+                terminosPago(plan).map((t, i) => (
+                  <li key={i} className="flex gap-2">
+                    <span className="text-gold">•</span> {t}
+                  </li>
+                ))}
+              <li className="flex gap-2">
+                <span className="text-gold">•</span>
+                Precios con vigencia de 30 días.
+              </li>
+            </ul>
           </div>
         </section>
 
