@@ -136,6 +136,9 @@ model Quote {
   horaInicio    String?
   horaTermino   String?
   horarioCivil  String?
+  // Hoja operativa (datos ricos por evento: banquetero, equipo, personal, etc.).
+  // JSON flexible para alimentar el documento interno, el correo diario y el ERP futuro.
+  operativa     Json?
   deletedAt     DateTime?
   payments      Payment[]
   activityLog   ActivityLog[]

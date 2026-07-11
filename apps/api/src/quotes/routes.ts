@@ -8,6 +8,7 @@ import {
   updateQuote,
   updateStatus,
   updateOperativa,
+  getOperativaDelDia,
   softDeleteQuote,
   restoreQuote,
   listTrash,
@@ -115,6 +116,20 @@ export async function quoteRoutes(app: FastifyInstance): Promise<void> {
         if (e instanceof QuoteError) return reply.code(e.status).send({ error: e.message });
         throw e;
       }
+    },
+  );
+
+  // Hoja operativa del día: eventos con toda la info operativa. Fuente del
+  // documento imprimible, el correo diario y el ERP futuro. ?fecha=YYYY-MM-DD (default hoy).
+  app.get<{ Querystring: { fecha?: string } }>(
+    '/operativa',
+    { preHandler: requireAuth },
+    async (req, reply) => {
+      const fecha = req.query.fecha ?? new Date().toISOString().slice(0, 10);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha)) {
+        return reply.code(400).send({ error: 'Fecha inválida (YYYY-MM-DD)' });
+      }
+      return getOperativaDelDia(app.prisma, fecha);
     },
   );
 

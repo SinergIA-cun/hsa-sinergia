@@ -224,12 +224,38 @@ export async function updateStatus(
   return updated;
 }
 
-// Datos operativos (horarios) que se capturan al formalizar; alimentan el
-// contrato y, más adelante, la hoja operativa. No recalculan el desglose.
+// Datos operativos que se capturan al formalizar; alimentan el contrato, la
+// hoja operativa por evento, el correo diario y el ERP futuro. No recalculan
+// el desglose. Los horarios son columnas; la "hoja" rica va en Json.
+const personalHsaSchema = z.object({
+  hora: z.string().max(20).optional(),
+  nombre: z.string().max(120).optional(),
+});
+
+export const hojaOperativaSchema = z.object({
+  nombreFestejado: z.string().max(120).optional(),
+  relacionCliente: z.string().max(60).optional(),
+  horaMisa: z.string().max(20).optional(),
+  capilla: z.boolean().optional(),
+  fotografia: z.boolean().optional(),
+  banquetero: z.string().max(120).optional(),
+  banqueteroPaqHsa: z.boolean().optional(),
+  estrado: z.string().max(60).optional(),
+  pista: z.string().max(60).optional(),
+  personalHsa: z.array(personalHsaSchema).max(30).optional(),
+  personalSeguridadHora: z.string().max(20).optional(),
+  personalSeguridadElementos: z.number().int().min(0).max(50).optional(),
+  limpiezaNocturna: z.boolean().optional(),
+  habitacion: z.string().max(20).optional(),
+  seQuedaEquipo: z.string().max(200).optional(),
+  maniobras: z.string().max(200).optional(),
+});
+
 export const operativaSchema = z.object({
   horarioCivil: z.string().max(120).nullable().optional(),
   horaInicio: z.string().max(20).nullable().optional(),
   horaTermino: z.string().max(20).nullable().optional(),
+  hoja: hojaOperativaSchema.optional(),
 });
 
 export async function updateOperativa(db: PrismaClient, id: string, rawInput: unknown, actor: Actor) {
@@ -242,9 +268,55 @@ export async function updateOperativa(db: PrismaClient, id: string, rawInput: un
       horarioCivil: input.horarioCivil ?? null,
       horaInicio: input.horaInicio ?? null,
       horaTermino: input.horaTermino ?? null,
+      operativa: (input.hoja ?? undefined) as Prisma.InputJsonValue | undefined,
     },
     include: includeRels,
   });
+}
+
+/**
+ * Eventos operativos de un día (hoja operativa completa por evento). Fuente
+ * única para: el documento imprimible, el correo diario al admin y el ERP futuro.
+ * Incluye apartados/formalizados/liquidados (los que ya son evento real).
+ */
+export async function getOperativaDelDia(db: PrismaClient, fechaISO: string) {
+  const gte = new Date(`${fechaISO}T00:00:00.000Z`);
+  const lt = new Date(gte);
+  lt.setUTCDate(lt.getUTCDate() + 1);
+  const quotes = await db.quote.findMany({
+    where: {
+      fechaEvento: { gte, lt },
+      deletedAt: null,
+      status: { in: ['apartada', 'formalizada', 'liquidada'] },
+    },
+    include: { client: true, eventType: true, createdBy: { select: { nombre: true } } },
+    orderBy: { horaInicio: 'asc' },
+  });
+
+  const spaceIds = [...new Set(quotes.flatMap((q) => q.spaceIds))];
+  const spaces = await db.space.findMany({ where: { id: { in: spaceIds } } });
+  const spaceName = new Map(spaces.map((s) => [s.id, s.nombre]));
+
+  return {
+    fecha: fechaISO,
+    eventos: quotes.map((q) => ({
+      quoteId: q.id,
+      fechaEvento: q.fechaEvento.toISOString(),
+      invitados: q.invitados,
+      tipoEvento: q.eventType?.nombre ?? 'Evento',
+      lugar: q.spaceIds.map((id) => spaceName.get(id) ?? id).join(', '),
+      cliente: q.client?.nombre ?? 'Cliente',
+      status: q.status,
+      total: q.total,
+      rentaTotal: q.rentaTotal,
+      costoHoraExtra: Math.round(q.rentaTotal * 0.05),
+      horaInicio: q.horaInicio,
+      horaTermino: q.horaTermino,
+      horarioCivil: q.horarioCivil,
+      vendedor: q.createdBy?.nombre ?? null,
+      hoja: (q.operativa ?? {}) as Record<string, unknown>,
+    })),
+  };
 }
 
 // --- Papelera (soft-delete) ---------------------------------------------------
