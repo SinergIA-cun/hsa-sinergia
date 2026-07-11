@@ -247,9 +247,64 @@ export async function updateOperativa(db: PrismaClient, id: string, rawInput: un
   });
 }
 
-export function listQuotes(db: PrismaClient, actor: Actor) {
+// --- Papelera (soft-delete) ---------------------------------------------------
+
+const TRASH_RETENTION_DAYS = 30;
+
+function trashCutoff(): Date {
+  const d = new Date();
+  d.setUTCDate(d.getUTCDate() - TRASH_RETENTION_DAYS);
+  return d;
+}
+
+/** Borra definitivamente las cotizaciones en papelera con más de 30 días. Best-effort. */
+export async function purgeExpiredTrash(db: PrismaClient): Promise<void> {
+  try {
+    const expired = await db.quote.findMany({
+      where: { deletedAt: { lt: trashCutoff() } },
+      select: { id: true },
+    });
+    if (expired.length === 0) return;
+    const ids = expired.map((q) => q.id);
+    await db.payment.deleteMany({ where: { quoteId: { in: ids } } });
+    await db.activityLog.deleteMany({ where: { quoteId: { in: ids } } });
+    await db.quote.deleteMany({ where: { id: { in: ids } } });
+  } catch {
+    // no bloquea la operación principal
+  }
+}
+
+/** Envía una cotización a la papelera. Solo si sigue en borrador. */
+export async function softDeleteQuote(db: PrismaClient, id: string, actor: Actor) {
+  const existing = await db.quote.findFirst({ where: { id, ...ownershipWhere(actor), deletedAt: null } });
+  if (!existing) throw new QuoteError(404, 'Cotización no encontrada');
+  if (existing.status !== 'borrador') {
+    throw new QuoteError(409, 'Solo se pueden eliminar cotizaciones en borrador');
+  }
+  await db.quote.update({ where: { id }, data: { deletedAt: new Date() } });
+}
+
+/** Restaura una cotización desde la papelera. */
+export async function restoreQuote(db: PrismaClient, id: string, actor: Actor) {
+  const existing = await db.quote.findFirst({ where: { id, ...ownershipWhere(actor), deletedAt: { not: null } } });
+  if (!existing) throw new QuoteError(404, 'Cotización no encontrada en la papelera');
+  return db.quote.update({ where: { id }, data: { deletedAt: null }, include: includeRels });
+}
+
+/** Cotizaciones en papelera (no expiradas). Purga las vencidas de paso. */
+export async function listTrash(db: PrismaClient, actor: Actor) {
+  await purgeExpiredTrash(db);
   return db.quote.findMany({
-    where: ownershipWhere(actor),
+    where: { ...ownershipWhere(actor), deletedAt: { not: null } },
+    orderBy: { deletedAt: 'desc' },
+    include: includeRels,
+  });
+}
+
+export function listQuotes(db: PrismaClient, actor: Actor) {
+  void purgeExpiredTrash(db);
+  return db.quote.findMany({
+    where: { ...ownershipWhere(actor), deletedAt: null },
     orderBy: { createdAt: 'desc' },
     include: includeRels,
   });

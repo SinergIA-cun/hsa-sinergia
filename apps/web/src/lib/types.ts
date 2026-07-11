@@ -118,6 +118,7 @@ export interface Quote {
   status: QuoteStatus;
   publicToken: string;
   createdAt: string;
+  deletedAt?: string | null;
   createdBy?: { id: string; nombre: string } | null;
 }
 

@@ -136,6 +136,7 @@ model Quote {
   horaInicio    String?
   horaTermino   String?
   horarioCivil  String?
+  deletedAt     DateTime?
   payments      Payment[]
   activityLog   ActivityLog[]
 
@@ -143,6 +144,7 @@ model Quote {
   @@index([status])
   @@index([createdById])
   @@index([fechaEvento])
+  @@index([deletedAt])
 }
 
 model FoodPackage {

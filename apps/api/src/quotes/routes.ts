@@ -8,6 +8,9 @@ import {
   updateQuote,
   updateStatus,
   updateOperativa,
+  softDeleteQuote,
+  restoreQuote,
+  listTrash,
   statusSchema,
   QuoteError,
   type Actor,
@@ -22,6 +25,39 @@ export async function quoteRoutes(app: FastifyInstance): Promise<void> {
   app.get('/quotes', { preHandler: requireAuth }, async (req) => {
     return { quotes: await listQuotes(app.prisma, req.user as Actor) };
   });
+
+  // Papelera: ruta estática ANTES de /quotes/:id (find-my-way prioriza estáticas de todos modos).
+  app.get('/quotes/trash', { preHandler: requireAuth }, async (req) => {
+    return { quotes: await listTrash(app.prisma, req.user as Actor) };
+  });
+
+  app.delete<{ Params: { id: string } }>(
+    '/quotes/:id',
+    { preHandler: requireAuth },
+    async (req, reply) => {
+      try {
+        await softDeleteQuote(app.prisma, req.params.id, req.user as Actor);
+        return { ok: true };
+      } catch (e) {
+        if (e instanceof QuoteError) return reply.code(e.status).send({ error: e.message });
+        throw e;
+      }
+    },
+  );
+
+  app.post<{ Params: { id: string } }>(
+    '/quotes/:id/restore',
+    { preHandler: requireAuth },
+    async (req, reply) => {
+      try {
+        const quote = await restoreQuote(app.prisma, req.params.id, req.user as Actor);
+        return { quote };
+      } catch (e) {
+        if (e instanceof QuoteError) return reply.code(e.status).send({ error: e.message });
+        throw e;
+      }
+    },
+  );
 
   app.get<{ Params: { id: string } }>(
     '/quotes/:id',

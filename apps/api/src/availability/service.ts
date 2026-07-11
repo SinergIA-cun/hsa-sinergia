@@ -41,6 +41,7 @@ export async function getAvailability(
         fechaEvento: range,
         spaceIds: { hasSome: spaceIds },
         status: { not: 'vencida' },
+        deletedAt: null,
         ...(excludeQuoteId ? { id: { not: excludeQuoteId } } : {}),
       },
       include: { client: { select: { nombre: true } } },
@@ -93,7 +94,7 @@ export async function getAgenda(
   const lt = new Date(`${toISO}T00:00:00.000Z`);
   lt.setUTCDate(lt.getUTCDate() + 1);
   const quotes = await db.quote.findMany({
-    where: { fechaEvento: { gte, lt }, status: { not: 'vencida' } },
+    where: { fechaEvento: { gte, lt }, status: { not: 'vencida' }, deletedAt: null },
     include: { client: { select: { nombre: true } }, eventType: { select: { nombre: true } } },
     orderBy: { fechaEvento: 'asc' },
   });

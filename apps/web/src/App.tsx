@@ -12,6 +12,7 @@ import { PublicQuotePage } from './pages/PublicQuotePage.tsx';
 import { ContratoPage } from './pages/ContratoPage.tsx';
 import { ReciboPage } from './pages/ReciboPage.tsx';
 import { AdminPage } from './pages/AdminPage.tsx';
+import { PapeleraPage } from './pages/PapeleraPage.tsx';
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { refetchOnWindowFocus: false } },
@@ -91,6 +92,14 @@ export function App() {
               element={
                 <Protected>
                   <AgendaPage />
+                </Protected>
+              }
+            />
+            <Route
+              path="/papelera"
+              element={
+                <Protected>
+                  <PapeleraPage />
                 </Protected>
               }
             />

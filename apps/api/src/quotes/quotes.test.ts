@@ -3,7 +3,16 @@ import type { FastifyInstance } from 'fastify';
 import { prisma } from '@hsa/database';
 import { buildServer } from '../server.js';
 import { loadConfig } from '../config.js';
-import { createQuote, getByToken, type Actor } from './service.js';
+import {
+  createQuote,
+  getByToken,
+  softDeleteQuote,
+  restoreQuote,
+  listTrash,
+  listQuotes,
+  updateStatus,
+  type Actor,
+} from './service.js';
 
 let app: FastifyInstance;
 let actor: Actor;
@@ -157,5 +166,29 @@ describe('quotes HTTP', () => {
       payload: { fecha: '2027-05-08', invitados: 250, spaceIds: [arcosId], eventTypeId },
     });
     expect(edit3.statusCode).toBe(409);
+  });
+});
+
+describe('papelera (soft-delete)', () => {
+  it('borra borrador → papelera; no-borrador 409; restaurar; excluye de la lista', async () => {
+    const { eventTypeId, arcosId } = await ids();
+    // Borrador → se puede eliminar
+    const q = await createQuote(prisma, { fecha: '2028-03-10', invitados: 200, spaceIds: [arcosId], eventTypeId, client: { nombre: 'Papelera Test' } }, actor);
+    createdQuoteIds.push(q.id); createdClientIds.push(q.clientId);
+
+    await softDeleteQuote(prisma, q.id, actor);
+    const lista1 = await listQuotes(prisma, actor);
+    expect(lista1.some((x) => x.id === q.id)).toBe(false); // ya no en la lista
+
+    const trash = await listTrash(prisma, actor);
+    expect(trash.some((x) => x.id === q.id)).toBe(true); // sí en la papelera
+
+    await restoreQuote(prisma, q.id, actor);
+    const lista2 = await listQuotes(prisma, actor);
+    expect(lista2.some((x) => x.id === q.id)).toBe(true); // vuelve a la lista
+
+    // No-borrador → 409
+    await updateStatus(prisma, q.id, 'apartada', actor);
+    await expect(softDeleteQuote(prisma, q.id, actor)).rejects.toThrow();
   });
 });

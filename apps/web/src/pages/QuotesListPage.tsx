@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
-import { Plus, ExternalLink, CalendarDays, Users, UserCircle } from 'lucide-react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { Plus, ExternalLink, CalendarDays, Users, UserCircle, Trash2 } from 'lucide-react';
 import { api } from '../lib/api.ts';
 import { formatMXN } from '../lib/money.ts';
 import { Button, Card, ArrowDivider } from '../components/ui.tsx';
@@ -19,6 +19,15 @@ const SECTIONS: { title: string; statuses: QuoteStatus[]; defaultOpen: boolean }
 
 function QuoteRow({ q, showSeller }: { q: Quote; showSeller: boolean }) {
   const navigate = useNavigate();
+  const qc = useQueryClient();
+
+  async function eliminar(e: React.MouseEvent) {
+    e.stopPropagation();
+    if (!window.confirm('¿Enviar esta cotización a la papelera? Podrás restaurarla dentro de 30 días.')) return;
+    await api.del(`/api/quotes/${q.id}`);
+    await qc.invalidateQueries({ queryKey: ['quotes'] });
+  }
+
   return (
     <Card
       className="flex cursor-pointer flex-wrap items-center justify-between gap-4 p-5 transition-shadow hover:shadow-md"
@@ -66,6 +75,15 @@ function QuoteRow({ q, showSeller }: { q: Quote; showSeller: boolean }) {
       >
         <ExternalLink size={14} /> Link
       </a>
+      {q.status === 'borrador' && (
+        <button
+          onClick={eliminar}
+          title="Enviar a la papelera"
+          className="inline-flex items-center gap-1.5 rounded-lg border border-wine/20 px-3 py-2 text-xs font-medium text-wine transition-colors hover:border-wine/50 hover:bg-wine/5"
+        >
+          <Trash2 size={14} /> Eliminar
+        </button>
+      )}
     </Card>
   );
 }
