@@ -24,7 +24,7 @@ export function PagosPanel({ quoteId, isAdmin, estadoCuenta, payments, activityL
   const [referencia, setReferencia] = useState('');
   const [comprobante, setComprobante] = useState<File | null>(null);
   const [fileKey, setFileKey] = useState(0);
-  const [sugerido, setSugerido] = useState<QuoteStatus | null>(null);
+  const [info, setInfo] = useState('');
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -56,23 +56,16 @@ export function PagosPanel({ quoteId, isAdmin, estadoCuenta, payments, activityL
         body: fd,
       });
       if (!res.ok) throw new Error(String(res.status));
-      const body = (await res.json()) as { sugerenciaUpgrade: QuoteStatus | null };
+      const body = (await res.json()) as { nuevoEstatus: QuoteStatus | null };
 
       setMonto(''); setReferencia(''); setComprobante(null); setFileKey((k) => k + 1);
-      setSugerido(body.sugerenciaUpgrade);
+      setInfo(body.nuevoEstatus ? `Estatus actualizado automáticamente a ${STATUS_LABEL[body.nuevoEstatus]}.` : '');
       await refresh();
     } catch {
       setErr('No se pudo registrar el pago. Revisa los datos.');
     } finally {
       setBusy(false);
     }
-  }
-
-  async function avanzar() {
-    if (!sugerido) return;
-    await api.patch(`/api/quotes/${quoteId}/status`, { status: sugerido });
-    setSugerido(null);
-    await refresh();
   }
 
   async function anular(paymentId: string) {
@@ -112,13 +105,9 @@ export function PagosPanel({ quoteId, isAdmin, estadoCuenta, payments, activityL
         )}
       </Card>
 
-      {sugerido && (
-        <Card className="flex items-center justify-between gap-4 border-gold/40 p-4">
-          <p className="text-sm text-ink">El pago alcanza el hito. ¿Marcar como <strong>{STATUS_LABEL[sugerido]}</strong>?</p>
-          <div className="flex gap-2">
-            <Button variant="gold" onClick={avanzar}>Sí, avanzar</Button>
-            <Button variant="ghost" onClick={() => setSugerido(null)}>Ahora no</Button>
-          </div>
+      {info && (
+        <Card className="border-gold/40 bg-gold/5 p-4">
+          <p className="text-sm text-ink">{info}</p>
         </Card>
       )}
 

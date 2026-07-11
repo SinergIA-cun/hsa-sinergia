@@ -2,7 +2,7 @@ import { z } from 'zod';
 import type { PrismaClient } from '@hsa/database';
 import { QuoteError, ownershipWhere, loadEstadoCuenta, type Actor } from '../quotes/service.js';
 import { logActivity } from '../quotes/activityLog.js';
-import { esUpgrade } from '../quotes/estadoCuenta.js';
+import { esUpgrade, type PaymentStatus } from '../quotes/estadoCuenta.js';
 import type { ComprobanteStorage } from './storage.js';
 
 export const registerPaymentSchema = z.object({
@@ -60,9 +60,24 @@ export async function registerPayment(
     meta: { paymentId: payment.id, monto: input.monto, concepto: input.concepto }, actorId: actor.id,
   });
 
-  const { estadoCuenta } = await loadEstadoCuenta(db, quote);
-  const sugerenciaUpgrade = esUpgrade(quote.status, estadoCuenta.sugerido) ? estadoCuenta.sugerido : null;
-  return { payment, estadoCuenta, sugerenciaUpgrade };
+  let { estadoCuenta } = await loadEstadoCuenta(db, quote);
+
+  // Auto-avance de estatus: si el acumulado cruza un hito, el estatus sube solo
+  // (nunca baja). No requiere confirmación manual.
+  let nuevoEstatus: PaymentStatus | null = null;
+  if (esUpgrade(quote.status, estadoCuenta.sugerido)) {
+    nuevoEstatus = estadoCuenta.sugerido!;
+    await db.quote.update({ where: { id: quoteId }, data: { status: nuevoEstatus } });
+    await logActivity(db, {
+      quoteId, tipo: 'estatus',
+      descripcion: `Estatus: ${quote.status} → ${nuevoEstatus} (automático por pago)`,
+      meta: { de: quote.status, a: nuevoEstatus, auto: true }, actorId: actor.id,
+    });
+    // Recalcular con el nuevo estatus para que 'desfase' quede coherente.
+    ({ estadoCuenta } = await loadEstadoCuenta(db, { ...quote, status: nuevoEstatus }));
+  }
+
+  return { payment, estadoCuenta, nuevoEstatus };
 }
 
 export async function anularPayment(

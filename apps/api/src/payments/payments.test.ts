@@ -58,7 +58,9 @@ describe('registerPayment / anularPayment', () => {
       monto: 20000, metodo: 'transferencia', concepto: 'anticipo', fecha: '2027-01-10',
     }, actor);
     expect(res.estadoCuenta.pagado).toBe(20000);
-    expect(res.sugerenciaUpgrade).toBe('apartada');
+    expect(res.nuevoEstatus).toBe('apartada'); // Arcos anticipo 20000 → auto-apartada
+    const q2 = await prisma.quote.findUnique({ where: { id: q.id } });
+    expect(q2?.status).toBe('apartada');
   });
 
   it('anular excluye el pago del acumulado (solo admin)', async () => {
