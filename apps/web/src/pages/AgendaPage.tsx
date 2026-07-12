@@ -1,105 +1,124 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { CalendarDays, MapPin } from 'lucide-react';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { api } from '../lib/api.ts';
-import { Card, ArrowDivider } from '../components/ui.tsx';
-import { STATUS_LABEL, STATUS_STYLE } from '../lib/status.ts';
-import { formatEventDate } from '../lib/date.ts';
-import type { AgendaEvent, Catalog } from '../lib/types.ts';
+import { Card, ArrowDivider, Button } from '../components/ui.tsx';
+import { STATUS_STYLE } from '../lib/status.ts';
+import type { AgendaEvent } from '../lib/types.ts';
 
-function iso(d: Date): string {
-  return d.toISOString().slice(0, 10);
-}
+const DIAS = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
+const pad = (n: number) => String(n).padStart(2, '0');
+const hoyISO = new Date().toISOString().slice(0, 10);
 
 export function AgendaPage() {
   const navigate = useNavigate();
-  const from = iso(new Date());
-  const to = useMemo(() => {
+  const [mes, setMes] = useState(() => {
     const d = new Date();
-    d.setMonth(d.getMonth() + 12);
-    return iso(d);
-  }, []);
+    return { anio: d.getFullYear(), mes: d.getMonth() }; // mes 0-11
+  });
 
-  const catalogQ = useQuery({ queryKey: ['catalog'], queryFn: () => api.get<Catalog>('/api/catalog') });
+  const primerDiaSemana = new Date(mes.anio, mes.mes, 1).getDay(); // 0=Dom
+  const diasEnMes = new Date(mes.anio, mes.mes + 1, 0).getDate();
+  const from = `${mes.anio}-${pad(mes.mes + 1)}-01`;
+  const to = `${mes.anio}-${pad(mes.mes + 1)}-${pad(diasEnMes)}`;
+
   const agendaQ = useQuery({
     queryKey: ['agenda', from, to],
     queryFn: () => api.get<{ events: AgendaEvent[] }>(`/api/agenda?from=${from}&to=${to}`),
   });
 
-  const spaceName = useMemo(() => {
-    const m = new Map<string, string>();
-    catalogQ.data?.spaces.forEach((s) => m.set(s.id, s.nombre));
-    return m;
-  }, [catalogQ.data]);
-
-  // Agrupar por fecha (día del evento).
-  const byDate = useMemo(() => {
-    const groups = new Map<string, AgendaEvent[]>();
+  const porDia = useMemo(() => {
+    const m = new Map<string, AgendaEvent[]>();
     (agendaQ.data?.events ?? []).forEach((e) => {
       const key = e.fechaEvento.slice(0, 10);
-      const arr = groups.get(key) ?? [];
+      const arr = m.get(key) ?? [];
       arr.push(e);
-      groups.set(key, arr);
+      m.set(key, arr);
     });
-    return [...groups.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+    return m;
   }, [agendaQ.data]);
+
+  function cambiarMes(delta: number) {
+    setMes((prev) => {
+      const d = new Date(prev.anio, prev.mes + delta, 1);
+      return { anio: d.getFullYear(), mes: d.getMonth() };
+    });
+  }
+  function irHoy() {
+    const d = new Date();
+    setMes({ anio: d.getFullYear(), mes: d.getMonth() });
+  }
+
+  const tituloRaw = new Date(mes.anio, mes.mes, 1).toLocaleDateString('es-MX', {
+    month: 'long',
+    year: 'numeric',
+  });
+  const titulo = tituloRaw.charAt(0).toUpperCase() + tituloRaw.slice(1);
+
+  // Celdas: blancos iniciales + días del mes.
+  const celdas: (number | null)[] = [
+    ...Array.from({ length: primerDiaSemana }, () => null),
+    ...Array.from({ length: diasEnMes }, (_, i) => i + 1),
+  ];
 
   return (
     <div>
-      <div className="mb-6">
-        <ArrowDivider>Disponibilidad</ArrowDivider>
-        <h1 className="mt-2 font-display text-4xl text-ink">Agenda de eventos</h1>
-        <p className="mt-1 text-sm text-charcoal-soft">Próximos 12 meses. Un evento por espacio y fecha.</p>
+      <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <ArrowDivider>Disponibilidad</ArrowDivider>
+          <h1 className="mt-2 font-display text-4xl text-ink">{titulo}</h1>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" onClick={() => cambiarMes(-1)} aria-label="Mes anterior">
+            <ChevronLeft size={16} />
+          </Button>
+          <Button variant="ghost" onClick={irHoy}>Hoy</Button>
+          <Button variant="outline" onClick={() => cambiarMes(1)} aria-label="Mes siguiente">
+            <ChevronRight size={16} />
+          </Button>
+        </div>
       </div>
 
-      {agendaQ.isLoading && <p className="text-charcoal-soft">Cargando…</p>}
+      <Card className="overflow-hidden p-0">
+        <div className="grid grid-cols-7 border-b border-cream-300 bg-cream-100 text-center text-xs font-semibold uppercase tracking-wide text-charcoal-soft">
+          {DIAS.map((d) => (
+            <div key={d} className="py-2">{d}</div>
+          ))}
+        </div>
+        <div className="grid grid-cols-7">
+          {celdas.map((dia, i) => {
+            if (dia === null) return <div key={`b${i}`} className="min-h-[6rem] border-b border-r border-cream-200 bg-cream-50/40" />;
+            const fecha = `${mes.anio}-${pad(mes.mes + 1)}-${pad(dia)}`;
+            const eventos = porDia.get(fecha) ?? [];
+            const esHoy = fecha === hoyISO;
+            return (
+              <div key={fecha} className="min-h-[6rem] border-b border-r border-cream-200 p-1.5">
+                <div className={`mb-1 text-right text-xs ${esHoy ? 'font-bold text-gold' : 'text-charcoal-soft'}`}>
+                  {esHoy ? <span className="rounded-full bg-gold px-1.5 py-0.5 text-cream">{dia}</span> : dia}
+                </div>
+                <div className="space-y-1">
+                  {eventos.map((e) => (
+                    <button
+                      key={e.quoteId}
+                      onClick={() => navigate(`/cotizaciones/${e.quoteId}`)}
+                      title={`${e.cliente} · ${e.eventoNombre}`}
+                      className={`block w-full truncate rounded px-1.5 py-0.5 text-left text-[0.7rem] font-medium ${STATUS_STYLE[e.status]}`}
+                    >
+                      {e.cliente}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </Card>
 
-      {!agendaQ.isLoading && byDate.length === 0 && (
-        <Card className="p-12 text-center">
-          <p className="font-display text-2xl text-ink">Sin eventos próximos</p>
-          <p className="mt-2 text-sm text-charcoal-soft">Las cotizaciones aparecerán aquí por fecha.</p>
-        </Card>
-      )}
-
-      <div className="space-y-6">
-        {byDate.map(([date, events]) => (
-          <div key={date}>
-            <div className="mb-2 flex items-center gap-2 text-ink">
-              <CalendarDays size={16} className="text-gold" />
-              <span className="font-display text-lg capitalize">
-                {formatEventDate(date, 'long')}
-              </span>
-            </div>
-            <div className="grid gap-2">
-              {events.map((e) => (
-                <Card
-                  key={e.quoteId}
-                  className="flex cursor-pointer flex-wrap items-center justify-between gap-3 p-4 transition-shadow hover:shadow-md"
-                  onClick={() => navigate(`/cotizaciones/${e.quoteId}`)}
-                >
-                  <div>
-                    <p className="font-medium text-ink">{e.cliente}</p>
-                    <p className="text-xs uppercase tracking-wide text-gold">{e.eventoNombre}</p>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-2 text-sm text-charcoal-soft">
-                    {e.spaceIds.map((sid) => (
-                      <span key={sid} className="inline-flex items-center gap-1">
-                        <MapPin size={13} className="text-ink-300" /> {spaceName.get(sid) ?? 'Espacio'}
-                      </span>
-                    ))}
-                  </div>
-                  <span
-                    className={`rounded-full px-2.5 py-0.5 text-[0.65rem] font-semibold uppercase tracking-wide ${STATUS_STYLE[e.status]}`}
-                  >
-                    {STATUS_LABEL[e.status]}
-                  </span>
-                </Card>
-              ))}
-            </div>
-          </div>
-        ))}
-      </div>
+      {agendaQ.isLoading && <p className="mt-4 text-sm text-charcoal-soft">Cargando…</p>}
+      <p className="mt-4 text-xs text-charcoal-soft">
+        Toca un evento para abrir su cotización. El color indica el estatus.
+      </p>
     </div>
   );
 }
