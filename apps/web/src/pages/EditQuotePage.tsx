@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, ExternalLink, Printer, FileText } from 'lucide-react';
+import { ArrowLeft, ExternalLink, Printer, FileText, MessageCircle } from 'lucide-react';
 import { api } from '../lib/api.ts';
 import { formatMXN, formatMXNCents } from '../lib/money.ts';
+import { whatsappUrl, mensajeCotizacion } from '../lib/share.ts';
 import { Button, Card, SelectInput, ArrowDivider } from '../components/ui.tsx';
 import { QuoteForm, type QuotePayload, type QuoteFormInitial } from '../components/QuoteForm.tsx';
 import { PagosPanel } from '../components/PagosPanel.tsx';
@@ -80,6 +81,13 @@ export function EditQuotePage() {
   const contratoDisponible =
     !enPapelera && ['apartada', 'formalizada', 'liquidada'].includes(quote.status);
   const publicUrl = `${window.location.origin}/c/${quote.publicToken}`;
+  const waUrl =
+    !enPapelera
+      ? whatsappUrl(
+          quote.client?.telefono,
+          mensajeCotizacion(quote.client?.nombre ?? 'cliente', quote.eventType?.nombre ?? 'evento', publicUrl),
+        )
+      : null;
 
   return (
     <div>
@@ -121,6 +129,16 @@ export function EditQuotePage() {
               <Button variant="outline">
                 <ExternalLink size={15} /> Ver / Imprimir
               </Button>
+            </a>
+          )}
+          {waUrl && (
+            <a
+              href={waUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#25D366] px-4 py-2.5 text-sm font-medium tracking-wide text-white shadow-sm transition-colors hover:bg-[#1da851]"
+            >
+              <MessageCircle size={15} /> WhatsApp
             </a>
           )}
           {contratoDisponible && (
