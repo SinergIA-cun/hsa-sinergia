@@ -208,11 +208,51 @@ export async function createQuote(db: PrismaClient, rawInput: unknown, actor: Ac
       total: Math.round(breakdown.total),
       rentaTotal: Math.round(breakdown.rentaTotal),
       publicToken: randomUUID().replace(/-/g, ''),
+      vigenciaHasta: vigenciaDesde(new Date()),
       createdById: actor.id,
     },
     include: includeRels,
   });
   await logActivity(db, { quoteId: created.id, tipo: 'creada', descripcion: 'Cotización creada', actorId: actor.id });
+  return created;
+}
+
+/**
+ * Clona una cotización como nueva (mismo cliente/evento/figuras), en borrador
+ * y con token propio. Ahorra recapturar; el vendedor ajusta la fecha después.
+ * Copia el desglose tal cual; al reeditar y guardar se recalcula con precios vigentes.
+ */
+export async function duplicateQuote(db: PrismaClient, id: string, actor: Actor) {
+  const src = await db.quote.findFirst({ where: { id, ...ownershipWhere(actor) } });
+  if (!src) throw new QuoteError(404, 'Cotización no encontrada');
+
+  const created = await db.quote.create({
+    data: {
+      clientId: src.clientId,
+      eventTypeId: src.eventTypeId,
+      fechaEvento: src.fechaEvento,
+      horasEvento: src.horasEvento,
+      invitados: src.invitados,
+      spaceIds: src.spaceIds,
+      horasExtra: src.horasExtra,
+      foodPackageId: src.foodPackageId,
+      addOns: src.addOns as unknown as Prisma.InputJsonValue,
+      breakdown: src.breakdown as unknown as Prisma.InputJsonValue,
+      total: src.total,
+      rentaTotal: src.rentaTotal,
+      publicToken: randomUUID().replace(/-/g, ''),
+      vigenciaHasta: vigenciaDesde(new Date()),
+      createdById: actor.id,
+    },
+    include: includeRels,
+  });
+  await logActivity(db, {
+    quoteId: created.id,
+    tipo: 'creada',
+    descripcion: `Cotización creada (duplicada de ${src.id})`,
+    meta: { duplicadaDe: src.id },
+    actorId: actor.id,
+  });
   return created;
 }
 
@@ -387,6 +427,59 @@ export async function getOperativaDelDia(db: PrismaClient, fechaISO: string) {
   };
 }
 
+// --- Vigencia / vencimiento automático ---------------------------------------
+
+// Los precios de una cotización valen 30 días (política del negocio, ver página
+// pública). Pasada la vigencia sin convertirse en reserva, la cotización vence.
+export const VIGENCIA_DIAS = 30;
+// Estatus "en pipeline": ofertas aún no reservadas. Solo estas vencen; un evento
+// ya apartado/formalizado/liquidado nunca se degrada automáticamente.
+const PIPELINE_STATUSES = ['borrador', 'enviada', 'aceptada'] as const;
+
+export function vigenciaDesde(creacion: Date): Date {
+  const d = new Date(creacion);
+  d.setUTCDate(d.getUTCDate() + VIGENCIA_DIAS);
+  return d;
+}
+
+/**
+ * Marca como "vencida" toda cotización en pipeline cuya vigencia ya pasó
+ * (por `vigenciaHasta`, o `createdAt + 30 días` para las previas al campo).
+ * Un solo sentido: no revive sola — se revive duplicándola. Best-effort.
+ * Devuelve cuántas venció (útil para pruebas).
+ */
+export async function expireStaleQuotes(db: PrismaClient, now: Date = new Date()): Promise<number> {
+  try {
+    const hace30 = new Date(now);
+    hace30.setUTCDate(hace30.getUTCDate() - VIGENCIA_DIAS);
+    const stale = await db.quote.findMany({
+      where: {
+        status: { in: [...PIPELINE_STATUSES] },
+        deletedAt: null,
+        OR: [
+          { vigenciaHasta: { lt: now } },
+          { vigenciaHasta: null, createdAt: { lt: hace30 } },
+        ],
+      },
+      select: { id: true, status: true },
+    });
+    if (stale.length === 0) return 0;
+    await db.quote.updateMany({ where: { id: { in: stale.map((s) => s.id) } }, data: { status: 'vencida' } });
+    for (const s of stale) {
+      await logActivity(db, {
+        quoteId: s.id,
+        tipo: 'estatus',
+        descripcion: `Estatus: ${s.status} → vencida (vencimiento automático por vigencia)`,
+        meta: { de: s.status, a: 'vencida', motivo: 'vigencia' },
+        actorId: null,
+      });
+    }
+    return stale.length;
+  } catch {
+    return 0; // no bloquea la operación principal
+  }
+}
+
 // --- Papelera (soft-delete) ---------------------------------------------------
 
 const TRASH_RETENTION_DAYS = 30;
@@ -462,6 +555,7 @@ export async function listTrash(db: PrismaClient, actor: Actor) {
 
 export async function listQuotes(db: PrismaClient, actor: Actor) {
   void purgeExpiredTrash(db);
+  await expireStaleQuotes(db); // vencimiento automático por vigencia antes de listar
   const quotes = await db.quote.findMany({
     where: { ...ownershipWhere(actor), deletedAt: null },
     orderBy: { createdAt: 'desc' },

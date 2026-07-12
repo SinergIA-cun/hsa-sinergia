@@ -1,5 +1,5 @@
 import type { PrismaClient } from '@hsa/database';
-import { ownershipWhere, loadEstadoCuentaBulk, type Actor } from '../quotes/service.js';
+import { ownershipWhere, loadEstadoCuentaBulk, expireStaleQuotes, type Actor } from '../quotes/service.js';
 import type { Milestone } from '../quotes/estadoCuenta.js';
 
 // Estatus con compromiso de pago (evento confirmado, aún genera cobros).
@@ -79,6 +79,7 @@ export async function getDashboard(
   actor: Actor,
   now: Date = new Date(),
 ): Promise<DashboardData> {
+  await expireStaleQuotes(db, now); // vencimiento automático antes de agregar KPIs
   const where = { ...ownershipWhere(actor), deletedAt: null };
   const quotes = await db.quote.findMany({
     where,

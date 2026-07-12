@@ -1,7 +1,7 @@
 import { useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, ExternalLink, Printer, FileText, MessageCircle } from 'lucide-react';
+import { ArrowLeft, ExternalLink, Printer, FileText, MessageCircle, Copy } from 'lucide-react';
 import { api } from '../lib/api.ts';
 import { formatMXN, formatMXNCents } from '../lib/money.ts';
 import { whatsappUrl, mensajeCotizacion } from '../lib/share.ts';
@@ -31,10 +31,12 @@ function toInitial(q: Quote): Partial<QuoteFormInitial> {
 
 export function EditQuotePage() {
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
   const qc = useQueryClient();
   const { user } = useAuth();
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState('');
+  const [duplicando, setDuplicando] = useState(false);
 
   const quoteQ = useQuery({
     queryKey: ['quote', id],
@@ -54,6 +56,20 @@ export function EditQuotePage() {
     await api.patch(`/api/quotes/${quote.id}/status`, { status });
     await qc.invalidateQueries({ queryKey: ['quote', id] });
     await qc.invalidateQueries({ queryKey: ['quotes'] });
+  }
+
+  async function handleDuplicate() {
+    if (!quote) return;
+    setDuplicando(true);
+    setError('');
+    try {
+      const res = await api.post<{ quote: Quote }>(`/api/quotes/${quote.id}/duplicate`);
+      await qc.invalidateQueries({ queryKey: ['quotes'] });
+      navigate(`/cotizaciones/${res.quote.id}`);
+    } catch {
+      setError('No se pudo duplicar la cotización.');
+      setDuplicando(false);
+    }
   }
 
   async function handleSave(payload: QuotePayload) {
@@ -130,6 +146,11 @@ export function EditQuotePage() {
                 <ExternalLink size={15} /> Ver / Imprimir
               </Button>
             </a>
+          )}
+          {!enPapelera && (
+            <Button variant="outline" onClick={() => void handleDuplicate()} disabled={duplicando}>
+              <Copy size={15} /> {duplicando ? 'Duplicando…' : 'Duplicar'}
+            </Button>
           )}
           {waUrl && (
             <a

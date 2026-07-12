@@ -5,6 +5,8 @@ import { buildServer } from '../server.js';
 import { loadConfig } from '../config.js';
 import {
   createQuote,
+  duplicateQuote,
+  expireStaleQuotes,
   getByToken,
   softDeleteQuote,
   restoreQuote,
@@ -95,6 +97,58 @@ describe('quotes service', () => {
     });
     const sinDesfase = await listQuotes(prisma, actor);
     expect(sinDesfase.find((x) => x.id === q.id)?.desfase).toBe(false);
+  });
+
+  it('duplicateQuote clona como borrador con token propio, reusando el mismo cliente', async () => {
+    const { eventTypeId, arcosId } = await ids();
+    const q = await createQuote(
+      prisma,
+      { fecha: '2027-07-20', invitados: 250, spaceIds: [arcosId], eventTypeId, client: { nombre: 'Original Dup' } },
+      actor,
+    );
+    createdQuoteIds.push(q.id);
+    createdClientIds.push(q.clientId);
+    await updateStatus(prisma, q.id, 'apartada', actor); // aunque la fuente esté apartada…
+
+    const dup = await duplicateQuote(prisma, q.id, actor);
+    createdQuoteIds.push(dup.id);
+    expect(dup.id).not.toBe(q.id);
+    expect(dup.clientId).toBe(q.clientId); // reusa cliente, sin duplicarlo
+    expect(dup.status).toBe('borrador'); // …la copia nace en borrador
+    expect(dup.total).toBe(q.total);
+    expect(dup.publicToken).not.toBe(q.publicToken);
+    const log = await prisma.activityLog.findMany({ where: { quoteId: dup.id } });
+    expect(log.some((l) => /duplicada de/.test(l.descripcion))).toBe(true);
+  });
+
+  it('expireStaleQuotes vence pipeline pasado de vigencia, pero no toca las reservadas', async () => {
+    const { eventTypeId, arcosId } = await ids();
+    const pipeline = await createQuote(
+      prisma,
+      { fecha: '2027-08-01', invitados: 200, spaceIds: [arcosId], eventTypeId, client: { nombre: 'Vence Pipeline' } },
+      actor,
+    );
+    createdQuoteIds.push(pipeline.id);
+    createdClientIds.push(pipeline.clientId);
+    await prisma.quote.update({ where: { id: pipeline.id }, data: { vigenciaHasta: new Date('2020-01-01T00:00:00.000Z') } });
+
+    const reservada = await createQuote(
+      prisma,
+      { fecha: '2027-08-02', invitados: 200, spaceIds: [arcosId], eventTypeId, client: { nombre: 'No Vence Reservada' } },
+      actor,
+    );
+    createdQuoteIds.push(reservada.id);
+    createdClientIds.push(reservada.clientId);
+    await updateStatus(prisma, reservada.id, 'apartada', actor);
+    await prisma.quote.update({ where: { id: reservada.id }, data: { vigenciaHasta: new Date('2020-01-01T00:00:00.000Z') } });
+
+    const vencidas = await expireStaleQuotes(prisma);
+    expect(vencidas).toBeGreaterThanOrEqual(1);
+
+    const p = await prisma.quote.findUnique({ where: { id: pipeline.id } });
+    const r = await prisma.quote.findUnique({ where: { id: reservada.id } });
+    expect(p?.status).toBe('vencida');
+    expect(r?.status).toBe('apartada'); // reserva intacta
   });
 });
 

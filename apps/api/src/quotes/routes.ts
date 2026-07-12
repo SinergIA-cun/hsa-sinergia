@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { requireAuth } from '../auth/plugin.js';
 import {
   createQuote,
+  duplicateQuote,
   getQuote,
   listQuotes,
   getByToken,
@@ -53,6 +54,20 @@ export async function quoteRoutes(app: FastifyInstance): Promise<void> {
       try {
         const quote = await restoreQuote(app.prisma, req.params.id, req.user as Actor);
         return { quote };
+      } catch (e) {
+        if (e instanceof QuoteError) return reply.code(e.status).send({ error: e.message });
+        throw e;
+      }
+    },
+  );
+
+  app.post<{ Params: { id: string } }>(
+    '/quotes/:id/duplicate',
+    { preHandler: requireAuth },
+    async (req, reply) => {
+      try {
+        const quote = await duplicateQuote(app.prisma, req.params.id, req.user as Actor);
+        return reply.code(201).send({ quote });
       } catch (e) {
         if (e instanceof QuoteError) return reply.code(e.status).send({ error: e.message });
         throw e;
