@@ -1,6 +1,13 @@
 import type { PrismaClient, Prisma } from '@hsa/database';
 
-export type LogTipo = 'creada' | 'estatus' | 'pago' | 'pagoAnulado' | 'edicion';
+export type LogTipo =
+  | 'creada'
+  | 'estatus'
+  | 'pago'
+  | 'pagoAnulado'
+  | 'edicion'
+  | 'eliminada'
+  | 'restaurada';
 
 /** Escribe una entrada de bitácora. Nunca lanza: la bitácora no debe tumbar la operación. */
 export async function logActivity(

@@ -1,5 +1,6 @@
+import { Link } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { RotateCcw, Trash2 } from 'lucide-react';
+import { RotateCcw, Trash2, Eye } from 'lucide-react';
 import { api } from '../lib/api.ts';
 import { formatMXN } from '../lib/money.ts';
 import { formatEventDate, formatTimestamp } from '../lib/date.ts';
@@ -63,9 +64,16 @@ export function PapeleraPage() {
               )}
             </div>
             <p className="font-display text-xl text-ink">{formatMXN(q.total)}</p>
-            <Button variant="outline" onClick={() => void restaurar(q.id)}>
-              <RotateCcw size={15} /> Restaurar
-            </Button>
+            <div className="flex items-center gap-2">
+              <Link to={`/cotizaciones/${q.id}`}>
+                <Button variant="ghost">
+                  <Eye size={15} /> Ver detalle
+                </Button>
+              </Link>
+              <Button variant="outline" onClick={() => void restaurar(q.id)}>
+                <RotateCcw size={15} /> Restaurar
+              </Button>
+            </div>
           </Card>
         ))}
       </div>

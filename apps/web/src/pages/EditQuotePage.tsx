@@ -9,7 +9,7 @@ import { QuoteForm, type QuotePayload, type QuoteFormInitial } from '../componen
 import { PagosPanel } from '../components/PagosPanel.tsx';
 import { OperativaSection } from '../components/OperativaSection.tsx';
 import { STATUS_LABEL, STATUS_STYLE, EDITABLE_STATUSES } from '../lib/status.ts';
-import { formatEventDate } from '../lib/date.ts';
+import { formatEventDate, formatTimestamp } from '../lib/date.ts';
 import { QUOTE_STATUSES, type Catalog, type Quote, type QuoteDetail, type QuoteStatus } from '../lib/types.ts';
 import { useAuth } from '../auth/auth.tsx';
 
@@ -75,8 +75,10 @@ export function EditQuotePage() {
     return <p className="text-wine">No se encontró la cotización.</p>;
   }
 
-  const editable = EDITABLE_STATUSES.includes(quote.status);
-  const contratoDisponible = ['apartada', 'formalizada', 'liquidada'].includes(quote.status);
+  const enPapelera = Boolean(quote.deletedAt);
+  const editable = EDITABLE_STATUSES.includes(quote.status) && !enPapelera;
+  const contratoDisponible =
+    !enPapelera && ['apartada', 'formalizada', 'liquidada'].includes(quote.status);
   const publicUrl = `${window.location.origin}/c/${quote.publicToken}`;
 
   return (
@@ -98,6 +100,7 @@ export function EditQuotePage() {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          {!enPapelera && (
           <label className="flex items-center gap-2 text-sm">
             <span className="text-charcoal-soft">Estatus</span>
             <SelectInput
@@ -112,11 +115,14 @@ export function EditQuotePage() {
               ))}
             </SelectInput>
           </label>
-          <a href={publicUrl} target="_blank" rel="noreferrer">
-            <Button variant="outline">
-              <ExternalLink size={15} /> Ver / Imprimir
-            </Button>
-          </a>
+          )}
+          {!enPapelera && (
+            <a href={publicUrl} target="_blank" rel="noreferrer">
+              <Button variant="outline">
+                <ExternalLink size={15} /> Ver / Imprimir
+              </Button>
+            </a>
+          )}
           {contratoDisponible && (
             <Link to={`/cotizaciones/${quote.id}/contrato`}>
               <Button variant="gold">
@@ -126,6 +132,14 @@ export function EditQuotePage() {
           )}
         </div>
       </div>
+
+      {enPapelera && (
+        <div className="mb-6 rounded-lg border border-wine/30 bg-wine/5 px-4 py-3 text-sm text-wine">
+          <strong>En papelera</strong> desde el {formatTimestamp(quote.deletedAt!)} · vista de solo
+          lectura para auditoría. Revisa la bitácora para ver quién la eliminó; restáurala desde la
+          Papelera si fue un error.
+        </div>
+      )}
 
       {editable ? (
         <>
@@ -159,7 +173,9 @@ export function EditQuotePage() {
               {STATUS_LABEL[quote.status]}
             </span>
             <p className="text-sm text-charcoal-soft">
-              Ya no es editable (tiene compromiso de pago). Puedes cambiar el estatus o imprimir.
+              {enPapelera
+                ? 'Solo lectura: cotización eliminada, conservada como evidencia.'
+                : 'Ya no es editable (tiene compromiso de pago). Puedes cambiar el estatus o imprimir.'}
             </p>
           </div>
           <ul className="divide-y divide-cream-200">
@@ -177,11 +193,13 @@ export function EditQuotePage() {
             <span>Total</span>
             <span className="tabular-nums">{formatMXN(quote.total)}</span>
           </div>
-          <a href={publicUrl} target="_blank" rel="noreferrer" className="mt-6 inline-block">
-            <Button variant="gold">
-              <Printer size={15} /> Ver / Imprimir PDF
-            </Button>
-          </a>
+          {!enPapelera && (
+            <a href={publicUrl} target="_blank" rel="noreferrer" className="mt-6 inline-block">
+              <Button variant="gold">
+                <Printer size={15} /> Ver / Imprimir PDF
+              </Button>
+            </a>
+          )}
         </Card>
       )}
 
@@ -192,6 +210,7 @@ export function EditQuotePage() {
           estadoCuenta={estadoCuenta}
           payments={payments}
           activityLog={activityLog}
+          readOnly={enPapelera}
         />
       )}
 

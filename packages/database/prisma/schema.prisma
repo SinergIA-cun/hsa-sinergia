@@ -54,6 +54,8 @@ enum ActivityType {
   pago
   pagoAnulado
   edicion
+  eliminada
+  restaurada
 }
 
 model PriceList {

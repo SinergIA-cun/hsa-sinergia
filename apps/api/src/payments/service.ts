@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import type { PrismaClient } from '@hsa/database';
-import { QuoteError, ownershipWhere, loadEstadoCuenta, type Actor } from '../quotes/service.js';
+import { QuoteError, ownershipWhere, loadEstadoCuenta, assertNotTrashed, type Actor } from '../quotes/service.js';
 import { logActivity } from '../quotes/activityLog.js';
 import { esUpgrade, type PaymentStatus } from '../quotes/estadoCuenta.js';
 import type { ComprobanteStorage } from './storage.js';
@@ -18,6 +18,7 @@ export const anularSchema = z.object({ motivo: z.string().min(3) });
 async function findOwnedQuote(db: PrismaClient, id: string, actor: Actor) {
   const quote = await db.quote.findFirst({ where: { id, ...ownershipWhere(actor) } });
   if (!quote) throw new QuoteError(404, 'Cotización no encontrada');
+  assertNotTrashed(quote);
   return quote;
 }
 

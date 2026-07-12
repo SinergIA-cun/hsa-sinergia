@@ -13,9 +13,11 @@ interface Props {
   estadoCuenta: EstadoCuenta;
   payments: Payment[];
   activityLog: ActivityEntry[];
+  /** Solo lectura (papelera): sin registrar pagos ni anular. */
+  readOnly?: boolean;
 }
 
-export function PagosPanel({ quoteId, isAdmin, estadoCuenta, payments, activityLog }: Props) {
+export function PagosPanel({ quoteId, isAdmin, estadoCuenta, payments, activityLog, readOnly = false }: Props) {
   const qc = useQueryClient();
   const [monto, setMonto] = useState('');
   const [metodo, setMetodo] = useState('transferencia');
@@ -112,6 +114,7 @@ export function PagosPanel({ quoteId, isAdmin, estadoCuenta, payments, activityL
       )}
 
       {/* Registrar pago */}
+      {!readOnly && (
       <Card className="p-6">
         <h3 className="mb-4 font-display text-xl text-ink">Registrar pago</h3>
         <form onSubmit={registrar} className="grid gap-4 sm:grid-cols-2">
@@ -144,6 +147,7 @@ export function PagosPanel({ quoteId, isAdmin, estadoCuenta, payments, activityL
           </div>
         </form>
       </Card>
+      )}
 
       {/* Lista de pagos */}
       {payments.length > 0 && (
@@ -168,7 +172,7 @@ export function PagosPanel({ quoteId, isAdmin, estadoCuenta, payments, activityL
                       Ver comprobante
                     </a>
                   )}
-                  {isAdmin && !p.anuladoAt && <button onClick={() => anular(p.id)} className="text-xs text-wine hover:underline">Anular</button>}
+                  {isAdmin && !readOnly && !p.anuladoAt && <button onClick={() => anular(p.id)} className="text-xs text-wine hover:underline">Anular</button>}
                 </span>
               </li>
             ))}

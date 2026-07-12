@@ -161,9 +161,17 @@ export class QuoteError extends Error {
   }
 }
 
+/** Una cotización en la papelera es de solo lectura (evidencia de auditoría). */
+export function assertNotTrashed(quote: { deletedAt: Date | null }): void {
+  if (quote.deletedAt) {
+    throw new QuoteError(409, 'La cotización está en la papelera (solo lectura); restáurala para modificarla');
+  }
+}
+
 export async function updateQuote(db: PrismaClient, id: string, rawInput: unknown, actor: Actor) {
   const existing = await db.quote.findFirst({ where: { id, ...ownershipWhere(actor) } });
   if (!existing) throw new QuoteError(404, 'Cotización no encontrada');
+  assertNotTrashed(existing);
   if (!EDITABLE_STATUSES.has(existing.status)) {
     throw new QuoteError(409, `No se puede editar una cotización en estatus "${existing.status}"`);
   }
@@ -213,6 +221,7 @@ export async function updateStatus(
 ) {
   const existing = await db.quote.findFirst({ where: { id, ...ownershipWhere(actor) } });
   if (!existing) throw new QuoteError(404, 'Cotización no encontrada');
+  assertNotTrashed(existing);
   const updated = await db.quote.update({ where: { id }, data: { status }, include: includeRels });
   await logActivity(db, {
     quoteId: id,
@@ -256,6 +265,7 @@ export const operativaSchema = z.object({
 export async function updateOperativa(db: PrismaClient, id: string, rawInput: unknown, actor: Actor) {
   const existing = await db.quote.findFirst({ where: { id, ...ownershipWhere(actor) } });
   if (!existing) throw new QuoteError(404, 'Cotización no encontrada');
+  assertNotTrashed(existing);
   const input = operativaSchema.parse(rawInput);
   return db.quote.update({
     where: { id },
@@ -341,21 +351,40 @@ export async function purgeExpiredTrash(db: PrismaClient): Promise<void> {
   }
 }
 
-/** Envía una cotización a la papelera. Solo si sigue en borrador. */
+/** Envía una cotización a la papelera. Solo borradores y NUNCA con pagos
+ *  registrados (candado anti-irregularidades: un cliente que pagó no puede
+ *  terminar en la papelera). Queda registrado quién la eliminó. */
 export async function softDeleteQuote(db: PrismaClient, id: string, actor: Actor) {
   const existing = await db.quote.findFirst({ where: { id, ...ownershipWhere(actor), deletedAt: null } });
   if (!existing) throw new QuoteError(404, 'Cotización no encontrada');
   if (existing.status !== 'borrador') {
     throw new QuoteError(409, 'Solo se pueden eliminar cotizaciones en borrador');
   }
+  const pagosVigentes = await db.payment.count({ where: { quoteId: id, anuladoAt: null } });
+  if (pagosVigentes > 0) {
+    throw new QuoteError(409, 'No se puede eliminar: la cotización tiene pagos registrados');
+  }
   await db.quote.update({ where: { id }, data: { deletedAt: new Date() } });
+  await logActivity(db, {
+    quoteId: id,
+    tipo: 'eliminada',
+    descripcion: 'Enviada a la papelera',
+    actorId: actor.id,
+  });
 }
 
-/** Restaura una cotización desde la papelera. */
+/** Restaura una cotización desde la papelera (queda registrado quién). */
 export async function restoreQuote(db: PrismaClient, id: string, actor: Actor) {
   const existing = await db.quote.findFirst({ where: { id, ...ownershipWhere(actor), deletedAt: { not: null } } });
   if (!existing) throw new QuoteError(404, 'Cotización no encontrada en la papelera');
-  return db.quote.update({ where: { id }, data: { deletedAt: null }, include: includeRels });
+  const restored = await db.quote.update({ where: { id }, data: { deletedAt: null }, include: includeRels });
+  await logActivity(db, {
+    quoteId: id,
+    tipo: 'restaurada',
+    descripcion: 'Restaurada de la papelera',
+    actorId: actor.id,
+  });
+  return restored;
 }
 
 /** Cotizaciones en papelera (no expiradas). Purga las vencidas de paso. */
@@ -388,7 +417,7 @@ export async function getQuote(db: PrismaClient, id: string, actor: Actor) {
 /** Vista pública por token: cotización + estado de cuenta con pagos. */
 export async function getByToken(db: PrismaClient, token: string) {
   const quote = await db.quote.findUnique({ where: { publicToken: token }, include: includeRels });
-  if (!quote) return null;
+  if (!quote || quote.deletedAt) return null; // en papelera: invisible para el cliente
   const { estadoCuenta, payments } = await loadEstadoCuenta(db, quote);
   const pagosPublicos = payments
     .filter((p) => p.anuladoAt == null)

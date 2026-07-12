@@ -190,5 +190,26 @@ describe('papelera (soft-delete)', () => {
     // No-borrador → 409
     await updateStatus(prisma, q.id, 'apartada', actor);
     await expect(softDeleteQuote(prisma, q.id, actor)).rejects.toThrow();
+
+    // La bitácora registró quién eliminó y quién restauró
+    const log = await prisma.activityLog.findMany({ where: { quoteId: q.id } });
+    expect(log.some((l) => l.tipo === 'eliminada')).toBe(true);
+    expect(log.some((l) => l.tipo === 'restaurada')).toBe(true);
+  });
+
+  it('no se puede eliminar un borrador con pagos registrados (anti-irregularidades)', async () => {
+    const { eventTypeId, arcosId } = await ids();
+    const q = await createQuote(prisma, { fecha: '2028-03-11', invitados: 150, spaceIds: [arcosId], eventTypeId, client: { nombre: 'Papelera Pagos' } }, actor);
+    createdQuoteIds.push(q.id); createdClientIds.push(q.clientId);
+
+    await prisma.payment.create({
+      data: { quoteId: q.id, monto: 5000, metodo: 'efectivo', concepto: 'aCuenta', fecha: new Date('2027-01-10T00:00:00.000Z') },
+    });
+    await expect(softDeleteQuote(prisma, q.id, actor)).rejects.toThrow(/pagos registrados/);
+
+    // Y una cotización en papelera no acepta cambios (solo lectura)
+    await prisma.payment.deleteMany({ where: { quoteId: q.id } });
+    await softDeleteQuote(prisma, q.id, actor);
+    await expect(updateStatus(prisma, q.id, 'apartada', actor)).rejects.toThrow(/papelera/);
   });
 });
