@@ -216,3 +216,36 @@ export interface AgendaEvent {
   spaceIds: string[];
   status: QuoteStatus;
 }
+
+export interface DashboardData {
+  kpis: {
+    eventosMes: number;
+    porCobrar: number;
+    cobradoMes: number;
+    cotizacionesActivas: number;
+  };
+  vencimientos: {
+    quoteId: string;
+    cliente: string;
+    evento: string;
+    hito: string;
+    restante: number;
+    venceISO: string;
+    vencido: boolean;
+  }[];
+  desfases: {
+    quoteId: string;
+    cliente: string;
+    evento: string;
+    status: QuoteStatus;
+    saldo: number;
+  }[];
+  proximosEventos: {
+    quoteId: string;
+    cliente: string;
+    evento: string;
+    fechaEventoISO: string;
+    status: QuoteStatus;
+    saldo: number;
+  }[];
+}

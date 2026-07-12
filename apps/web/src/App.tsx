@@ -4,6 +4,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './auth/auth.tsx';
 import { AppShell } from './components/AppShell.tsx';
 import { LoginPage } from './pages/LoginPage.tsx';
+import { InicioPage } from './pages/InicioPage.tsx';
 import { QuotesListPage } from './pages/QuotesListPage.tsx';
 import { NewQuotePage } from './pages/NewQuotePage.tsx';
 import { EditQuotePage } from './pages/EditQuotePage.tsx';
@@ -122,8 +123,15 @@ export function App() {
                 </Protected>
               }
             />
-            <Route path="/" element={<Navigate to="/cotizaciones" replace />} />
-            <Route path="*" element={<Navigate to="/cotizaciones" replace />} />
+            <Route
+              path="/"
+              element={
+                <Protected>
+                  <InicioPage />
+                </Protected>
+              }
+            />
+            <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </AuthProvider>
       </BrowserRouter>

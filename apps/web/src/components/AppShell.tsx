@@ -1,6 +1,6 @@
 import { type ReactNode } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { LogOut, FileText, Plus, CalendarDays, SlidersHorizontal, Trash2 } from 'lucide-react';
+import { LogOut, FileText, Plus, CalendarDays, SlidersHorizontal, Trash2, LayoutDashboard } from 'lucide-react';
 import { useAuth } from '../auth/auth.tsx';
 import { Logo } from './Logo.tsx';
 import { cn } from '../lib/cn.ts';
@@ -29,10 +29,11 @@ export function AppShell({ children }: { children: ReactNode }) {
     <div className="min-h-screen bg-paper">
       <header className="sticky top-0 z-20 border-b border-cream-300/70 bg-cream/80 backdrop-blur">
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-6 py-3">
-          <Link to="/cotizaciones">
+          <Link to="/">
             <Logo className="items-start" />
           </Link>
           <nav className="hidden items-center gap-1 sm:flex">
+            {navItem('/', <LayoutDashboard size={16} />, 'Inicio')}
             {navItem('/cotizaciones', <FileText size={16} />, 'Cotizaciones')}
             {navItem('/agenda', <CalendarDays size={16} />, 'Agenda')}
             {navItem('/cotizaciones/nueva', <Plus size={16} />, 'Nueva')}
