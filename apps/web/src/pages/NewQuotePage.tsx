@@ -2,11 +2,12 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { QRCodeSVG } from 'qrcode.react';
-import { Check, Copy, ArrowLeft } from 'lucide-react';
+import { Check, Copy, ArrowLeft, MessageCircle } from 'lucide-react';
 import { api } from '../lib/api.ts';
 import { formatMXN } from '../lib/money.ts';
 import { Button, Card, TextInput, ArrowDivider } from '../components/ui.tsx';
 import { QuoteForm, type QuotePayload } from '../components/QuoteForm.tsx';
+import { whatsappUrl, mensajeCotizacion } from '../lib/share.ts';
 import type { Catalog, Quote } from '../lib/types.ts';
 
 export function NewQuotePage() {
@@ -64,7 +65,23 @@ export function NewQuotePage() {
             </Button>
           </div>
         </Card>
-        <div className="mt-6 flex justify-center gap-3">
+        <div className="mt-6 flex flex-wrap justify-center gap-3">
+          {(() => {
+            const wa = whatsappUrl(
+              saved.client?.telefono,
+              mensajeCotizacion(saved.client?.nombre ?? 'cliente', saved.eventType?.nombre ?? 'evento', publicUrl),
+            );
+            return wa ? (
+              <a
+                href={wa}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#25D366] px-4 py-2.5 text-sm font-medium tracking-wide text-white shadow-sm transition-colors hover:bg-[#1da851]"
+              >
+                <MessageCircle size={16} /> Enviar por WhatsApp
+              </a>
+            ) : null;
+          })()}
           <a href={publicUrl} target="_blank" rel="noreferrer">
             <Button variant="gold">Ver como cliente</Button>
           </a>
@@ -91,6 +108,7 @@ export function NewQuotePage() {
         submitLabel="Guardar y generar link"
         onSubmit={handleSubmit}
         errorMsg={error}
+        enableClientSearch
       />
     </div>
   );

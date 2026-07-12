@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { computeQuote, type QuoteBreakdown } from '@hsa/shared';
-import { Sparkles, RotateCcw, AlertTriangle, CheckCircle2, Ban } from 'lucide-react';
+import { Sparkles, RotateCcw, AlertTriangle, CheckCircle2, Ban, UserCheck, X } from 'lucide-react';
 import { api } from '../lib/api.ts';
 import { formatMXN, formatMXNCents } from '../lib/money.ts';
 import { Button, Card, Field, TextInput, SelectInput } from './ui.tsx';
+import { ClienteSearch, type ClienteLite } from './ClienteSearch.tsx';
 import type { Catalog, Availability, SpaceAvailability } from '../lib/types.ts';
 
 const DEFAULT_VALET_RATIO = 2.5; // 1 auto por cada 2.5 personas (fallback si no llega de catálogo)
@@ -31,6 +32,8 @@ export interface QuotePayload {
   addOns: { addOnId: string; cantidad: number }[];
   eventTypeId: string;
   client: { nombre: string; telefono?: string; correo?: string };
+  /** Si se reutiliza un cliente existente, su id (el backend lo prioriza sobre `client`). */
+  clientId?: string;
 }
 
 interface Props {
@@ -41,6 +44,8 @@ interface Props {
   errorMsg?: string;
   /** Al editar, excluye la propia cotización del chequeo de disponibilidad. */
   excludeQuoteId?: string;
+  /** Habilita el buscador de clientes existentes (solo al crear). */
+  enableClientSearch?: boolean;
 }
 
 export function QuoteForm({
@@ -50,6 +55,7 @@ export function QuoteForm({
   onSubmit,
   errorMsg,
   excludeQuoteId,
+  enableClientSearch = false,
 }: Props) {
   const valetAddOn = catalog.addOns.find((a) => a.nombre.toLowerCase().includes('valet'));
   const valetRatio = catalog.config?.valetRatio ?? DEFAULT_VALET_RATIO;
@@ -57,6 +63,22 @@ export function QuoteForm({
   const [nombre, setNombre] = useState(initial?.nombre ?? '');
   const [telefono, setTelefono] = useState(initial?.telefono ?? '');
   const [correo, setCorreo] = useState(initial?.correo ?? '');
+  // Cliente reutilizado: si viene de una búsqueda, guardamos su id; si el usuario
+  // edita cualquier dato del cliente, se "desvincula" y se tratará como nuevo.
+  const [pickedClientId, setPickedClientId] = useState<string | undefined>(undefined);
+  const [pickedRef, setPickedRef] = useState<number | null>(null);
+
+  function pickCliente(c: ClienteLite) {
+    setNombre(c.nombre);
+    setTelefono(c.telefono ?? '');
+    setCorreo(c.correo ?? '');
+    setPickedClientId(c.id);
+    setPickedRef(c.numeroReferencia);
+  }
+  function desvincular() {
+    setPickedClientId(undefined);
+    setPickedRef(null);
+  }
   const [eventTypeId, setEventTypeId] = useState(initial?.eventTypeId ?? '');
   const [fecha, setFecha] = useState(initial?.fecha ?? '');
   const [invitados, setInvitados] = useState(initial?.invitados ?? 150);
@@ -171,6 +193,7 @@ export function QuoteForm({
         addOns: Object.entries(addOns).map(([addOnId, cantidad]) => ({ addOnId, cantidad })),
         eventTypeId,
         client: { nombre, telefono: telefono || undefined, correo: correo || undefined },
+        clientId: pickedClientId,
       });
     } finally {
       setBusy(false);
@@ -183,15 +206,52 @@ export function QuoteForm({
       <div className="space-y-6">
         <Card className="space-y-4 p-6">
           <h2 className="font-display text-xl text-ink">Cliente</h2>
+
+          {enableClientSearch && !pickedClientId && <ClienteSearch onPick={pickCliente} />}
+
+          {pickedClientId && (
+            <div className="flex items-center justify-between gap-3 rounded-lg border border-gold/40 bg-gold/5 px-3 py-2 text-sm">
+              <span className="inline-flex items-center gap-2 text-ink">
+                <UserCheck size={15} className="text-gold" />
+                Cliente existente{pickedRef != null && ` · ref ${pickedRef}`}
+              </span>
+              <button type="button" onClick={desvincular} className="inline-flex items-center gap-1 text-xs text-charcoal-soft hover:text-ink">
+                <X size={13} /> Usar otro / nuevo
+              </button>
+            </div>
+          )}
+
           <Field label="Nombre">
-            <TextInput value={nombre} onChange={(e) => setNombre(e.target.value)} placeholder="Nombre del cliente" />
+            <TextInput
+              value={nombre}
+              onChange={(e) => {
+                setNombre(e.target.value);
+                desvincular();
+              }}
+              placeholder="Nombre del cliente"
+            />
           </Field>
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Teléfono">
-              <TextInput value={telefono} onChange={(e) => setTelefono(e.target.value)} placeholder="Opcional" />
+              <TextInput
+                value={telefono}
+                onChange={(e) => {
+                  setTelefono(e.target.value);
+                  desvincular();
+                }}
+                placeholder="Opcional"
+              />
             </Field>
             <Field label="Correo">
-              <TextInput type="email" value={correo} onChange={(e) => setCorreo(e.target.value)} placeholder="Opcional" />
+              <TextInput
+                type="email"
+                value={correo}
+                onChange={(e) => {
+                  setCorreo(e.target.value);
+                  desvincular();
+                }}
+                placeholder="Opcional"
+              />
             </Field>
           </div>
         </Card>
