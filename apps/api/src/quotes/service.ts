@@ -4,7 +4,7 @@ import type { PrismaClient, Prisma } from '@hsa/database';
 import { computeQuote, quoteSelectionSchema, type QuoteSelection } from '@hsa/shared';
 import { loadCatalog } from '../catalog/loader.js';
 import { logActivity } from './activityLog.js';
-import { computeEstadoCuenta } from './estadoCuenta.js';
+import { computeEstadoCuenta, type EstadoCuenta } from './estadoCuenta.js';
 
 export interface Actor {
   id: string;
@@ -118,6 +118,69 @@ export async function loadEstadoCuenta(db: PrismaClient, quote: {
     fechaApartado: firstApartado?.createdAt ?? null,
   });
   return { estadoCuenta: ec, payments };
+}
+
+export interface QuoteEC {
+  id: string;
+  total: number;
+  fechaEvento: Date;
+  status: string;
+  spaceIds: string[];
+}
+
+/**
+ * Estado de cuenta de varias cotizaciones en una sola tanda de consultas
+ * (regla/pagos/apartado en bloque), para evitar N+1 en listas y paneles.
+ */
+export async function loadEstadoCuentaBulk(
+  db: PrismaClient,
+  quotes: QuoteEC[],
+): Promise<Map<string, EstadoCuenta>> {
+  const out = new Map<string, EstadoCuenta>();
+  if (quotes.length === 0) return out;
+
+  const quoteIds = quotes.map((q) => q.id);
+  const spaceIds = [...new Set(quotes.map((q) => q.spaceIds[0]).filter(Boolean) as string[])];
+
+  const [rules, payments, apartados] = await Promise.all([
+    db.spacePaymentRule.findMany({ where: { spaceId: { in: spaceIds } } }),
+    db.payment.findMany({ where: { quoteId: { in: quoteIds } } }),
+    db.activityLog.findMany({
+      where: { quoteId: { in: quoteIds }, tipo: 'estatus', descripcion: { contains: 'apartada' } },
+      orderBy: { createdAt: 'asc' },
+      select: { quoteId: true, createdAt: true },
+    }),
+  ]);
+
+  const ruleBySpace = new Map(rules.map((r) => [r.spaceId, r]));
+  const pagosByQuote = new Map<string, { monto: number; anuladoAt: Date | null }[]>();
+  for (const p of payments) {
+    const arr = pagosByQuote.get(p.quoteId) ?? [];
+    arr.push({ monto: p.monto, anuladoAt: p.anuladoAt });
+    pagosByQuote.set(p.quoteId, arr);
+  }
+  const apartadoByQuote = new Map<string, Date>();
+  for (const a of apartados) {
+    if (!apartadoByQuote.has(a.quoteId)) apartadoByQuote.set(a.quoteId, a.createdAt);
+  }
+
+  for (const q of quotes) {
+    const rule = ruleBySpace.get(q.spaceIds[0] ?? '');
+    out.set(
+      q.id,
+      computeEstadoCuenta({
+        total: q.total,
+        fechaEvento: q.fechaEvento,
+        status: q.status,
+        rule: rule
+          ? { anticipo: rule.anticipo, complementoPct: rule.complementoPct, liquidarDiasAntes: rule.liquidarDiasAntes }
+          : null,
+        payments: pagosByQuote.get(q.id) ?? [],
+        fechaApartado: apartadoByQuote.get(q.id) ?? null,
+      }),
+    );
+  }
+  return out;
 }
 
 export async function createQuote(db: PrismaClient, rawInput: unknown, actor: Actor) {
@@ -397,13 +460,16 @@ export async function listTrash(db: PrismaClient, actor: Actor) {
   });
 }
 
-export function listQuotes(db: PrismaClient, actor: Actor) {
+export async function listQuotes(db: PrismaClient, actor: Actor) {
   void purgeExpiredTrash(db);
-  return db.quote.findMany({
+  const quotes = await db.quote.findMany({
     where: { ...ownershipWhere(actor), deletedAt: null },
     orderBy: { createdAt: 'desc' },
     include: includeRels,
   });
+  const estados = await loadEstadoCuentaBulk(db, quotes);
+  // `desfase`: el estatus exige un pago que aún no está cubierto (bandera de auditoría).
+  return quotes.map((q) => ({ ...q, desfase: estados.get(q.id)?.desfase ?? false }));
 }
 
 export async function getQuote(db: PrismaClient, id: string, actor: Actor) {

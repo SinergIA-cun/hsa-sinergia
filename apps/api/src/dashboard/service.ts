@@ -1,6 +1,6 @@
 import type { PrismaClient } from '@hsa/database';
-import { ownershipWhere, type Actor } from '../quotes/service.js';
-import { computeEstadoCuenta, type Milestone } from '../quotes/estadoCuenta.js';
+import { ownershipWhere, loadEstadoCuentaBulk, type Actor } from '../quotes/service.js';
+import type { Milestone } from '../quotes/estadoCuenta.js';
 
 // Estatus con compromiso de pago (evento confirmado, aún genera cobros).
 const CONFIRMADOS = ['apartada', 'formalizada'] as const;
@@ -86,29 +86,14 @@ export async function getDashboard(
   });
 
   const quoteIds = quotes.map((q) => q.id);
-  const spaceIds = [...new Set(quotes.map((q) => q.spaceIds[0]).filter(Boolean) as string[])];
 
-  const [rules, payments, apartados] = await Promise.all([
-    db.spacePaymentRule.findMany({ where: { spaceId: { in: spaceIds } } }),
-    db.payment.findMany({ where: { quoteId: { in: quoteIds } } }),
-    db.activityLog.findMany({
-      where: { quoteId: { in: quoteIds }, tipo: 'estatus', descripcion: { contains: 'apartada' } },
-      orderBy: { createdAt: 'asc' },
-      select: { quoteId: true, createdAt: true },
+  const [estados, payments] = await Promise.all([
+    loadEstadoCuentaBulk(db, quotes),
+    db.payment.findMany({
+      where: { quoteId: { in: quoteIds } },
+      select: { monto: true, anuladoAt: true, fecha: true },
     }),
   ]);
-
-  const ruleBySpace = new Map(rules.map((r) => [r.spaceId, r]));
-  const pagosByQuote = new Map<string, typeof payments>();
-  for (const p of payments) {
-    const arr = pagosByQuote.get(p.quoteId) ?? [];
-    arr.push(p);
-    pagosByQuote.set(p.quoteId, arr);
-  }
-  const apartadoByQuote = new Map<string, Date>();
-  for (const a of apartados) {
-    if (!apartadoByQuote.has(a.quoteId)) apartadoByQuote.set(a.quoteId, a.createdAt);
-  }
 
   const { desde, hasta } = mesUTC(now);
   const hoy = hoyUTC(now);
@@ -123,20 +108,7 @@ export async function getDashboard(
   for (const q of quotes) {
     const cliente = q.client?.nombre ?? 'Cliente';
     const evento = q.eventType?.nombre ?? 'Evento';
-    const rule = ruleBySpace.get(q.spaceIds[0] ?? '');
-    const pagos = pagosByQuote.get(q.id) ?? [];
-
-    const ec = computeEstadoCuenta({
-      total: q.total,
-      fechaEvento: q.fechaEvento,
-      status: q.status,
-      rule: rule
-        ? { anticipo: rule.anticipo, complementoPct: rule.complementoPct, liquidarDiasAntes: rule.liquidarDiasAntes }
-        : null,
-      payments: pagos.map((p) => ({ monto: p.monto, anuladoAt: p.anuladoAt })),
-      fechaApartado: apartadoByQuote.get(q.id) ?? null,
-      now,
-    });
+    const ec = estados.get(q.id)!;
 
     if ((PIPELINE as readonly string[]).includes(q.status)) cotizacionesActivas += 1;
 

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus, ExternalLink, CalendarDays, Users, UserCircle, Trash2, Search } from 'lucide-react';
+import { Plus, ExternalLink, CalendarDays, Users, UserCircle, Trash2, Search, AlertTriangle } from 'lucide-react';
 import { api } from '../lib/api.ts';
 import { formatMXN } from '../lib/money.ts';
 import { Button, Card, ArrowDivider } from '../components/ui.tsx';
@@ -60,11 +60,21 @@ function QuoteRow({ q, showSeller }: { q: Quote; showSeller: boolean }) {
       </div>
       <div className="text-right" onClick={() => navigate(`/cotizaciones/${q.id}`)}>
         <p className="font-display text-2xl text-ink">{formatMXN(q.total)}</p>
-        <span
-          className={`inline-block rounded-full px-2.5 py-0.5 text-[0.65rem] font-semibold uppercase tracking-wide ${STATUS_STYLE[q.status]}`}
-        >
-          {STATUS_LABEL[q.status]}
-        </span>
+        <div className="flex flex-wrap items-center justify-end gap-1.5">
+          {q.desfase && (
+            <span
+              title="El pago recibido no cubre lo que exige el estatus actual"
+              className="inline-flex items-center gap-1 rounded-full bg-wine/10 px-2 py-0.5 text-[0.65rem] font-semibold uppercase tracking-wide text-wine"
+            >
+              <AlertTriangle size={11} /> Desfase
+            </span>
+          )}
+          <span
+            className={`inline-block rounded-full px-2.5 py-0.5 text-[0.65rem] font-semibold uppercase tracking-wide ${STATUS_STYLE[q.status]}`}
+          >
+            {STATUS_LABEL[q.status]}
+          </span>
+        </div>
       </div>
       <a
         href={`/c/${q.publicToken}`}

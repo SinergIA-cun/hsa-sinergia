@@ -35,6 +35,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  await prisma.payment.deleteMany({ where: { quoteId: { in: createdQuoteIds } } });
   await prisma.activityLog.deleteMany({ where: { quoteId: { in: createdQuoteIds } } });
   await prisma.quote.deleteMany({ where: { id: { in: createdQuoteIds } } });
   await prisma.client.deleteMany({ where: { id: { in: createdClientIds } } });
@@ -71,6 +72,29 @@ describe('quotes service', () => {
     const result = await getByToken(prisma, q.publicToken);
     expect(result?.estadoCuenta.saldo).toBe(q.total);
     expect(result?.estadoCuenta.pagado).toBe(0);
+  });
+
+  it('listQuotes marca desfase cuando el estatus exige un pago no cubierto, y lo limpia al pagar', async () => {
+    const { eventTypeId, arcosId } = await ids();
+    const q = await createQuote(
+      prisma,
+      { fecha: '2027-06-14', invitados: 250, spaceIds: [arcosId], eventTypeId, client: { nombre: 'Desfase Test' } },
+      actor,
+    );
+    createdQuoteIds.push(q.id);
+    createdClientIds.push(q.clientId);
+
+    // Apartada sin pagos: el anticipo (regla de Arcos) no está cubierto ⇒ desfase.
+    await updateStatus(prisma, q.id, 'apartada', actor);
+    const conDesfase = await listQuotes(prisma, actor);
+    expect(conDesfase.find((x) => x.id === q.id)?.desfase).toBe(true);
+
+    // Registrado el anticipo, ya no hay desfase.
+    await prisma.payment.create({
+      data: { quoteId: q.id, monto: 20000, metodo: 'transferencia', concepto: 'anticipo', fecha: new Date('2027-01-15T00:00:00.000Z') },
+    });
+    const sinDesfase = await listQuotes(prisma, actor);
+    expect(sinDesfase.find((x) => x.id === q.id)?.desfase).toBe(false);
   });
 });
 

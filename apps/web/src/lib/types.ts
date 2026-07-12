@@ -121,6 +121,7 @@ export interface Quote {
   createdAt: string;
   deletedAt?: string | null;
   createdBy?: { id: string; nombre: string } | null;
+  desfase?: boolean;
 }
 
 export interface Payment {
