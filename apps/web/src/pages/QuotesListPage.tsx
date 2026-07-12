@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus, ExternalLink, CalendarDays, Users, UserCircle, Trash2 } from 'lucide-react';
+import { Plus, ExternalLink, CalendarDays, Users, UserCircle, Trash2, Search } from 'lucide-react';
 import { api } from '../lib/api.ts';
 import { formatMXN } from '../lib/money.ts';
 import { Button, Card, ArrowDivider } from '../components/ui.tsx';
@@ -133,19 +133,37 @@ function Section({
   );
 }
 
+function matchesQuery(q: Quote, needle: string): boolean {
+  const hay = [
+    q.client?.nombre,
+    q.client?.telefono,
+    q.client?.correo,
+    q.eventType?.nombre,
+    q.createdBy?.nombre,
+    q.client?.numeroReferencia?.toString(),
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
+  return hay.includes(needle);
+}
+
 export function QuotesListPage() {
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin';
+  const [query, setQuery] = useState('');
   const { data, isLoading } = useQuery({
     queryKey: ['quotes'],
     queryFn: () => api.get<{ quotes: Quote[] }>('/api/quotes'),
   });
-  const quotes = data?.quotes ?? [];
+  const allQuotes = data?.quotes ?? [];
+  const needle = query.trim().toLowerCase();
+  const quotes = needle ? allQuotes.filter((q) => matchesQuery(q, needle)) : allQuotes;
 
   // CRM por ventas (solo admin)
   const perSeller = new Map<string, number>();
   if (isAdmin) {
-    for (const q of quotes) {
+    for (const q of allQuotes) {
       const name = q.createdBy?.nombre ?? 'Sin asignar';
       perSeller.set(name, (perSeller.get(name) ?? 0) + 1);
     }
@@ -184,9 +202,21 @@ export function QuotesListPage() {
         </div>
       )}
 
+      {!isLoading && allQuotes.length > 0 && (
+        <div className="relative mb-6 max-w-md">
+          <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-charcoal-soft" />
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Buscar cliente, teléfono, evento, referencia…"
+            className="w-full rounded-lg border border-ink/15 bg-white/70 py-2.5 pl-9 pr-3 text-sm text-charcoal placeholder:text-charcoal-soft/60 focus:border-gold focus:outline-none focus:ring-2 focus:ring-gold/30"
+          />
+        </div>
+      )}
+
       {isLoading && <p className="text-charcoal-soft">Cargando…</p>}
 
-      {!isLoading && quotes.length === 0 && (
+      {!isLoading && allQuotes.length === 0 && (
         <Card className="p-12 text-center">
           <p className="font-display text-2xl text-ink">Aún no hay cotizaciones</p>
           <p className="mt-2 text-sm text-charcoal-soft">Crea la primera en un par de minutos.</p>
@@ -198,13 +228,17 @@ export function QuotesListPage() {
         </Card>
       )}
 
+      {!isLoading && allQuotes.length > 0 && needle && quotes.length === 0 && (
+        <p className="text-sm text-charcoal-soft">Sin resultados para “{query}”.</p>
+      )}
+
       {!isLoading &&
         quotes.length > 0 &&
         SECTIONS.map((s) => (
           <Section
-            key={s.title}
+            key={s.title + (needle ? '-q' : '')}
             title={s.title}
-            defaultOpen={s.defaultOpen}
+            defaultOpen={s.defaultOpen || Boolean(needle)}
             showSeller={isAdmin}
             quotes={quotes.filter((q) => s.statuses.includes(q.status))}
           />
