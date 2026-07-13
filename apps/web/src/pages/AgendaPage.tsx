@@ -1,22 +1,30 @@
-import { useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useMemo } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { api } from '../lib/api.ts';
 import { Card, ArrowDivider, Button } from '../components/ui.tsx';
-import { STATUS_STYLE } from '../lib/status.ts';
+import { STATUS_STYLE, STATUS_LABEL } from '../lib/status.ts';
 import type { AgendaEvent } from '../lib/types.ts';
 
 const DIAS = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
 const pad = (n: number) => String(n).padStart(2, '0');
 const hoyISO = new Date().toISOString().slice(0, 10);
 
+/** El mes visible vive en la URL (?m=YYYY-MM) para que "atrás" del navegador
+ *  regrese al mismo mes en vez de reiniciar a hoy. */
+function parseMesParam(v: string | null): { anio: number; mes: number } {
+  const m = v ? /^(\d{4})-(\d{2})$/.exec(v) : null;
+  if (m) return { anio: Number(m[1]), mes: Number(m[2]) - 1 };
+  const d = new Date();
+  return { anio: d.getFullYear(), mes: d.getMonth() };
+}
+
 export function AgendaPage() {
   const navigate = useNavigate();
-  const [mes, setMes] = useState(() => {
-    const d = new Date();
-    return { anio: d.getFullYear(), mes: d.getMonth() }; // mes 0-11
-  });
+  const [params, setParams] = useSearchParams();
+  const mes = parseMesParam(params.get('m'));
+  const mesParam = `${mes.anio}-${pad(mes.mes + 1)}`;
 
   const primerDiaSemana = new Date(mes.anio, mes.mes, 1).getDay(); // 0=Dom
   const diasEnMes = new Date(mes.anio, mes.mes + 1, 0).getDate();
@@ -39,15 +47,19 @@ export function AgendaPage() {
     return m;
   }, [agendaQ.data]);
 
+  // Reemplaza el ?m (replace) para no llenar el historial con cada cambio de mes.
+  function setMes(anio: number, mesIdx: number) {
+    const next = new URLSearchParams(params);
+    next.set('m', `${anio}-${pad(mesIdx + 1)}`);
+    setParams(next, { replace: true });
+  }
   function cambiarMes(delta: number) {
-    setMes((prev) => {
-      const d = new Date(prev.anio, prev.mes + delta, 1);
-      return { anio: d.getFullYear(), mes: d.getMonth() };
-    });
+    const d = new Date(mes.anio, mes.mes + delta, 1);
+    setMes(d.getFullYear(), d.getMonth());
   }
   function irHoy() {
     const d = new Date();
-    setMes({ anio: d.getFullYear(), mes: d.getMonth() });
+    setMes(d.getFullYear(), d.getMonth());
   }
 
   const tituloRaw = new Date(mes.anio, mes.mes, 1).toLocaleDateString('es-MX', {
@@ -61,6 +73,11 @@ export function AgendaPage() {
     ...Array.from({ length: primerDiaSemana }, () => null),
     ...Array.from({ length: diasEnMes }, (_, i) => i + 1),
   ];
+
+  // Al abrir una cotización, lleva el mes de origen para poder regresar aquí.
+  function abrir(quoteId: string) {
+    navigate(`/cotizaciones/${quoteId}?volver=agenda&m=${mesParam}`);
+  }
 
   return (
     <div>
@@ -101,11 +118,12 @@ export function AgendaPage() {
                   {eventos.map((e) => (
                     <button
                       key={e.quoteId}
-                      onClick={() => navigate(`/cotizaciones/${e.quoteId}`)}
-                      title={`${e.cliente} · ${e.eventoNombre}`}
-                      className={`block w-full truncate rounded px-1.5 py-0.5 text-left text-[0.7rem] font-medium ${STATUS_STYLE[e.status]}`}
+                      onClick={() => abrir(e.quoteId)}
+                      title={`${e.cliente} · ${e.eventoNombre} · ${STATUS_LABEL[e.status]}`}
+                      className={`block w-full rounded px-1.5 py-1 text-left text-[0.7rem] leading-tight ${STATUS_STYLE[e.status]}`}
                     >
-                      {e.cliente}
+                      <span className="block truncate font-semibold">{e.cliente}</span>
+                      <span className="block truncate opacity-80">{e.eventoNombre}</span>
                     </button>
                   ))}
                 </div>

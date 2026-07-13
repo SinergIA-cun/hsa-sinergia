@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link, useParams, useNavigate } from 'react-router-dom';
+import { Link, useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, ExternalLink, Printer, FileText, MessageCircle, Copy } from 'lucide-react';
 import { api } from '../lib/api.ts';
@@ -32,7 +32,13 @@ function toInitial(q: Quote): Partial<QuoteFormInitial> {
 export function EditQuotePage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const [sp] = useSearchParams();
   const qc = useQueryClient();
+
+  // Origen de la navegación: si vino de la agenda, "atrás" regresa a ese mes.
+  const desdeAgenda = sp.get('volver') === 'agenda';
+  const backTo = desdeAgenda ? `/agenda?m=${sp.get('m') ?? ''}` : '/cotizaciones';
+  const backLabel = desdeAgenda ? 'Agenda' : 'Cotizaciones';
   const { user } = useAuth();
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState('');
@@ -108,10 +114,10 @@ export function EditQuotePage() {
   return (
     <div>
       <Link
-        to="/cotizaciones"
+        to={backTo}
         className="mb-4 inline-flex items-center gap-1.5 text-sm text-charcoal-soft hover:text-ink"
       >
-        <ArrowLeft size={15} /> Cotizaciones
+        <ArrowLeft size={15} /> {backLabel}
       </Link>
 
       <div className="mb-8 flex flex-wrap items-end justify-between gap-4">
