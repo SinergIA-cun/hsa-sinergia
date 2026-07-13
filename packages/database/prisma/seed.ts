@@ -1,5 +1,6 @@
 import { PrismaClient, AddOnKind, UserRole } from '@prisma/client';
 import { hash } from '@node-rs/argon2';
+import { applyCatalog2027 } from './data/catalog-2027.js';
 
 const prisma = new PrismaClient();
 
@@ -72,76 +73,17 @@ async function seedCatalog() {
     });
   }
 
-  // Tipos de evento
-  const boda = await prisma.eventType.create({ data: { nombre: 'Boda', slug: 'boda' } });
-  const empresarial = await prisma.eventType.create({ data: { nombre: 'Empresarial', slug: 'empresarial' } });
-  const bautizo = await prisma.eventType.create({ data: { nombre: 'Bautizo', slug: 'bautizo' } });
-  // Renta = solo espacio (sin paquetes de alimentos). Los tipos XV, Cumpleaños y
-  // Team Building quedan pendientes de sus precios de alimentos 2027.
-  await prisma.eventType.create({ data: { nombre: 'Renta', slug: 'renta' } });
-
-  // Boda: SUPREME / SUPREME plus
-  const supreme = await prisma.foodPackage.create({ data: { eventTypeId: boda.id, nombre: 'SUPREME', ivaIncluido: false } });
-  const supremePlus = await prisma.foodPackage.create({ data: { eventTypeId: boda.id, nombre: 'SUPREME plus', ivaIncluido: false } });
-  await prisma.foodPackagePrice.createMany({
-    data: [
-      { packageId: supreme.id, min: 1, max: 50, pricePerPerson: 1459 },
-      { packageId: supreme.id, min: 51, max: 100, pricePerPerson: 1019 },
-      { packageId: supreme.id, min: 101, max: 150, pricePerPerson: 999 },
-      { packageId: supreme.id, min: 151, max: 200, pricePerPerson: 849 },
-      { packageId: supreme.id, min: 201, max: 300, pricePerPerson: 799 },
-      { packageId: supreme.id, min: 301, max: null, pricePerPerson: 679 },
-      { packageId: supremePlus.id, min: 1, max: 50, pricePerPerson: 1729 },
-      { packageId: supremePlus.id, min: 51, max: 100, pricePerPerson: 1199 },
-      { packageId: supremePlus.id, min: 101, max: 150, pricePerPerson: 1179 },
-      { packageId: supremePlus.id, min: 151, max: 200, pricePerPerson: 969 },
-      { packageId: supremePlus.id, min: 201, max: 300, pricePerPerson: 899 },
-      { packageId: supremePlus.id, min: 301, max: null, pricePerPerson: 789 },
-    ],
-  });
-
-  // Bautizo: 3 Tiempos / Taquiza
-  const bautizo3t = await prisma.foodPackage.create({ data: { eventTypeId: bautizo.id, nombre: '3 Tiempos', ivaIncluido: false } });
-  const taquiza = await prisma.foodPackage.create({ data: { eventTypeId: bautizo.id, nombre: 'Taquiza', ivaIncluido: false } });
-  await prisma.foodPackagePrice.createMany({
-    data: [
-      { packageId: bautizo3t.id, min: 50, max: 99, pricePerPerson: 1230 },
-      { packageId: bautizo3t.id, min: 100, max: 150, pricePerPerson: 945 },
-      { packageId: bautizo3t.id, min: 151, max: 200, pricePerPerson: 930 },
-      { packageId: bautizo3t.id, min: 201, max: 300, pricePerPerson: 920 },
-      { packageId: taquiza.id, min: 50, max: 99, pricePerPerson: 1210 },
-      { packageId: taquiza.id, min: 100, max: 150, pricePerPerson: 935 },
-      { packageId: taquiza.id, min: 151, max: 200, pricePerPerson: 920 },
-      { packageId: taquiza.id, min: 201, max: 300, pricePerPerson: 910 },
-    ],
-  });
-
-  // Empresarial: 3 Tiempos / Buffet Mexicano (subconjunto de los 7 del folleto)
-  const emp3t = await prisma.foodPackage.create({ data: { eventTypeId: empresarial.id, nombre: '3 Tiempos', ivaIncluido: false } });
-  const empBuffet = await prisma.foodPackage.create({ data: { eventTypeId: empresarial.id, nombre: 'Buffet Mexicano', ivaIncluido: false } });
-  await prisma.foodPackagePrice.createMany({
-    data: [
-      { packageId: emp3t.id, min: 1, max: 50, pricePerPerson: 680 },
-      { packageId: emp3t.id, min: 51, max: 100, pricePerPerson: 660 },
-      { packageId: emp3t.id, min: 101, max: 200, pricePerPerson: 630 },
-      { packageId: emp3t.id, min: 201, max: 300, pricePerPerson: 620 },
-      { packageId: emp3t.id, min: 301, max: 400, pricePerPerson: 610 },
-      { packageId: empBuffet.id, min: 1, max: 50, pricePerPerson: 670 },
-      { packageId: empBuffet.id, min: 51, max: 100, pricePerPerson: 630 },
-      { packageId: empBuffet.id, min: 101, max: 200, pricePerPerson: 580 },
-      { packageId: empBuffet.id, min: 201, max: 300, pricePerPerson: 565 },
-      { packageId: empBuffet.id, min: 301, max: 400, pricePerPerson: 555 },
-    ],
-  });
-
   // Add-ons de ejemplo
   await prisma.addOn.createMany({
     data: [
       { nombre: 'Valet parking', kind: AddOnKind.porUnidad, price: 100 },
-      { nombre: 'DJ (por hora)', kind: AddOnKind.porUnidad, price: 2950 },
+      { nombre: 'DJ Hora extra', kind: AddOnKind.porUnidad, price: 2950 },
       { nombre: 'Mesa de dulces (por persona)', kind: AddOnKind.porPersona, price: 110 },
     ],
   });
+
+  // Tipos de evento + paquetes de alimentos 2027 (fuente única compartida con el backfill).
+  await applyCatalog2027(prisma);
 }
 
 async function main() {
