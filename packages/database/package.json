@@ -14,6 +14,7 @@
     "seed": "dotenv -e ../../.env -- prisma db seed",
     "seed:deploy": "tsx prisma/seed.ts",
     "backfill:fase5": "tsx prisma/backfill-fase5.ts",
+    "backfill:fase6": "tsx prisma/backfill-fase6.ts",
     "studio": "dotenv -e ../../.env -- prisma studio",
     "typecheck": "tsc --noEmit"
   },
