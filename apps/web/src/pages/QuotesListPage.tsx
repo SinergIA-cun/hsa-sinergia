@@ -8,7 +8,7 @@ import { Button, Card, ArrowDivider } from '../components/ui.tsx';
 import { STATUS_LABEL, STATUS_STYLE } from '../lib/status.ts';
 import { formatEventDate, formatTimestamp } from '../lib/date.ts';
 import { useAuth } from '../auth/auth.tsx';
-import type { Quote, QuoteStatus } from '../lib/types.ts';
+import type { Quote, QuoteStatus, Catalog } from '../lib/types.ts';
 
 const SECTIONS: { title: string; statuses: QuoteStatus[]; defaultOpen: boolean }[] = [
   { title: 'Cotizaciones', statuses: ['borrador', 'enviada', 'aceptada', 'vencida'], defaultOpen: true },
@@ -143,7 +143,8 @@ function Section({
   );
 }
 
-function matchesQuery(q: Quote, needle: string): boolean {
+function matchesQuery(q: Quote, needle: string, spaceNameById: Map<string, string>): boolean {
+  const espacios = (q.spaceIds ?? []).map((id) => spaceNameById.get(id)).filter(Boolean);
   const hay = [
     q.client?.nombre,
     q.client?.telefono,
@@ -151,6 +152,7 @@ function matchesQuery(q: Quote, needle: string): boolean {
     q.eventType?.nombre,
     q.createdBy?.nombre,
     q.client?.numeroReferencia?.toString(),
+    ...espacios,
   ]
     .filter(Boolean)
     .join(' ')
@@ -166,9 +168,15 @@ export function QuotesListPage() {
     queryKey: ['quotes'],
     queryFn: () => api.get<{ quotes: Quote[] }>('/api/quotes'),
   });
+  // Mapa espacioId → nombre para poder buscar por espacio (p.ej. "Arcos").
+  const { data: catalog } = useQuery({
+    queryKey: ['catalog'],
+    queryFn: () => api.get<Catalog>('/api/catalog'),
+  });
+  const spaceNameById = new Map((catalog?.spaces ?? []).map((s) => [s.id, s.nombre]));
   const allQuotes = data?.quotes ?? [];
   const needle = query.trim().toLowerCase();
-  const quotes = needle ? allQuotes.filter((q) => matchesQuery(q, needle)) : allQuotes;
+  const quotes = needle ? allQuotes.filter((q) => matchesQuery(q, needle, spaceNameById)) : allQuotes;
 
   // CRM por ventas (solo admin)
   const perSeller = new Map<string, number>();
@@ -218,7 +226,7 @@ export function QuotesListPage() {
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Buscar cliente, teléfono, evento, referencia…"
+            placeholder="Buscar cliente, teléfono, evento, espacio, referencia…"
             className="w-full rounded-lg border border-ink/15 bg-white/70 py-2.5 pl-9 pr-3 text-sm text-charcoal placeholder:text-charcoal-soft/60 focus:border-gold focus:outline-none focus:ring-2 focus:ring-gold/30"
           />
         </div>
