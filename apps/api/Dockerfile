@@ -24,5 +24,5 @@ COPY apps/api ./apps/api
 # Generar el cliente Prisma dentro de la imagen
 RUN pnpm --filter @hsa/database run generate
 EXPOSE 3001
-# Aplica migraciones pendientes y arranca la API.
-CMD ["sh", "-c", "pnpm --filter @hsa/database run migrate:deploy && pnpm --filter @hsa/api exec tsx src/index.ts"]
+# Aplica migraciones, siembra el catálogo 2027 (idempotente) y arranca la API.
+CMD ["sh", "-c", "pnpm --filter @hsa/database run migrate:deploy && pnpm --filter @hsa/database run backfill:fase6 && pnpm --filter @hsa/api exec tsx src/index.ts"]
