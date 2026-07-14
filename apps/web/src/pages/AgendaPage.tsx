@@ -7,7 +7,7 @@ import { Card, ArrowDivider, Button } from '../components/ui.tsx';
 import { STATUS_STYLE, STATUS_LABEL } from '../lib/status.ts';
 import type { AgendaEvent } from '../lib/types.ts';
 
-const DIAS = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
+const DIAS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
 const pad = (n: number) => String(n).padStart(2, '0');
 const hoyISO = new Date().toISOString().slice(0, 10);
 
@@ -26,7 +26,7 @@ export function AgendaPage() {
   const mes = parseMesParam(params.get('m'));
   const mesParam = `${mes.anio}-${pad(mes.mes + 1)}`;
 
-  const primerDiaSemana = new Date(mes.anio, mes.mes, 1).getDay(); // 0=Dom
+  const primerDiaSemana = (new Date(mes.anio, mes.mes, 1).getDay() + 6) % 7; // 0=Lun (semana inicia lunes)
   const diasEnMes = new Date(mes.anio, mes.mes + 1, 0).getDate();
   const from = `${mes.anio}-${pad(mes.mes + 1)}-01`;
   const to = `${mes.anio}-${pad(mes.mes + 1)}-${pad(diasEnMes)}`;
