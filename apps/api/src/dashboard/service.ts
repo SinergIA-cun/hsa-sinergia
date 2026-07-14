@@ -1,166 +1,220 @@
 import type { PrismaClient } from '@hsa/database';
 import { ownershipWhere, loadEstadoCuentaBulk, expireStaleQuotes, type Actor } from '../quotes/service.js';
-import type { Milestone } from '../quotes/estadoCuenta.js';
 
-// Estatus con compromiso de pago (evento confirmado, aún genera cobros).
-const CONFIRMADOS = ['apartada', 'formalizada'] as const;
-// Estatus de evento real en el calendario (ya reservado).
+// Estatus de evento real (ya reservado) — para fichas, próxima semana y alertas.
 const EVENTOS = ['apartada', 'formalizada', 'liquidada'] as const;
-// Pipeline comercial: cotizaciones vivas sin reservar todavía.
-const PIPELINE = ['borrador', 'enviada', 'aceptada'] as const;
+// Confirmados que aún deben dinero (para alertas de finiquito).
+const CONFIRMADOS = ['apartada', 'formalizada'] as const;
 
-export interface DashboardKpis {
-  eventosMes: number;
-  porCobrar: number;
-  cobradoMes: number;
-  cotizacionesActivas: number;
-}
+export type Semaforo = 'verde' | 'amarillo' | 'rojo';
 
-export interface VencimientoItem {
+export interface FichaSemana {
   quoteId: string;
   cliente: string;
   evento: string;
-  hito: string;
-  restante: number;
-  venceISO: string;
-  vencido: boolean;
+  espacio: string;
+  fechaEventoISO: string;
+  finiquitoISO: string | null;
+  semaforo: Semaforo;
+  faltantes: string[]; // campos de la hoja operativa que faltan
 }
 
-export interface DesfaseItem {
+export interface EventoProxima {
   quoteId: string;
   cliente: string;
   evento: string;
+  espacio: string;
+  fechaEventoISO: string;
   status: string;
-  saldo: number;
+  dia: 'viernes' | 'sabado' | 'domingo';
 }
 
-export interface EventoItem {
+export interface AlertaFiniquito {
   quoteId: string;
   cliente: string;
   evento: string;
   fechaEventoISO: string;
-  status: string;
-  saldo: number;
+  finiquitoISO: string | null;
+  restante: number;
+  diasVencido: number;
 }
 
 export interface DashboardData {
-  kpis: DashboardKpis;
-  vencimientos: VencimientoItem[];
-  desfases: DesfaseItem[];
-  proximosEventos: EventoItem[];
+  kpis: { eventosMes: number };
+  fichasSemana: FichaSemana[];
+  proximaSemana: EventoProxima[];
+  alertas: AlertaFiniquito[];
 }
 
-/** Rango [inicio, fin) del mes calendario de `ref` en UTC. */
-function mesUTC(ref: Date): { desde: Date; hasta: Date } {
-  const desde = new Date(Date.UTC(ref.getUTCFullYear(), ref.getUTCMonth(), 1));
-  const hasta = new Date(Date.UTC(ref.getUTCFullYear(), ref.getUTCMonth() + 1, 1));
-  return { desde, hasta };
-}
-
-/** Primer día del día de hoy en UTC (medianoche), para comparar contra fechas de evento. */
+/** Medianoche de hoy en UTC (las fechas de evento se guardan en UTC medianoche). */
 function hoyUTC(ref: Date): Date {
   return new Date(Date.UTC(ref.getUTCFullYear(), ref.getUTCMonth(), ref.getUTCDate()));
 }
 
-/** El siguiente hito con fecha de vencimiento que aún no se cubre. */
-function proximoHito(plan: Milestone[] | null): Milestone | null {
-  if (!plan) return null;
-  const pendientes = plan.filter((m) => m.venceISO && !m.completo && m.restante > 0);
-  pendientes.sort((a, b) => (a.venceISO! < b.venceISO! ? -1 : 1));
-  return pendientes[0] ?? null;
+/** Rango [inicio, fin) del mes calendario de `ref` en UTC. */
+function mesUTC(ref: Date): { desde: Date; hasta: Date } {
+  return {
+    desde: new Date(Date.UTC(ref.getUTCFullYear(), ref.getUTCMonth(), 1)),
+    hasta: new Date(Date.UTC(ref.getUTCFullYear(), ref.getUTCMonth() + 1, 1)),
+  };
+}
+
+/** Semana en curso y la siguiente (lunes a lunes, UTC). */
+function semanasUTC(ref: Date): { estaIni: Date; estaFin: Date; proxIni: Date; proxFin: Date } {
+  const hoy = hoyUTC(ref);
+  const desdeLunes = (hoy.getUTCDay() + 6) % 7; // 0=Lun … 6=Dom
+  const estaIni = new Date(hoy);
+  estaIni.setUTCDate(estaIni.getUTCDate() - desdeLunes);
+  const estaFin = new Date(estaIni);
+  estaFin.setUTCDate(estaFin.getUTCDate() + 7);
+  const proxIni = new Date(estaFin);
+  const proxFin = new Date(proxIni);
+  proxFin.setUTCDate(proxFin.getUTCDate() + 7);
+  return { estaIni, estaFin, proxIni, proxFin };
+}
+
+const DIA_FIN_DE_SEMANA: Record<number, EventoProxima['dia']> = { 5: 'viernes', 6: 'sabado', 0: 'domingo' };
+
+function noVacio(v: unknown): boolean {
+  return v != null && String(v).trim() !== '';
+}
+
+// Campos mínimos para considerar la hoja operativa "lista" para operar el evento.
+const REQUERIDOS_HOJA: { label: string; get: (q: QuoteRow) => unknown }[] = [
+  { label: 'Festejado', get: (q) => hoja(q).nombreFestejado },
+  { label: 'Banquetero', get: (q) => hoja(q).banquetero },
+  { label: 'Personal HSA', get: (q) => hoja(q).personalHsa },
+  { label: 'Hora inicio', get: (q) => q.horaInicio },
+  { label: 'Hora término', get: (q) => q.horaTermino },
+];
+
+interface QuoteRow {
+  id: string;
+  status: string;
+  fechaEvento: Date;
+  spaceIds: string[];
+  horaInicio: string | null;
+  horaTermino: string | null;
+  operativa: unknown;
+  client: { nombre: string } | null;
+  eventType: { nombre: string } | null;
+}
+
+function hoja(q: QuoteRow): Record<string, unknown> {
+  return (q.operativa ?? {}) as Record<string, unknown>;
 }
 
 /**
- * Métricas del panel de inicio, respetando la propiedad por rol
- * (admin ve todo; ventas solo sus cotizaciones).
+ * Panel de inicio orientado a la operación semanal por evento.
+ * Respeta la propiedad por rol (admin ve todo; ventas solo lo suyo).
  */
 export async function getDashboard(
   db: PrismaClient,
   actor: Actor,
   now: Date = new Date(),
 ): Promise<DashboardData> {
-  await expireStaleQuotes(db, now); // vencimiento automático antes de agregar KPIs
-  const where = { ...ownershipWhere(actor), deletedAt: null };
-  const quotes = await db.quote.findMany({
-    where,
-    include: { client: true, eventType: true },
-  });
+  await expireStaleQuotes(db, now);
 
-  const quoteIds = quotes.map((q) => q.id);
-
-  const [estados, payments] = await Promise.all([
-    loadEstadoCuentaBulk(db, quotes),
-    db.payment.findMany({
-      where: { quoteId: { in: quoteIds } },
-      select: { monto: true, anuladoAt: true, fecha: true },
+  const [quotes, spaces] = await Promise.all([
+    db.quote.findMany({
+      where: { ...ownershipWhere(actor), deletedAt: null },
+      include: { client: { select: { nombre: true } }, eventType: { select: { nombre: true } } },
     }),
+    db.space.findMany({ select: { id: true, nombre: true } }),
   ]);
+  const estados = await loadEstadoCuentaBulk(db, quotes);
+  const espacioById = new Map(spaces.map((s) => [s.id, s.nombre]));
 
   const { desde, hasta } = mesUTC(now);
+  const { estaIni, estaFin, proxIni, proxFin } = semanasUTC(now);
   const hoy = hoyUTC(now);
 
   let eventosMes = 0;
-  let porCobrar = 0;
-  let cotizacionesActivas = 0;
-  const vencimientos: VencimientoItem[] = [];
-  const desfases: DesfaseItem[] = [];
-  const proximosEventos: EventoItem[] = [];
+  const fichasSemana: FichaSemana[] = [];
+  const proximaSemana: EventoProxima[] = [];
+  const alertas: AlertaFiniquito[] = [];
 
-  for (const q of quotes) {
+  for (const q of quotes as unknown as QuoteRow[]) {
+    if (!(EVENTOS as readonly string[]).includes(q.status)) continue;
+
     const cliente = q.client?.nombre ?? 'Cliente';
     const evento = q.eventType?.nombre ?? 'Evento';
+    const espacio = espacioById.get(q.spaceIds[0] ?? '') ?? '—';
     const ec = estados.get(q.id)!;
 
-    if ((PIPELINE as readonly string[]).includes(q.status)) cotizacionesActivas += 1;
+    if (q.fechaEvento >= desde && q.fechaEvento < hasta) eventosMes += 1;
 
-    if ((EVENTOS as readonly string[]).includes(q.status)) {
-      if (q.fechaEvento >= desde && q.fechaEvento < hasta) eventosMes += 1;
-      if (q.fechaEvento >= hoy) {
-        proximosEventos.push({
+    // Estado del finiquito (fecha, si está pagado, si venció).
+    const fin = ec.plan?.find((m) => m.key === 'finiquito') ?? null;
+    const finiquitoISO = fin?.venceISO ?? null;
+    const finiquitoPagado = fin ? fin.completo : ec.saldo <= 0;
+    const finiquitoVencido = Boolean(
+      fin && !fin.completo && fin.venceISO && new Date(fin.venceISO) < hoy,
+    );
+    const restanteFin = fin ? fin.restante : Math.max(0, ec.saldo);
+
+    // Ficha operativa de la semana en curso.
+    if (q.fechaEvento >= estaIni && q.fechaEvento < estaFin) {
+      const faltantes = REQUERIDOS_HOJA.filter((r) => !noVacio(r.get(q))).map((r) => r.label);
+      const hojaVacia = faltantes.length === REQUERIDOS_HOJA.length;
+      const hojaCompleta = faltantes.length === 0;
+      let semaforo: Semaforo;
+      if (finiquitoVencido || hojaVacia) semaforo = 'rojo';
+      else if (hojaCompleta && finiquitoPagado) semaforo = 'verde';
+      else semaforo = 'amarillo';
+      fichasSemana.push({
+        quoteId: q.id,
+        cliente,
+        evento,
+        espacio,
+        fechaEventoISO: q.fechaEvento.toISOString(),
+        finiquitoISO,
+        semaforo,
+        faltantes,
+      });
+    }
+
+    // Próxima semana: eventos del fin de semana (Vie/Sáb/Dom).
+    if (q.fechaEvento >= proxIni && q.fechaEvento < proxFin) {
+      const dia = DIA_FIN_DE_SEMANA[q.fechaEvento.getUTCDay()];
+      if (dia) {
+        proximaSemana.push({
           quoteId: q.id,
           cliente,
           evento,
+          espacio,
           fechaEventoISO: q.fechaEvento.toISOString(),
           status: q.status,
-          saldo: ec.saldo,
+          dia,
         });
       }
     }
 
-    if ((CONFIRMADOS as readonly string[]).includes(q.status)) {
-      porCobrar += ec.saldo;
-
-      const hito = proximoHito(ec.plan);
-      if (hito && hito.venceISO) {
-        vencimientos.push({
-          quoteId: q.id,
-          cliente,
-          evento,
-          hito: hito.label,
-          restante: hito.restante,
-          venceISO: hito.venceISO,
-          vencido: new Date(hito.venceISO) < hoy,
-        });
-      }
-
-      if (ec.desfase) {
-        desfases.push({ quoteId: q.id, cliente, evento, status: q.status, saldo: ec.saldo });
-      }
+    // Alertas: entró en sus 30 días (finiquito) y no finiquitó.
+    if ((CONFIRMADOS as readonly string[]).includes(q.status) && finiquitoVencido) {
+      const dias = fin?.venceISO
+        ? Math.round((hoy.getTime() - new Date(fin.venceISO).getTime()) / 86_400_000)
+        : 0;
+      alertas.push({
+        quoteId: q.id,
+        cliente,
+        evento,
+        fechaEventoISO: q.fechaEvento.toISOString(),
+        finiquitoISO,
+        restante: restanteFin,
+        diasVencido: dias,
+      });
     }
   }
 
-  // Cobrado este mes: pagos vigentes con fecha dentro del mes en curso.
-  const cobradoMes = payments
-    .filter((p) => p.anuladoAt == null && p.fecha >= desde && p.fecha < hasta)
-    .reduce((s, p) => s + p.monto, 0);
-
-  vencimientos.sort((a, b) => (a.venceISO < b.venceISO ? -1 : 1));
-  proximosEventos.sort((a, b) => (a.fechaEventoISO < b.fechaEventoISO ? -1 : 1));
+  fichasSemana.sort((a, b) => (a.fechaEventoISO < b.fechaEventoISO ? -1 : 1));
+  proximaSemana.sort((a, b) => (a.fechaEventoISO < b.fechaEventoISO ? -1 : 1));
+  alertas.sort((a, b) => b.diasVencido - a.diasVencido);
 
   return {
-    kpis: { eventosMes, porCobrar, cobradoMes, cotizacionesActivas },
-    vencimientos: vencimientos.slice(0, 8),
-    desfases,
-    proximosEventos: proximosEventos.slice(0, 6),
+    kpis: { eventosMes },
+    fichasSemana: fichasSemana.slice(0, 9),
+    proximaSemana: proximaSemana.slice(0, 9),
+    alertas,
   };
 }

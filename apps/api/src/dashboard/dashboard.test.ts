@@ -40,14 +40,15 @@ afterAll(async () => {
 });
 
 describe('getDashboard', () => {
-  it('cuenta pipeline y eventos del mes solo del actor, y ordena próximos eventos', async () => {
+  it('solo eventos (no pipeline); la apartada de esta semana aparece como ficha', async () => {
     // Estado inicial: sin datos propios.
     const vacio = await getDashboard(prisma, actor);
-    expect(vacio.kpis.cotizacionesActivas).toBe(0);
     expect(vacio.kpis.eventosMes).toBe(0);
-    expect(vacio.proximosEventos).toHaveLength(0);
+    expect(vacio.fichasSemana).toHaveLength(0);
+    expect(vacio.proximaSemana).toHaveLength(0);
+    expect(vacio.alertas).toHaveLength(0);
 
-    // Una cotización en borrador → cuenta como pipeline, no como evento.
+    // Borrador HOY → NO es evento; no aparece en el panel operativo.
     const borrador = await createQuote(
       prisma,
       { fecha: HOY, invitados: 200, spaceIds: [arcosId], eventTypeId, client: { nombre: 'Dash Borrador' } },
@@ -56,11 +57,11 @@ describe('getDashboard', () => {
     created.push(borrador.id);
     createdClients.push(borrador.clientId);
 
-    const conPipeline = await getDashboard(prisma, actor);
-    expect(conPipeline.kpis.cotizacionesActivas).toBe(1);
-    expect(conPipeline.kpis.eventosMes).toBe(0);
+    const conBorrador = await getDashboard(prisma, actor);
+    expect(conBorrador.kpis.eventosMes).toBe(0);
+    expect(conBorrador.fichasSemana).toHaveLength(0);
 
-    // Una segunda cotización, apartada → cuenta como evento del mes y aparece en próximos.
+    // Apartada HOY → evento del mes y ficha de la semana; sin hoja operativa ⇒ semáforo rojo.
     const apartada = await createQuote(
       prisma,
       { fecha: HOY, invitados: 250, spaceIds: [arcosId], eventTypeId, client: { nombre: 'Dash Apartada' } },
@@ -71,10 +72,9 @@ describe('getDashboard', () => {
     await updateStatus(prisma, apartada.id, 'apartada', actor);
 
     const final = await getDashboard(prisma, actor);
-    expect(final.kpis.cotizacionesActivas).toBe(1); // el borrador sigue; la apartada ya no es pipeline
     expect(final.kpis.eventosMes).toBe(1);
-    expect(final.proximosEventos).toHaveLength(1);
-    expect(final.proximosEventos[0]!.cliente).toBe('Dash Apartada');
-    expect(final.proximosEventos[0]!.status).toBe('apartada');
+    expect(final.fichasSemana).toHaveLength(1);
+    expect(final.fichasSemana[0]!.cliente).toBe('Dash Apartada');
+    expect(final.fichasSemana[0]!.semaforo).toBe('rojo');
   });
 });

@@ -220,35 +220,36 @@ export interface AgendaEvent {
   status: QuoteStatus;
 }
 
+export type Semaforo = 'verde' | 'amarillo' | 'rojo';
+
 export interface DashboardData {
-  kpis: {
-    eventosMes: number;
-    porCobrar: number;
-    cobradoMes: number;
-    cotizacionesActivas: number;
-  };
-  vencimientos: {
+  kpis: { eventosMes: number };
+  fichasSemana: {
     quoteId: string;
     cliente: string;
     evento: string;
-    hito: string;
-    restante: number;
-    venceISO: string;
-    vencido: boolean;
+    espacio: string;
+    fechaEventoISO: string;
+    finiquitoISO: string | null;
+    semaforo: Semaforo;
+    faltantes: string[];
   }[];
-  desfases: {
+  proximaSemana: {
     quoteId: string;
     cliente: string;
     evento: string;
+    espacio: string;
+    fechaEventoISO: string;
     status: QuoteStatus;
-    saldo: number;
+    dia: 'viernes' | 'sabado' | 'domingo';
   }[];
-  proximosEventos: {
+  alertas: {
     quoteId: string;
     cliente: string;
     evento: string;
     fechaEventoISO: string;
-    status: QuoteStatus;
-    saldo: number;
+    finiquitoISO: string | null;
+    restante: number;
+    diasVencido: number;
   }[];
 }
