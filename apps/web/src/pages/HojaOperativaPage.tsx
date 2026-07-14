@@ -67,7 +67,7 @@ export function HojaOperativaPage() {
             <tr><th>No. invitados</th><td>{quote.invitados}</td></tr>
             <tr><th>Evento</th><td>{evento}</td></tr>
             <tr><th>Cliente</th><td>{cliente}</td></tr>
-            <tr><th>Lugar</th><td>{espacio} · Capilla: {si(hoja.capilla)}</td></tr>
+            <tr><th>Lugar</th><td>{espacio} · Capilla: {si(quote.usaCapilla ?? hoja.capilla)}</td></tr>
           </tbody>
         </table>
 

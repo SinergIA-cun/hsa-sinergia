@@ -25,6 +25,7 @@ function toInitial(q: Quote): Partial<QuoteFormInitial> {
     spaceIds: q.spaceIds,
     foodPackageId: q.foodPackageId ?? '',
     horasExtra: q.horasExtra,
+    usaCapilla: q.usaCapilla ?? false,
     addOns: Object.fromEntries((q.addOns ?? []).map((a) => [a.addOnId, a.cantidad])),
   };
 }

@@ -19,6 +19,7 @@ describe('loadCatalog', () => {
       invitados: 250,
       spaceIds: [arcos!.id],
       horasExtra: 0,
+      usaCapilla: false,
       addOns: [],
     });
     expect(r.rentaTotal).toBe(108500);
@@ -37,6 +38,7 @@ describe('loadCatalog', () => {
       invitados: 250,
       spaceIds: [arcos!.id],
       horasExtra: 0,
+      usaCapilla: false,
       foodPackageId: pkg!.id,
       addOns: [],
     });

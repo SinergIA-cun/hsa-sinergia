@@ -10,6 +10,7 @@ export const quoteSelectionSchema = z.object({
       message: 'spaceIds no debe tener duplicados',
     }),
   horasExtra: z.number().int().min(0).default(0),
+  usaCapilla: z.boolean().default(false),
   foodPackageId: z.string().optional(),
   addOns: z
     .array(

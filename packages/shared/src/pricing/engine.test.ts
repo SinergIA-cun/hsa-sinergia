@@ -1,19 +1,19 @@
 import { describe, it, expect } from 'vitest';
 import { computeQuote } from './engine.js';
 import type { Catalog } from '../types.js';
+import type { QuoteSelection } from '../schemas.js';
 
 const catalog: Catalog = {
   ivaRate: 0.16,
   extraHourRate: 0.05,
   foodDiscountRate: 0.05,
+  capillaSabado: 5000,
   rentalPrices: [
     // Los Arcos (id 'arcos')
     { spaceId: 'arcos', min: 1, max: 50, prices: { viernes: 34500, viernesEspecial: 17250, sabado: 42000, domAJue: 30000 } },
     { spaceId: 'arcos', min: 201, max: 300, prices: { viernes: 100000, viernesEspecial: 50000, sabado: 108500, domAJue: 90500 } },
     // La Cúpula (id 'cupula')
     { spaceId: 'cupula', min: 50, max: 300, prices: { viernes: 157000, viernesEspecial: 78500, sabado: 174000, domAJue: 139000 } },
-    // Capilla (id 'capilla')
-    { spaceId: 'capilla', min: 1, max: null, prices: { viernes: 0, viernesEspecial: 0, sabado: 5000, domAJue: 0 } },
   ],
   foodPackages: [
     {
@@ -35,24 +35,28 @@ const catalog: Catalog = {
   ],
 };
 
+/** Selección base (sábado, Los Arcos 250 pax); se sobreescribe lo necesario. */
+function mk(overrides: Partial<QuoteSelection> = {}): QuoteSelection {
+  return {
+    fecha: '2027-05-08', // sábado
+    invitados: 250,
+    spaceIds: ['arcos'],
+    horasExtra: 0,
+    usaCapilla: false,
+    addOns: [],
+    ...overrides,
+  };
+}
+
 describe('computeQuote', () => {
   it('renta simple sábado (Los Arcos, 250 pax) = 108,500 con IVA', () => {
-    const r = computeQuote(catalog, {
-      fecha: '2027-05-08', invitados: 250, spaceIds: ['arcos'],
-      horasExtra: 0, addOns: [],
-    });
+    const r = computeQuote(catalog, mk());
     expect(r.rentaTotal).toBe(108500);
     expect(r.total).toBe(108500); // renta ya trae IVA, sin más conceptos
   });
 
   it('renta + alimentos aplica 5% de descuento en renta y agrega IVA a alimentos', () => {
-    const r = computeQuote(catalog, {
-      fecha: '2027-05-08', invitados: 250, spaceIds: ['arcos'],
-      horasExtra: 0, foodPackageId: 'boda-supreme', addOns: [],
-    });
-    // Renta 108500; descuento 5% = 5425 => renta neta 103075 (con IVA)
-    // Alimentos 799*250 = 199750 sin IVA; IVA 16% = 31960 => 231710
-    // total = 103075 + 231710 = 334785
+    const r = computeQuote(catalog, mk({ foodPackageId: 'boda-supreme' }));
     const alimentosBase = 799 * 250;
     const descuento = 108500 * 0.05;
     const rentaNeta = 108500 - descuento;
@@ -61,65 +65,42 @@ describe('computeQuote', () => {
   });
 
   it('hora extra = 5% de la renta por hora', () => {
-    const r = computeQuote(catalog, {
-      fecha: '2027-05-08', invitados: 250, spaceIds: ['arcos'],
-      horasExtra: 2, addOns: [],
-    });
+    const r = computeQuote(catalog, mk({ horasExtra: 2 }));
     expect(r.total).toBeCloseTo(108500 + 2 * 0.05 * 108500, 2);
   });
 
   it('add-ons: valet porUnidad e IVA; DJ fijo con IVA', () => {
-    const r = computeQuote(catalog, {
-      fecha: '2027-05-08', invitados: 250, spaceIds: ['arcos'],
-      horasExtra: 0, addOns: [{ addOnId: 'valet', cantidad: 50 }, { addOnId: 'dj', cantidad: 1 }],
-    });
+    const r = computeQuote(catalog, mk({ addOns: [{ addOnId: 'valet', cantidad: 50 }, { addOnId: 'dj', cantidad: 1 }] }));
     const addonBase = 100 * 50 + 2950;
     expect(r.total).toBeCloseTo(108500 + addonBase * 1.16, 2);
   });
 
-  it('capilla en sábado cuesta 5,000; suma de espacios', () => {
-    const r = computeQuote(catalog, {
-      fecha: '2027-05-08', invitados: 250, spaceIds: ['arcos', 'capilla'],
-      horasExtra: 0, addOns: [],
-    });
-    expect(r.rentaTotal).toBe(108500 + 5000);
+  it('usaCapilla en sábado agrega $5,000; entre semana es cortesía ($0)', () => {
+    const sab = computeQuote(catalog, mk({ usaCapilla: true }));
+    expect(sab.rentaTotal).toBe(108500 + 5000);
+
+    // Jueves: capilla no cuesta (cortesía) — comparado contra la misma sin capilla.
+    const jueSin = computeQuote(catalog, mk({ fecha: '2027-05-06' }));
+    const jueCon = computeQuote(catalog, mk({ fecha: '2027-05-06', usaCapilla: true }));
+    expect(jueCon.rentaTotal).toBe(jueSin.rentaTotal);
   });
 
   it('lanza error si el espacio no tiene rango para los invitados', () => {
-    expect(() =>
-      computeQuote(catalog, { fecha: '2027-05-08', invitados: 700, spaceIds: ['arcos'], horasExtra: 0, addOns: [] }),
-    ).toThrow(/rango/i);
+    expect(() => computeQuote(catalog, mk({ invitados: 700 }))).toThrow(/rango/i);
   });
 
   it('paquete con ivaIncluido=true NO recibe 16% extra', () => {
-    const r = computeQuote(catalog, {
-      fecha: '2027-05-08', invitados: 250, spaceIds: ['arcos'],
-      horasExtra: 0, foodPackageId: 'boda-conIva', addOns: [],
-    });
-    // Renta 108500; descuento 5% = 5425 => renta neta 103075 (con IVA)
-    // Alimentos 800*250 = 200000 YA con IVA (no se agrega 16%)
-    // total = 103075 + 200000 = 303075
+    const r = computeQuote(catalog, mk({ foodPackageId: 'boda-conIva' }));
     expect(r.total).toBeCloseTo(103075 + 200000, 2);
   });
 
   it('horas extra + alimentos: ambos 5% sobre la renta de espacios base (no compuestos)', () => {
-    const r = computeQuote(catalog, {
-      fecha: '2027-05-08', invitados: 250, spaceIds: ['arcos'],
-      horasExtra: 2, foodPackageId: 'boda-supreme', addOns: [],
-    });
-    // rentaEspacios 108500; horasExtra = 108500*0.05*2 = 10850; descuento = 108500*0.05 = 5425
-    // rentaConIva = 108500 + 10850 - 5425 = 113925
-    // alimentos 799*250 = 199750 sin IVA; +16% = 231710
-    // total = 113925 + 231710 = 345635
+    const r = computeQuote(catalog, mk({ horasExtra: 2, foodPackageId: 'boda-supreme' }));
     expect(r.total).toBeCloseTo(113925 + 199750 * 1.16, 2);
   });
 
   it('subtotal + iva === total', () => {
-    const r = computeQuote(catalog, {
-      fecha: '2027-05-08', invitados: 250, spaceIds: ['arcos'],
-      horasExtra: 1, foodPackageId: 'boda-supreme',
-      addOns: [{ addOnId: 'valet', cantidad: 50 }],
-    });
+    const r = computeQuote(catalog, mk({ horasExtra: 1, foodPackageId: 'boda-supreme', addOns: [{ addOnId: 'valet', cantidad: 50 }] }));
     expect(r.subtotal + r.iva).toBeCloseTo(r.total, 2);
   });
 
@@ -127,12 +108,9 @@ describe('computeQuote', () => {
     const roto: Catalog = {
       ...catalog,
       rentalPrices: [
-        // 'sabado' ausente => debe lanzar en fecha sábado
         { spaceId: 'roto', min: 1, max: null, prices: { viernes: 0, viernesEspecial: 0, domAJue: 0 } as unknown as Record<'viernes' | 'viernesEspecial' | 'sabado' | 'domAJue', number> },
       ],
     };
-    expect(() =>
-      computeQuote(roto, { fecha: '2027-05-08', invitados: 100, spaceIds: ['roto'], horasExtra: 0, addOns: [] }),
-    ).toThrow(/Falta precio/i);
+    expect(() => computeQuote(roto, mk({ spaceIds: ['roto'], invitados: 100 }))).toThrow(/Falta precio/i);
   });
 });

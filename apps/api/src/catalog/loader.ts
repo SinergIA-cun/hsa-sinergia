@@ -27,6 +27,7 @@ export async function loadCatalog(
     ivaRate: config.ivaRate,
     extraHourRate: config.extraHourRate,
     foodDiscountRate: config.foodDiscountRate,
+    capillaSabado: config.capillaSabado,
     rentalPrices: rentals.map((r) => ({
       spaceId: r.spaceId,
       min: r.min,

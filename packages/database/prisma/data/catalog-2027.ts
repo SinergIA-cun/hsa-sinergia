@@ -119,4 +119,12 @@ export async function applyCatalog2027(prisma: PrismaClient): Promise<void> {
     where: { nombre: 'DJ (por hora)' },
     data: { nombre: 'DJ Hora extra' },
   });
+
+  // La Capilla deja de ser un espacio cotizable: ahora es una cortesía por-evento
+  // (toggle "usaCapilla", $5,000 en sábado). Se desactiva para que no aparezca en
+  // el selector de espacios, pero se conserva la fila por historial.
+  await prisma.space.updateMany({
+    where: { nombre: 'La Capilla' },
+    data: { activo: false },
+  });
 }

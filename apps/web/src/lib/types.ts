@@ -106,6 +106,7 @@ export interface Quote {
   invitados: number;
   spaceIds: string[];
   horasExtra: number;
+  usaCapilla?: boolean;
   horasEvento?: number | null;
   horarioCivil?: string | null;
   horaInicio?: string | null;
@@ -207,6 +208,7 @@ export interface Availability {
   fecha: string;
   spaces: SpaceAvailability[];
   blocked: boolean;
+  capillaOcupada: boolean;
 }
 
 export interface AgendaEvent {

@@ -32,9 +32,9 @@ export async function getAvailability(
   fechaISO: string,
   spaceIds: string[],
   excludeQuoteId?: string,
-): Promise<{ fecha: string; spaces: SpaceAvailability[]; blocked: boolean }> {
+): Promise<{ fecha: string; spaces: SpaceAvailability[]; blocked: boolean; capillaOcupada: boolean }> {
   const range = dayRange(fechaISO);
-  const [spaces, quotes] = await Promise.all([
+  const [spaces, quotes, capillaCount] = await Promise.all([
     db.space.findMany({ where: { id: { in: spaceIds } } }),
     db.quote.findMany({
       where: {
@@ -45,6 +45,16 @@ export async function getAvailability(
         ...(excludeQuoteId ? { id: { not: excludeQuoteId } } : {}),
       },
       include: { client: { select: { nombre: true } } },
+    }),
+    // La capilla es un recurso único por día: se bloquea si otro evento la usa.
+    db.quote.count({
+      where: {
+        fechaEvento: range,
+        usaCapilla: true,
+        status: { not: 'vencida' },
+        deletedAt: null,
+        ...(excludeQuoteId ? { id: { not: excludeQuoteId } } : {}),
+      },
     }),
   ]);
 
@@ -72,7 +82,12 @@ export async function getAvailability(
     };
   });
 
-  return { fecha: fechaISO, spaces: result, blocked: result.some((s) => s.level === 'bloqueada') };
+  return {
+    fecha: fechaISO,
+    spaces: result,
+    blocked: result.some((s) => s.level === 'bloqueada'),
+    capillaOcupada: capillaCount > 0,
+  };
 }
 
 export interface AgendaEvent {

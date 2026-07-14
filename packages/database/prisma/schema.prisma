@@ -132,6 +132,7 @@ model Quote {
   status        QuoteStatus @default(borrador)
   publicToken   String      @unique
   vigenciaHasta DateTime?
+  usaCapilla    Boolean     @default(false) // cortesía; $5,000 en sábado. Recurso único por día.
   createdBy     User?       @relation("QuoteCreatedBy", fields: [createdById], references: [id])
   createdById   String?
   createdAt     DateTime    @default(now())
@@ -185,6 +186,7 @@ model PricingConfig {
   extraHourRate    Float  @default(0.05)
   foodDiscountRate Float  @default(0.05)
   valetRatio       Float  @default(2.5)
+  capillaSabado    Int    @default(5000) // renta de la capilla en sábado (cortesía el resto)
 }
 
 model SpacePaymentRule {

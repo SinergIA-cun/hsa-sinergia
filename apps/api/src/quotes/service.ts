@@ -78,6 +78,7 @@ function toSelection(input: {
   invitados: number;
   spaceIds: string[];
   horasExtra: number;
+  usaCapilla?: boolean;
   foodPackageId?: string;
   addOns: { addOnId: string; cantidad: number }[];
 }): QuoteSelection {
@@ -86,6 +87,7 @@ function toSelection(input: {
     invitados: input.invitados,
     spaceIds: input.spaceIds,
     horasExtra: input.horasExtra,
+    usaCapilla: input.usaCapilla ?? false,
     foodPackageId: input.foodPackageId,
     addOns: input.addOns,
   };
@@ -202,6 +204,7 @@ export async function createQuote(db: PrismaClient, rawInput: unknown, actor: Ac
       invitados: input.invitados,
       spaceIds: input.spaceIds,
       horasExtra: input.horasExtra,
+      usaCapilla: input.usaCapilla ?? false,
       foodPackageId: input.foodPackageId ?? null,
       addOns: input.addOns as unknown as Prisma.InputJsonValue,
       breakdown: enriched as unknown as Prisma.InputJsonValue,
@@ -294,6 +297,7 @@ export async function updateQuote(db: PrismaClient, id: string, rawInput: unknow
       invitados: input.invitados,
       spaceIds: input.spaceIds,
       horasExtra: input.horasExtra,
+      usaCapilla: input.usaCapilla ?? false,
       foodPackageId: input.foodPackageId ?? null,
       addOns: input.addOns as unknown as Prisma.InputJsonValue,
       breakdown: enriched as unknown as Prisma.InputJsonValue,

@@ -20,6 +20,7 @@ export interface QuoteFormInitial {
   spaceIds: string[];
   foodPackageId: string;
   horasExtra: number;
+  usaCapilla: boolean;
   addOns: Record<string, number>;
 }
 
@@ -28,6 +29,7 @@ export interface QuotePayload {
   invitados: number;
   spaceIds: string[];
   horasExtra: number;
+  usaCapilla: boolean;
   foodPackageId?: string;
   addOns: { addOnId: string; cantidad: number }[];
   eventTypeId: string;
@@ -85,6 +87,7 @@ export function QuoteForm({
   const [spaceIds, setSpaceIds] = useState<string[]>(initial?.spaceIds ?? []);
   const [foodPackageId, setFoodPackageId] = useState(initial?.foodPackageId ?? '');
   const [horasExtra, setHorasExtra] = useState(initial?.horasExtra ?? 0);
+  const [usaCapilla, setUsaCapilla] = useState(initial?.usaCapilla ?? false);
   const [addOns, setAddOns] = useState<Record<string, number>>(initial?.addOns ?? {});
   const [busy, setBusy] = useState(false);
 
@@ -109,10 +112,11 @@ export function QuoteForm({
       invitados,
       spaceIds,
       horasExtra,
+      usaCapilla,
       foodPackageId: foodPackageId || undefined,
       addOns: Object.entries(addOns).map(([addOnId, cantidad]) => ({ addOnId, cantidad })),
     }),
-    [fecha, invitados, spaceIds, horasExtra, foodPackageId, addOns],
+    [fecha, invitados, spaceIds, horasExtra, usaCapilla, foodPackageId, addOns],
   );
 
   const { breakdown, calcError } = useMemo(() => {
@@ -158,6 +162,7 @@ export function QuoteForm({
   });
   const avail = availability?.spaces[0];
   const blocked = availability?.blocked ?? false;
+  const capillaOcupada = availability?.capillaOcupada ?? false;
 
   const canSave = Boolean(
     nombre && eventTypeId && fecha && spaceIds.length === 1 && breakdown && !calcError && !blocked,
@@ -189,6 +194,7 @@ export function QuoteForm({
         invitados,
         spaceIds,
         horasExtra,
+        usaCapilla,
         foodPackageId: foodPackageId || undefined,
         addOns: Object.entries(addOns).map(([addOnId, cantidad]) => ({ addOnId, cantidad })),
         eventTypeId,
@@ -309,6 +315,32 @@ export function QuoteForm({
             })}
           </div>
           <AvailabilityBanner avail={avail} fecha={fecha} />
+
+          {/* Capilla: cortesía (entre semana) / $5,000 sábado. Recurso único por día. */}
+          <label
+            className={`mt-1 flex cursor-pointer items-start gap-3 rounded-lg border px-4 py-3 text-sm transition-colors ${
+              usaCapilla ? 'border-gold bg-gold/10' : 'border-ink/12 bg-white/50 hover:border-ink/30'
+            } ${capillaOcupada && !usaCapilla ? 'cursor-not-allowed opacity-60' : ''}`}
+          >
+            <input
+              type="checkbox"
+              checked={usaCapilla}
+              disabled={capillaOcupada && !usaCapilla}
+              onChange={(e) => setUsaCapilla(e.target.checked)}
+              className="mt-0.5 h-4 w-4 accent-[var(--color-gold)]"
+            />
+            <span className="flex-1">
+              <span className="font-medium text-ink">Usar la Capilla</span>
+              <span className="block text-xs text-charcoal-soft">
+                Cortesía entre semana · $5,000 en sábado. Aparece en la hoja operativa.
+              </span>
+              {capillaOcupada && (
+                <span className="mt-1 block text-xs font-medium text-wine">
+                  Ya está tomada por otro evento en esta fecha.
+                </span>
+              )}
+            </span>
+          </label>
         </Card>
 
         <Card className="space-y-3 p-6">

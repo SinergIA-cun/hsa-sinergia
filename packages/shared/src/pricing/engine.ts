@@ -57,6 +57,19 @@ export function computeQuote(
     });
   }
 
+  // 2b. Capilla (opcional): cortesía entre semana, $5,000 en sábado. Va al total
+  //     (rentaConIva) pero NO a la base de horas extra / descuento por alimentos.
+  if (sel.usaCapilla) {
+    const monto = dt === 'sabado' ? catalog.capillaSabado : 0;
+    rentaConIva += monto;
+    lines.push({
+      concepto: 'Capilla',
+      detalle: dt === 'sabado' ? undefined : 'cortesía',
+      monto: round2(monto),
+      ivaIncluido: true,
+    });
+  }
+
   // 3. Alimentos + descuento 5% (sobre la renta de espacios base, no sobre horas extra).
   let alimentosBaseSinIva = 0; // porción que aún NO trae IVA
   let alimentosConIva = 0; // porción que YA trae IVA (paquete ivaIncluido=true)
