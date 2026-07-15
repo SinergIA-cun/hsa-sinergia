@@ -1,5 +1,17 @@
 import type { PrismaClient } from '@hsa/database';
-import type { Catalog } from '@hsa/shared';
+import type { Catalog, RentalPriceRow } from '@hsa/shared';
+
+/** Mapea filas de RentalPrice de Prisma al shape del motor. */
+function toRentalRows(
+  rows: { spaceId: string; min: number; max: number | null; viernes: number; viernesEspecial: number; sabado: number; domAJue: number }[],
+): RentalPriceRow[] {
+  return rows.map((r) => ({
+    spaceId: r.spaceId,
+    min: r.min,
+    max: r.max,
+    prices: { viernes: r.viernes, viernesEspecial: r.viernesEspecial, sabado: r.sabado, domAJue: r.domAJue },
+  }));
+}
 
 /**
  * Carga el catálogo desde Postgres y lo mapea al tipo `Catalog` que consume el
@@ -13,20 +25,29 @@ export async function loadCatalog(
   if (!config) throw new Error('Falta PricingConfig (id=default)');
 
   const priceList = opts.anio
-    ? await db.priceList.findFirst({ where: { anio: opts.anio } })
-    : await db.priceList.findFirst({ where: { activa: true }, orderBy: { anio: 'desc' } });
+    ? await db.priceList.findFirst({ where: { anio: opts.anio, tipo: 'dia' } })
+    : await db.priceList.findFirst({ where: { activa: true, tipo: 'dia' }, orderBy: { anio: 'desc' } });
   if (!priceList) throw new Error('No hay lista de precios activa');
 
-  const [rentals, packages, addOns, eventTypes] = await Promise.all([
+  // Lista PLANA (Team Building): opcional, puede no existir aún.
+  const flatList = await db.priceList.findFirst({
+    where: { tipo: 'plano', ...(opts.anio ? { anio: opts.anio } : {}) },
+    orderBy: { anio: 'desc' },
+  });
+
+  const [rentals, flatRentals, packages, addOns, eventTypes] = await Promise.all([
     db.rentalPrice.findMany({ where: { priceListId: priceList.id } }),
+    flatList ? db.rentalPrice.findMany({ where: { priceListId: flatList.id } }) : Promise.resolve([]),
     db.foodPackage.findMany({ include: { brackets: true } }),
     db.addOn.findMany({ where: { activo: true } }),
-    db.eventType.findMany({ select: { id: true, djHoraExtra: true } }),
+    db.eventType.findMany({ select: { id: true, djHoraExtra: true, rentaPlana: true } }),
   ]);
 
   const djHoraExtraByEventType: Record<string, number> = {};
+  const flatRentalEventTypeIds: string[] = [];
   for (const et of eventTypes) {
     if (et.djHoraExtra != null) djHoraExtraByEventType[et.id] = et.djHoraExtra;
+    if (et.rentaPlana) flatRentalEventTypeIds.push(et.id);
   }
 
   return {
@@ -35,17 +56,9 @@ export async function loadCatalog(
     foodDiscountRate: config.foodDiscountRate,
     capillaSabado: config.capillaSabado,
     djHoraExtraByEventType,
-    rentalPrices: rentals.map((r) => ({
-      spaceId: r.spaceId,
-      min: r.min,
-      max: r.max,
-      prices: {
-        viernes: r.viernes,
-        viernesEspecial: r.viernesEspecial,
-        sabado: r.sabado,
-        domAJue: r.domAJue,
-      },
-    })),
+    rentalPrices: toRentalRows(rentals),
+    rentalPricesFlat: toRentalRows(flatRentals),
+    flatRentalEventTypeIds,
     foodPackages: packages.map((p) => ({
       id: p.id,
       eventTypeId: p.eventTypeId,

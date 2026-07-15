@@ -1,6 +1,7 @@
 import { PrismaClient, AddOnKind, UserRole } from '@prisma/client';
 import { hash } from '@node-rs/argon2';
 import { applyCatalog2027 } from './data/catalog-2027.js';
+import { applyTeamBuilding2027 } from './data/team-building-2027.js';
 
 const prisma = new PrismaClient();
 
@@ -84,6 +85,9 @@ async function seedCatalog() {
 
   // Tipos de evento + paquetes de alimentos 2027 (fuente única compartida con el backfill).
   await applyCatalog2027(prisma);
+
+  // Team Building: renta plana + espacios Los Balcones / Los Pajaritos.
+  await applyTeamBuilding2027(prisma);
 }
 
 async function main() {

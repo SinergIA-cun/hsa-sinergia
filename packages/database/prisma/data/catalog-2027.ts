@@ -22,6 +22,7 @@ export interface EventTypeDef {
   slug: string;
   packages: PackageDef[]; // vacío = solo renta del espacio
   djHoraExtra?: number; // precio del DJ por hora extra; ausente = no aplica
+  rentaPlana?: boolean; // usa la renta plana (Team Building) en vez de la de por-día
 }
 
 /** Empareja rangos [min,max] con un arreglo de precios (mismo orden). */
@@ -82,6 +83,8 @@ export const EVENT_TYPES_2027: EventTypeDef[] = [
   // Solo renta del espacio (sin alimentos):
   { nombre: 'Renta', slug: 'renta', packages: [] },
   { nombre: 'Graduación', slug: 'graduacion', packages: [] },
+  // Team Building: solo renta, con la tabla PLANA (RENTA 2027), sin variar por día.
+  { nombre: 'Team Building', slug: 'team-building', packages: [], rentaPlana: true },
 ];
 
 /**
@@ -93,8 +96,8 @@ export async function applyCatalog2027(prisma: PrismaClient): Promise<void> {
   for (const et of EVENT_TYPES_2027) {
     const type = await prisma.eventType.upsert({
       where: { slug: et.slug },
-      update: { nombre: et.nombre, djHoraExtra: et.djHoraExtra ?? null },
-      create: { nombre: et.nombre, slug: et.slug, djHoraExtra: et.djHoraExtra ?? null },
+      update: { nombre: et.nombre, djHoraExtra: et.djHoraExtra ?? null, rentaPlana: et.rentaPlana ?? false },
+      create: { nombre: et.nombre, slug: et.slug, djHoraExtra: et.djHoraExtra ?? null, rentaPlana: et.rentaPlana ?? false },
     });
 
     for (const pkg of et.packages) {

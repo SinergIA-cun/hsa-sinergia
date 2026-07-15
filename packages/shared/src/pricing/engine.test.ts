@@ -18,6 +18,11 @@ const catalog: Catalog = {
     // La Cúpula (id 'cupula')
     { spaceId: 'cupula', min: 50, max: 300, prices: { viernes: 157000, viernesEspecial: 78500, sabado: 174000, domAJue: 139000 } },
   ],
+  // Renta plana (Team Building): mismo precio todos los días. Arcos 201-300 = 50,000.
+  rentalPricesFlat: [
+    { spaceId: 'arcos', min: 201, max: 300, prices: { viernes: 50000, viernesEspecial: 50000, sabado: 50000, domAJue: 50000 } },
+  ],
+  flatRentalEventTypeIds: ['team-building'],
   foodPackages: [
     {
       id: 'boda-supreme', eventTypeId: 'boda', name: 'SUPREME', ivaIncluded: false,
@@ -147,6 +152,18 @@ describe('computeQuote', () => {
     const r = computeQuote(catalog, mk({ eventTypeId: 'boda', usaDjHoraExtra: true, horasExtra: 0 }));
     expect(r.lines.find((l) => l.concepto === 'DJ Hora extra')).toBeUndefined();
     expect(r.total).toBe(108500);
+  });
+
+  it('Team Building usa renta plana: mismo precio en sábado que entre semana', () => {
+    const sab = computeQuote(catalog, mk({ eventTypeId: 'team-building', fecha: '2027-05-08' }));
+    const jue = computeQuote(catalog, mk({ eventTypeId: 'team-building', fecha: '2027-05-06' }));
+    expect(sab.rentaTotal).toBe(50000);
+    expect(jue.rentaTotal).toBe(50000); // plano: no varía por día (vs. 108,500 sábado normal)
+  });
+
+  it('un evento normal NO usa la renta plana (sábado sigue en 108,500)', () => {
+    const r = computeQuote(catalog, mk({ eventTypeId: 'boda', fecha: '2027-05-08' }));
+    expect(r.rentaTotal).toBe(108500);
   });
 
   it('subtotal + iva === total', () => {

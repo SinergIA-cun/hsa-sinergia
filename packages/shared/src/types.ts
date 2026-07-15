@@ -39,7 +39,9 @@ export interface Catalog {
   foodDiscountRate: number;     // 0.05 de la renta si hay alimentos
   capillaSabado: number;        // renta de capilla en sábado (cortesía el resto)
   djHoraExtraByEventType: Record<string, number>; // precio del DJ por hora extra, por eventTypeId
-  rentalPrices: RentalPriceRow[];
+  rentalPrices: RentalPriceRow[];      // renta por tipo de día (eventos normales)
+  rentalPricesFlat: RentalPriceRow[];  // renta plana (Team Building): mismo precio todos los días
+  flatRentalEventTypeIds: string[];    // tipos de evento que usan la renta plana
   foodPackages: FoodPackage[];
   addOns: AddOn[];
 }

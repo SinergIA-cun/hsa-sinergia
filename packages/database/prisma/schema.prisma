@@ -63,6 +63,7 @@ model PriceList {
   anio         Int
   vigencia     DateTime?
   activa       Boolean       @default(true)
+  tipo         String        @default("dia") // "dia" = renta por tipo de día · "plano" = renta plana (Team Building)
   createdAt    DateTime      @default(now())
   rentalPrices RentalPrice[]
 }
@@ -97,6 +98,7 @@ model EventType {
   nombre       String
   slug         String        @unique
   djHoraExtra  Int?          // precio del DJ por hora extra (por tipo de evento); null = no aplica
+  rentaPlana   Boolean       @default(false) // usa la renta plana (Team Building) en vez de la de por-día
   foodPackages FoodPackage[]
   quotes       Quote[]
 }

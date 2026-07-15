@@ -11,6 +11,7 @@ function round2(n: number): number {
  * Motor de precios (función pura). Recibe el catálogo y las selecciones y
  * devuelve el desglose congelado. Reglas:
  * - Renta: precio(espacio, rango, tipoDía), CON IVA ya incluido; suma de espacios.
+ *   Team Building (rentaPlana) usa una tabla PLANA: el mismo precio para cualquier día.
  * - Horas extra: 5% de la renta de espacios (base) por hora.
  * - Descuento por alimentos: 5% de la renta de espacios (base). Horas extra y
  *   descuento se calculan sobre la MISMA base (espacios), no se componen entre sí.
@@ -30,9 +31,12 @@ export function computeQuote(
   const lines: QuoteLine[] = [];
 
   // 1. Renta de espacios (con IVA) — suma de espacios. Base para 5% y horas extra.
+  // Team Building usa la tabla PLANA (mismo precio todos los días); el resto, por-día.
+  const usaFlat = sel.eventTypeId != null && catalog.flatRentalEventTypeIds.includes(sel.eventTypeId);
+  const rentalRows = usaFlat ? catalog.rentalPricesFlat : catalog.rentalPrices;
   let rentaEspacios = 0;
   for (const spaceId of sel.spaceIds) {
-    const rows = catalog.rentalPrices.filter((r) => r.spaceId === spaceId);
+    const rows = rentalRows.filter((r) => r.spaceId === spaceId);
     const row = findBracket(rows, sel.invitados);
     if (!row) {
       throw new Error(
