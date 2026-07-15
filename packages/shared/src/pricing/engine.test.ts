@@ -10,6 +10,7 @@ const catalog: Catalog = {
   extraHourRate: 0.05,
   foodDiscountRate: 0.05,
   capillaSabado: 5000,
+  djHoraExtraByEventType: { boda: 2950, cumpleanos: 2750 },
   rentalPrices: [
     // Los Arcos (id 'arcos')
     { spaceId: 'arcos', min: 1, max: 50, prices: { viernes: 34500, viernesEspecial: 17250, sabado: 42000, domAJue: 30000 } },
@@ -45,6 +46,7 @@ function mk(overrides: Partial<QuoteSelection> = {}): QuoteSelection {
     spaceIds: ['arcos'],
     horasExtra: 0,
     usaCapilla: false,
+    usaDjHoraExtra: false,
     addOns: [],
     ...overrides,
   };
@@ -126,6 +128,25 @@ describe('computeQuote', () => {
     expect(alimentos?.grupo).toBe('otros');
     // rentaTotal ya trae el descuento restado.
     expect(r.rentaTotal).toBeCloseTo(108500 - 108500 * 0.05, 2);
+  });
+
+  it('DJ Hora extra: precio por tipo de evento × horas extra, con IVA agregado', () => {
+    const r = computeQuote(
+      catalog,
+      mk({ eventTypeId: 'boda', usaDjHoraExtra: true, horasExtra: 2 }),
+    );
+    const dj = r.lines.find((l) => l.concepto === 'DJ Hora extra');
+    expect(dj?.monto).toBe(2950 * 2);
+    expect(dj?.grupo).toBe('otros');
+    // Renta con horas extra + DJ (2×2950) con IVA.
+    const rentaConHoras = 108500 + 2 * 0.05 * 108500;
+    expect(r.total).toBeCloseTo(rentaConHoras + 2950 * 2 * 1.16, 2);
+  });
+
+  it('DJ Hora extra sin horas extra no cobra nada', () => {
+    const r = computeQuote(catalog, mk({ eventTypeId: 'boda', usaDjHoraExtra: true, horasExtra: 0 }));
+    expect(r.lines.find((l) => l.concepto === 'DJ Hora extra')).toBeUndefined();
+    expect(r.total).toBe(108500);
   });
 
   it('subtotal + iva === total', () => {

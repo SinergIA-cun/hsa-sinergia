@@ -96,6 +96,7 @@ model EventType {
   id           String        @id @default(cuid())
   nombre       String
   slug         String        @unique
+  djHoraExtra  Int?          // precio del DJ por hora extra (por tipo de evento); null = no aplica
   foodPackages FoodPackage[]
   quotes       Quote[]
 }
@@ -134,6 +135,7 @@ model Quote {
   vigenciaHasta DateTime?
   usaCapilla    Boolean     @default(false) // cortesía; $5,000 en sábado. Recurso único por día.
   esCortesia    Boolean     @default(false) // cortesía familiar: se marca verde en la agenda.
+  usaDjHoraExtra Boolean    @default(false) // DJ por hora extra (precio según tipo de evento).
   createdBy     User?       @relation("QuoteCreatedBy", fields: [createdById], references: [id])
   createdById   String?
   createdAt     DateTime    @default(now())

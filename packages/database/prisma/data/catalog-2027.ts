@@ -21,6 +21,7 @@ export interface EventTypeDef {
   nombre: string;
   slug: string;
   packages: PackageDef[]; // vacío = solo renta del espacio
+  djHoraExtra?: number; // precio del DJ por hora extra; ausente = no aplica
 }
 
 /** Empareja rangos [min,max] con un arreglo de precios (mismo orden). */
@@ -56,10 +57,13 @@ const TRES_TIEMPOS_TAQUIZA: PackageDef[] = [
   { nombre: 'Taquiza', brackets: zip(B_XV, [1210, 935, 920, 910, 900, 880]) },
 ];
 
+// DJ por hora extra (bajo "HORAS EXTRAS" del folleto): $2,950 en Boda/XV/Empresarial
+// y Fin de año; $2,750 en Cumpleaños/Bautizo. Renta/Graduación no lo ofrecen (sin alimentos).
 export const EVENT_TYPES_2027: EventTypeDef[] = [
   {
     nombre: 'Boda',
     slug: 'boda',
+    djHoraExtra: 2950,
     packages: [
       { nombre: 'SUPREME', brackets: zip(B_BODA, [1459, 1019, 999, 849, 799, 679]) },
       { nombre: 'SUPREME plus', brackets: zip(B_BODA, [1729, 1199, 1179, 969, 899, 789]) },
@@ -68,12 +72,13 @@ export const EVENT_TYPES_2027: EventTypeDef[] = [
   {
     nombre: 'XV',
     slug: 'xv',
+    djHoraExtra: 2950,
     packages: [{ nombre: 'Servicio de Alimentos', brackets: zip(B_XV, [1290, 1015, 999, 989, 979, 969]) }],
   },
-  { nombre: 'Cumpleaños', slug: 'cumpleanos', packages: TRES_TIEMPOS_TAQUIZA },
-  { nombre: 'Bautizo', slug: 'bautizo', packages: TRES_TIEMPOS_TAQUIZA },
-  { nombre: 'Empresarial', slug: 'empresarial', packages: EMPRESARIAL_PACKAGES },
-  { nombre: 'Fin de año', slug: 'fin-de-ano', packages: EMPRESARIAL_PACKAGES },
+  { nombre: 'Cumpleaños', slug: 'cumpleanos', djHoraExtra: 2750, packages: TRES_TIEMPOS_TAQUIZA },
+  { nombre: 'Bautizo', slug: 'bautizo', djHoraExtra: 2750, packages: TRES_TIEMPOS_TAQUIZA },
+  { nombre: 'Empresarial', slug: 'empresarial', djHoraExtra: 2950, packages: EMPRESARIAL_PACKAGES },
+  { nombre: 'Fin de año', slug: 'fin-de-ano', djHoraExtra: 2950, packages: EMPRESARIAL_PACKAGES },
   // Solo renta del espacio (sin alimentos):
   { nombre: 'Renta', slug: 'renta', packages: [] },
   { nombre: 'Graduación', slug: 'graduacion', packages: [] },
@@ -81,15 +86,15 @@ export const EVENT_TYPES_2027: EventTypeDef[] = [
 
 /**
  * Aplica el catálogo 2027 de tipos de evento + alimentos de forma idempotente.
- * También normaliza el nombre del add-on de DJ a "DJ Hora extra".
- * NO toca espacios, rentas ni reglas de pago (los maneja el seed/otras fases).
+ * Setea el precio del DJ por hora extra por tipo de evento y desactiva el add-on
+ * global de DJ (migrado a toggle). NO toca espacios, rentas ni reglas de pago.
  */
 export async function applyCatalog2027(prisma: PrismaClient): Promise<void> {
   for (const et of EVENT_TYPES_2027) {
     const type = await prisma.eventType.upsert({
       where: { slug: et.slug },
-      update: { nombre: et.nombre },
-      create: { nombre: et.nombre, slug: et.slug },
+      update: { nombre: et.nombre, djHoraExtra: et.djHoraExtra ?? null },
+      create: { nombre: et.nombre, slug: et.slug, djHoraExtra: et.djHoraExtra ?? null },
     });
 
     for (const pkg of et.packages) {
@@ -114,10 +119,12 @@ export async function applyCatalog2027(prisma: PrismaClient): Promise<void> {
     }
   }
 
-  // "DJ (por hora)" → "DJ Hora extra" (el precio por tipo de evento llega en la Etapa 2).
+  // El DJ dejó de ser un add-on global: ahora es un toggle "DJ Hora extra" con
+  // precio por tipo de evento (EventType.djHoraExtra). Se desactiva el add-on
+  // viejo (cualquiera de sus nombres) para que no aparezca ni se cobre doble.
   await prisma.addOn.updateMany({
-    where: { nombre: 'DJ (por hora)' },
-    data: { nombre: 'DJ Hora extra' },
+    where: { nombre: { in: ['DJ (por hora)', 'DJ Hora extra', 'DJ'] } },
+    data: { activo: false },
   });
 
   // La Capilla deja de ser un espacio cotizable: ahora es una cortesía por-evento

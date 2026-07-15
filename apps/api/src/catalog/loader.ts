@@ -17,17 +17,24 @@ export async function loadCatalog(
     : await db.priceList.findFirst({ where: { activa: true }, orderBy: { anio: 'desc' } });
   if (!priceList) throw new Error('No hay lista de precios activa');
 
-  const [rentals, packages, addOns] = await Promise.all([
+  const [rentals, packages, addOns, eventTypes] = await Promise.all([
     db.rentalPrice.findMany({ where: { priceListId: priceList.id } }),
     db.foodPackage.findMany({ include: { brackets: true } }),
     db.addOn.findMany({ where: { activo: true } }),
+    db.eventType.findMany({ select: { id: true, djHoraExtra: true } }),
   ]);
+
+  const djHoraExtraByEventType: Record<string, number> = {};
+  for (const et of eventTypes) {
+    if (et.djHoraExtra != null) djHoraExtraByEventType[et.id] = et.djHoraExtra;
+  }
 
   return {
     ivaRate: config.ivaRate,
     extraHourRate: config.extraHourRate,
     foodDiscountRate: config.foodDiscountRate,
     capillaSabado: config.capillaSabado,
+    djHoraExtraByEventType,
     rentalPrices: rentals.map((r) => ({
       spaceId: r.spaceId,
       min: r.min,

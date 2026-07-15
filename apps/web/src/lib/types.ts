@@ -108,6 +108,7 @@ export interface Quote {
   horasExtra: number;
   usaCapilla?: boolean;
   esCortesia?: boolean;
+  usaDjHoraExtra?: boolean;
   horasEvento?: number | null;
   horarioCivil?: string | null;
   horaInicio?: string | null;

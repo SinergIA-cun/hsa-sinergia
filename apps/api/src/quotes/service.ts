@@ -81,6 +81,8 @@ function toSelection(input: {
   spaceIds: string[];
   horasExtra: number;
   usaCapilla?: boolean;
+  usaDjHoraExtra?: boolean;
+  eventTypeId?: string;
   foodPackageId?: string;
   addOns: { addOnId: string; cantidad: number }[];
 }): QuoteSelection {
@@ -90,6 +92,8 @@ function toSelection(input: {
     spaceIds: input.spaceIds,
     horasExtra: input.horasExtra,
     usaCapilla: input.usaCapilla ?? false,
+    usaDjHoraExtra: input.usaDjHoraExtra ?? false,
+    eventTypeId: input.eventTypeId,
     foodPackageId: input.foodPackageId,
     addOns: input.addOns,
   };
@@ -208,6 +212,7 @@ export async function createQuote(db: PrismaClient, rawInput: unknown, actor: Ac
       horasExtra: input.horasExtra,
       usaCapilla: input.usaCapilla ?? false,
       esCortesia: input.esCortesia ?? false,
+      usaDjHoraExtra: input.usaDjHoraExtra ?? false,
       foodPackageId: input.foodPackageId ?? null,
       addOns: input.addOns as unknown as Prisma.InputJsonValue,
       breakdown: enriched as unknown as Prisma.InputJsonValue,
@@ -241,6 +246,8 @@ export async function duplicateQuote(db: PrismaClient, id: string, actor: Actor)
       invitados: src.invitados,
       spaceIds: src.spaceIds,
       horasExtra: src.horasExtra,
+      usaCapilla: src.usaCapilla,
+      usaDjHoraExtra: src.usaDjHoraExtra,
       foodPackageId: src.foodPackageId,
       addOns: src.addOns as unknown as Prisma.InputJsonValue,
       breakdown: src.breakdown as unknown as Prisma.InputJsonValue,
@@ -302,6 +309,7 @@ export async function updateQuote(db: PrismaClient, id: string, rawInput: unknow
       horasExtra: input.horasExtra,
       usaCapilla: input.usaCapilla ?? false,
       esCortesia: input.esCortesia ?? false,
+      usaDjHoraExtra: input.usaDjHoraExtra ?? false,
       foodPackageId: input.foodPackageId ?? null,
       addOns: input.addOns as unknown as Prisma.InputJsonValue,
       breakdown: enriched as unknown as Prisma.InputJsonValue,

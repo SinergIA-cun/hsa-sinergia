@@ -38,6 +38,7 @@ export interface Catalog {
   extraHourRate: number;        // 0.05 de la renta por hora
   foodDiscountRate: number;     // 0.05 de la renta si hay alimentos
   capillaSabado: number;        // renta de capilla en sábado (cortesía el resto)
+  djHoraExtraByEventType: Record<string, number>; // precio del DJ por hora extra, por eventTypeId
   rentalPrices: RentalPriceRow[];
   foodPackages: FoodPackage[];
   addOns: AddOn[];

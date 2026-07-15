@@ -20,6 +20,7 @@ describe('loadCatalog', () => {
       spaceIds: [arcos!.id],
       horasExtra: 0,
       usaCapilla: false,
+      usaDjHoraExtra: false,
       addOns: [],
     });
     expect(r.rentaTotal).toBe(108500);
@@ -39,6 +40,7 @@ describe('loadCatalog', () => {
       spaceIds: [arcos!.id],
       horasExtra: 0,
       usaCapilla: false,
+      usaDjHoraExtra: false,
       foodPackageId: pkg!.id,
       addOns: [],
     });

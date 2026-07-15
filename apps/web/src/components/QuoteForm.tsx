@@ -23,6 +23,7 @@ export interface QuoteFormInitial {
   horasExtra: number;
   usaCapilla: boolean;
   esCortesia: boolean;
+  usaDjHoraExtra: boolean;
   addOns: Record<string, number>;
 }
 
@@ -33,6 +34,7 @@ export interface QuotePayload {
   horasExtra: number;
   usaCapilla: boolean;
   esCortesia: boolean;
+  usaDjHoraExtra: boolean;
   foodPackageId?: string;
   addOns: { addOnId: string; cantidad: number }[];
   eventTypeId: string;
@@ -92,6 +94,7 @@ export function QuoteForm({
   const [horasExtra, setHorasExtra] = useState(initial?.horasExtra ?? 0);
   const [usaCapilla, setUsaCapilla] = useState(initial?.usaCapilla ?? false);
   const [esCortesia, setEsCortesia] = useState(initial?.esCortesia ?? false);
+  const [usaDjHoraExtra, setUsaDjHoraExtra] = useState(initial?.usaDjHoraExtra ?? false);
   const [addOns, setAddOns] = useState<Record<string, number>>(initial?.addOns ?? {});
   const [busy, setBusy] = useState(false);
 
@@ -109,6 +112,8 @@ export function QuoteForm({
 
   const eventType = catalog.eventTypes.find((e) => e.id === eventTypeId);
   const foodPackages = eventType?.foodPackages ?? [];
+  // Precio del DJ por hora extra según el tipo de evento (undefined = no aplica).
+  const djPrecio = eventTypeId ? catalog.engine.djHoraExtraByEventType[eventTypeId] : undefined;
 
   const selection = useMemo(
     () => ({
@@ -117,10 +122,12 @@ export function QuoteForm({
       spaceIds,
       horasExtra,
       usaCapilla,
+      usaDjHoraExtra,
+      eventTypeId: eventTypeId || undefined,
       foodPackageId: foodPackageId || undefined,
       addOns: Object.entries(addOns).map(([addOnId, cantidad]) => ({ addOnId, cantidad })),
     }),
-    [fecha, invitados, spaceIds, horasExtra, usaCapilla, foodPackageId, addOns],
+    [fecha, invitados, spaceIds, horasExtra, usaCapilla, usaDjHoraExtra, eventTypeId, foodPackageId, addOns],
   );
 
   const { breakdown, calcError } = useMemo(() => {
@@ -200,6 +207,7 @@ export function QuoteForm({
         horasExtra,
         usaCapilla,
         esCortesia,
+        usaDjHoraExtra,
         foodPackageId: foodPackageId || undefined,
         addOns: Object.entries(addOns).map(([addOnId, cantidad]) => ({ addOnId, cantidad })),
         eventTypeId,
@@ -388,6 +396,34 @@ export function QuoteForm({
 
         <Card className="space-y-3 p-6">
           <h2 className="font-display text-xl text-ink">Servicios adicionales</h2>
+
+          {/* DJ Hora extra: precio por tipo de evento × horas extra (manual). */}
+          {djPrecio != null && (
+            <label
+              className={`flex cursor-pointer items-start gap-3 rounded-lg border px-4 py-3 text-sm transition-colors ${
+                usaDjHoraExtra ? 'border-gold bg-gold/10' : 'border-ink/12 bg-white/50 hover:border-ink/30'
+              }`}
+            >
+              <input
+                type="checkbox"
+                checked={usaDjHoraExtra}
+                onChange={(e) => setUsaDjHoraExtra(e.target.checked)}
+                className="mt-0.5 h-4 w-4 accent-[var(--color-gold)]"
+              />
+              <span className="flex-1">
+                <span className="font-medium text-ink">DJ Hora extra</span>
+                <span className="block text-xs text-charcoal-soft">
+                  {formatMXN(djPrecio)} por hora extra. Con alimentos, el DJ de las horas base ya viene incluido.
+                </span>
+                {usaDjHoraExtra && horasExtra === 0 && (
+                  <span className="mt-1 block text-xs font-medium text-gold">
+                    Agrega horas extra arriba para que se cobre el DJ.
+                  </span>
+                )}
+              </span>
+            </label>
+          )}
+
           <div className="space-y-2">
             {catalog.addOns.map((a) => {
               const active = a.id in addOns;

@@ -11,6 +11,10 @@ export const quoteSelectionSchema = z.object({
     }),
   horasExtra: z.number().int().min(0).default(0),
   usaCapilla: z.boolean().default(false),
+  usaDjHoraExtra: z.boolean().default(false),
+  // Tipo de evento: necesario para el precio del DJ por hora extra. Opcional en el
+  // motor puro; la API/UI siempre lo envían (y lo exigen en su propio esquema).
+  eventTypeId: z.string().optional(),
   foodPackageId: z.string().optional(),
   addOns: z
     .array(

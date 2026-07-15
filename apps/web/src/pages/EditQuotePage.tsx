@@ -28,6 +28,7 @@ function toInitial(q: Quote): Partial<QuoteFormInitial> {
     horasExtra: q.horasExtra,
     usaCapilla: q.usaCapilla ?? false,
     esCortesia: q.esCortesia ?? false,
+    usaDjHoraExtra: q.usaDjHoraExtra ?? false,
     addOns: Object.fromEntries((q.addOns ?? []).map((a) => [a.addOnId, a.cantidad])),
   };
 }

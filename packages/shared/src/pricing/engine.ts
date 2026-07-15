@@ -16,6 +16,7 @@ function round2(n: number): number {
  *   descuento se calculan sobre la MISMA base (espacios), no se componen entre sí.
  * - Alimentos: precio por persona × invitados. Si el paquete NO trae IVA, se le agrega.
  * - Add-ons: fijo | porPersona (× invitados) | porUnidad (× cantidad). SIN IVA => se agrega.
+ * - DJ Hora extra (opcional): precio por tipo de evento × horas extra. SIN IVA => se agrega.
  * - `subtotal` es genuinamente pre-IVA y `iva` es el impuesto total; `subtotal + iva == total`.
  *   Es un desglose interno para el plan de pagos, no un desglose fiscal/CFDI.
  * - Cada línea lleva `grupo`: `renta` (espacios, horas extra, capilla, descuento 5%)
@@ -129,6 +130,24 @@ export function computeQuote(
       ivaIncluido: false,
       grupo: 'otros',
     });
+  }
+
+  // 4b. DJ Hora extra (opcional, manual): precio por tipo de evento × horas extra.
+  //     Va en "otros" (servicio; sin IVA => se agrega). Con alimentos, el DJ de las
+  //     horas base ya viene incluido; esto cubre solo las horas extra.
+  if (sel.usaDjHoraExtra && sel.horasExtra > 0 && sel.eventTypeId) {
+    const precioDj = catalog.djHoraExtraByEventType[sel.eventTypeId];
+    if (precioDj != null) {
+      const monto = precioDj * sel.horasExtra;
+      addonsBaseSinIva += monto;
+      lines.push({
+        concepto: 'DJ Hora extra',
+        detalle: `${sel.horasExtra} h × ${precioDj}`,
+        monto: round2(monto),
+        ivaIncluido: false,
+        grupo: 'otros',
+      });
+    }
   }
 
   // 5. Totales con desglose fiscal coherente.
