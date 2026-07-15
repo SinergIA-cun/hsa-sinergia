@@ -32,6 +32,7 @@ export const createQuoteSchema = quoteSelectionSchema
   .extend({
     eventTypeId: z.string(),
     horasEvento: z.number().int().positive().optional(),
+    esCortesia: z.boolean().default(false),
     clientId: z.string().optional(),
     client: clientSchema.optional(),
   })
@@ -44,6 +45,7 @@ export const updateQuoteSchema = quoteSelectionSchema
   .extend({
     eventTypeId: z.string(),
     horasEvento: z.number().int().positive().nullable().optional(),
+    esCortesia: z.boolean().default(false),
     client: clientSchema.optional(),
   })
   .refine((d) => d.spaceIds.length === 1, { message: 'Solo se permite un espacio por evento' });
@@ -205,6 +207,7 @@ export async function createQuote(db: PrismaClient, rawInput: unknown, actor: Ac
       spaceIds: input.spaceIds,
       horasExtra: input.horasExtra,
       usaCapilla: input.usaCapilla ?? false,
+      esCortesia: input.esCortesia ?? false,
       foodPackageId: input.foodPackageId ?? null,
       addOns: input.addOns as unknown as Prisma.InputJsonValue,
       breakdown: enriched as unknown as Prisma.InputJsonValue,
@@ -298,6 +301,7 @@ export async function updateQuote(db: PrismaClient, id: string, rawInput: unknow
       spaceIds: input.spaceIds,
       horasExtra: input.horasExtra,
       usaCapilla: input.usaCapilla ?? false,
+      esCortesia: input.esCortesia ?? false,
       foodPackageId: input.foodPackageId ?? null,
       addOns: input.addOns as unknown as Prisma.InputJsonValue,
       breakdown: enriched as unknown as Prisma.InputJsonValue,

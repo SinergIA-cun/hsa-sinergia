@@ -133,6 +133,7 @@ model Quote {
   publicToken   String      @unique
   vigenciaHasta DateTime?
   usaCapilla    Boolean     @default(false) // cortesía; $5,000 en sábado. Recurso único por día.
+  esCortesia    Boolean     @default(false) // cortesía familiar: se marca verde en la agenda.
   createdBy     User?       @relation("QuoteCreatedBy", fields: [createdById], references: [id])
   createdById   String?
   createdAt     DateTime    @default(now())

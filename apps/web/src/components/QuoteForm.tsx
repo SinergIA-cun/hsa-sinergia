@@ -21,6 +21,7 @@ export interface QuoteFormInitial {
   foodPackageId: string;
   horasExtra: number;
   usaCapilla: boolean;
+  esCortesia: boolean;
   addOns: Record<string, number>;
 }
 
@@ -30,6 +31,7 @@ export interface QuotePayload {
   spaceIds: string[];
   horasExtra: number;
   usaCapilla: boolean;
+  esCortesia: boolean;
   foodPackageId?: string;
   addOns: { addOnId: string; cantidad: number }[];
   eventTypeId: string;
@@ -88,6 +90,7 @@ export function QuoteForm({
   const [foodPackageId, setFoodPackageId] = useState(initial?.foodPackageId ?? '');
   const [horasExtra, setHorasExtra] = useState(initial?.horasExtra ?? 0);
   const [usaCapilla, setUsaCapilla] = useState(initial?.usaCapilla ?? false);
+  const [esCortesia, setEsCortesia] = useState(initial?.esCortesia ?? false);
   const [addOns, setAddOns] = useState<Record<string, number>>(initial?.addOns ?? {});
   const [busy, setBusy] = useState(false);
 
@@ -195,6 +198,7 @@ export function QuoteForm({
         spaceIds,
         horasExtra,
         usaCapilla,
+        esCortesia,
         foodPackageId: foodPackageId || undefined,
         addOns: Object.entries(addOns).map(([addOnId, cantidad]) => ({ addOnId, cantidad })),
         eventTypeId,
@@ -339,6 +343,26 @@ export function QuoteForm({
                   Ya está tomada por otro evento en esta fecha.
                 </span>
               )}
+            </span>
+          </label>
+
+          {/* Cortesía familiar: marca el evento en verde en la agenda. */}
+          <label
+            className={`flex cursor-pointer items-start gap-3 rounded-lg border px-4 py-3 text-sm transition-colors ${
+              esCortesia ? 'border-emerald-600 bg-emerald-600/10' : 'border-ink/12 bg-white/50 hover:border-ink/30'
+            }`}
+          >
+            <input
+              type="checkbox"
+              checked={esCortesia}
+              onChange={(e) => setEsCortesia(e.target.checked)}
+              className="mt-0.5 h-4 w-4 accent-emerald-600"
+            />
+            <span className="flex-1">
+              <span className="font-medium text-ink">Cortesía familiar</span>
+              <span className="block text-xs text-charcoal-soft">
+                Marca el evento en verde en la agenda. No afecta el precio.
+              </span>
             </span>
           </label>
         </Card>

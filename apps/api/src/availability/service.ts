@@ -97,6 +97,7 @@ export interface AgendaEvent {
   fechaEvento: string;
   spaceIds: string[];
   status: string;
+  esCortesia: boolean;
 }
 
 /** Eventos (cotizaciones no vencidas) en un rango de fechas, para la agenda. */
@@ -121,6 +122,7 @@ export async function getAgenda(
       fechaEvento: q.fechaEvento.toISOString(),
       spaceIds: q.spaceIds,
       status: q.status,
+      esCortesia: q.esCortesia,
     })),
   };
 }

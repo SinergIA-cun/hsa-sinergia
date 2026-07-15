@@ -107,6 +107,7 @@ export interface Quote {
   spaceIds: string[];
   horasExtra: number;
   usaCapilla?: boolean;
+  esCortesia?: boolean;
   horasEvento?: number | null;
   horarioCivil?: string | null;
   horaInicio?: string | null;
@@ -218,6 +219,7 @@ export interface AgendaEvent {
   fechaEvento: string;
   spaceIds: string[];
   status: QuoteStatus;
+  esCortesia: boolean;
 }
 
 export type Semaforo = 'verde' | 'amarillo' | 'rojo';
