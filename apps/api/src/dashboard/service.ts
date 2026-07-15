@@ -8,15 +8,54 @@ const CONFIRMADOS = ['apartada', 'formalizada'] as const;
 
 export type Semaforo = 'verde' | 'amarillo' | 'rojo';
 
+// Política de la hacienda: el finiquito vence 30 días antes del evento.
+const DIAS_FINIQUITO = 30;
+
+export interface FiniquitoFicha {
+  venceISO: string;
+  pagado: boolean;
+  pendiente: boolean; // entró en su ventana de 30 días y aún debe
+  restante: number;
+  planPendiente: boolean; // el espacio no tiene regla de pago definida
+}
+
+/** Datos operativos de la hoja (el JSON `operativa`), planos para la ficha. */
+export interface HojaFicha {
+  nombreFestejado: string | null;
+  relacionCliente: string | null;
+  horaMisa: string | null;
+  fotografia: boolean;
+  banquetero: string | null;
+  banqueteroPaqHsa: boolean;
+  estrado: string | null;
+  pista: string | null;
+  personalHsa: string | null;
+  personalSeguridadHora: string | null;
+  personalSeguridadElementos: number | null;
+  limpiezaNocturna: boolean;
+  habitacion: string | null;
+  seQuedaEquipo: string | null;
+  maniobras: string | null;
+}
+
 export interface FichaSemana {
   quoteId: string;
   cliente: string;
   evento: string;
   espacio: string;
   fechaEventoISO: string;
-  finiquitoISO: string | null;
   semaforo: Semaforo;
   faltantes: string[]; // campos de la hoja operativa que faltan
+  // Datos para armar la ficha operativa completa (como el PDF semanal):
+  invitados: number;
+  horasEvento: number | null;
+  usaCapilla: boolean;
+  costoHoraExtra: number;
+  horaInicio: string | null;
+  horaTermino: string | null;
+  horarioCivil: string | null;
+  hoja: HojaFicha;
+  finiquito: FiniquitoFicha;
 }
 
 export interface EventoProxima {
@@ -93,8 +132,13 @@ interface QuoteRow {
   status: string;
   fechaEvento: Date;
   spaceIds: string[];
+  invitados: number;
+  horasEvento: number | null;
+  usaCapilla: boolean;
+  rentaTotal: number;
   horaInicio: string | null;
   horaTermino: string | null;
+  horarioCivil: string | null;
   operativa: unknown;
   client: { nombre: string } | null;
   eventType: { nombre: string } | null;
@@ -102,6 +146,40 @@ interface QuoteRow {
 
 function hoja(q: QuoteRow): Record<string, unknown> {
   return (q.operativa ?? {}) as Record<string, unknown>;
+}
+
+function str(v: unknown): string | null {
+  return noVacio(v) ? String(v) : null;
+}
+
+/** Aplana el JSON `operativa` a los campos de la ficha. */
+function toHojaFicha(q: QuoteRow): HojaFicha {
+  const h = hoja(q);
+  return {
+    nombreFestejado: str(h.nombreFestejado),
+    relacionCliente: str(h.relacionCliente),
+    horaMisa: str(h.horaMisa),
+    fotografia: h.fotografia === true,
+    banquetero: str(h.banquetero),
+    banqueteroPaqHsa: h.banqueteroPaqHsa === true,
+    estrado: str(h.estrado),
+    pista: str(h.pista),
+    personalHsa: str(h.personalHsa),
+    personalSeguridadHora: str(h.personalSeguridadHora),
+    personalSeguridadElementos:
+      typeof h.personalSeguridadElementos === 'number' ? h.personalSeguridadElementos : null,
+    limpiezaNocturna: h.limpiezaNocturna === true,
+    habitacion: str(h.habitacion),
+    seQuedaEquipo: str(h.seQuedaEquipo),
+    maniobras: str(h.maniobras),
+  };
+}
+
+/** Fecha ISO = fecha del evento menos N días (UTC). */
+function isoMenosDias(fecha: Date, dias: number): string {
+  const d = new Date(fecha);
+  d.setUTCDate(d.getUTCDate() - dias);
+  return d.toISOString();
 }
 
 /**
@@ -144,14 +222,19 @@ export async function getDashboard(
 
     if (q.fechaEvento >= desde && q.fechaEvento < hasta) eventosMes += 1;
 
-    // Estado del finiquito (fecha, si está pagado, si venció).
-    const fin = ec.plan?.find((m) => m.key === 'finiquito') ?? null;
-    const finiquitoISO = fin?.venceISO ?? null;
-    const finiquitoPagado = fin ? fin.completo : ec.saldo <= 0;
-    const finiquitoVencido = Boolean(
-      fin && !fin.completo && fin.venceISO && new Date(fin.venceISO) < hoy,
-    );
-    const restanteFin = fin ? fin.restante : Math.max(0, ec.saldo);
+    // Finiquito ROBUSTO: no depende de que el espacio tenga regla de pago.
+    // Vence 30 días antes del evento (o la fecha del plan si existe). Se considera
+    // pendiente cuando ya entró en esa ventana y el saldo sigue > 0.
+    const finPlan = ec.plan?.find((m) => m.key === 'finiquito') ?? null;
+    const finVenceISO = finPlan?.venceISO ?? isoMenosDias(q.fechaEvento, DIAS_FINIQUITO);
+    const finPagado = ec.saldo <= 0;
+    const finiquito: FiniquitoFicha = {
+      venceISO: finVenceISO,
+      pagado: finPagado,
+      pendiente: !finPagado && new Date(finVenceISO) <= hoy,
+      restante: Math.max(0, ec.saldo),
+      planPendiente: ec.planPendiente,
+    };
 
     // Ficha operativa de la semana en curso.
     if (q.fechaEvento >= estaIni && q.fechaEvento < estaFin) {
@@ -159,8 +242,8 @@ export async function getDashboard(
       const hojaVacia = faltantes.length === REQUERIDOS_HOJA.length;
       const hojaCompleta = faltantes.length === 0;
       let semaforo: Semaforo;
-      if (finiquitoVencido || hojaVacia) semaforo = 'rojo';
-      else if (hojaCompleta && finiquitoPagado) semaforo = 'verde';
+      if (finiquito.pendiente || hojaVacia) semaforo = 'rojo';
+      else if (hojaCompleta && finiquito.pagado) semaforo = 'verde';
       else semaforo = 'amarillo';
       fichasSemana.push({
         quoteId: q.id,
@@ -168,9 +251,17 @@ export async function getDashboard(
         evento,
         espacio,
         fechaEventoISO: q.fechaEvento.toISOString(),
-        finiquitoISO,
         semaforo,
         faltantes,
+        invitados: q.invitados,
+        horasEvento: q.horasEvento,
+        usaCapilla: q.usaCapilla,
+        costoHoraExtra: Math.round(q.rentaTotal * 0.05),
+        horaInicio: q.horaInicio,
+        horaTermino: q.horaTermino,
+        horarioCivil: q.horarioCivil,
+        hoja: toHojaFicha(q),
+        finiquito,
       });
     }
 
@@ -190,18 +281,16 @@ export async function getDashboard(
       }
     }
 
-    // Alertas: entró en sus 30 días (finiquito) y no finiquitó.
-    if ((CONFIRMADOS as readonly string[]).includes(q.status) && finiquitoVencido) {
-      const dias = fin?.venceISO
-        ? Math.round((hoy.getTime() - new Date(fin.venceISO).getTime()) / 86_400_000)
-        : 0;
+    // Alertas: confirmado (apartada/formalizada) que ya entró en sus 30 días sin finiquitar.
+    if ((CONFIRMADOS as readonly string[]).includes(q.status) && finiquito.pendiente) {
+      const dias = Math.round((hoy.getTime() - new Date(finiquito.venceISO).getTime()) / 86_400_000);
       alertas.push({
         quoteId: q.id,
         cliente,
         evento,
         fechaEventoISO: q.fechaEvento.toISOString(),
-        finiquitoISO,
-        restante: restanteFin,
+        finiquitoISO: finiquito.venceISO,
+        restante: finiquito.restante,
         diasVencido: dias,
       });
     }

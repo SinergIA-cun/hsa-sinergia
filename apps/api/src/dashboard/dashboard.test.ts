@@ -76,5 +76,14 @@ describe('getDashboard', () => {
     expect(final.fichasSemana).toHaveLength(1);
     expect(final.fichasSemana[0]!.cliente).toBe('Dash Apartada');
     expect(final.fichasSemana[0]!.semaforo).toBe('rojo');
+
+    // La ficha trae el estado de finiquito (evento esta semana, sin pagar ⇒ pendiente).
+    expect(final.fichasSemana[0]!.finiquito.pendiente).toBe(true);
+    expect(final.fichasSemana[0]!.invitados).toBe(250);
+
+    // Y genera alerta de finiquito (apartada + ya en su ventana de 30 días, sin pagar).
+    expect(final.alertas).toHaveLength(1);
+    expect(final.alertas[0]!.cliente).toBe('Dash Apartada');
+    expect(final.alertas[0]!.restante).toBeGreaterThan(0);
   });
 });

@@ -225,18 +225,54 @@ export interface AgendaEvent {
 
 export type Semaforo = 'verde' | 'amarillo' | 'rojo';
 
+export interface FiniquitoFicha {
+  venceISO: string;
+  pagado: boolean;
+  pendiente: boolean;
+  restante: number;
+  planPendiente: boolean;
+}
+
+export interface HojaFicha {
+  nombreFestejado: string | null;
+  relacionCliente: string | null;
+  horaMisa: string | null;
+  fotografia: boolean;
+  banquetero: string | null;
+  banqueteroPaqHsa: boolean;
+  estrado: string | null;
+  pista: string | null;
+  personalHsa: string | null;
+  personalSeguridadHora: string | null;
+  personalSeguridadElementos: number | null;
+  limpiezaNocturna: boolean;
+  habitacion: string | null;
+  seQuedaEquipo: string | null;
+  maniobras: string | null;
+}
+
+export interface FichaSemana {
+  quoteId: string;
+  cliente: string;
+  evento: string;
+  espacio: string;
+  fechaEventoISO: string;
+  semaforo: Semaforo;
+  faltantes: string[];
+  invitados: number;
+  horasEvento: number | null;
+  usaCapilla: boolean;
+  costoHoraExtra: number;
+  horaInicio: string | null;
+  horaTermino: string | null;
+  horarioCivil: string | null;
+  hoja: HojaFicha;
+  finiquito: FiniquitoFicha;
+}
+
 export interface DashboardData {
   kpis: { eventosMes: number };
-  fichasSemana: {
-    quoteId: string;
-    cliente: string;
-    evento: string;
-    espacio: string;
-    fechaEventoISO: string;
-    finiquitoISO: string | null;
-    semaforo: Semaforo;
-    faltantes: string[];
-  }[];
+  fichasSemana: FichaSemana[];
   proximaSemana: {
     quoteId: string;
     cliente: string;
