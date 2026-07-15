@@ -3,9 +3,10 @@ import { useQuery } from '@tanstack/react-query';
 import { computeQuote, type QuoteBreakdown } from '@hsa/shared';
 import { Sparkles, RotateCcw, AlertTriangle, CheckCircle2, Ban, UserCheck, X } from 'lucide-react';
 import { api } from '../lib/api.ts';
-import { formatMXN, formatMXNCents } from '../lib/money.ts';
+import { formatMXN } from '../lib/money.ts';
 import { Button, Card, Field, TextInput, SelectInput } from './ui.tsx';
 import { ClienteSearch, type ClienteLite } from './ClienteSearch.tsx';
+import { BreakdownGrouped } from './BreakdownGrouped.tsx';
 import type { Catalog, Availability, SpaceAvailability } from '../lib/types.ts';
 
 const DEFAULT_VALET_RATIO = 2.5; // 1 auto por cada 2.5 personas (fallback si no llega de catálogo)
@@ -463,31 +464,7 @@ export function QuoteForm({
             )}
             {breakdown && (
               <>
-                <ul className="space-y-2 text-sm">
-                  {breakdown.lines.map((l, i) => (
-                    <li key={i} className="flex justify-between gap-4">
-                      <span className="text-charcoal-soft">
-                        {lineLabel(l.concepto)}
-                        {l.detalle && <span className="ml-1 text-xs text-charcoal-soft/60">({l.detalle})</span>}
-                      </span>
-                      <span className="tabular-nums text-charcoal">{formatMXNCents(l.monto)}</span>
-                    </li>
-                  ))}
-                </ul>
-                <div className="mt-4 space-y-1 border-t border-cream-300 pt-4 text-sm">
-                  <div className="flex justify-between text-charcoal-soft">
-                    <span>Subtotal</span>
-                    <span className="tabular-nums">{formatMXNCents(breakdown.subtotal)}</span>
-                  </div>
-                  <div className="flex justify-between text-charcoal-soft">
-                    <span>IVA</span>
-                    <span className="tabular-nums">{formatMXNCents(breakdown.iva)}</span>
-                  </div>
-                  <div className="flex justify-between pt-1 font-display text-xl text-ink">
-                    <span>Total</span>
-                    <span className="tabular-nums">{formatMXN(breakdown.total)}</span>
-                  </div>
-                </div>
+                <BreakdownGrouped breakdown={breakdown} lineLabel={lineLabel} />
                 {plan && (
                   <div className="mt-5 rounded-lg bg-cream-200/70 p-4">
                     <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-500">

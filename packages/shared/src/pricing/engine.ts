@@ -18,6 +18,8 @@ function round2(n: number): number {
  * - Add-ons: fijo | porPersona (× invitados) | porUnidad (× cantidad). SIN IVA => se agrega.
  * - `subtotal` es genuinamente pre-IVA y `iva` es el impuesto total; `subtotal + iva == total`.
  *   Es un desglose interno para el plan de pagos, no un desglose fiscal/CFDI.
+ * - Cada línea lleva `grupo`: `renta` (espacios, horas extra, capilla, descuento 5%)
+ *   u `otros` (alimentos y servicios). `rentaTotal + otrosTotal == total`.
  */
 export function computeQuote(
   catalog: Catalog,
@@ -41,7 +43,7 @@ export function computeQuote(
       throw new Error(`Falta precio para el espacio ${spaceId} en día ${dt}`);
     }
     rentaEspacios += monto;
-    lines.push({ concepto: `Renta ${spaceId}`, monto: round2(monto), ivaIncluido: true });
+    lines.push({ concepto: `Renta ${spaceId}`, monto: round2(monto), ivaIncluido: true, grupo: 'renta' });
   }
 
   // 2. Horas extra (5% de la renta de espacios por hora, con IVA porque es sobre la renta).
@@ -54,6 +56,7 @@ export function computeQuote(
       detalle: `${sel.horasExtra} × 5% renta`,
       monto: round2(monto),
       ivaIncluido: true,
+      grupo: 'renta',
     });
   }
 
@@ -67,6 +70,7 @@ export function computeQuote(
       detalle: dt === 'sabado' ? undefined : 'cortesía',
       monto: round2(monto),
       ivaIncluido: true,
+      grupo: 'renta',
     });
   }
 
@@ -90,14 +94,17 @@ export function computeQuote(
       detalle: `${sel.invitados} × ${row.pricePerPerson}`,
       monto: round2(monto),
       ivaIncluido: pkg.ivaIncluded,
+      grupo: 'otros',
     });
 
+    // El descuento del 5% aplica SOLO a la renta => va en el grupo de renta.
     const descuento = rentaEspacios * catalog.foodDiscountRate;
     rentaConIva -= descuento;
     lines.push({
       concepto: 'Descuento por alimentos (5% renta)',
       monto: round2(-descuento),
       ivaIncluido: true,
+      grupo: 'renta',
     });
   }
 
@@ -120,6 +127,7 @@ export function computeQuote(
           : `× ${addon.kind === 'porPersona' ? sel.invitados : a.cantidad}`,
       monto: round2(monto),
       ivaIncluido: false,
+      grupo: 'otros',
     });
   }
 
@@ -136,11 +144,18 @@ export function computeQuote(
   const iva = round2(conIvaImpuesto + ivaSobreBases);
   const total = round2(conIva + baseSinIva + ivaSobreBases);
 
+  // Dos subtotales: renta (lo que cobra HSA) y "otros" (alimentos + servicios,
+  // que suele pagarse directo al proveedor). Derivo `otros` del total para que
+  // siempre se cumpla rentaTotal + otrosTotal === total.
+  const rentaTotal = round2(rentaConIva);
+  const otrosTotal = round2(total - rentaTotal);
+
   return {
     lines,
     subtotal,
     iva,
     total,
-    rentaTotal: round2(rentaConIva),
+    rentaTotal,
+    otrosTotal,
   };
 }

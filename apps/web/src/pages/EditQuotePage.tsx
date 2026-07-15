@@ -3,7 +3,8 @@ import { Link, useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, ExternalLink, Printer, FileText, MessageCircle, Copy } from 'lucide-react';
 import { api } from '../lib/api.ts';
-import { formatMXN, formatMXNCents } from '../lib/money.ts';
+import { formatMXN } from '../lib/money.ts';
+import { BreakdownGrouped } from '../components/BreakdownGrouped.tsx';
 import { whatsappUrl, mensajeCotizacion } from '../lib/share.ts';
 import { Button, Card, SelectInput, ArrowDivider } from '../components/ui.tsx';
 import { QuoteForm, type QuotePayload, type QuoteFormInitial } from '../components/QuoteForm.tsx';
@@ -225,21 +226,7 @@ export function EditQuotePage() {
                 : 'Ya no es editable (tiene compromiso de pago). Puedes cambiar el estatus o imprimir.'}
             </p>
           </div>
-          <ul className="divide-y divide-cream-200">
-            {quote.breakdown.lines.map((l, i) => (
-              <li key={i} className="flex justify-between gap-4 py-2.5 text-sm">
-                <span className="text-charcoal-soft">
-                  {l.concepto}
-                  {l.detalle && <span className="ml-1 text-xs text-charcoal-soft/60">({l.detalle})</span>}
-                </span>
-                <span className="tabular-nums text-charcoal">{formatMXNCents(l.monto)}</span>
-              </li>
-            ))}
-          </ul>
-          <div className="mt-4 flex justify-between border-t border-cream-300 pt-4 font-display text-xl text-ink">
-            <span>Total</span>
-            <span className="tabular-nums">{formatMXN(quote.total)}</span>
-          </div>
+          <BreakdownGrouped breakdown={quote.breakdown} />
           {!enPapelera && (
             <a href={publicUrl} target="_blank" rel="noreferrer" className="mt-6 inline-block">
               <Button variant="gold">

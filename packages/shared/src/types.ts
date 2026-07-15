@@ -46,11 +46,16 @@ export interface Catalog {
 // QuoteSelection se define en schemas.ts (derivado del esquema zod) para evitar
 // duplicar la forma. Ver `./schemas.ts`.
 
+/** Grupo de cobro: `renta` la cobra HSA; `otros` (alimentos y servicios) suele
+ *  pagarse directo al proveedor. Permite mostrar dos subtotales separados. */
+export type QuoteGroup = 'renta' | 'otros';
+
 export interface QuoteLine {
   concepto: string;
   detalle?: string;
   monto: number;                // por línea; la renta ya trae IVA, las bases no
   ivaIncluido: boolean;
+  grupo: QuoteGroup;
 }
 
 export interface QuoteBreakdown {
@@ -58,5 +63,6 @@ export interface QuoteBreakdown {
   subtotal: number;             // genuinamente pre-IVA (interno, no fiscal/CFDI)
   iva: number;                  // impuesto total real (renta embebido + bases)
   total: number;                // subtotal + iva
-  rentaTotal: number;           // renta con IVA (base del plan de pagos)
+  rentaTotal: number;           // renta con IVA (base del plan de pagos y lo que cobra HSA)
+  otrosTotal: number;           // alimentos + servicios con IVA (suele pagarse al proveedor)
 }

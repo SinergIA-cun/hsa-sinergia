@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { computeQuote } from './engine.js';
+
+const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 import type { Catalog } from '../types.js';
 import type { QuoteSelection } from '../schemas.js';
 
@@ -97,6 +99,33 @@ describe('computeQuote', () => {
   it('horas extra + alimentos: ambos 5% sobre la renta de espacios base (no compuestos)', () => {
     const r = computeQuote(catalog, mk({ horasExtra: 2, foodPackageId: 'boda-supreme' }));
     expect(r.total).toBeCloseTo(113925 + 199750 * 1.16, 2);
+  });
+
+  it('rentaTotal + otrosTotal === total y otros = alimentos + servicios', () => {
+    const r = computeQuote(
+      catalog,
+      mk({ foodPackageId: 'boda-supreme', addOns: [{ addOnId: 'valet', cantidad: 50 }] }),
+    );
+    expect(round2(r.rentaTotal + r.otrosTotal)).toBe(r.total);
+    // "otros" = alimentos con IVA + valet con IVA.
+    const otrosEsperado = 799 * 250 * 1.16 + 100 * 50 * 1.16;
+    expect(r.otrosTotal).toBeCloseTo(otrosEsperado, 2);
+  });
+
+  it('sin alimentos ni servicios, otrosTotal = 0 y toda la renta es rentaTotal', () => {
+    const r = computeQuote(catalog, mk());
+    expect(r.otrosTotal).toBe(0);
+    expect(r.rentaTotal).toBe(r.total);
+  });
+
+  it('el descuento 5% va en el grupo renta y los alimentos en otros', () => {
+    const r = computeQuote(catalog, mk({ foodPackageId: 'boda-supreme' }));
+    const descuento = r.lines.find((l) => l.concepto.startsWith('Descuento'));
+    const alimentos = r.lines.find((l) => l.concepto.startsWith('Alimentos'));
+    expect(descuento?.grupo).toBe('renta');
+    expect(alimentos?.grupo).toBe('otros');
+    // rentaTotal ya trae el descuento restado.
+    expect(r.rentaTotal).toBeCloseTo(108500 - 108500 * 0.05, 2);
   });
 
   it('subtotal + iva === total', () => {

@@ -2,9 +2,10 @@ import { useParams, Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { CalendarDays, Users, MapPin, Printer, Receipt } from 'lucide-react';
 import { api } from '../lib/api.ts';
-import { formatMXN, formatMXNCents } from '../lib/money.ts';
+import { formatMXN } from '../lib/money.ts';
 import { formatEventDate } from '../lib/date.ts';
 import { Logo } from '../components/Logo.tsx';
+import { BreakdownGrouped } from '../components/BreakdownGrouped.tsx';
 import type { Quote, EstadoCuenta, Milestone } from '../lib/types.ts';
 
 interface PublicPago {
@@ -195,33 +196,7 @@ export function PublicQuotePage() {
             </span>
           </div>
           <div className="rounded-[var(--radius-card)] border border-cream-300 bg-white/80 p-6 shadow-sm">
-            <ul className="divide-y divide-cream-200">
-              {quote.breakdown.lines.map((l, i) => (
-                <li key={i} className="flex justify-between gap-4 py-2.5 text-sm">
-                  <span className="text-charcoal-soft">
-                    {l.concepto}
-                    {l.detalle && (
-                      <span className="ml-1 text-xs text-charcoal-soft/60">({l.detalle})</span>
-                    )}
-                  </span>
-                  <span className="tabular-nums text-charcoal">{formatMXNCents(l.monto)}</span>
-                </li>
-              ))}
-            </ul>
-            <div className="mt-4 space-y-1 border-t border-cream-300 pt-4 text-sm">
-              <div className="flex justify-between text-charcoal-soft">
-                <span>Subtotal</span>
-                <span className="tabular-nums">{formatMXNCents(quote.breakdown.subtotal)}</span>
-              </div>
-              <div className="flex justify-between text-charcoal-soft">
-                <span>IVA</span>
-                <span className="tabular-nums">{formatMXNCents(quote.breakdown.iva)}</span>
-              </div>
-              <div className="flex justify-between pt-1 font-display text-2xl text-ink">
-                <span>Total</span>
-                <span className="tabular-nums">{formatMXN(quote.breakdown.total)}</span>
-              </div>
-            </div>
+            <BreakdownGrouped breakdown={quote.breakdown} />
           </div>
         </section>
 
