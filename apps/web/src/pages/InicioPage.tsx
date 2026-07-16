@@ -33,6 +33,37 @@ const DIAS = [
   { key: 'domingo', label: 'Domingo' },
 ] as const;
 
+const DIA_NOMBRE = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+const MES_NOMBRE = [
+  'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
+  'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre',
+];
+
+/** "Sábado 18 de julio" a partir del ISO (en UTC, como se guardan las fechas). */
+function diaLargo(iso: string): string {
+  const d = new Date(iso);
+  return `${DIA_NOMBRE[d.getUTCDay()]} ${d.getUTCDate()} de ${MES_NOMBRE[d.getUTCMonth()]}`;
+}
+
+interface FichaSemanaLike {
+  quoteId: string;
+  fechaEventoISO: string;
+}
+/** Agrupa las fichas por día (conservando el orden por fecha que ya viene del API). */
+function agruparPorDia<T extends FichaSemanaLike>(fichas: T[]): { key: string; label: string; fichas: T[] }[] {
+  const grupos: { key: string; label: string; fichas: T[] }[] = [];
+  for (const f of fichas) {
+    const key = f.fechaEventoISO.slice(0, 10);
+    let g = grupos.find((x) => x.key === key);
+    if (!g) {
+      g = { key, label: diaLargo(f.fechaEventoISO), fichas: [] };
+      grupos.push(g);
+    }
+    g.fichas.push(f);
+  }
+  return grupos;
+}
+
 export function InicioPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -49,6 +80,19 @@ export function InicioPage() {
         @media print {
           .dash-noprint { display: none !important; }
           .dash-fichas { display: block !important; }
+          /* Cada día en su propia hoja; dentro caben hasta 3 fichas. */
+          .ficha-dia { break-after: page; page-break-after: always; }
+          .ficha-dia:last-child { break-after: auto; page-break-after: auto; }
+          .ficha-dia-grid { display: block !important; }
+          .ficha-dia-grid > article {
+            break-inside: avoid; page-break-inside: avoid;
+            box-shadow: none !important; margin-bottom: 0.5rem;
+            font-size: 0.72rem;
+          }
+          /* Compactar la ficha para que entren 3 por hoja. */
+          .ficha-dia-grid > article > header { padding: 0.35rem 0.7rem !important; }
+          .ficha-dia-grid > article > div { padding: 0.4rem 0.7rem !important; }
+          .ficha-dia-title { break-after: avoid; page-break-after: avoid; }
         }
       `}</style>
 
@@ -123,9 +167,18 @@ export function InicioPage() {
             {data.fichasSemana.length === 0 ? (
               <Card className="p-6 text-sm text-charcoal-soft">No hay eventos esta semana.</Card>
             ) : (
-              <div className="grid gap-4 xl:grid-cols-2">
-                {data.fichasSemana.map((f) => (
-                  <FichaOperativaCard key={f.quoteId} f={f} onOpen={() => abrir(f.quoteId)} />
+              <div className="space-y-6">
+                {agruparPorDia(data.fichasSemana).map((g) => (
+                  <div key={g.key} className="ficha-dia">
+                    <h3 className="ficha-dia-title mb-2 border-b border-cream-300 pb-1 font-display text-lg text-ink">
+                      {g.label}
+                    </h3>
+                    <div className="ficha-dia-grid grid gap-4 xl:grid-cols-2">
+                      {g.fichas.map((f) => (
+                        <FichaOperativaCard key={f.quoteId} f={f} onOpen={() => abrir(f.quoteId)} />
+                      ))}
+                    </div>
+                  </div>
                 ))}
               </div>
             )}
