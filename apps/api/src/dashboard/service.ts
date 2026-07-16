@@ -50,6 +50,7 @@ export interface FichaSemana {
   invitados: number;
   horasEvento: number | null;
   usaCapilla: boolean;
+  capillaHorario: string | null;
   costoHoraExtra: number;
   horaInicio: string | null;
   horaTermino: string | null;
@@ -135,6 +136,7 @@ interface QuoteRow {
   invitados: number;
   horasEvento: number | null;
   usaCapilla: boolean;
+  capillaHorario: string | null;
   rentaTotal: number;
   horaInicio: string | null;
   horaTermino: string | null;
@@ -256,6 +258,7 @@ export async function getDashboard(
         invitados: q.invitados,
         horasEvento: q.horasEvento,
         usaCapilla: q.usaCapilla,
+        capillaHorario: q.capillaHorario,
         costoHoraExtra: Math.round(q.rentaTotal * 0.05),
         horaInicio: q.horaInicio,
         horaTermino: q.horaTermino,

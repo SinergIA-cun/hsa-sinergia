@@ -84,7 +84,7 @@ export function FichaOperativaCard({ f, onOpen }: { f: FichaSemana; onOpen?: () 
               <Users size={12} className="text-charcoal-soft" /> {f.invitados}
             </span>
           </Campo>
-          <Campo label="Capilla">{si(f.usaCapilla)}</Campo>
+          <Campo label="Capilla">{f.usaCapilla ? (f.capillaHorario ? `Sí · ${f.capillaHorario}` : 'Sí') : 'No'}</Campo>
         </div>
 
         {/* Horarios */}

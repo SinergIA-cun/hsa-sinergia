@@ -107,6 +107,7 @@ export interface Quote {
   spaceIds: string[];
   horasExtra: number;
   usaCapilla?: boolean;
+  capillaHorario?: string | null;
   esCortesia?: boolean;
   usaDjHoraExtra?: boolean;
   horasEvento?: number | null;
@@ -206,11 +207,17 @@ export interface SpaceAvailability {
   quotes: { id: string; cliente: string; status: string }[];
 }
 
+export interface CapillaEvento {
+  quoteId: string;
+  cliente: string;
+  horario: string | null;
+}
+
 export interface Availability {
   fecha: string;
   spaces: SpaceAvailability[];
   blocked: boolean;
-  capillaOcupada: boolean;
+  capillaEventos: CapillaEvento[];
 }
 
 export interface AgendaEvent {
@@ -262,6 +269,7 @@ export interface FichaSemana {
   invitados: number;
   horasEvento: number | null;
   usaCapilla: boolean;
+  capillaHorario: string | null;
   costoHoraExtra: number;
   horaInicio: string | null;
   horaTermino: string | null;

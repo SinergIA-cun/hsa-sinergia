@@ -56,20 +56,23 @@ describe('getAvailability', () => {
     expect(excl.spaces[0]!.level).toBe('libre');
   });
 
-  it('capillaOcupada: se marca cuando otro evento usa la capilla ese día', async () => {
+  it('capillaEventos: informa (sin bloquear) qué otros eventos usan la capilla ese día', async () => {
     const FECHA_CAP = '2029-04-15';
-    expect((await getAvailability(prisma, FECHA_CAP, [arcosId])).capillaOcupada).toBe(false);
+    expect((await getAvailability(prisma, FECHA_CAP, [arcosId])).capillaEventos).toHaveLength(0);
 
     const q = await createQuote(
       prisma,
-      { fecha: FECHA_CAP, invitados: 200, spaceIds: [arcosId], eventTypeId, usaCapilla: true, client: { nombre: 'Capilla Test' } },
+      { fecha: FECHA_CAP, invitados: 200, spaceIds: [arcosId], eventTypeId, usaCapilla: true, capillaHorario: '13:00', client: { nombre: 'Capilla Test' } },
       actor,
     );
     created.push(q.id);
     createdClients.push(q.clientId);
 
-    expect((await getAvailability(prisma, FECHA_CAP, [arcosId])).capillaOcupada).toBe(true);
-    // Excluyendo la propia, vuelve libre (para poder editarla sin auto-bloquearse).
-    expect((await getAvailability(prisma, FECHA_CAP, [arcosId], q.id)).capillaOcupada).toBe(false);
+    const info = await getAvailability(prisma, FECHA_CAP, [arcosId]);
+    expect(info.capillaEventos).toHaveLength(1);
+    expect(info.capillaEventos[0]!.cliente).toBe('Capilla Test');
+    expect(info.capillaEventos[0]!.horario).toBe('13:00');
+    // Excluyendo la propia, no se lista a sí misma (para editar sin ruido).
+    expect((await getAvailability(prisma, FECHA_CAP, [arcosId], q.id)).capillaEventos).toHaveLength(0);
   });
 });

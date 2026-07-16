@@ -10,6 +10,13 @@ export interface SpaceAvailability {
   quotes: { id: string; cliente: string; status: string }[];
 }
 
+/** Otro evento que usa la capilla el mismo día (informativo, no bloquea). */
+export interface CapillaEvento {
+  quoteId: string;
+  cliente: string;
+  horario: string | null;
+}
+
 /** Rango [inicio, finExclusivo) del día local para la fecha ISO. */
 function dayRange(fechaISO: string): { gte: Date; lt: Date } {
   const gte = new Date(`${fechaISO}T00:00:00.000Z`);
@@ -32,9 +39,9 @@ export async function getAvailability(
   fechaISO: string,
   spaceIds: string[],
   excludeQuoteId?: string,
-): Promise<{ fecha: string; spaces: SpaceAvailability[]; blocked: boolean; capillaOcupada: boolean }> {
+): Promise<{ fecha: string; spaces: SpaceAvailability[]; blocked: boolean; capillaEventos: CapillaEvento[] }> {
   const range = dayRange(fechaISO);
-  const [spaces, quotes, capillaCount] = await Promise.all([
+  const [spaces, quotes, capillaQuotes] = await Promise.all([
     db.space.findMany({ where: { id: { in: spaceIds } } }),
     db.quote.findMany({
       where: {
@@ -46,8 +53,9 @@ export async function getAvailability(
       },
       include: { client: { select: { nombre: true } } },
     }),
-    // La capilla es un recurso único por día: se bloquea si otro evento la usa.
-    db.quote.count({
+    // La capilla la pueden usar VARIOS eventos el mismo día: no bloquea, solo se
+    // informa qué otros eventos la tienen y a qué horario, para coordinar.
+    db.quote.findMany({
       where: {
         fechaEvento: range,
         usaCapilla: true,
@@ -55,8 +63,15 @@ export async function getAvailability(
         deletedAt: null,
         ...(excludeQuoteId ? { id: { not: excludeQuoteId } } : {}),
       },
+      include: { client: { select: { nombre: true } } },
     }),
   ]);
+
+  const capillaEventos: CapillaEvento[] = capillaQuotes.map((q) => ({
+    quoteId: q.id,
+    cliente: q.client?.nombre ?? 'Cliente',
+    horario: q.capillaHorario ?? null,
+  }));
 
   const nombreById = new Map(spaces.map((s) => [s.id, s.nombre]));
 
@@ -86,7 +101,7 @@ export async function getAvailability(
     fecha: fechaISO,
     spaces: result,
     blocked: result.some((s) => s.level === 'bloqueada'),
-    capillaOcupada: capillaCount > 0,
+    capillaEventos,
   };
 }
 

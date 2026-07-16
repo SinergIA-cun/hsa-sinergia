@@ -22,6 +22,7 @@ export interface QuoteFormInitial {
   foodPackageId: string;
   horasExtra: number;
   usaCapilla: boolean;
+  capillaHorario: string;
   esCortesia: boolean;
   usaDjHoraExtra: boolean;
   addOns: Record<string, number>;
@@ -33,6 +34,7 @@ export interface QuotePayload {
   spaceIds: string[];
   horasExtra: number;
   usaCapilla: boolean;
+  capillaHorario?: string | null;
   esCortesia: boolean;
   usaDjHoraExtra: boolean;
   foodPackageId?: string;
@@ -93,6 +95,7 @@ export function QuoteForm({
   const [foodPackageId, setFoodPackageId] = useState(initial?.foodPackageId ?? '');
   const [horasExtra, setHorasExtra] = useState(initial?.horasExtra ?? 0);
   const [usaCapilla, setUsaCapilla] = useState(initial?.usaCapilla ?? false);
+  const [capillaHorario, setCapillaHorario] = useState(initial?.capillaHorario ?? '');
   const [esCortesia, setEsCortesia] = useState(initial?.esCortesia ?? false);
   const [usaDjHoraExtra, setUsaDjHoraExtra] = useState(initial?.usaDjHoraExtra ?? false);
   const [addOns, setAddOns] = useState<Record<string, number>>(initial?.addOns ?? {});
@@ -173,7 +176,8 @@ export function QuoteForm({
   });
   const avail = availability?.spaces[0];
   const blocked = availability?.blocked ?? false;
-  const capillaOcupada = availability?.capillaOcupada ?? false;
+  // La capilla la pueden usar varios eventos el mismo día: solo se informa quién más.
+  const capillaEventos = availability?.capillaEventos ?? [];
 
   const canSave = Boolean(
     nombre && eventTypeId && fecha && spaceIds.length === 1 && breakdown && !calcError && !blocked,
@@ -206,6 +210,7 @@ export function QuoteForm({
         spaceIds,
         horasExtra,
         usaCapilla,
+        capillaHorario: usaCapilla ? capillaHorario || null : null,
         esCortesia,
         usaDjHoraExtra,
         foodPackageId: foodPackageId || undefined,
@@ -329,31 +334,50 @@ export function QuoteForm({
           </div>
           <AvailabilityBanner avail={avail} fecha={fecha} />
 
-          {/* Capilla: cortesía (entre semana) / $5,000 sábado. Recurso único por día. */}
-          <label
-            className={`mt-1 flex cursor-pointer items-start gap-3 rounded-lg border px-4 py-3 text-sm transition-colors ${
-              usaCapilla ? 'border-gold bg-gold/10' : 'border-ink/12 bg-white/50 hover:border-ink/30'
-            } ${capillaOcupada && !usaCapilla ? 'cursor-not-allowed opacity-60' : ''}`}
-          >
-            <input
-              type="checkbox"
-              checked={usaCapilla}
-              disabled={capillaOcupada && !usaCapilla}
-              onChange={(e) => setUsaCapilla(e.target.checked)}
-              className="mt-0.5 h-4 w-4 accent-[var(--color-gold)]"
-            />
-            <span className="flex-1">
-              <span className="font-medium text-ink">Usar la Capilla</span>
-              <span className="block text-xs text-charcoal-soft">
-                Cortesía entre semana · $5,000 en sábado. Aparece en la hoja operativa.
-              </span>
-              {capillaOcupada && (
-                <span className="mt-1 block text-xs font-medium text-wine">
-                  Ya está tomada por otro evento en esta fecha.
+          {/* Capilla: cortesía (entre semana) / $5,000 sábado. La comparten varios eventos el día. */}
+          <div className={`mt-1 rounded-lg border px-4 py-3 text-sm transition-colors ${usaCapilla ? 'border-gold bg-gold/10' : 'border-ink/12 bg-white/50'}`}>
+            <label className="flex cursor-pointer items-start gap-3">
+              <input
+                type="checkbox"
+                checked={usaCapilla}
+                onChange={(e) => setUsaCapilla(e.target.checked)}
+                className="mt-0.5 h-4 w-4 accent-[var(--color-gold)]"
+              />
+              <span className="flex-1">
+                <span className="font-medium text-ink">Usar la Capilla</span>
+                <span className="block text-xs text-charcoal-soft">
+                  Cortesía entre semana · $5,000 en sábado. Aparece en la hoja operativa.
                 </span>
-              )}
-            </span>
-          </label>
+              </span>
+            </label>
+
+            {usaCapilla && (
+              <div className="mt-3 flex items-center gap-2 pl-7">
+                <span className="text-xs font-medium text-charcoal-soft">Horario de la capilla</span>
+                <TextInput
+                  type="time"
+                  value={capillaHorario}
+                  onChange={(e) => setCapillaHorario(e.target.value)}
+                  className="w-32"
+                />
+              </div>
+            )}
+
+            {capillaEventos.length > 0 && (
+              <div className="mt-3 rounded-md bg-ink/[0.04] px-3 py-2 pl-3 text-xs text-charcoal-soft">
+                <span className="font-medium text-ink">La capilla ya está apartada este día por:</span>
+                <ul className="mt-1 space-y-0.5">
+                  {capillaEventos.map((c) => (
+                    <li key={c.quoteId}>
+                      • {c.cliente}
+                      {c.horario ? ` — ${c.horario}` : ' — horario por definir'}
+                    </li>
+                  ))}
+                </ul>
+                <span className="mt-1 block italic">Coordina el horario para no encimarse.</span>
+              </div>
+            )}
+          </div>
 
           {/* Cortesía familiar: marca el evento en verde en la agenda. */}
           <label

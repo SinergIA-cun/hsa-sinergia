@@ -135,7 +135,8 @@ model Quote {
   status        QuoteStatus @default(borrador)
   publicToken   String      @unique
   vigenciaHasta DateTime?
-  usaCapilla    Boolean     @default(false) // cortesía; $5,000 en sábado. Recurso único por día.
+  usaCapilla    Boolean     @default(false) // cortesía; $5,000 en sábado. Varios eventos pueden usarla el mismo día.
+  capillaHorario String?    // horario de la capilla para este evento (varios eventos comparten el día).
   esCortesia    Boolean     @default(false) // cortesía familiar: se marca verde en la agenda.
   usaDjHoraExtra Boolean    @default(false) // DJ por hora extra (precio según tipo de evento).
   createdBy     User?       @relation("QuoteCreatedBy", fields: [createdById], references: [id])
