@@ -110,6 +110,7 @@ export interface Quote {
   capillaHorario?: string | null;
   esCortesia?: boolean;
   usaDjHoraExtra?: boolean;
+  banqueteroId?: string | null;
   horasEvento?: number | null;
   horarioCivil?: string | null;
   horaInicio?: string | null;
@@ -211,6 +212,23 @@ export interface CapillaEvento {
   quoteId: string;
   cliente: string;
   horario: string | null;
+}
+
+export interface Banquetero {
+  id: string;
+  nombre: string;
+  telefono?: string | null;
+  activo: boolean;
+  createdAt?: string;
+}
+
+export interface VentaBanquetero {
+  banqueteroId: string;
+  nombre: string;
+  eventos: number;
+  totalContratos: number;
+  totalRenta: number;
+  invitados: number;
 }
 
 export interface Availability {

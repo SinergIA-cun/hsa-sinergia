@@ -103,6 +103,17 @@ model EventType {
   quotes       Quote[]
 }
 
+// Banqueteros (proveedores de alimentos). Se elige uno en la hoja operativa para
+// llevar registro de ventas por banquetero.
+model Banquetero {
+  id        String   @id @default(cuid())
+  nombre    String
+  telefono  String?
+  activo    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  quotes    Quote[]
+}
+
 model Client {
   id               String   @id @default(cuid())
   nombre           String
@@ -139,6 +150,8 @@ model Quote {
   capillaHorario String?    // horario de la capilla para este evento (varios eventos comparten el día).
   esCortesia    Boolean     @default(false) // cortesía familiar: se marca verde en la agenda.
   usaDjHoraExtra Boolean    @default(false) // DJ por hora extra (precio según tipo de evento).
+  banquetero    Banquetero? @relation(fields: [banqueteroId], references: [id])
+  banqueteroId  String?     // proveedor de alimentos (para ventas por banquetero).
   createdBy     User?       @relation("QuoteCreatedBy", fields: [createdById], references: [id])
   createdById   String?
   createdAt     DateTime    @default(now())
@@ -157,6 +170,7 @@ model Quote {
   @@index([createdById])
   @@index([fechaEvento])
   @@index([deletedAt])
+  @@index([banqueteroId])
 }
 
 model FoodPackage {

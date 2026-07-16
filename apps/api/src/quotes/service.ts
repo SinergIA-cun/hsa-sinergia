@@ -385,6 +385,7 @@ export const operativaSchema = z.object({
   horarioCivil: z.string().max(120).nullable().optional(),
   horaInicio: z.string().max(20).nullable().optional(),
   horaTermino: z.string().max(20).nullable().optional(),
+  banqueteroId: z.string().nullable().optional(),
   hoja: hojaOperativaSchema.optional(),
 });
 
@@ -393,13 +394,23 @@ export async function updateOperativa(db: PrismaClient, id: string, rawInput: un
   if (!existing) throw new QuoteError(404, 'Cotización no encontrada');
   assertNotTrashed(existing);
   const input = operativaSchema.parse(rawInput);
+
+  // El banquetero se elige del catálogo (para ventas por banquetero); guardamos
+  // también su nombre en la hoja para que la impresión no dependa del join.
+  let banquetero: { id: string; nombre: string } | null = null;
+  if (input.banqueteroId) {
+    banquetero = await db.banquetero.findUnique({ where: { id: input.banqueteroId }, select: { id: true, nombre: true } });
+  }
+  const hoja = { ...(input.hoja ?? {}), banquetero: banquetero?.nombre ?? input.hoja?.banquetero ?? null };
+
   return db.quote.update({
     where: { id },
     data: {
       horarioCivil: input.horarioCivil ?? null,
       horaInicio: input.horaInicio ?? null,
       horaTermino: input.horaTermino ?? null,
-      operativa: (input.hoja ?? undefined) as Prisma.InputJsonValue | undefined,
+      banqueteroId: input.banqueteroId ?? null,
+      operativa: hoja as Prisma.InputJsonValue,
     },
     include: includeRels,
   });

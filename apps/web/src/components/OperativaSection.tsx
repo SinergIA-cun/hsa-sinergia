@@ -1,10 +1,10 @@
 import { useState } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { ClipboardList } from 'lucide-react';
 import { api } from '../lib/api.ts';
-import { Button, Card, TextInput, Field } from './ui.tsx';
-import type { Quote, HojaOperativa } from '../lib/types.ts';
+import { Button, Card, TextInput, SelectInput, Field } from './ui.tsx';
+import type { Quote, HojaOperativa, Banquetero } from '../lib/types.ts';
 
 const CheckField = ({ label, checked, onChange }: { label: string; checked: boolean; onChange: (v: boolean) => void }) => (
   <label className="flex items-center gap-2 text-sm text-charcoal">
@@ -22,8 +22,15 @@ export function OperativaSection({ quote }: { quote: Quote }) {
   const [horaInicio, setHoraInicio] = useState(quote.horaInicio ?? '');
   const [horaTermino, setHoraTermino] = useState(quote.horaTermino ?? '');
   const [hoja, setHoja] = useState<HojaOperativa>(h);
+  const [banqueteroId, setBanqueteroId] = useState(quote.banqueteroId ?? '');
   const [saved, setSaved] = useState(false);
   const [err, setErr] = useState('');
+
+  const { data: banqData } = useQuery({
+    queryKey: ['banqueteros'],
+    queryFn: () => api.get<{ banqueteros: Banquetero[] }>('/api/banqueteros'),
+  });
+  const banqueteros = banqData?.banqueteros ?? [];
 
   const set = <K extends keyof HojaOperativa>(k: K, v: HojaOperativa[K]) => setHoja((p) => ({ ...p, [k]: v }));
 
@@ -36,6 +43,7 @@ export function OperativaSection({ quote }: { quote: Quote }) {
         horarioCivil: horarioCivil || null,
         horaInicio: horaInicio || null,
         horaTermino: horaTermino || null,
+        banqueteroId: banqueteroId || null,
         hoja,
       });
       await qc.invalidateQueries({ queryKey: ['quote', quote.id] });
@@ -63,7 +71,14 @@ export function OperativaSection({ quote }: { quote: Quote }) {
       <form onSubmit={guardar} className="grid gap-4 sm:grid-cols-3">
         <Field label="Festejado / título"><TextInput value={hoja.nombreFestejado ?? ''} onChange={(e) => set('nombreFestejado', e.target.value)} placeholder="ej. Alondra" /></Field>
         <Field label="Relación del cliente"><TextInput value={hoja.relacionCliente ?? ''} onChange={(e) => set('relacionCliente', e.target.value)} placeholder="ej. Mamá" /></Field>
-        <Field label="Banquetero"><TextInput value={hoja.banquetero ?? ''} onChange={(e) => set('banquetero', e.target.value)} /></Field>
+        <Field label="Banquetero">
+          <SelectInput value={banqueteroId} onChange={(e) => setBanqueteroId(e.target.value)}>
+            <option value="">Sin asignar</option>
+            {banqueteros.map((b) => (
+              <option key={b.id} value={b.id}>{b.nombre}</option>
+            ))}
+          </SelectInput>
+        </Field>
 
         <Field label="Horario civil"><TextInput value={horarioCivil} onChange={(e) => setHorarioCivil(e.target.value)} placeholder="ej. 14:00" /></Field>
         <Field label="Hora misa"><TextInput value={hoja.horaMisa ?? ''} onChange={(e) => set('horaMisa', e.target.value)} placeholder="ej. 19:00" /></Field>

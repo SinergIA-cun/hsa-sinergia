@@ -4,7 +4,7 @@ import { UserPlus, Save, Check, X, Plus } from 'lucide-react';
 import { api, ApiError } from '../lib/api.ts';
 import { formatMXN } from '../lib/money.ts';
 import { Button, Card, Field, TextInput, SelectInput, ArrowDivider } from '../components/ui.tsx';
-import type { AddOn, AdminConfig, User } from '../lib/types.ts';
+import type { AddOn, AdminConfig, User, Banquetero, VentaBanquetero } from '../lib/types.ts';
 
 const ADDON_KIND_LABEL: Record<AddOn['kind'], string> = {
   fijo: 'Fijo',
@@ -30,9 +30,119 @@ export function AdminPage() {
         <h1 className="mt-2 font-display text-4xl text-ink">Panel de admin</h1>
       </div>
       <UsersSection />
+      <BanqueterosSection />
       <AddonsSection />
       <ConfigSection />
     </div>
+  );
+}
+
+function BanqueterosSection() {
+  const qc = useQueryClient();
+  const { data, isLoading } = useQuery({
+    queryKey: ['admin-banqueteros'],
+    queryFn: () => api.get<{ banqueteros: Banquetero[] }>('/api/admin/banqueteros'),
+  });
+  const ventasQ = useQuery({
+    queryKey: ['admin-banqueteros-ventas'],
+    queryFn: () => api.get<{ ventas: VentaBanquetero[] }>('/api/admin/banqueteros/ventas'),
+  });
+
+  async function invalidate() {
+    await Promise.all([
+      qc.invalidateQueries({ queryKey: ['admin-banqueteros'] }),
+      qc.invalidateQueries({ queryKey: ['admin-banqueteros-ventas'] }),
+      qc.invalidateQueries({ queryKey: ['banqueteros'] }),
+    ]);
+  }
+
+  const toggle = useMutation({
+    mutationFn: ({ id, activo }: { id: string; activo: boolean }) =>
+      api.patch<{ banquetero: Banquetero }>(`/api/admin/banqueteros/${id}`, { activo }),
+    onSuccess: invalidate,
+  });
+
+  const [nombre, setNombre] = useState('');
+  const [telefono, setTelefono] = useState('');
+  const [error, setError] = useState('');
+
+  const crear = useMutation({
+    mutationFn: () =>
+      api.post<{ banquetero: Banquetero }>('/api/admin/banqueteros', {
+        nombre,
+        telefono: telefono || undefined,
+      }),
+    onSuccess: async () => {
+      setNombre('');
+      setTelefono('');
+      setError('');
+      await invalidate();
+    },
+    onError: (e) => setError(apiErrorMessage(e, 'No se pudo crear el banquetero.')),
+  });
+
+  function onSubmit(e: FormEvent) {
+    e.preventDefault();
+    if (!nombre.trim()) return;
+    crear.mutate();
+  }
+
+  const banqueteros = data?.banqueteros ?? [];
+  const ventas = ventasQ.data?.ventas ?? [];
+  const ventasById = new Map(ventas.map((v) => [v.banqueteroId, v]));
+
+  return (
+    <section>
+      <h2 className="mb-4 font-display text-2xl text-ink">Banqueteros</h2>
+      <div className="grid gap-6 lg:grid-cols-2">
+        <Card className="p-6">
+          {isLoading ? (
+            <p className="text-sm text-charcoal-soft">Cargando…</p>
+          ) : banqueteros.length === 0 ? (
+            <p className="text-sm text-charcoal-soft">Aún no hay banqueteros.</p>
+          ) : (
+            <ul className="divide-y divide-cream-200">
+              {banqueteros.map((b) => {
+                const v = ventasById.get(b.id);
+                return (
+                  <li key={b.id} className="flex items-center justify-between gap-3 py-3">
+                    <div className="min-w-0">
+                      <p className={`font-medium ${b.activo ? 'text-ink' : 'text-charcoal-soft line-through'}`}>{b.nombre}</p>
+                      <p className="text-xs text-charcoal-soft">
+                        {v ? `${v.eventos} evento(s) · ${formatMXN(v.totalContratos)}` : 'Sin eventos'}
+                        {b.telefono ? ` · ${b.telefono}` : ''}
+                      </p>
+                    </div>
+                    <Button variant="outline" onClick={() => toggle.mutate({ id: b.id, activo: !b.activo })}>
+                      {b.activo ? 'Desactivar' : 'Activar'}
+                    </Button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </Card>
+
+        <Card className="space-y-4 p-6">
+          <h3 className="font-display text-lg text-ink">Nuevo banquetero</h3>
+          <form onSubmit={onSubmit} className="space-y-4">
+            <Field label="Nombre">
+              <TextInput value={nombre} onChange={(e) => setNombre(e.target.value)} placeholder="ej. Carlos Barrera" />
+            </Field>
+            <Field label="Teléfono (opcional)">
+              <TextInput value={telefono} onChange={(e) => setTelefono(e.target.value)} placeholder="ej. 55 1234 5678" />
+            </Field>
+            {error && <p className="text-sm text-wine">{error}</p>}
+            <Button type="submit" variant="gold" disabled={crear.isPending}>
+              {crear.isPending ? 'Guardando…' : 'Agregar banquetero'}
+            </Button>
+          </form>
+          <p className="text-xs text-charcoal-soft">
+            Las ventas por banquetero cuentan los contratos donde se le asignó en la hoja operativa.
+          </p>
+        </Card>
+      </div>
+    </section>
   );
 }
 

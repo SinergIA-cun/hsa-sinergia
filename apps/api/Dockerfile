@@ -25,4 +25,4 @@ COPY apps/api ./apps/api
 RUN pnpm --filter @hsa/database run generate
 EXPOSE 3001
 # Aplica migraciones, siembra el catálogo 2027 (idempotente) y arranca la API.
-CMD ["sh", "-c", "pnpm --filter @hsa/database run migrate:deploy && pnpm --filter @hsa/database run backfill:fase6 && pnpm --filter @hsa/database run backfill:fase7 && pnpm --filter @hsa/database run backfill:fase8 && pnpm --filter @hsa/api exec tsx src/index.ts"]
+CMD ["sh", "-c", "pnpm --filter @hsa/database run migrate:deploy && pnpm --filter @hsa/database run backfill:fase6 && pnpm --filter @hsa/database run backfill:fase7 && pnpm --filter @hsa/database run backfill:fase8 && pnpm --filter @hsa/database run backfill:fase9 && pnpm --filter @hsa/api exec tsx src/index.ts"]

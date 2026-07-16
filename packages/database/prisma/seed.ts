@@ -3,6 +3,7 @@ import { hash } from '@node-rs/argon2';
 import { applyCatalog2027 } from './data/catalog-2027.js';
 import { applyTeamBuilding2027 } from './data/team-building-2027.js';
 import { applyPaymentRules } from './data/payment-rules.js';
+import { applyBanqueteros } from './data/banqueteros.js';
 
 const prisma = new PrismaClient();
 
@@ -80,6 +81,9 @@ async function seedCatalog() {
 
   // Team Building: renta plana + espacios Los Balcones / Los Pajaritos.
   await applyTeamBuilding2027(prisma);
+
+  // Banqueteros base (el cliente agrega más desde el panel).
+  await applyBanqueteros(prisma);
 }
 
 async function main() {
