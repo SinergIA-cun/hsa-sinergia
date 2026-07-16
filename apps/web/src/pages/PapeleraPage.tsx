@@ -33,7 +33,7 @@ export function PapeleraPage() {
     <div>
       <div className="mb-6">
         <ArrowDivider>Papelera</ArrowDivider>
-        <h1 className="mt-2 font-display text-4xl text-ink">Cotizaciones eliminadas</h1>
+        <h1 className="mt-2 font-display text-4xl text-ink">Contratos eliminados</h1>
         <p className="mt-1 text-sm text-charcoal-soft">
           Se conservan {RETENTION_DAYS} días y luego se eliminan definitivamente.
         </p>

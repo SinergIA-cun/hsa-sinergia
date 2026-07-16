@@ -104,9 +104,11 @@ export function ownershipWhere(actor: Actor): Prisma.QuoteWhereInput {
   return actor.role === 'admin' ? {} : { createdById: actor.id };
 }
 
-/** Carga regla del espacio + pagos y arma el estado de cuenta de una cotización. */
+// El plan de pagos, el saldo y el finiquito se miden SOLO sobre la renta (lo que
+// cobra HSA). Los alimentos se pagan directo al banquetero y no se rastrean aquí.
+/** Carga regla del espacio + pagos y arma el estado de cuenta (base: renta). */
 export async function loadEstadoCuenta(db: PrismaClient, quote: {
-  id: string; total: number; fechaEvento: Date; status: string; spaceIds: string[];
+  id: string; rentaTotal: number; fechaEvento: Date; status: string; spaceIds: string[];
 }) {
   const spaceId = quote.spaceIds[0];
   const [rule, payments, firstApartado] = await Promise.all([
@@ -118,7 +120,7 @@ export async function loadEstadoCuenta(db: PrismaClient, quote: {
     }),
   ]);
   const ec = computeEstadoCuenta({
-    total: quote.total,
+    total: quote.rentaTotal,
     fechaEvento: quote.fechaEvento,
     status: quote.status,
     rule: rule ? { anticipo: rule.anticipo, complementoPct: rule.complementoPct, liquidarDiasAntes: rule.liquidarDiasAntes } : null,
@@ -130,7 +132,7 @@ export async function loadEstadoCuenta(db: PrismaClient, quote: {
 
 export interface QuoteEC {
   id: string;
-  total: number;
+  rentaTotal: number;
   fechaEvento: Date;
   status: string;
   spaceIds: string[];
@@ -177,7 +179,7 @@ export async function loadEstadoCuentaBulk(
     out.set(
       q.id,
       computeEstadoCuenta({
-        total: q.total,
+        total: q.rentaTotal,
         fechaEvento: q.fechaEvento,
         status: q.status,
         rule: rule

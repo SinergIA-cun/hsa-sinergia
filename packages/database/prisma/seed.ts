@@ -2,6 +2,7 @@ import { PrismaClient, AddOnKind, UserRole } from '@prisma/client';
 import { hash } from '@node-rs/argon2';
 import { applyCatalog2027 } from './data/catalog-2027.js';
 import { applyTeamBuilding2027 } from './data/team-building-2027.js';
+import { applyPaymentRules } from './data/payment-rules.js';
 
 const prisma = new PrismaClient();
 
@@ -61,18 +62,9 @@ async function seedCatalog() {
     data: { priceListId: priceList.id, spaceId: capilla.id, min: 1, max: 170, viernes: 0, viernesEspecial: 0, sabado: 5000, domAJue: 0 },
   });
 
-  // Reglas de pago por espacio (sección H del contrato). La Capilla queda sin
-  // regla (pendiente de datos del cliente) — el sistema la maneja como "plan pendiente".
-  const spaceRules = [
-    { space: cupula, anticipo: 25000, complementoPct: 0.25 },
-    { space: arcos, anticipo: 20000, complementoPct: 0.1 },
-    { space: campos, anticipo: 15000, complementoPct: 0.15 },
-  ];
-  for (const r of spaceRules) {
-    await prisma.spacePaymentRule.create({
-      data: { spaceId: r.space.id, anticipo: r.anticipo, complementoPct: r.complementoPct },
-    });
-  }
+  // Reglas de pago por espacio (sección H del contrato). Fuente única compartida
+  // con el backfill para que producción siempre las tenga (idempotente).
+  await applyPaymentRules(prisma);
 
   // Add-ons de ejemplo
   await prisma.addOn.createMany({

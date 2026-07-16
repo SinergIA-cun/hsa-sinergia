@@ -42,7 +42,7 @@ export function EditQuotePage() {
   // Origen de la navegación: si vino de la agenda, "atrás" regresa a ese mes.
   const desdeAgenda = sp.get('volver') === 'agenda';
   const backTo = desdeAgenda ? `/agenda?m=${sp.get('m') ?? ''}` : '/cotizaciones';
-  const backLabel = desdeAgenda ? 'Agenda' : 'Cotizaciones';
+  const backLabel = desdeAgenda ? 'Agenda' : 'Contratos';
   const { user } = useAuth();
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState('');
@@ -77,7 +77,7 @@ export function EditQuotePage() {
       await qc.invalidateQueries({ queryKey: ['quotes'] });
       navigate(`/cotizaciones/${res.quote.id}`);
     } catch {
-      setError('No se pudo duplicar la cotización.');
+      setError('No se pudo duplicar el contrato.');
       setDuplicando(false);
     }
   }
@@ -99,7 +99,7 @@ export function EditQuotePage() {
 
   if (quoteQ.isLoading || catalogQ.isLoading) return <p className="text-charcoal-soft">Cargando…</p>;
   if (!quote || !catalog || !estadoCuenta || !payments || !activityLog) {
-    return <p className="text-wine">No se encontró la cotización.</p>;
+    return <p className="text-wine">No se encontró el contrato.</p>;
   }
 
   const enPapelera = Boolean(quote.deletedAt);
@@ -223,7 +223,7 @@ export function EditQuotePage() {
             </span>
             <p className="text-sm text-charcoal-soft">
               {enPapelera
-                ? 'Solo lectura: cotización eliminada, conservada como evidencia.'
+                ? 'Solo lectura: contrato eliminado, conservado como evidencia.'
                 : 'Ya no es editable (tiene compromiso de pago). Puedes cambiar el estatus o imprimir.'}
             </p>
           </div>

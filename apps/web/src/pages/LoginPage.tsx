@@ -72,7 +72,7 @@ export function LoginPage() {
             <Logo className="items-start" />
           </div>
           <h2 className="font-display text-3xl text-ink">Iniciar sesión</h2>
-          <p className="mb-8 mt-1 text-sm text-charcoal-soft">Accede a tu panel de cotizaciones.</p>
+          <p className="mb-8 mt-1 text-sm text-charcoal-soft">Accede a tu panel de contratos.</p>
 
           <div className="space-y-4">
             <Field label="Correo">

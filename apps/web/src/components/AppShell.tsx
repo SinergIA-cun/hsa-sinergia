@@ -34,7 +34,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           </Link>
           <nav className="hidden items-center gap-1 sm:flex">
             {navItem('/', <LayoutDashboard size={16} />, 'Inicio')}
-            {navItem('/cotizaciones', <FileText size={16} />, 'Cotizaciones')}
+            {navItem('/cotizaciones', <FileText size={16} />, 'Contratos')}
             {navItem('/agenda', <CalendarDays size={16} />, 'Agenda')}
             {navItem('/cotizaciones/nueva', <Plus size={16} />, 'Nueva')}
             {navItem('/papelera', <Trash2 size={16} />, 'Papelera')}

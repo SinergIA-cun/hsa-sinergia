@@ -578,8 +578,8 @@ function AvailabilityBanner({
       <div className="flex items-start gap-2 rounded-lg border border-ink/15 bg-ink/5 px-3 py-2.5 text-sm text-ink-500">
         <AlertTriangle size={16} className="mt-0.5 shrink-0" />
         <span>
-          Hay {avail.counts.cotizaciones} cotización(es) para <strong>{avail.nombre}</strong> en
-          esta fecha, ninguna apartada aún.
+          Hay {avail.counts.cotizaciones} contrato(s) para <strong>{avail.nombre}</strong> en
+          esta fecha, ninguno apartado aún.
         </span>
       </div>
     );

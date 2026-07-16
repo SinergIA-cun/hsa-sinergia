@@ -11,7 +11,7 @@ import { useAuth } from '../auth/auth.tsx';
 import type { Quote, QuoteStatus, Catalog } from '../lib/types.ts';
 
 const SECTIONS: { title: string; statuses: QuoteStatus[]; defaultOpen: boolean }[] = [
-  { title: 'Cotizaciones', statuses: ['borrador', 'enviada', 'aceptada', 'vencida'], defaultOpen: true },
+  { title: 'Contratos', statuses: ['borrador', 'enviada', 'aceptada', 'vencida'], defaultOpen: true },
   { title: 'Eventos Apartados', statuses: ['apartada'], defaultOpen: true },
   { title: 'Eventos Formalizados', statuses: ['formalizada'], defaultOpen: false },
   { title: 'Eventos Liquidados', statuses: ['liquidada'], defaultOpen: false },
@@ -23,7 +23,7 @@ function QuoteRow({ q, showSeller }: { q: Quote; showSeller: boolean }) {
 
   async function eliminar(e: React.MouseEvent) {
     e.stopPropagation();
-    if (!window.confirm('¿Enviar esta cotización a la papelera? Podrás restaurarla dentro de 30 días.')) return;
+    if (!window.confirm('¿Enviar este contrato a la papelera? Podrás restaurarlo dentro de 30 días.')) return;
     await api.del(`/api/quotes/${q.id}`);
     await qc.invalidateQueries({ queryKey: ['quotes'] });
   }
@@ -193,7 +193,7 @@ export function QuotesListPage() {
         <div>
           <ArrowDivider>{isAdmin ? 'CRM · Ventas' : 'Mis ventas'}</ArrowDivider>
           <h1 className="mt-2 font-display text-4xl text-ink">
-            {isAdmin ? 'Cotizaciones del equipo' : 'Mis cotizaciones'}
+            {isAdmin ? 'Contratos del equipo' : 'Mis contratos'}
           </h1>
         </div>
         <Link to="/cotizaciones/nueva">
@@ -236,11 +236,11 @@ export function QuotesListPage() {
 
       {!isLoading && allQuotes.length === 0 && (
         <Card className="p-12 text-center">
-          <p className="font-display text-2xl text-ink">Aún no hay cotizaciones</p>
+          <p className="font-display text-2xl text-ink">Aún no hay contratos</p>
           <p className="mt-2 text-sm text-charcoal-soft">Crea la primera en un par de minutos.</p>
           <Link to="/cotizaciones/nueva" className="mt-6 inline-block">
             <Button variant="gold">
-              <Plus size={16} /> Nueva cotización
+              <Plus size={16} /> Nuevo contrato
             </Button>
           </Link>
         </Card>

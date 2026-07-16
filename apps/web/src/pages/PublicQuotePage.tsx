@@ -57,7 +57,7 @@ export function PublicQuotePage() {
       <div className="grid min-h-screen place-items-center bg-ink px-6 text-center text-cream">
         <div>
           <Logo tone="cream" />
-          <p className="mt-6 font-display text-2xl">Cotización no encontrada</p>
+          <p className="mt-6 font-display text-2xl">Contrato no encontrado</p>
           <p className="mt-2 text-sm text-cream/60">El enlace pudo haber expirado o ser incorrecto.</p>
         </div>
       </div>
@@ -83,7 +83,7 @@ export function PublicQuotePage() {
         <div className="relative mx-auto max-w-3xl px-6 py-10 text-center sm:py-14">
           <Logo tone="cream" />
           <p className="mt-8 text-xs uppercase tracking-[0.35em] text-gold-200">
-            Cotización de evento
+            Contrato de evento
           </p>
           <h1 className="mt-3 font-display text-4xl leading-tight sm:text-5xl">
             {quote.client?.nombre}
@@ -106,7 +106,7 @@ export function PublicQuotePage() {
         <div className="rounded-[var(--radius-card)] border border-cream-300 bg-white shadow-[var(--shadow-card)]">
           <div className="grid grid-cols-3 divide-x divide-cream-300 text-center">
             <div className="p-6">
-              <p className="text-xs uppercase tracking-wide text-charcoal-soft">Total</p>
+              <p className="text-xs uppercase tracking-wide text-charcoal-soft">Renta (a HSA)</p>
               <p className="mt-1 font-display text-2xl text-ink">{formatMXN(estadoCuenta.total)}</p>
             </div>
             <div className="p-6">
@@ -119,6 +119,11 @@ export function PublicQuotePage() {
             </div>
           </div>
         </div>
+
+        <p className="mt-3 text-center text-xs text-charcoal-soft">
+          El plan de pagos corresponde a la <strong>renta</strong>. Los alimentos y servicios se
+          pagan directo al banquetero.
+        </p>
 
         {quote.client?.numeroReferencia != null && (
           <p className="mt-4 text-center text-sm text-charcoal-soft">

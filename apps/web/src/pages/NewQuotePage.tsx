@@ -41,10 +41,10 @@ export function NewQuotePage() {
         <div className="mx-auto mb-4 grid h-14 w-14 place-items-center rounded-full bg-gold/15 text-gold">
           <Check size={28} />
         </div>
-        <ArrowDivider>Cotización creada</ArrowDivider>
+        <ArrowDivider>Contrato creado</ArrowDivider>
         <h1 className="mt-3 font-display text-4xl text-ink">{formatMXN(saved.total)}</h1>
         <p className="mt-1 text-sm text-charcoal-soft">
-          Comparte el link o el código QR con tu cliente. Podrá ver la cotización y su estado de
+          Comparte el link o el código QR con tu cliente. Podrá ver el contrato y su estado de
           cuenta en vivo.
         </p>
         <Card className="mt-8 p-8">
@@ -86,7 +86,7 @@ export function NewQuotePage() {
             <Button variant="gold">Ver como cliente</Button>
           </a>
           <Link to="/cotizaciones">
-            <Button variant="outline">Ir a cotizaciones</Button>
+            <Button variant="outline">Ir a contratos</Button>
           </Link>
         </div>
       </div>
@@ -99,10 +99,10 @@ export function NewQuotePage() {
         to="/cotizaciones"
         className="mb-4 inline-flex items-center gap-1.5 text-sm text-charcoal-soft hover:text-ink"
       >
-        <ArrowLeft size={15} /> Cotizaciones
+        <ArrowLeft size={15} /> Contratos
       </Link>
-      <ArrowDivider>Nueva</ArrowDivider>
-      <h1 className="mb-8 mt-2 font-display text-4xl text-ink">Armar cotización</h1>
+      <ArrowDivider>Nuevo</ArrowDivider>
+      <h1 className="mb-8 mt-2 font-display text-4xl text-ink">Armar contrato</h1>
       <QuoteForm
         catalog={catalog}
         submitLabel="Guardar y generar link"

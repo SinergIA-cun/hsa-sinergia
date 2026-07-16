@@ -66,7 +66,7 @@ export function FichaOperativaCard({ f, onOpen }: { f: FichaSemana; onOpen?: () 
           </span>
           {onOpen && (
             <button onClick={onOpen} className="text-[0.7rem] font-medium text-ink/60 underline-offset-2 hover:text-ink hover:underline print:hidden">
-              Abrir cotización
+              Abrir contrato
             </button>
           )}
         </div>

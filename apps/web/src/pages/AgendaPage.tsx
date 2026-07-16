@@ -195,7 +195,7 @@ export function AgendaPage() {
         ))}
       </div>
       <p className="mt-2 text-xs text-charcoal-soft">
-        El chip muestra el espacio (Cúpula → Arcos → Campos). Toca un evento para abrir su cotización.
+        El chip muestra el espacio (Cúpula → Arcos → Campos). Toca un evento para abrir su contrato.
       </p>
     </div>
   );
