@@ -27,7 +27,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   return (
     <div className="min-h-screen bg-paper">
-      <header className="sticky top-0 z-20 border-b border-cream-300/70 bg-cream/80 backdrop-blur">
+      <header className="sticky top-0 z-20 border-b border-cream-300/70 bg-cream/80 backdrop-blur print:hidden">
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-6 py-3">
           <Link to="/">
             <Logo className="items-start" />

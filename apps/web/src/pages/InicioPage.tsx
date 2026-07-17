@@ -7,6 +7,7 @@ import { formatEventDate } from '../lib/date.ts';
 import { Card, ArrowDivider, Button } from '../components/ui.tsx';
 import { STATUS_LABEL, STATUS_STYLE } from '../lib/status.ts';
 import { FichaOperativaCard } from '../components/FichaOperativaCard.tsx';
+import { FichaOperativaPrint } from '../components/FichaOperativaPrint.tsx';
 import { useAuth } from '../auth/auth.tsx';
 import type { DashboardData } from '../lib/types.ts';
 
@@ -77,26 +78,43 @@ export function InicioPage() {
   return (
     <div>
       <style>{`
+        /* La hoja operativa compacta solo existe al imprimir. */
         @media print {
+          @page { size: letter portrait; margin: 10mm; }
           .dash-noprint { display: none !important; }
-          .dash-fichas { display: block !important; }
-          /* Cada día en su propia hoja; dentro caben hasta 3 fichas. */
+
+          /* Una hoja por día: viernes, sábado, domingo. */
           .ficha-dia { break-after: page; page-break-after: always; }
           .ficha-dia:last-child { break-after: auto; page-break-after: auto; }
-          .ficha-dia-grid { display: block !important; }
-          .ficha-dia-grid > article {
-            break-inside: avoid; page-break-inside: avoid;
-            box-shadow: none !important; margin-bottom: 0.5rem;
-            font-size: 0.72rem;
+          .ficha-dia-title {
+            break-after: avoid; page-break-after: avoid;
+            font-size: 13pt; margin: 0 0 4pt;
           }
-          /* Compactar la ficha para que entren 3 por hoja. */
-          .ficha-dia-grid > article > header { padding: 0.35rem 0.7rem !important; }
-          .ficha-dia-grid > article > div { padding: 0.4rem 0.7rem !important; }
-          .ficha-dia-title { break-after: avoid; page-break-after: avoid; }
+
+          /* Ficha compacta: ~3 por hoja. */
+          table.fop {
+            width: 100%; border-collapse: collapse; table-layout: fixed;
+            font-family: system-ui, sans-serif; font-size: 7.4pt;
+            margin-bottom: 5pt;
+            break-inside: avoid; page-break-inside: avoid;
+          }
+          table.fop th, table.fop td {
+            border: 0.5pt solid #999; padding: 1.6pt 3pt;
+            vertical-align: top; line-height: 1.2;
+          }
+          table.fop th {
+            background: #eceae4; text-align: left; font-weight: 700;
+            font-size: 6.2pt; letter-spacing: 0.02em; width: 17%;
+            text-transform: uppercase; color: #333;
+          }
+          table.fop td { width: 33%; }
+          .fop-strong { font-weight: 700; }
+          .fop-pre { white-space: pre-wrap; }
+          .fop-alerta { font-weight: 700; }
         }
       `}</style>
 
-      <div className="mb-8 flex flex-wrap items-end justify-between gap-4">
+      <div className="mb-8 flex flex-wrap items-end justify-between gap-4 print:hidden">
         <div>
           <ArrowDivider>Panel · Operación semanal</ArrowDivider>
           <h1 className="mt-2 font-display text-4xl text-ink">
@@ -154,7 +172,7 @@ export function InicioPage() {
 
           {/* Fichas operativas de la semana */}
           <section className="dash-fichas">
-            <div className="mb-3 flex items-end justify-between gap-3">
+            <div className="mb-3 flex items-end justify-between gap-3 print:hidden">
               <div>
                 <h2 className="flex items-center gap-2 font-display text-2xl text-ink">
                   <ClipboardList size={18} className="text-gold" /> Fichas de la semana
@@ -173,9 +191,16 @@ export function InicioPage() {
                     <h3 className="ficha-dia-title mb-2 border-b border-cream-300 pb-1 font-display text-lg text-ink">
                       {g.label}
                     </h3>
-                    <div className="ficha-dia-grid grid gap-4 xl:grid-cols-2">
+                    {/* Pantalla: tarjetas. */}
+                    <div className="ficha-dia-grid grid gap-4 xl:grid-cols-2 print:hidden">
                       {g.fichas.map((f) => (
                         <FichaOperativaCard key={f.quoteId} f={f} onOpen={() => abrir(f.quoteId)} />
+                      ))}
+                    </div>
+                    {/* Impresión: hoja operativa compacta (3 por hoja). */}
+                    <div className="hidden print:block">
+                      {g.fichas.map((f) => (
+                        <FichaOperativaPrint key={f.quoteId} f={f} />
                       ))}
                     </div>
                   </div>
