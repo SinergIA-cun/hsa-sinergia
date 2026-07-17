@@ -154,31 +154,37 @@ export function computeQuote(
     }
   }
 
-  // 5. Totales con desglose fiscal coherente.
-  // rentaConIva y alimentosConIva ya incluyen IVA => se descomponen para reportar el IVA real.
-  const conIva = rentaConIva + alimentosConIva;
-  const conIvaBase = conIva / (1 + catalog.ivaRate);
-  const conIvaImpuesto = conIva - conIvaBase;
+  // 5. Totales por BLOQUE, cada uno con su propio subtotal + IVA + total, para
+  //    que el desglose muestre por separado lo que cobra HSA (renta) y lo que se
+  //    paga al proveedor (alimentos + servicios). No se mezclan.
+  const rate = catalog.ivaRate;
 
-  const baseSinIva = alimentosBaseSinIva + addonsBaseSinIva;
-  const ivaSobreBases = baseSinIva * catalog.ivaRate;
-
-  const subtotal = round2(conIvaBase + baseSinIva);
-  const iva = round2(conIvaImpuesto + ivaSobreBases);
-  const total = round2(conIva + baseSinIva + ivaSobreBases);
-
-  // Dos subtotales: renta (lo que cobra HSA) y "otros" (alimentos + servicios,
-  // que suele pagarse directo al proveedor). Derivo `otros` del total para que
-  // siempre se cumpla rentaTotal + otrosTotal === total.
+  // Renta: todo trae IVA incluido. Se descompone para reportar subtotal e IVA.
   const rentaTotal = round2(rentaConIva);
-  const otrosTotal = round2(total - rentaTotal);
+  const rentaSubtotal = round2(rentaConIva / (1 + rate));
+  const rentaIva = round2(rentaTotal - rentaSubtotal);
+
+  // Otros: parte con IVA incluido (alimentos ivaIncluido) + parte sin IVA (se agrega).
+  const otrosSinIva = alimentosBaseSinIva + addonsBaseSinIva;
+  const otrosTotal = round2(alimentosConIva + otrosSinIva * (1 + rate));
+  const otrosSubtotal = round2(alimentosConIva / (1 + rate) + otrosSinIva);
+  const otrosIva = round2(otrosTotal - otrosSubtotal);
+
+  // Globales (compat): suma de ambos bloques. subtotal + iva === total.
+  const subtotal = round2(rentaSubtotal + otrosSubtotal);
+  const iva = round2(rentaIva + otrosIva);
+  const total = round2(rentaTotal + otrosTotal);
 
   return {
     lines,
     subtotal,
     iva,
     total,
+    rentaSubtotal,
+    rentaIva,
     rentaTotal,
+    otrosSubtotal,
+    otrosIva,
     otrosTotal,
   };
 }

@@ -142,15 +142,16 @@ export function QuoteForm({
     }
   }, [catalog, selection, spaceIds.length]);
 
-  // Preview del plan de pago según la regla del espacio seleccionado (sección H
-  // del contrato): anticipo fijo + complemento % sobre el TOTAL + finiquito.
+  // Preview del plan de pago según la regla del espacio. Se calcula sobre la
+  // RENTA (lo único que cobra y rastrea HSA); los alimentos se pagan al proveedor.
   const selectedSpace = catalog.spaces.find((s) => s.id === spaceIds[0]);
   const plan = useMemo(() => {
     const rule = selectedSpace?.paymentRule;
     if (!breakdown || !rule) return null;
+    const base = Math.round(breakdown.rentaTotal);
     const apartar = rule.anticipo;
-    const formalizar = Math.round(breakdown.total * rule.complementoPct);
-    const liquidacion = Math.round(breakdown.total) - apartar - formalizar;
+    const formalizar = Math.round(base * rule.complementoPct);
+    const liquidacion = base - apartar - formalizar;
     const liqFecha = fecha ? new Date(`${fecha}T00:00:00.000Z`) : null;
     if (liqFecha) liqFecha.setUTCDate(liqFecha.getUTCDate() - rule.liquidarDiasAntes);
     return { apartar, formalizar, liquidacion, liqFecha, dias: rule.liquidarDiasAntes };

@@ -166,6 +166,19 @@ describe('computeQuote', () => {
     expect(r.rentaTotal).toBe(108500);
   });
 
+  it('cada bloque cuadra: rentaSubtotal+rentaIva=rentaTotal y otrosSubtotal+otrosIva=otrosTotal', () => {
+    const r = computeQuote(
+      catalog,
+      mk({ foodPackageId: 'boda-supreme', addOns: [{ addOnId: 'valet', cantidad: 50 }] }),
+    );
+    expect(round2(r.rentaSubtotal + r.rentaIva)).toBe(r.rentaTotal);
+    expect(round2(r.otrosSubtotal + r.otrosIva)).toBe(r.otrosTotal);
+    expect(round2(r.rentaSubtotal + r.otrosSubtotal)).toBe(r.subtotal);
+    expect(round2(r.rentaTotal + r.otrosTotal)).toBe(r.total);
+    // La renta trae IVA incluido: subtotal = total / 1.16.
+    expect(r.rentaSubtotal).toBeCloseTo(r.rentaTotal / 1.16, 2);
+  });
+
   it('subtotal + iva === total', () => {
     const r = computeQuote(catalog, mk({ horasExtra: 1, foodPackageId: 'boda-supreme', addOns: [{ addOnId: 'valet', cantidad: 50 }] }));
     expect(r.subtotal + r.iva).toBeCloseTo(r.total, 2);

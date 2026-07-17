@@ -66,6 +66,12 @@ export interface QuoteBreakdown {
   subtotal: number;             // genuinamente pre-IVA (interno, no fiscal/CFDI)
   iva: number;                  // impuesto total real (renta embebido + bases)
   total: number;                // subtotal + iva
-  rentaTotal: number;           // renta con IVA (base del plan de pagos y lo que cobra HSA)
-  otrosTotal: number;           // alimentos + servicios con IVA (suele pagarse al proveedor)
+  // Bloque RENTA (lo que cobra HSA; base del plan de pagos): subtotal + iva === total.
+  rentaSubtotal: number;
+  rentaIva: number;
+  rentaTotal: number;
+  // Bloque OTROS (alimentos + servicios; se paga al proveedor): subtotal + iva === total.
+  otrosSubtotal: number;
+  otrosIva: number;
+  otrosTotal: number;
 }
