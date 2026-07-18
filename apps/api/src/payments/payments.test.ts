@@ -3,7 +3,7 @@ import type { FastifyInstance } from 'fastify';
 import { prisma } from '@hsa/database';
 import { buildServer } from '../server.js';
 import { loadConfig } from '../config.js';
-import { createQuote, getByToken, loadEstadoCuenta, type Actor } from '../quotes/service.js';
+import { createQuote, getByToken, loadEstadoCuenta, reconcileStatuses, type Actor } from '../quotes/service.js';
 import { registerPayment, anularPayment, loadComprobanteInterno, loadComprobantePublico } from './service.js';
 import { ServerStorage } from './storage.js';
 import { tmpdir } from 'node:os';
@@ -61,6 +61,31 @@ describe('registerPayment / anularPayment', () => {
     expect(res.nuevoEstatus).toBe('apartada'); // Arcos anticipo 20000 → auto-apartada
     const q2 = await prisma.quote.findUnique({ where: { id: q.id } });
     expect(q2?.status).toBe('apartada');
+  });
+
+  it('reconcileStatuses pone al día una cotización que pagó y se quedó en borrador', async () => {
+    // Simula el caso real: pagó cuando aún no existían las reglas de pago, así
+    // que el auto-avance nunca disparó y el estatus se quedó atrás.
+    const q = await nuevaQuote();
+    await registerPayment(prisma, storage, q.id, {
+      monto: 125000, metodo: 'transferencia', concepto: 'anticipo', fecha: '2027-01-10',
+    }, actor);
+    // Forzamos el estatus atrasado a mano (como quedó en producción).
+    await prisma.quote.update({ where: { id: q.id }, data: { status: 'borrador' } });
+
+    const cambios = await reconcileStatuses(prisma);
+    const mio = cambios.find((c) => c.quoteId === q.id);
+    expect(mio).toBeDefined();
+    expect(mio!.de).toBe('borrador');
+    // Arcos 250 pax sábado: renta 108,500. Pagó 125,000 ⇒ cubre el finiquito.
+    expect(mio!.a).toBe('liquidada');
+
+    const actualizada = await prisma.quote.findUnique({ where: { id: q.id } });
+    expect(actualizada?.status).toBe('liquidada');
+
+    // Idempotente: una segunda pasada ya no cambia nada.
+    const segunda = await reconcileStatuses(prisma);
+    expect(segunda.find((c) => c.quoteId === q.id)).toBeUndefined();
   });
 
   it('anular excluye el pago del acumulado (solo admin)', async () => {

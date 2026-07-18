@@ -4,7 +4,7 @@ import type { PrismaClient, Prisma } from '@hsa/database';
 import { computeQuote, quoteSelectionSchema, type QuoteSelection } from '@hsa/shared';
 import { loadCatalog } from '../catalog/loader.js';
 import { logActivity } from './activityLog.js';
-import { computeEstadoCuenta, type EstadoCuenta } from './estadoCuenta.js';
+import { computeEstadoCuenta, esUpgrade, type EstadoCuenta } from './estadoCuenta.js';
 
 export interface Actor {
   id: string;
@@ -193,6 +193,69 @@ export async function loadEstadoCuentaBulk(
     );
   }
   return out;
+}
+
+export interface CambioEstatus {
+  quoteId: string;
+  cliente: string;
+  de: string;
+  a: string;
+  pagado: number;
+}
+
+/**
+ * Reconcilia el estatus de las cotizaciones contra lo YA pagado.
+ *
+ * El auto-avance normal solo dispara al registrar un pago. Las cotizaciones que
+ * pagaron antes de que existieran las reglas de pago (o cuyo estatus se movió a
+ * mano) se quedan atrás. Esto las pone al día: nunca baja un estatus, solo
+ * avanza cuando el acumulado ya cruzó un hito.
+ */
+export async function reconcileStatuses(
+  db: PrismaClient,
+  opts: { dryRun?: boolean; actorId?: string } = {},
+): Promise<CambioEstatus[]> {
+  const quotes = await db.quote.findMany({
+    where: { deletedAt: null, payments: { some: { anuladoAt: null } } },
+    select: {
+      id: true,
+      status: true,
+      rentaTotal: true,
+      fechaEvento: true,
+      spaceIds: true,
+      client: { select: { nombre: true } },
+    },
+  });
+  if (quotes.length === 0) return [];
+
+  const estados = await loadEstadoCuentaBulk(db, quotes);
+  const cambios: CambioEstatus[] = [];
+
+  for (const q of quotes) {
+    const ec = estados.get(q.id);
+    if (!ec || !esUpgrade(q.status, ec.sugerido)) continue;
+
+    const cambio: CambioEstatus = {
+      quoteId: q.id,
+      cliente: q.client?.nombre ?? 'Cliente',
+      de: q.status,
+      a: ec.sugerido!,
+      pagado: ec.pagado,
+    };
+    cambios.push(cambio);
+
+    if (!opts.dryRun) {
+      await db.quote.update({ where: { id: q.id }, data: { status: ec.sugerido! } });
+      await logActivity(db, {
+        quoteId: q.id,
+        tipo: 'estatus',
+        descripcion: `Estatus: ${q.status} → ${ec.sugerido} (reconciliación por pagos)`,
+        meta: { de: q.status, a: ec.sugerido, auto: true, reconciliacion: true, pagado: ec.pagado },
+        actorId: opts.actorId,
+      });
+    }
+  }
+  return cambios;
 }
 
 export async function createQuote(db: PrismaClient, rawInput: unknown, actor: Actor) {
