@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link, useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, ExternalLink, Printer, FileText, MessageCircle, Copy } from 'lucide-react';
+import { ArrowLeft, ExternalLink, Printer, FileText, MessageCircle, QrCode, Check } from 'lucide-react';
 import { api } from '../lib/api.ts';
 import { formatMXN } from '../lib/money.ts';
 import { BreakdownGrouped } from '../components/BreakdownGrouped.tsx';
@@ -9,6 +9,7 @@ import { whatsappUrl, mensajeCotizacion } from '../lib/share.ts';
 import { Button, Card, SelectInput, ArrowDivider } from '../components/ui.tsx';
 import { QuoteForm, type QuotePayload, type QuoteFormInitial } from '../components/QuoteForm.tsx';
 import { PagosPanel } from '../components/PagosPanel.tsx';
+import { CompartirClienteModal } from '../components/CompartirClienteModal.tsx';
 import { OperativaSection } from '../components/OperativaSection.tsx';
 import { STATUS_LABEL, STATUS_STYLE, EDITABLE_STATUSES } from '../lib/status.ts';
 import { formatEventDate, formatTimestamp } from '../lib/date.ts';
@@ -47,7 +48,9 @@ export function EditQuotePage() {
   const { user } = useAuth();
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState('');
-  const [duplicando, setDuplicando] = useState(false);
+  const [compartir, setCompartir] = useState(false);
+  // Al recién crearlo llegamos con ?creado=1 para confirmar sin sacar del contrato.
+  const recienCreado = sp.get('creado') === '1';
 
   const quoteQ = useQuery({
     queryKey: ['quote', id],
@@ -69,19 +72,6 @@ export function EditQuotePage() {
     await qc.invalidateQueries({ queryKey: ['quotes'] });
   }
 
-  async function handleDuplicate() {
-    if (!quote) return;
-    setDuplicando(true);
-    setError('');
-    try {
-      const res = await api.post<{ quote: Quote }>(`/api/quotes/${quote.id}/duplicate`);
-      await qc.invalidateQueries({ queryKey: ['quotes'] });
-      navigate(`/cotizaciones/${res.quote.id}`);
-    } catch {
-      setError('No se pudo duplicar el contrato.');
-      setDuplicando(false);
-    }
-  }
 
   async function handleSave(payload: QuotePayload) {
     if (!quote) return;
@@ -125,6 +115,13 @@ export function EditQuotePage() {
         <ArrowLeft size={15} /> {backLabel}
       </Link>
 
+      {recienCreado && (
+        <div className="mb-4 flex items-center gap-2 rounded-lg bg-emerald-600/10 px-4 py-2.5 text-sm text-emerald-800">
+          <Check size={16} className="shrink-0" />
+          Contrato creado. Comparte el QR o el enlace con el cliente y registra sus pagos aquí abajo.
+        </div>
+      )}
+
       <div className="mb-8 flex flex-wrap items-end justify-between gap-4">
         <div>
           <ArrowDivider>{quote.eventType?.nombre ?? 'Evento'}</ArrowDivider>
@@ -159,8 +156,8 @@ export function EditQuotePage() {
             </a>
           )}
           {!enPapelera && (
-            <Button variant="outline" onClick={() => void handleDuplicate()} disabled={duplicando}>
-              <Copy size={15} /> {duplicando ? 'Duplicando…' : 'Duplicar'}
+            <Button variant="gold" onClick={() => setCompartir(true)}>
+              <QrCode size={15} /> QR / enlace cliente
             </Button>
           )}
           {waUrl && (
@@ -251,6 +248,10 @@ export function EditQuotePage() {
       )}
 
       {contratoDisponible && <OperativaSection quote={quote} />}
+
+      {compartir && (
+        <CompartirClienteModal quote={quote} publicUrl={publicUrl} onClose={() => setCompartir(false)} />
+      )}
     </div>
   );
 }
