@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { ClipboardList, X } from 'lucide-react';
 import { api } from '../lib/api.ts';
-import { Button, Card, TextInput, SelectInput, Field } from './ui.tsx';
+import { Button, Card, TextInput, TimeInput, SelectInput, Field } from './ui.tsx';
 import type { Quote, HojaOperativa, Banquetero, Empleado, Cuadrilla, PersonalHsaRow } from '../lib/types.ts';
 
 /** Filas iniciales del personal: usa las estructuradas o migra el texto legado. */
@@ -28,7 +28,13 @@ export function OperativaSection({ quote }: { quote: Quote }) {
   const [horarioCivil, setHorarioCivil] = useState(quote.horarioCivil ?? '');
   const [horaInicio, setHoraInicio] = useState(quote.horaInicio ?? '');
   const [horaTermino, setHoraTermino] = useState(quote.horaTermino ?? '');
-  const [hoja, setHoja] = useState<HojaOperativa>(h);
+  // Si el contrato usa capilla con horario, se pre-llena la hora de misa con ese horario.
+  const capillaHora = quote.usaCapilla ? quote.capillaHorario ?? '' : '';
+  const [hoja, setHoja] = useState<HojaOperativa>(() => ({
+    ...h,
+    horaMisa: h.horaMisa || capillaHora || undefined,
+    maniobras: !!h.maniobras, // datos viejos podían venir como texto
+  }));
   const [banqueteroId, setBanqueteroId] = useState(quote.banqueteroId ?? '');
   const [personal, setPersonal] = useState<PersonalHsaRow[]>(() => filasIniciales(h));
   const [saved, setSaved] = useState(false);
@@ -124,12 +130,14 @@ export function OperativaSection({ quote }: { quote: Quote }) {
           </SelectInput>
         </Field>
 
-        <Field label="Horario civil"><TextInput value={horarioCivil} onChange={(e) => setHorarioCivil(e.target.value)} placeholder="ej. 14:00" /></Field>
-        <Field label="Hora misa"><TextInput value={hoja.horaMisa ?? ''} onChange={(e) => set('horaMisa', e.target.value)} placeholder="ej. 19:00" /></Field>
+        <Field label="Horario civil"><TimeInput value={horarioCivil} onChange={(e) => setHorarioCivil(e.target.value)} /></Field>
+        <Field label="Hora misa" hint={capillaHora ? `Se tomó de la capilla del contrato (${capillaHora})` : undefined}>
+          <TimeInput value={hoja.horaMisa ?? ''} onChange={(e) => set('horaMisa', e.target.value)} />
+        </Field>
         <div />
-        <Field label="Hora inicio"><TextInput value={horaInicio} onChange={(e) => setHoraInicio(e.target.value)} placeholder="ej. 20:30" /></Field>
-        <Field label="Hora término"><TextInput value={horaTermino} onChange={(e) => setHoraTermino(e.target.value)} placeholder="ej. 02:30" /></Field>
-        <Field label="Habitación (hora)"><TextInput value={hoja.habitacion ?? ''} onChange={(e) => set('habitacion', e.target.value)} placeholder="ej. 17:00" /></Field>
+        <Field label="Hora inicio"><TimeInput value={horaInicio} onChange={(e) => setHoraInicio(e.target.value)} /></Field>
+        <Field label="Hora término"><TimeInput value={horaTermino} onChange={(e) => setHoraTermino(e.target.value)} /></Field>
+        <Field label="Habitación (hora)"><TimeInput value={hoja.habitacion ?? ''} onChange={(e) => set('habitacion', e.target.value)} /></Field>
 
         <Field label="Estrado"><TextInput value={hoja.estrado ?? ''} onChange={(e) => set('estrado', e.target.value)} placeholder="Normal / Izquierda" /></Field>
         <Field label="Pista"><TextInput value={hoja.pista ?? ''} onChange={(e) => set('pista', e.target.value)} placeholder="Sí / Izquierda" /></Field>
@@ -177,12 +185,11 @@ export function OperativaSection({ quote }: { quote: Quote }) {
             <div className="space-y-1.5">
               {personal.map((r, i) => (
                 <div key={i} className="flex items-center gap-2">
-                  <TextInput
+                  <TimeInput
                     aria-label="Hora"
                     value={r.hora ?? ''}
                     onChange={(e) => setFila(i, 'hora', e.target.value)}
-                    placeholder="hora"
-                    className="w-24 shrink-0 text-center"
+                    className="w-28 shrink-0"
                   />
                   <span className="min-w-0 flex-1 truncate text-sm text-ink">
                     {r.nombre}
@@ -202,13 +209,27 @@ export function OperativaSection({ quote }: { quote: Quote }) {
           )}
         </div>
 
-        <Field label="Seguridad — hora"><TextInput value={hoja.personalSeguridadHora ?? ''} onChange={(e) => set('personalSeguridadHora', e.target.value)} placeholder="ej. 17:00" /></Field>
+        <Field label="Seguridad — hora"><TimeInput value={hoja.personalSeguridadHora ?? ''} onChange={(e) => set('personalSeguridadHora', e.target.value)} /></Field>
         <Field label="Seguridad — elementos"><TextInput type="number" min="0" value={hoja.personalSeguridadElementos ?? ''} onChange={(e) => set('personalSeguridadElementos', e.target.value ? Number(e.target.value) : undefined)} /></Field>
         <div className="flex items-end pb-1"><CheckField label="Limpieza nocturna y profunda" checked={!!hoja.limpiezaNocturna} onChange={(v) => set('limpiezaNocturna', v)} /></div>
 
         <Field label="Se queda equipo"><TextInput value={hoja.seQuedaEquipo ?? ''} onChange={(e) => set('seQuedaEquipo', e.target.value)} /></Field>
-        <Field label="Maniobras"><TextInput value={hoja.maniobras ?? ''} onChange={(e) => set('maniobras', e.target.value)} /></Field>
-        <div className="flex items-end pb-1"><CheckField label="Banquetero es Paq. HSA" checked={!!hoja.banqueteroPaqHsa} onChange={(v) => set('banqueteroPaqHsa', v)} /></div>
+        <div className="flex flex-col justify-end gap-2 pb-1">
+          <CheckField label="Maniobras" checked={!!hoja.maniobras} onChange={(v) => set('maniobras', v)} />
+          <CheckField label="Banquetero es Paq. HSA" checked={!!hoja.banqueteroPaqHsa} onChange={(v) => set('banqueteroPaqHsa', v)} />
+        </div>
+        <div />
+
+        <div className="sm:col-span-3">
+          <span className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.08em] text-ink-500">Anotaciones</span>
+          <textarea
+            value={hoja.anotaciones ?? ''}
+            onChange={(e) => set('anotaciones', e.target.value)}
+            rows={2}
+            placeholder="Notas libres. Ej. Colgante · Padre Carmelo · Fotos 18:00 · Recorrer pista 1/2 hacia baños"
+            className="w-full rounded-lg border border-ink/15 bg-white/70 px-3.5 py-2.5 text-sm text-charcoal placeholder:text-charcoal-soft/60 transition-colors focus:border-gold focus:outline-none focus:ring-2 focus:ring-gold/30"
+          />
+        </div>
 
         <div className="sm:col-span-3">
           {err && <p className="mb-2 text-sm text-wine">{err}</p>}

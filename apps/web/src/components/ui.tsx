@@ -69,6 +69,30 @@ export const TextInput = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLIn
   },
 );
 
+/** Normaliza un valor de hora a HH:MM (rellena "2:30" → "02:30") para <input type="time">. */
+function toTimeValue(v: unknown): string {
+  if (typeof v !== 'string') return '';
+  const m = v.match(/^(\d{1,2}):(\d{2})/);
+  if (!m) return '';
+  const hh = (m[1] ?? '').padStart(2, '0');
+  return `${hh}:${m[2] ?? ''}`;
+}
+
+/** Selector de hora nativo (rueda en tablet/móvil): no pide capturar ":" ni AM/PM. */
+export const TimeInput = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement>>(
+  function TimeInput({ className, value, ...props }, ref) {
+    return (
+      <input
+        ref={ref}
+        type="time"
+        value={toTimeValue(value)}
+        className={cn(inputBase, className)}
+        {...props}
+      />
+    );
+  },
+);
+
 export const SelectInput = forwardRef<HTMLSelectElement, SelectHTMLAttributes<HTMLSelectElement>>(
   function SelectInput({ className, children, ...props }, ref) {
     return (

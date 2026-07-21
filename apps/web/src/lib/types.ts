@@ -159,7 +159,8 @@ export interface HojaOperativa {
   limpiezaNocturna?: boolean;
   habitacion?: string;
   seQuedaEquipo?: string;
-  maniobras?: string;
+  maniobras?: boolean;
+  anotaciones?: string;
 }
 
 export interface Milestone {
@@ -301,7 +302,8 @@ export interface HojaFicha {
   limpiezaNocturna: boolean;
   habitacion: string | null;
   seQuedaEquipo: string | null;
-  maniobras: string | null;
+  maniobras: boolean;
+  anotaciones: string | null;
 }
 
 export interface FichaSemana {

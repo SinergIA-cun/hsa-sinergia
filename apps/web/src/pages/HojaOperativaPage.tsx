@@ -96,7 +96,8 @@ export function HojaOperativaPage() {
             <tr><th>Limpieza nocturna y profunda</th><td>{si(hoja.limpiezaNocturna)}</td></tr>
             <tr><th>Habitación</th><td>{dash(hoja.habitacion)}</td></tr>
             <tr><th>Se queda equipo</th><td>{dash(hoja.seQuedaEquipo)}</td></tr>
-            <tr><th>Maniobras</th><td>{dash(hoja.maniobras)}</td></tr>
+            {hoja.maniobras && <tr><th>Maniobras</th><td>Sí</td></tr>}
+            {hoja.anotaciones && <tr><th>Anotaciones</th><td>{hoja.anotaciones}</td></tr>}
           </tbody>
         </table>
       </div>

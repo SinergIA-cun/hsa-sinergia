@@ -452,7 +452,8 @@ export const hojaOperativaSchema = z.object({
   limpiezaNocturna: z.boolean().optional(),
   habitacion: z.string().max(20).optional(),
   seQuedaEquipo: z.string().max(200).optional(),
-  maniobras: z.string().max(200).optional(),
+  maniobras: z.boolean().optional(), // sólo aparece en la hoja cuando está activo
+  anotaciones: z.string().max(500).optional(), // notas libres (ej. "Colgante · Padre Carmelo · Fotos 18:00")
 });
 
 export const operativaSchema = z.object({

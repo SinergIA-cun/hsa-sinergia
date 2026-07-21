@@ -100,7 +100,7 @@ export function FichaOperativaPrint({ f }: { f: FichaSemana }) {
         </tr>
         <tr>
           <th>MANIOBRAS</th>
-          <td>{val(h.maniobras)}</td>
+          <td>{h.maniobras ? 'SÍ' : ''}</td>
           <th>FINIQUITO</th>
           <td className={f.finiquito.pendiente ? 'fop-alerta' : ''}>
             {f.finiquito.pagado
@@ -110,6 +110,12 @@ export function FichaOperativaPrint({ f }: { f: FichaSemana }) {
                 : 'AL DÍA'}
           </td>
         </tr>
+        {h.anotaciones && (
+          <tr>
+            <th>ANOTACIONES</th>
+            <td colSpan={3}>{h.anotaciones}</td>
+          </tr>
+        )}
       </tbody>
     </table>
   );

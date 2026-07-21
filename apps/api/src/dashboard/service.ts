@@ -35,7 +35,8 @@ export interface HojaFicha {
   limpiezaNocturna: boolean;
   habitacion: string | null;
   seQuedaEquipo: string | null;
-  maniobras: string | null;
+  maniobras: boolean;
+  anotaciones: string | null;
 }
 
 export interface FichaSemana {
@@ -173,7 +174,8 @@ function toHojaFicha(q: QuoteRow): HojaFicha {
     limpiezaNocturna: h.limpiezaNocturna === true,
     habitacion: str(h.habitacion),
     seQuedaEquipo: str(h.seQuedaEquipo),
-    maniobras: str(h.maniobras),
+    maniobras: !!h.maniobras,
+    anotaciones: str(h.anotaciones),
   };
 }
 

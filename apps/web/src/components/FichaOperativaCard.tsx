@@ -136,7 +136,8 @@ export function FichaOperativaCard({ f, onOpen }: { f: FichaSemana; onOpen?: () 
             </span>
           </Campo>
           <Campo label="Se queda equipo">{dash(h.seQuedaEquipo)}</Campo>
-          <Campo label="Maniobras">{dash(h.maniobras)}</Campo>
+          {h.maniobras && <Campo label="Maniobras">Sí</Campo>}
+          {h.anotaciones && <Campo label="Anotaciones">{h.anotaciones}</Campo>}
         </div>
 
         {/* Atención: faltantes + finiquito */}
