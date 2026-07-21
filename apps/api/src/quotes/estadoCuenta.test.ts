@@ -44,4 +44,34 @@ describe('computeEstadoCuenta', () => {
     const ec = computeEstadoCuenta({ ...base, status: 'apartada', rule, payments: [{ monto: 20000, anuladoAt: null }] });
     expect(ec.desfase).toBe(false);
   });
+
+  it('complemento nunca vence después del finiquito (evento próximo)', () => {
+    // Evento en 30 días; apartado hoy. +3 meses caería DESPUÉS del evento.
+    const ec = computeEstadoCuenta({
+      total: 100000,
+      fechaEvento: new Date('2026-07-18T00:00:00.000Z'),
+      status: 'apartada',
+      rule,
+      payments: [{ monto: 20000, anuladoAt: null }],
+      fechaApartado: new Date('2026-07-01T00:00:00.000Z'),
+    });
+    const comp = ec.plan!.find((m) => m.key === 'complemento')!;
+    const fin = ec.plan!.find((m) => m.key === 'finiquito')!;
+    // Finiquito = evento - 30 días = 2026-06-18. El complemento no lo rebasa.
+    expect(fin.venceISO).toBe('2026-06-18T00:00:00.000Z');
+    expect(new Date(comp.venceISO!).getTime()).toBeLessThanOrEqual(new Date(fin.venceISO!).getTime());
+  });
+
+  it('complemento sí usa +3 meses cuando el evento está lejos', () => {
+    const ec = computeEstadoCuenta({
+      total: 100000,
+      fechaEvento: new Date('2027-12-31T00:00:00.000Z'),
+      status: 'apartada',
+      rule,
+      payments: [{ monto: 20000, anuladoAt: null }],
+      fechaApartado: new Date('2027-01-10T00:00:00.000Z'),
+    });
+    const comp = ec.plan!.find((m) => m.key === 'complemento')!;
+    expect(comp.venceISO).toBe('2027-04-10T00:00:00.000Z'); // +3 meses del apartado
+  });
 });

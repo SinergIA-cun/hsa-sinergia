@@ -67,8 +67,14 @@ export function computeEstadoCuenta(args: {
   const objComplemento = rule.anticipo + Math.round(rule.complementoPct * total);
   const objFiniquito = total;
 
-  const complementoVence = fechaApartado ? addMonths(fechaApartado, 3) : null;
   const finiquitoVence = minusDays(fechaEvento, rule.liquidarDiasAntes);
+  // Complemento: 3 meses después del anticipo, PERO nunca después del finiquito
+  // (para eventos próximos, +3 meses caería después del evento). Se tope al finiquito.
+  let complementoVence: Date | null = null;
+  if (fechaApartado) {
+    const tresMeses = addMonths(fechaApartado, 3);
+    complementoVence = tresMeses < finiquitoVence ? tresMeses : finiquitoVence;
+  }
 
   const hito = (
     key: Milestone['key'],
