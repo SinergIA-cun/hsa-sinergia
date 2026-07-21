@@ -244,6 +244,8 @@ export async function getDashboard(
     if (q.fechaEvento >= estaIni && q.fechaEvento < estaFin) {
       const faltantes = REQUERIDOS_HOJA.filter((r) => !noVacio(r.get(q))).map((r) => r.label);
       const hojaVacia = faltantes.length === REQUERIDOS_HOJA.length;
+      // La hora de misa sólo se exige cuando el evento usa la capilla.
+      if (q.usaCapilla && !noVacio(hoja(q).horaMisa)) faltantes.push('Hora misa');
       const hojaCompleta = faltantes.length === 0;
       let semaforo: Semaforo;
       if (finiquito.pendiente || hojaVacia) semaforo = 'rojo';

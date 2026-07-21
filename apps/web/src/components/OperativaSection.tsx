@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { ClipboardList, X } from 'lucide-react';
 import { api } from '../lib/api.ts';
+import { formatMXN } from '../lib/money.ts';
 import { Button, Card, TextInput, TimeInput, SelectInput, Field } from './ui.tsx';
 import type { Quote, HojaOperativa, Banquetero, Empleado, Cuadrilla, PersonalHsaRow } from '../lib/types.ts';
 
@@ -19,6 +20,54 @@ const CheckField = ({ label, checked, onChange }: { label: string; checked: bool
     {label}
   </label>
 );
+
+const OTRO = '__otro__';
+
+/** Campo con opciones frecuentes + "Otro…" (texto libre) cuando el valor no está en la lista. */
+function ChoiceField({
+  label,
+  value,
+  options,
+  onChange,
+  otherPlaceholder,
+  hint,
+}: {
+  label: string;
+  value: string;
+  options: string[];
+  onChange: (v: string) => void;
+  otherPlaceholder?: string;
+  hint?: string;
+}) {
+  const enLista = value !== '' && options.includes(value);
+  const [otro, setOtro] = useState(value !== '' && !enLista);
+  return (
+    <Field label={label} hint={hint}>
+      <div className="space-y-2">
+        <SelectInput
+          value={otro ? OTRO : value}
+          onChange={(e) => {
+            if (e.target.value === OTRO) { setOtro(true); onChange(''); }
+            else { setOtro(false); onChange(e.target.value); }
+          }}
+        >
+          <option value="">—</option>
+          {options.map((o) => <option key={o} value={o}>{o}</option>)}
+          <option value={OTRO}>Otro…</option>
+        </SelectInput>
+        {otro && (
+          <TextInput value={value} onChange={(e) => onChange(e.target.value)} placeholder={otherPlaceholder ?? 'Especifica…'} />
+        )}
+      </div>
+    </Field>
+  );
+}
+
+/** Convierte "HH:MM" a minutos; null si no aplica. */
+function horaAMin(h: string): number | null {
+  const m = /^(\d{1,2}):(\d{2})/.exec(h);
+  return m ? Number(m[1]) * 60 + Number(m[2]) : null;
+}
 
 /** Hoja operativa por evento: se captura al formalizar; alimenta el contrato,
  *  el documento operativo, el correo diario y el ERP futuro. */
@@ -59,6 +108,13 @@ export function OperativaSection({ quote }: { quote: Quote }) {
   const empleados = empData?.empleados ?? [];
 
   const set = <K extends keyof HojaOperativa>(k: K, v: HojaOperativa[K]) => setHoja((p) => ({ ...p, [k]: v }));
+
+  // Datos del contrato que se muestran auto (sin recapturar) para reducir errores.
+  const costoHoraExtra = Math.round(quote.rentaTotal * 0.05);
+  // Aviso: término en la tarde/noche (>=6am) pero antes del inicio (no es evento de trasnoche).
+  const iniMin = horaAMin(horaInicio);
+  const finMin = horaAMin(horaTermino);
+  const terminoRaro = iniMin != null && finMin != null && finMin < iniMin && finMin >= 6 * 60;
 
   // Cargar una cuadrilla agrega sus miembros que aún no estén en la lista.
   function cargarCuadrilla(id: string) {
@@ -119,8 +175,20 @@ export function OperativaSection({ quote }: { quote: Quote }) {
       </div>
 
       <form onSubmit={guardar} className="grid gap-4 sm:grid-cols-3">
+        <div className="flex flex-wrap items-baseline gap-x-6 gap-y-1 rounded-lg bg-ink/[0.03] px-3.5 py-2 text-sm text-charcoal sm:col-span-3">
+          <span><span className="text-charcoal-soft">Horas del evento:</span> {quote.horasEvento ?? '—'}</span>
+          <span><span className="text-charcoal-soft">Costo × hora extra:</span> {formatMXN(costoHoraExtra)}</span>
+          <span className="text-xs text-charcoal-soft">Se calculan del contrato y se imprimen en la hoja.</span>
+        </div>
+
         <Field label="Festejado / título"><TextInput value={hoja.nombreFestejado ?? ''} onChange={(e) => set('nombreFestejado', e.target.value)} placeholder="ej. Alondra" /></Field>
-        <Field label="Relación del cliente"><TextInput value={hoja.relacionCliente ?? ''} onChange={(e) => set('relacionCliente', e.target.value)} placeholder="ej. Mamá" /></Field>
+        <ChoiceField
+          label="Relación del cliente"
+          value={hoja.relacionCliente ?? ''}
+          options={['Mamá', 'Papá', 'Novios', 'Festejado', 'Familiar']}
+          onChange={(v) => set('relacionCliente', v)}
+          otherPlaceholder="ej. Tía"
+        />
         <Field label="Banquetero">
           <SelectInput value={banqueteroId} onChange={(e) => setBanqueteroId(e.target.value)}>
             <option value="">Sin asignar</option>
@@ -139,8 +207,19 @@ export function OperativaSection({ quote }: { quote: Quote }) {
         <Field label="Hora término"><TimeInput value={horaTermino} onChange={(e) => setHoraTermino(e.target.value)} /></Field>
         <Field label="Habitación (hora)"><TimeInput value={hoja.habitacion ?? ''} onChange={(e) => set('habitacion', e.target.value)} /></Field>
 
-        <Field label="Estrado"><TextInput value={hoja.estrado ?? ''} onChange={(e) => set('estrado', e.target.value)} placeholder="Normal / Izquierda" /></Field>
-        <Field label="Pista"><TextInput value={hoja.pista ?? ''} onChange={(e) => set('pista', e.target.value)} placeholder="Sí / Izquierda" /></Field>
+        <ChoiceField
+          label="Estrado"
+          value={hoja.estrado ?? ''}
+          options={['Normal', 'Izquierda', 'Derecha']}
+          onChange={(v) => set('estrado', v)}
+        />
+        <ChoiceField
+          label="Pista"
+          value={hoja.pista ?? ''}
+          options={['Sí', 'No', 'LED', 'Izquierda', 'Normal']}
+          onChange={(v) => set('pista', v)}
+          otherPlaceholder="ej. Recorrer 1/2 hacia baños"
+        />
         <div className="flex flex-col justify-end gap-2 pb-1">
           <CheckField label="Capilla" checked={!!hoja.capilla} onChange={(v) => set('capilla', v)} />
           <CheckField label="Fotografía" checked={!!hoja.fotografia} onChange={(v) => set('fotografia', v)} />
@@ -232,6 +311,11 @@ export function OperativaSection({ quote }: { quote: Quote }) {
         </div>
 
         <div className="sm:col-span-3">
+          {terminoRaro && (
+            <p className="mb-2 text-sm text-wine">
+              La hora de término ({horaTermino}) es anterior a la de inicio ({horaInicio}). Revisa si es correcto.
+            </p>
+          )}
           {err && <p className="mb-2 text-sm text-wine">{err}</p>}
           {saved && <p className="mb-2 text-sm text-gold">Datos operativos guardados.</p>}
           <Button type="submit" variant="primary">Guardar hoja operativa</Button>
