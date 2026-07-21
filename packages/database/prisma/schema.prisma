@@ -114,6 +114,37 @@ model Banquetero {
   quotes    Quote[]
 }
 
+// Personal HSA: catálogo de empleados y cuadrillas (grupos) para armar la hoja
+// operativa de cada evento eligiendo una cuadrilla y ajustando horarios.
+model Empleado {
+  id        String              @id @default(cuid())
+  nombre    String
+  rol       String?             // rol por defecto (p. ej. "Comodín", "Jefe de área")
+  activo    Boolean             @default(true)
+  createdAt DateTime            @default(now())
+  cuadrillas CuadrillaMiembro[]
+}
+
+model Cuadrilla {
+  id        String              @id @default(cuid())
+  nombre    String
+  activo    Boolean             @default(true)
+  createdAt DateTime            @default(now())
+  miembros  CuadrillaMiembro[]
+}
+
+model CuadrillaMiembro {
+  id          String    @id @default(cuid())
+  cuadrilla   Cuadrilla @relation(fields: [cuadrillaId], references: [id], onDelete: Cascade)
+  cuadrillaId String
+  empleado    Empleado  @relation(fields: [empleadoId], references: [id], onDelete: Cascade)
+  empleadoId  String
+
+  @@unique([cuadrillaId, empleadoId])
+  @@index([cuadrillaId])
+  @@index([empleadoId])
+}
+
 model Client {
   id               String   @id @default(cuid())
   nombre           String

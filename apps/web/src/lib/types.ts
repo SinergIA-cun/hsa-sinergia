@@ -153,6 +153,7 @@ export interface HojaOperativa {
   estrado?: string;
   pista?: string;
   personalHsa?: string;
+  personalHsaRows?: PersonalHsaRow[];
   personalSeguridadHora?: string;
   personalSeguridadElementos?: number;
   limpiezaNocturna?: boolean;
@@ -229,6 +230,33 @@ export interface VentaBanquetero {
   totalContratos: number;
   totalRenta: number;
   invitados: number;
+}
+
+export interface Empleado {
+  id: string;
+  nombre: string;
+  rol?: string | null;
+  activo: boolean;
+  createdAt?: string;
+}
+
+export interface CuadrillaMiembro {
+  id: string;
+  empleado: { id: string; nombre: string; rol: string | null };
+}
+
+export interface Cuadrilla {
+  id: string;
+  nombre: string;
+  activo: boolean;
+  miembros: CuadrillaMiembro[];
+}
+
+/** Renglón de personal en la hoja operativa. */
+export interface PersonalHsaRow {
+  nombre: string;
+  hora?: string;
+  rol?: string;
 }
 
 export interface Availability {

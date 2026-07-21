@@ -4,6 +4,7 @@ import { applyCatalog2027 } from './data/catalog-2027.js';
 import { applyTeamBuilding2027 } from './data/team-building-2027.js';
 import { applyPaymentRules } from './data/payment-rules.js';
 import { applyBanqueteros } from './data/banqueteros.js';
+import { applyPersonal } from './data/personal.js';
 
 const prisma = new PrismaClient();
 
@@ -84,6 +85,9 @@ async function seedCatalog() {
 
   // Banqueteros base (el cliente agrega más desde el panel).
   await applyBanqueteros(prisma);
+
+  // Personal HSA base + cuadrilla de ejemplo.
+  await applyPersonal(prisma);
 }
 
 async function main() {

@@ -4,7 +4,7 @@ import { UserPlus, Save, Check, X, Plus } from 'lucide-react';
 import { api, ApiError } from '../lib/api.ts';
 import { formatMXN } from '../lib/money.ts';
 import { Button, Card, Field, TextInput, SelectInput, ArrowDivider } from '../components/ui.tsx';
-import type { AddOn, AdminConfig, User, Banquetero, VentaBanquetero } from '../lib/types.ts';
+import type { AddOn, AdminConfig, User, Banquetero, VentaBanquetero, Empleado, Cuadrilla } from '../lib/types.ts';
 
 const ADDON_KIND_LABEL: Record<AddOn['kind'], string> = {
   fijo: 'Fijo',
@@ -31,9 +31,149 @@ export function AdminPage() {
       </div>
       <UsersSection />
       <BanqueterosSection />
+      <PersonalSection />
       <AddonsSection />
       <ConfigSection />
     </div>
+  );
+}
+
+function PersonalSection() {
+  const qc = useQueryClient();
+  const empQ = useQuery({
+    queryKey: ['admin-empleados'],
+    queryFn: () => api.get<{ empleados: Empleado[] }>('/api/admin/empleados'),
+  });
+  const cuadQ = useQuery({
+    queryKey: ['admin-cuadrillas'],
+    queryFn: () => api.get<{ cuadrillas: Cuadrilla[] }>('/api/admin/cuadrillas'),
+  });
+  const empleados = empQ.data?.empleados ?? [];
+  const cuadrillas = cuadQ.data?.cuadrillas ?? [];
+  const empleadosActivos = empleados.filter((e) => e.activo);
+
+  async function invalidate() {
+    await Promise.all([
+      qc.invalidateQueries({ queryKey: ['admin-empleados'] }),
+      qc.invalidateQueries({ queryKey: ['admin-cuadrillas'] }),
+      qc.invalidateQueries({ queryKey: ['empleados'] }),
+      qc.invalidateQueries({ queryKey: ['cuadrillas'] }),
+    ]);
+  }
+
+  // --- Empleados ---
+  const [nombre, setNombre] = useState('');
+  const [rol, setRol] = useState('');
+  const [error, setError] = useState('');
+  const toggleEmp = useMutation({
+    mutationFn: ({ id, activo }: { id: string; activo: boolean }) =>
+      api.patch(`/api/admin/empleados/${id}`, { activo }),
+    onSuccess: invalidate,
+  });
+  const crearEmp = useMutation({
+    mutationFn: () => api.post('/api/admin/empleados', { nombre, rol: rol || undefined }),
+    onSuccess: async () => { setNombre(''); setRol(''); setError(''); await invalidate(); },
+    onError: (e) => setError(apiErrorMessage(e, 'No se pudo crear el empleado.')),
+  });
+
+  // --- Cuadrillas ---
+  const [cNombre, setCNombre] = useState('');
+  const [cMiembros, setCMiembros] = useState<string[]>([]);
+  const [cError, setCError] = useState('');
+  const toggleCuad = useMutation({
+    mutationFn: ({ id, activo }: { id: string; activo: boolean }) =>
+      api.patch(`/api/admin/cuadrillas/${id}`, { activo }),
+    onSuccess: invalidate,
+  });
+  const crearCuad = useMutation({
+    mutationFn: () => api.post('/api/admin/cuadrillas', { nombre: cNombre, empleadoIds: cMiembros }),
+    onSuccess: async () => { setCNombre(''); setCMiembros([]); setCError(''); await invalidate(); },
+    onError: (e) => setCError(apiErrorMessage(e, 'No se pudo crear la cuadrilla.')),
+  });
+  const toggleMiembro = (id: string) =>
+    setCMiembros((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+
+  return (
+    <section>
+      <h2 className="mb-4 font-display text-2xl text-ink">Personal y cuadrillas</h2>
+      <div className="grid gap-6 lg:grid-cols-2">
+        {/* Empleados */}
+        <Card className="space-y-4 p-6">
+          <h3 className="font-display text-lg text-ink">Empleados</h3>
+          {empleados.length === 0 ? (
+            <p className="text-sm text-charcoal-soft">Aún no hay empleados.</p>
+          ) : (
+            <ul className="divide-y divide-cream-200">
+              {empleados.map((e) => (
+                <li key={e.id} className="flex items-center justify-between gap-3 py-2.5">
+                  <span className={`text-sm ${e.activo ? 'text-ink' : 'text-charcoal-soft line-through'}`}>
+                    {e.nombre}{e.rol ? <span className="text-charcoal-soft"> · {e.rol}</span> : null}
+                  </span>
+                  <Button variant="outline" onClick={() => toggleEmp.mutate({ id: e.id, activo: !e.activo })}>
+                    {e.activo ? 'Desactivar' : 'Activar'}
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          )}
+          <form onSubmit={(ev) => { ev.preventDefault(); if (nombre.trim()) crearEmp.mutate(); }} className="grid grid-cols-2 gap-2">
+            <TextInput value={nombre} onChange={(e) => setNombre(e.target.value)} placeholder="Nombre" />
+            <TextInput value={rol} onChange={(e) => setRol(e.target.value)} placeholder="Rol (opcional)" />
+            {error && <p className="col-span-2 text-sm text-wine">{error}</p>}
+            <Button type="submit" variant="gold" className="col-span-2" disabled={crearEmp.isPending}>
+              <Plus size={15} /> Agregar empleado
+            </Button>
+          </form>
+        </Card>
+
+        {/* Cuadrillas */}
+        <Card className="space-y-4 p-6">
+          <h3 className="font-display text-lg text-ink">Cuadrillas</h3>
+          {cuadrillas.length === 0 ? (
+            <p className="text-sm text-charcoal-soft">Aún no hay cuadrillas.</p>
+          ) : (
+            <ul className="divide-y divide-cream-200">
+              {cuadrillas.map((c) => (
+                <li key={c.id} className="flex items-start justify-between gap-3 py-2.5">
+                  <div className="min-w-0">
+                    <p className={`font-medium ${c.activo ? 'text-ink' : 'text-charcoal-soft line-through'}`}>{c.nombre}</p>
+                    <p className="text-xs text-charcoal-soft">
+                      {c.miembros.map((m) => m.empleado.nombre).join(', ') || 'Sin miembros'}
+                    </p>
+                  </div>
+                  <Button variant="outline" onClick={() => toggleCuad.mutate({ id: c.id, activo: !c.activo })}>
+                    {c.activo ? 'Desactivar' : 'Activar'}
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          )}
+          <form onSubmit={(ev) => { ev.preventDefault(); if (cNombre.trim()) crearCuad.mutate(); }} className="space-y-3">
+            <TextInput value={cNombre} onChange={(e) => setCNombre(e.target.value)} placeholder="Nombre de la cuadrilla (ej. Cuadrilla A)" />
+            {empleadosActivos.length > 0 && (
+              <div className="flex flex-wrap gap-2">
+                {empleadosActivos.map((e) => (
+                  <button
+                    key={e.id}
+                    type="button"
+                    onClick={() => toggleMiembro(e.id)}
+                    className={`rounded-full border px-3 py-1 text-xs transition-colors ${
+                      cMiembros.includes(e.id) ? 'border-gold bg-gold/15 text-ink' : 'border-ink/15 text-charcoal-soft hover:border-ink/30'
+                    }`}
+                  >
+                    {e.nombre}
+                  </button>
+                ))}
+              </div>
+            )}
+            {cError && <p className="text-sm text-wine">{cError}</p>}
+            <Button type="submit" variant="gold" disabled={crearCuad.isPending}>
+              <Plus size={15} /> Crear cuadrilla
+            </Button>
+          </form>
+        </Card>
+      </div>
+    </section>
   );
 }
 

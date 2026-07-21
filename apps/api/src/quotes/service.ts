@@ -435,7 +435,18 @@ export const hojaOperativaSchema = z.object({
   banqueteroPaqHsa: z.boolean().optional(),
   estrado: z.string().max(60).optional(),
   pista: z.string().max(60).optional(),
-  personalHsa: z.string().max(600).optional(), // una línea por persona: "hora — nombre/rol"
+  personalHsa: z.string().max(600).optional(), // derivado de personalHsaRows para impresión/ficha
+  // Renglones estructurados del personal (elegidos de cuadrilla/empleados + horario).
+  personalHsaRows: z
+    .array(
+      z.object({
+        nombre: z.string().max(80),
+        hora: z.string().max(20).optional(),
+        rol: z.string().max(60).optional(),
+      }),
+    )
+    .max(40)
+    .optional(),
   personalSeguridadHora: z.string().max(20).optional(),
   personalSeguridadElementos: z.number().int().min(0).max(50).optional(),
   limpiezaNocturna: z.boolean().optional(),
@@ -464,7 +475,23 @@ export async function updateOperativa(db: PrismaClient, id: string, rawInput: un
   if (input.banqueteroId) {
     banquetero = await db.banquetero.findUnique({ where: { id: input.banqueteroId }, select: { id: true, nombre: true } });
   }
-  const hoja = { ...(input.hoja ?? {}), banquetero: banquetero?.nombre ?? input.hoja?.banquetero ?? null };
+  // Personal HSA: si llegan renglones estructurados, se deriva la cadena de texto
+  // (una línea por persona) para que la ficha y la impresión no cambien.
+  const rows = input.hoja?.personalHsaRows;
+  const personalHsa = rows
+    ? rows
+        .map((r) => {
+          const detalle = [r.nombre, r.rol].filter(Boolean).join(' · ');
+          return r.hora ? `${r.hora} — ${detalle}` : detalle;
+        })
+        .join('\n')
+    : input.hoja?.personalHsa;
+
+  const hoja = {
+    ...(input.hoja ?? {}),
+    banquetero: banquetero?.nombre ?? input.hoja?.banquetero ?? null,
+    personalHsa: personalHsa ?? null,
+  };
 
   return db.quote.update({
     where: { id },

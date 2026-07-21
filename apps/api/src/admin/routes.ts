@@ -13,6 +13,26 @@ const banqueteroUpdateSchema = z.object({
   activo: z.boolean().optional(),
 });
 
+const empleadoCreateSchema = z.object({
+  nombre: z.string().min(1),
+  rol: z.string().max(60).optional(),
+});
+const empleadoUpdateSchema = z.object({
+  nombre: z.string().min(1).optional(),
+  rol: z.string().max(60).nullable().optional(),
+  activo: z.boolean().optional(),
+});
+
+const cuadrillaCreateSchema = z.object({
+  nombre: z.string().min(1),
+  empleadoIds: z.array(z.string()).default([]),
+});
+const cuadrillaUpdateSchema = z.object({
+  nombre: z.string().min(1).optional(),
+  activo: z.boolean().optional(),
+  empleadoIds: z.array(z.string()).optional(),
+});
+
 const addonCreateSchema = z.object({
   nombre: z.string().min(1),
   kind: z.enum(['fijo', 'porPersona', 'porUnidad']),
@@ -115,5 +135,80 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
       }))
       .sort((a, b) => b.eventos - a.eventos);
     return { ventas };
+  });
+
+  // --- Empleados (personal HSA) ---
+  app.get('/empleados', { preHandler: requireAuth }, async () => ({
+    empleados: await app.prisma.empleado.findMany({ where: { activo: true }, orderBy: { nombre: 'asc' } }),
+  }));
+
+  app.get('/admin/empleados', { preHandler: requireAdmin }, async () => ({
+    empleados: await app.prisma.empleado.findMany({ orderBy: { nombre: 'asc' } }),
+  }));
+
+  app.post('/admin/empleados', { preHandler: requireAdmin }, async (req, reply) => {
+    const data = empleadoCreateSchema.parse(req.body);
+    const empleado = await app.prisma.empleado.create({ data });
+    return reply.code(201).send({ empleado });
+  });
+
+  app.patch<{ Params: { id: string } }>('/admin/empleados/:id', { preHandler: requireAdmin }, async (req, reply) => {
+    const data = empleadoUpdateSchema.parse(req.body);
+    try {
+      const empleado = await app.prisma.empleado.update({ where: { id: req.params.id }, data });
+      return { empleado };
+    } catch {
+      return reply.code(404).send({ error: 'Empleado no encontrado' });
+    }
+  });
+
+  // --- Cuadrillas (grupos de empleados) ---
+  const cuadrillaInclude = {
+    miembros: { include: { empleado: { select: { id: true, nombre: true, rol: true } } } },
+  } as const;
+
+  app.get('/cuadrillas', { preHandler: requireAuth }, async () => ({
+    cuadrillas: await app.prisma.cuadrilla.findMany({
+      where: { activo: true },
+      include: cuadrillaInclude,
+      orderBy: { nombre: 'asc' },
+    }),
+  }));
+
+  app.get('/admin/cuadrillas', { preHandler: requireAdmin }, async () => ({
+    cuadrillas: await app.prisma.cuadrilla.findMany({ include: cuadrillaInclude, orderBy: { nombre: 'asc' } }),
+  }));
+
+  app.post('/admin/cuadrillas', { preHandler: requireAdmin }, async (req, reply) => {
+    const data = cuadrillaCreateSchema.parse(req.body);
+    const cuadrilla = await app.prisma.cuadrilla.create({
+      data: {
+        nombre: data.nombre,
+        miembros: { create: data.empleadoIds.map((empleadoId) => ({ empleadoId })) },
+      },
+      include: cuadrillaInclude,
+    });
+    return reply.code(201).send({ cuadrilla });
+  });
+
+  app.patch<{ Params: { id: string } }>('/admin/cuadrillas/:id', { preHandler: requireAdmin }, async (req, reply) => {
+    const data = cuadrillaUpdateSchema.parse(req.body);
+    try {
+      // Si llegan empleadoIds, se reemplazan los miembros por completo.
+      if (data.empleadoIds) {
+        await app.prisma.cuadrillaMiembro.deleteMany({ where: { cuadrillaId: req.params.id } });
+        await app.prisma.cuadrillaMiembro.createMany({
+          data: data.empleadoIds.map((empleadoId) => ({ cuadrillaId: req.params.id, empleadoId })),
+        });
+      }
+      const cuadrilla = await app.prisma.cuadrilla.update({
+        where: { id: req.params.id },
+        data: { nombre: data.nombre, activo: data.activo },
+        include: cuadrillaInclude,
+      });
+      return { cuadrilla };
+    } catch {
+      return reply.code(404).send({ error: 'Cuadrilla no encontrada' });
+    }
   });
 }
