@@ -41,9 +41,17 @@ const addonCreateSchema = z.object({
 
 const addonUpdateSchema = z.object({
   nombre: z.string().min(1).optional(),
+  kind: z.enum(['fijo', 'porPersona', 'porUnidad']).optional(),
   price: z.number().int().nonnegative().optional(),
   activo: z.boolean().optional(),
 });
+
+/** Mensaje 409 estándar cuando un registro está referenciado y no se puede borrar. */
+function enUso(reply: import('fastify').FastifyReply, entidad: string, n: number): void {
+  reply.code(409).send({
+    error: `No se puede borrar: en uso por ${n} ${entidad}. Desactívalo en vez de borrarlo.`,
+  });
+}
 
 const configSchema = z.object({
   ivaRate: z.number().min(0).max(1).optional(),
@@ -68,6 +76,21 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
     try {
       const addOn = await app.prisma.addOn.update({ where: { id: req.params.id }, data });
       return { addOn };
+    } catch {
+      return reply.code(404).send({ error: 'Add-on no encontrado' });
+    }
+  });
+
+  // Borra un extra sólo si ningún contrato lo referencia en su JSON de add-ons.
+  app.delete<{ Params: { id: string } }>('/admin/addons/:id', { preHandler: requireAdmin }, async (req, reply) => {
+    const { id } = req.params;
+    const rows = await app.prisma.$queryRaw<{ count: number }[]>`
+      SELECT COUNT(*)::int AS count FROM "Quote" WHERE "addOns" @> ${JSON.stringify([{ addOnId: id }])}::jsonb`;
+    const n = rows[0]?.count ?? 0;
+    if (n > 0) return enUso(reply, n === 1 ? 'contrato' : 'contratos', n);
+    try {
+      await app.prisma.addOn.delete({ where: { id } });
+      return reply.code(204).send();
     } catch {
       return reply.code(404).send({ error: 'Add-on no encontrado' });
     }
@@ -107,6 +130,19 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
     try {
       const banquetero = await app.prisma.banquetero.update({ where: { id: req.params.id }, data });
       return { banquetero };
+    } catch {
+      return reply.code(404).send({ error: 'Banquetero no encontrado' });
+    }
+  });
+
+  // Borra un banquetero sólo si no está asignado a ningún contrato (activo o en papelera).
+  app.delete<{ Params: { id: string } }>('/admin/banqueteros/:id', { preHandler: requireAdmin }, async (req, reply) => {
+    const { id } = req.params;
+    const n = await app.prisma.quote.count({ where: { banqueteroId: id } });
+    if (n > 0) return enUso(reply, n === 1 ? 'contrato' : 'contratos', n);
+    try {
+      await app.prisma.banquetero.delete({ where: { id } });
+      return reply.code(204).send();
     } catch {
       return reply.code(404).send({ error: 'Banquetero no encontrado' });
     }
@@ -162,6 +198,17 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
     }
   });
 
+  // El empleado no tiene FK con contratos (el personal HSA se guarda como texto);
+  // sus membresías en cuadrillas se eliminan por cascade.
+  app.delete<{ Params: { id: string } }>('/admin/empleados/:id', { preHandler: requireAdmin }, async (req, reply) => {
+    try {
+      await app.prisma.empleado.delete({ where: { id: req.params.id } });
+      return reply.code(204).send();
+    } catch {
+      return reply.code(404).send({ error: 'Empleado no encontrado' });
+    }
+  });
+
   // --- Cuadrillas (grupos de empleados) ---
   const cuadrillaInclude = {
     miembros: { include: { empleado: { select: { id: true, nombre: true, rol: true } } } },
@@ -207,6 +254,16 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
         include: cuadrillaInclude,
       });
       return { cuadrilla };
+    } catch {
+      return reply.code(404).send({ error: 'Cuadrilla no encontrada' });
+    }
+  });
+
+  // Borra la cuadrilla; sus miembros (CuadrillaMiembro) caen por cascade.
+  app.delete<{ Params: { id: string } }>('/admin/cuadrillas/:id', { preHandler: requireAdmin }, async (req, reply) => {
+    try {
+      await app.prisma.cuadrilla.delete({ where: { id: req.params.id } });
+      return reply.code(204).send();
     } catch {
       return reply.code(404).send({ error: 'Cuadrilla no encontrada' });
     }

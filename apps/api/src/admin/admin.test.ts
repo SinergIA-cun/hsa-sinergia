@@ -7,6 +7,15 @@ import { loadConfig } from '../config.js';
 let app: FastifyInstance;
 let adminCookie: { name: string; value: string };
 const createdAddOnIds: string[] = [];
+const createdEmpleadoIds: string[] = [];
+const createdCuadrillaIds: string[] = [];
+const createdBanqueteroIds: string[] = [];
+const createdQuoteIds: string[] = [];
+const createdClientIds: string[] = [];
+
+function cookie() {
+  return { [adminCookie.name]: adminCookie.value };
+}
 
 beforeAll(async () => {
   app = await buildServer({ config: loadConfig() });
@@ -22,7 +31,12 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  await prisma.quote.deleteMany({ where: { id: { in: createdQuoteIds } } });
+  await prisma.client.deleteMany({ where: { id: { in: createdClientIds } } });
   await prisma.addOn.deleteMany({ where: { id: { in: createdAddOnIds } } });
+  await prisma.cuadrilla.deleteMany({ where: { id: { in: createdCuadrillaIds } } });
+  await prisma.empleado.deleteMany({ where: { id: { in: createdEmpleadoIds } } });
+  await prisma.banquetero.deleteMany({ where: { id: { in: createdBanqueteroIds } } });
   // Restaura valetRatio por si algún assert falla antes de la restauración manual.
   await prisma.pricingConfig.update({ where: { id: 'default' }, data: { valetRatio: 2.5 } });
   await app.close();
@@ -53,6 +67,102 @@ describe('admin add-ons', () => {
     const updated = patchRes.json().addOn;
     expect(updated.price).toBe(600);
     expect(updated.activo).toBe(false);
+  });
+});
+
+describe('admin borrado con guardas', () => {
+  async function crearAddon(nombre: string): Promise<string> {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/admin/addons',
+      cookies: cookie(),
+      payload: { nombre, kind: 'fijo', price: 100 },
+    });
+    const id = res.json().addOn.id as string;
+    createdAddOnIds.push(id);
+    return id;
+  }
+
+  it('DELETE /admin/addons/:id borra un extra no usado (204)', async () => {
+    const id = await crearAddon('Extra borrable');
+    const res = await app.inject({ method: 'DELETE', url: `/api/admin/addons/${id}`, cookies: cookie() });
+    expect(res.statusCode).toBe(204);
+    expect(await prisma.addOn.findUnique({ where: { id } })).toBeNull();
+  });
+
+  it('DELETE /admin/addons/:id bloquea (409) si un contrato lo referencia', async () => {
+    const addOnId = await crearAddon('Extra en uso');
+    const client = await prisma.client.create({ data: { nombre: 'Cliente Ref Extra' } });
+    createdClientIds.push(client.id);
+    const eventType = await prisma.eventType.findFirstOrThrow();
+    const quote = await prisma.quote.create({
+      data: {
+        clientId: client.id,
+        eventTypeId: eventType.id,
+        fechaEvento: new Date('2027-09-01'),
+        invitados: 100,
+        spaceIds: [],
+        addOns: [{ addOnId, cantidad: 1 }],
+        breakdown: {},
+        total: 0,
+        rentaTotal: 0,
+        publicToken: `tok-${Date.now()}`,
+      },
+    });
+    createdQuoteIds.push(quote.id);
+
+    const res = await app.inject({ method: 'DELETE', url: `/api/admin/addons/${addOnId}`, cookies: cookie() });
+    expect(res.statusCode).toBe(409);
+    expect(res.json().error).toMatch(/en uso/i);
+    // Sigue existiendo (no se borró).
+    expect(await prisma.addOn.findUnique({ where: { id: addOnId } })).not.toBeNull();
+  });
+
+  it('DELETE /admin/empleados/:id borra el empleado y sus membresías (204)', async () => {
+    const empRes = await app.inject({
+      method: 'POST',
+      url: '/api/admin/empleados',
+      cookies: cookie(),
+      payload: { nombre: 'Empleado Borrable' },
+    });
+    const empId = empRes.json().empleado.id as string;
+    const cuadRes = await app.inject({
+      method: 'POST',
+      url: '/api/admin/cuadrillas',
+      cookies: cookie(),
+      payload: { nombre: 'Cuadrilla Test Borrado', empleadoIds: [empId] },
+    });
+    const cuadId = cuadRes.json().cuadrilla.id as string;
+    createdCuadrillaIds.push(cuadId);
+
+    const del = await app.inject({ method: 'DELETE', url: `/api/admin/empleados/${empId}`, cookies: cookie() });
+    expect(del.statusCode).toBe(204);
+    expect(await prisma.empleado.findUnique({ where: { id: empId } })).toBeNull();
+    // La membresía cayó por cascade.
+    expect(await prisma.cuadrillaMiembro.count({ where: { empleadoId: empId } })).toBe(0);
+  });
+
+  it('DELETE /admin/banqueteros/:id borra uno no asignado (204)', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/admin/banqueteros',
+      cookies: cookie(),
+      payload: { nombre: 'Banquetero Borrable' },
+    });
+    const id = res.json().banquetero.id as string;
+    const del = await app.inject({ method: 'DELETE', url: `/api/admin/banqueteros/${id}`, cookies: cookie() });
+    expect(del.statusCode).toBe(204);
+    expect(await prisma.banquetero.findUnique({ where: { id } })).toBeNull();
+  });
+});
+
+describe('borrado de usuarios', () => {
+  it('DELETE /users/:id no permite borrar la propia cuenta (409)', async () => {
+    const admin = await prisma.user.findUniqueOrThrow({
+      where: { email: 'admin@haciendasanandres.com.mx' },
+    });
+    const res = await app.inject({ method: 'DELETE', url: `/api/users/${admin.id}`, cookies: cookie() });
+    expect(res.statusCode).toBe(409);
   });
 });
 
