@@ -1955,5 +1955,12 @@ no cuenta). Si en el futuro `availability/service.ts` necesitara algo de cotizac
 que extraer el tipo compartido en lugar de cerrar el ciclo.
 
 **Los tests de integración comparten una base de datos.** Cada test nuevo usa su propia
-fecha de 2029 y limpia lo que crea en el `afterAll`. Reutilizar una fecha de otro test hace
-que el bloqueo del servidor de la Task 6 los tumbe entre sí de forma difícil de diagnosticar.
+fecha de 2029-2030 y limpia lo que crea en el `afterAll`. Reutilizar una fecha de otro test
+hace que el bloqueo del servidor de la Task 6 los tumbe entre sí de forma difícil de
+diagnosticar.
+
+**No corras la suite de la API dos veces en paralelo.** Verificado durante la ejecución: una
+corrida falló y la siguiente pasó sin cambiar nada, porque dos suites concurrentes contra la
+misma base compiten por las mismas fechas y espacios, y ahora el servidor las bloquea de
+verdad. Antes del bloqueo esto era inofensivo. Si ves un fallo que no se reproduce, verifica
+primero que no haya otra corrida activa antes de investigar el código.
