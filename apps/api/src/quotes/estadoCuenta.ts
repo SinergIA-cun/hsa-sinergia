@@ -6,6 +6,14 @@ export interface SpaceRule {
   liquidarDiasAntes: number;
 }
 
+/** Regla de un espacio junto con la renta base que aportó, para poder repartir
+ *  el complemento en proporción cuando el evento usa más de un salón. */
+export interface SpaceRuleWithRent {
+  spaceId: string;
+  rule: SpaceRule;
+  rentaBase: number;
+}
+
 export interface PaymentLite {
   monto: number;
   anuladoAt: Date | null;
@@ -50,24 +58,40 @@ export function computeEstadoCuenta(args: {
   total: number;
   fechaEvento: Date;
   status: string;
-  rule: SpaceRule | null;
+  rules: SpaceRuleWithRent[] | null;
   payments: PaymentLite[];
   fechaApartado?: Date | null;
   now?: Date;
 }): EstadoCuenta {
-  const { total, fechaEvento, status, rule, payments, fechaApartado } = args;
+  const { total, fechaEvento, status, rules, payments, fechaApartado } = args;
   const pagado = payments.filter((p) => p.anuladoAt == null).reduce((s, p) => s + p.monto, 0);
   const saldo = total - pagado;
 
-  if (!rule) {
+  if (!rules || rules.length === 0) {
     return { total, pagado, saldo, plan: null, planPendiente: true, sugerido: null, desfase: false };
   }
 
-  const objApartar = rule.anticipo;
-  const objComplemento = rule.anticipo + Math.round(rule.complementoPct * total);
+  // Anticipo: cada espacio aporta el suyo (sección H del contrato, por espacio).
+  const objApartar = rules.reduce((s, r) => s + r.rule.anticipo, 0);
+
+  // Complemento: el porcentaje de cada espacio pesa según la renta que ese
+  // espacio aporta. Con un solo espacio el peso es 1 y la fórmula se reduce
+  // exactamente a `pct × total`, idéntica a la de antes del multi-salón.
+  const sumRenta = rules.reduce((s, r) => s + r.rentaBase, 0);
+  const pctPonderado =
+    sumRenta > 0
+      ? rules.reduce((s, r) => s + r.rule.complementoPct * (r.rentaBase / sumRenta), 0)
+      : // Sin renta base (dato faltante) no hay proporción posible: se toma el
+        // porcentaje más alto, que es el criterio conservador para el negocio.
+        Math.max(...rules.map((r) => r.rule.complementoPct));
+
+  const objComplemento = objApartar + Math.round(pctPonderado * total);
   const objFiniquito = total;
 
-  const finiquitoVence = minusDays(fechaEvento, rule.liquidarDiasAntes);
+  // El finiquito más exigente manda cuando los espacios difieren.
+  const liquidarDiasAntes = Math.max(...rules.map((r) => r.rule.liquidarDiasAntes));
+
+  const finiquitoVence = minusDays(fechaEvento, liquidarDiasAntes);
   // Complemento: 3 meses después del anticipo, PERO nunca después del finiquito
   // (para eventos próximos, +3 meses caería después del evento). Se tope al finiquito.
   let complementoVence: Date | null = null;
@@ -89,7 +113,7 @@ export function computeEstadoCuenta(args: {
 
   const plan: Milestone[] = [
     hito('apartar', 'Apartar fecha', objApartar, null),
-    hito('complemento', 'Complemento', objComplemento, complementoVence?.toISOString() ?? null, Math.round(rule.complementoPct * 100)),
+    hito('complemento', 'Complemento', objComplemento, complementoVence?.toISOString() ?? null, Math.round(pctPonderado * 100)),
     hito('finiquito', 'Finiquito', objFiniquito, finiquitoVence.toISOString()),
   ];
 
