@@ -176,6 +176,7 @@ describe('quotes service', () => {
 
     const { estadoCuenta } = await loadEstadoCuenta(prisma, {
       id: q.id,
+      breakdown: q.breakdown,
       rentaTotal: q.rentaTotal,
       fechaEvento: q.fechaEvento,
       status: 'formalizada',
@@ -247,6 +248,39 @@ describe('quotes service', () => {
     expect(q.spaceIds).toHaveLength(2);
     const lineasRenta = (q.breakdown as { lines: { spaceId?: string }[] }).lines.filter((l) => l.spaceId);
     expect(lineasRenta).toHaveLength(2);
+  });
+
+  it('dos salones con regla: el anticipo del plan suma los dos', async () => {
+    const { eventTypeId, arcosId, camposId } = await ids();
+    const q = await createQuote(
+      prisma,
+      { fecha: '2029-10-06', invitados: 250, spaceIds: [arcosId, camposId], eventTypeId, client: { nombre: 'Plan Dos Salones' } },
+      actor,
+    );
+    createdQuoteIds.push(q.id);
+    createdClientIds.push(q.clientId);
+
+    const { estadoCuenta } = await loadEstadoCuenta(prisma, q);
+    expect(estadoCuenta.planPendiente).toBe(false);
+    // Arcos $20,000 + Campos $15,000 = $35,000 de anticipo.
+    expect(estadoCuenta.plan!.find((m) => m.key === 'apartar')!.objetivo).toBe(35000);
+  });
+
+  it('si un salón del evento no tiene regla, el plan queda pendiente', async () => {
+    // La Capilla no tiene SpacePaymentRule (el cliente aún no da sus montos).
+    const { eventTypeId, arcosId, capillaId } = await ids();
+    const q = await createQuote(
+      prisma,
+      { fecha: '2029-10-13', invitados: 150, spaceIds: [arcosId, capillaId], eventTypeId, client: { nombre: 'Plan Incompleto' } },
+      actor,
+    );
+    createdQuoteIds.push(q.id);
+    createdClientIds.push(q.clientId);
+
+    const { estadoCuenta } = await loadEstadoCuenta(prisma, q);
+    // No se cobra un plan a medias: basta que falte una regla.
+    expect(estadoCuenta.planPendiente).toBe(true);
+    expect(estadoCuenta.plan).toBeNull();
   });
 
   it('rechaza más de 3 espacios', async () => {

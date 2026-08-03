@@ -221,7 +221,8 @@ export async function getDashboard(
 
     const cliente = q.client?.nombre ?? 'Cliente';
     const evento = q.eventType?.nombre ?? 'Evento';
-    const espacio = espacioById.get(q.spaceIds[0] ?? '') ?? '—';
+    // Un evento puede ocupar hasta 3 salones: se listan todos.
+    const espacio = q.spaceIds.map((id) => espacioById.get(id) ?? id).join(' y ') || '—';
     const ec = estados.get(q.id)!;
 
     if (q.fechaEvento >= desde && q.fechaEvento < hasta) eventosMes += 1;

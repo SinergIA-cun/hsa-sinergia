@@ -5,7 +5,7 @@ import { computeQuote, quoteSelectionSchema, type QuoteSelection } from '@hsa/sh
 import { loadCatalog } from '../catalog/loader.js';
 import { getAvailability } from '../availability/service.js';
 import { logActivity } from './activityLog.js';
-import { computeEstadoCuenta, esUpgrade, type EstadoCuenta } from './estadoCuenta.js';
+import { computeEstadoCuenta, esUpgrade, type EstadoCuenta, type SpaceRuleWithRent } from './estadoCuenta.js';
 
 export interface Actor {
   id: string;
@@ -124,15 +124,57 @@ async function assertEspaciosDisponibles(
   }
 }
 
+/**
+ * Renta base por espacio, leída de las líneas del desglose congelado.
+ *
+ * Las cotizaciones anteriores al campo `spaceId` no lo traen; en ese caso se
+ * reparte la renta en partes iguales entre sus espacios. Como esas cotizaciones
+ * tienen exactamente un espacio, el reparto equivale al monto completo, que es
+ * el valor correcto.
+ */
+function rentaBasePorEspacio(breakdown: unknown, spaceIds: string[], rentaTotal: number): Map<string, number> {
+  const lines = (breakdown as { lines?: { spaceId?: string; monto?: number }[] } | null)?.lines ?? [];
+  const out = new Map<string, number>();
+  for (const l of lines) {
+    if (l.spaceId && typeof l.monto === 'number') {
+      out.set(l.spaceId, (out.get(l.spaceId) ?? 0) + l.monto);
+    }
+  }
+  if (out.size === 0 && spaceIds.length > 0) {
+    const parte = rentaTotal / spaceIds.length;
+    for (const id of spaceIds) out.set(id, parte);
+  }
+  return out;
+}
+
+/**
+ * Reglas de pago listas para el motor, o `null` si falta la de algún espacio.
+ *
+ * Basta que UN espacio no tenga regla para que el plan quede pendiente: no se
+ * puede cobrar un plan a medias. Cuatro espacios (Balcones, Pajaritos, Jardín
+ * del Caballo, Capilla) todavía no tienen montos definidos.
+ */
+function armarReglas(
+  reglas: { spaceId: string; anticipo: number; complementoPct: number; liquidarDiasAntes: number }[],
+  spaceIds: string[],
+  rentaBase: Map<string, number>,
+): SpaceRuleWithRent[] | null {
+  if (spaceIds.length === 0 || reglas.length !== spaceIds.length) return null;
+  return reglas.map((r) => ({
+    spaceId: r.spaceId,
+    rule: { anticipo: r.anticipo, complementoPct: r.complementoPct, liquidarDiasAntes: r.liquidarDiasAntes },
+    rentaBase: rentaBase.get(r.spaceId) ?? 0,
+  }));
+}
+
 // El plan de pagos, el saldo y el finiquito se miden SOLO sobre la renta (lo que
 // cobra HSA). Los alimentos se pagan directo al banquetero y no se rastrean aquí.
-/** Carga regla del espacio + pagos y arma el estado de cuenta (base: renta). */
+/** Carga las reglas de los espacios + pagos y arma el estado de cuenta (base: renta). */
 export async function loadEstadoCuenta(db: PrismaClient, quote: {
-  id: string; rentaTotal: number; fechaEvento: Date; status: string; spaceIds: string[];
+  id: string; rentaTotal: number; fechaEvento: Date; status: string; spaceIds: string[]; breakdown: unknown;
 }) {
-  const spaceId = quote.spaceIds[0];
-  const [rule, payments, firstApartado] = await Promise.all([
-    spaceId ? db.spacePaymentRule.findUnique({ where: { spaceId } }) : Promise.resolve(null),
+  const [rules, payments, firstApartado] = await Promise.all([
+    db.spacePaymentRule.findMany({ where: { spaceId: { in: quote.spaceIds } } }),
     db.payment.findMany({ where: { quoteId: quote.id }, orderBy: { fecha: 'asc' } }),
     db.activityLog.findFirst({
       // Primer momento en que el evento alcanzó el hito del anticipo. Se aceptan
@@ -146,11 +188,13 @@ export async function loadEstadoCuenta(db: PrismaClient, quote: {
       orderBy: { createdAt: 'asc' }, select: { createdAt: true },
     }),
   ]);
+
+  const rentaBase = rentaBasePorEspacio(quote.breakdown, quote.spaceIds, quote.rentaTotal);
   const ec = computeEstadoCuenta({
     total: quote.rentaTotal,
     fechaEvento: quote.fechaEvento,
     status: quote.status,
-    rule: rule ? { anticipo: rule.anticipo, complementoPct: rule.complementoPct, liquidarDiasAntes: rule.liquidarDiasAntes } : null,
+    rules: armarReglas(rules, quote.spaceIds, rentaBase),
     payments: payments.map((p) => ({ monto: p.monto, anuladoAt: p.anuladoAt })),
     fechaApartado: firstApartado?.createdAt ?? null,
   });
@@ -163,6 +207,7 @@ export interface QuoteEC {
   fechaEvento: Date;
   status: string;
   spaceIds: string[];
+  breakdown: unknown;
 }
 
 /**
@@ -177,7 +222,8 @@ export async function loadEstadoCuentaBulk(
   if (quotes.length === 0) return out;
 
   const quoteIds = quotes.map((q) => q.id);
-  const spaceIds = [...new Set(quotes.map((q) => q.spaceIds[0]).filter(Boolean) as string[])];
+  // Todos los espacios de todas las cotizaciones: un evento puede usar hasta 3.
+  const spaceIds = [...new Set(quotes.flatMap((q) => q.spaceIds))];
 
   const [rules, payments, apartados] = await Promise.all([
     db.spacePaymentRule.findMany({ where: { spaceId: { in: spaceIds } } }),
@@ -207,16 +253,17 @@ export async function loadEstadoCuentaBulk(
   }
 
   for (const q of quotes) {
-    const rule = ruleBySpace.get(q.spaceIds[0] ?? '');
+    const rentaBase = rentaBasePorEspacio(q.breakdown, q.spaceIds, q.rentaTotal);
+    const reglas = q.spaceIds
+      .map((id) => ruleBySpace.get(id))
+      .filter((r): r is NonNullable<typeof r> => r != null);
     out.set(
       q.id,
       computeEstadoCuenta({
         total: q.rentaTotal,
         fechaEvento: q.fechaEvento,
         status: q.status,
-        rule: rule
-          ? { anticipo: rule.anticipo, complementoPct: rule.complementoPct, liquidarDiasAntes: rule.liquidarDiasAntes }
-          : null,
+        rules: armarReglas(reglas, q.spaceIds, rentaBase),
         payments: pagosByQuote.get(q.id) ?? [],
         fechaApartado: apartadoByQuote.get(q.id) ?? null,
       }),
@@ -253,6 +300,8 @@ export async function reconcileStatuses(
       rentaTotal: true,
       fechaEvento: true,
       spaceIds: true,
+      // El desglose lleva la renta de cada espacio, que pondera el complemento.
+      breakdown: true,
       client: { select: { nombre: true } },
     },
   });
