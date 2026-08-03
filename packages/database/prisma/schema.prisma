@@ -29,8 +29,8 @@ enum QuoteStatus {
   borrador
   enviada
   aceptada
-  apartada
   formalizada
+  complementada
   liquidada
   vencida
 }

@@ -89,8 +89,8 @@ export const QUOTE_STATUSES = [
   'borrador',
   'enviada',
   'aceptada',
-  'apartada',
   'formalizada',
+  'complementada',
   'liquidada',
   'vencida',
 ] as const;
