@@ -59,6 +59,10 @@ export interface QuoteLine {
   monto: number;                // por línea; la renta ya trae IVA, las bases no
   ivaIncluido: boolean;
   grupo: QuoteGroup;
+  /** Solo en las líneas de renta de espacio: a qué espacio corresponde el monto.
+   *  Es el dato que permite repartir el plan de pagos entre varios salones sin
+   *  tener que interpretar el texto del concepto. */
+  spaceId?: string;
 }
 
 export interface QuoteBreakdown {

@@ -48,7 +48,7 @@ export function computeQuote(
       throw new Error(`Falta precio para el espacio ${spaceId} en día ${dt}`);
     }
     rentaEspacios += monto;
-    lines.push({ concepto: `Renta ${spaceId}`, monto: round2(monto), ivaIncluido: true, grupo: 'renta' });
+    lines.push({ concepto: `Renta ${spaceId}`, monto: round2(monto), ivaIncluido: true, grupo: 'renta', spaceId });
   }
 
   // 2. Horas extra (5% de la renta de espacios por hora, con IVA porque es sobre la renta).

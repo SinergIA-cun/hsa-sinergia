@@ -193,4 +193,25 @@ describe('computeQuote', () => {
     };
     expect(() => computeQuote(roto, mk({ spaceIds: ['roto'], invitados: 100 }))).toThrow(/Falta precio/i);
   });
+
+  it('las líneas de renta llevan spaceId; las demás no', () => {
+    // El catálogo de prueba tiene 'arcos' (201-300) y 'cupula' (50-300): con 250
+    // invitados ambos tienen fila de renta.
+    const b = computeQuote(catalog, {
+      fecha: '2027-05-08',
+      invitados: 250,
+      spaceIds: ['arcos', 'cupula'],
+      horasExtra: 1,
+      usaCapilla: false,
+      usaDjHoraExtra: false,
+      addOns: [],
+    });
+
+    const rentas = b.lines.filter((l) => l.spaceId != null);
+    expect(rentas).toHaveLength(2);
+    expect(rentas.map((l) => l.spaceId).sort()).toEqual(['arcos', 'cupula']);
+
+    const horasExtra = b.lines.find((l) => l.concepto === 'Horas extra')!;
+    expect(horasExtra.spaceId).toBeUndefined();
+  });
 });
