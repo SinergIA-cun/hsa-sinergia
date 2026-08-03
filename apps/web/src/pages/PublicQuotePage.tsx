@@ -2,7 +2,7 @@ import { useParams, Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { CalendarDays, Users, MapPin, Printer, Receipt } from 'lucide-react';
 import { api } from '../lib/api.ts';
-import { formatMXN } from '../lib/money.ts';
+import { formatMXN, formatPct } from '../lib/money.ts';
 import { formatEventDate } from '../lib/date.ts';
 import { Logo } from '../components/Logo.tsx';
 import { BreakdownGrouped } from '../components/BreakdownGrouped.tsx';
@@ -24,7 +24,7 @@ function terminosPago(plan: Milestone[]): string[] {
     const vence = m.venceISO ? ` a más tardar el ${formatEventDate(m.venceISO, 'long')}` : '';
     if (m.key === 'apartar') return `Apartado: ${formatMXN(m.objetivo)} para reservar la fecha.`;
     if (m.key === 'complemento') {
-      const pct = m.porcentaje != null ? `${m.porcentaje}% del total = ` : '';
+      const pct = m.porcentaje != null ? `${formatPct(m.porcentaje)} del total = ` : '';
       return `Complemento: ${pct}${formatMXN(m.objetivo)}${vence}.`;
     }
     return `Liquidación: el total (${formatMXN(m.objetivo)}) debe quedar cubierto${vence} (30 días antes del evento).`;

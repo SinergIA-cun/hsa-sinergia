@@ -20,3 +20,8 @@ export function formatMXN(n: number): string {
 export function formatMXNCents(n: number): string {
   return mxnCents.format(n);
 }
+
+/** Porcentaje legible: 10 → "10%", 20.5 → "20.5%". Evita el "10.0%" de toFixed. */
+export function formatPct(n: number): string {
+  return `${Number.isInteger(n) ? n : n.toFixed(1)}%`;
+}

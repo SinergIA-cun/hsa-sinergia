@@ -113,7 +113,7 @@ export function computeEstadoCuenta(args: {
 
   const plan: Milestone[] = [
     hito('apartar', 'Apartar fecha', objApartar, null),
-    hito('complemento', 'Complemento', objComplemento, complementoVence?.toISOString() ?? null, Math.round(pctPonderado * 100)),
+    hito('complemento', 'Complemento', objComplemento, complementoVence?.toISOString() ?? null, Math.round(pctPonderado * 1000) / 10),
     hito('finiquito', 'Finiquito', objFiniquito, finiquitoVence.toISOString()),
   ];
 

@@ -118,6 +118,23 @@ describe('computeEstadoCuenta', () => {
     expect(plan.find((m) => m.key === 'finiquito')!.objetivo).toBe(100000);
   });
 
+  it('el porcentaje del complemento conserva el decimal cuando la ponderación no es entera', () => {
+    // Cúpula 25% con renta 70,000 + Arcos 10% con renta 30,000 = 20.5% ponderado.
+    const ec = computeEstadoCuenta({
+      ...base,
+      total: 120000,
+      rules: [
+        { spaceId: 'cupula', rule: { anticipo: 25000, complementoPct: 0.25, liquidarDiasAntes: 30 }, rentaBase: 70000 },
+        { spaceId: 'arcos', rule: { anticipo: 20000, complementoPct: 0.1, liquidarDiasAntes: 30 }, rentaBase: 30000 },
+      ],
+      payments: [],
+    });
+    const comp = ec.plan!.find((m) => m.key === 'complemento')!;
+    expect(comp.porcentaje).toBe(20.5);
+    // 45,000 de anticipos + 20.5% de 120,000 = 45,000 + 24,600 = 69,600
+    expect(comp.objetivo).toBe(69600);
+  });
+
   it('si algún espacio no tiene regla, el plan queda pendiente', () => {
     const ec = computeEstadoCuenta({ ...base, rules: null, payments: [] });
     expect(ec.planPendiente).toBe(true);

@@ -2,9 +2,9 @@ import { useParams, Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { ArrowLeft, Printer } from 'lucide-react';
 import { api } from '../lib/api.ts';
-import { formatMXNCents } from '../lib/money.ts';
+import { formatMXNCents, formatPct } from '../lib/money.ts';
 import { formatEventDate } from '../lib/date.ts';
-import type { QuoteDetail } from '../lib/types.ts';
+import type { QuoteDetail, Catalog } from '../lib/types.ts';
 
 const MESES = [
   'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
@@ -20,6 +20,10 @@ export function ContratoPage() {
     queryKey: ['quote', id],
     queryFn: () => api.get<QuoteDetail>(`/api/quotes/${id}`),
     retry: false,
+  });
+  const catalogQ = useQuery({
+    queryKey: ['catalog'],
+    queryFn: () => api.get<Catalog>('/api/catalog'),
   });
 
   if (isLoading) {
@@ -41,8 +45,15 @@ export function ContratoPage() {
   const descuento = lines.find((l) => l.concepto.toLowerCase().includes('descuento'));
   const foodLine = lines.find((l) => l.concepto.startsWith('Alimentos '));
   const paqueteNombre = foodLine ? foodLine.concepto.replace('Alimentos ', '') : null;
-  const espacioNombre =
-    rentaLines.find((l) => l.concepto.startsWith('Renta '))?.concepto.replace('Renta ', '') ?? BLANK;
+  const espaciosById = new Map((catalogQ.data?.spaces ?? []).map((s) => [s.id, s.nombre]));
+  // Nombres de los espacios del evento. Se prefiere `spaceId` de las líneas; si el
+  // desglose es anterior a ese campo, se usa el texto del concepto como respaldo.
+  const nombresEspacios = quote.spaceIds.length > 0
+    ? quote.spaceIds.map((id) => espaciosById.get(id) ?? id)
+    : rentaLines
+        .filter((l) => l.concepto.startsWith('Renta '))
+        .map((l) => l.concepto.replace('Renta ', ''));
+  const espacioNombre = nombresEspacios.length > 0 ? nombresEspacios.join(' y ') : BLANK;
 
   const hoy = new Date();
   const correo = quote.client?.correo || '____________';
@@ -237,12 +248,25 @@ export function ContratoPage() {
                 <tr><th>Espacio</th><th>Anticipo</th><th>Complemento<br />(3 meses después de contratar)</th><th>Finiquito</th></tr>
               </thead>
               <tbody>
+                {quote.spaceIds.map((id) => {
+                  const regla = catalogQ.data?.spaces.find((s) => s.id === id)?.paymentRule;
+                  return (
+                    <tr key={id}>
+                      <td>{espaciosById.get(id) ?? id}</td>
+                      <td>{regla ? formatMXNCents(regla.anticipo) : 'por definir'}</td>
+                      <td>{regla ? `${Math.round(regla.complementoPct * 100)}% de su renta` : 'por definir'}</td>
+                      <td />
+                    </tr>
+                  );
+                })}
                 <tr>
-                  <td>{espacioNombre}</td>
-                  <td>{hitoApartar ? formatMXNCents(hitoApartar.objetivo) : '—'}</td>
+                  <td><b>{quote.spaceIds.length > 1 ? 'Total del evento' : 'Total'}</b></td>
+                  <td><b>{hitoApartar ? formatMXNCents(hitoApartar.objetivo) : '—'}</b></td>
                   <td>
-                    {hitoComplemento?.porcentaje != null ? `${hitoComplemento.porcentaje}% sobre el total = ` : ''}
-                    {hitoComplemento ? formatMXNCents(hitoComplemento.objetivo) : '—'}
+                    <b>
+                      {hitoComplemento?.porcentaje != null ? `${formatPct(hitoComplemento.porcentaje)} sobre el total = ` : ''}
+                      {hitoComplemento ? formatMXNCents(hitoComplemento.objetivo) : '—'}
+                    </b>
                   </td>
                   <td>
                     {hitoFiniquito ? formatMXNCents(hitoFiniquito.objetivo) : '—'}, cubierto{' '}
