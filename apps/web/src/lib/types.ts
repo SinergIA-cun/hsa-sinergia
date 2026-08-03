@@ -180,7 +180,7 @@ export interface EstadoCuenta {
   saldo: number;
   plan: Milestone[] | null;
   planPendiente: boolean;
-  sugerido: 'apartada' | 'formalizada' | 'liquidada' | null;
+  sugerido: 'formalizada' | 'complementada' | 'liquidada' | null;
   desfase: boolean;
   pagos?: unknown[];
 }
@@ -200,13 +200,13 @@ export interface QuoteDetail {
   activityLog: ActivityEntry[];
 }
 
-export type AvailabilityLevel = 'libre' | 'cotizaciones' | 'apartada' | 'bloqueada';
+export type AvailabilityLevel = 'libre' | 'cotizaciones' | 'bloqueada';
 
 export interface SpaceAvailability {
   spaceId: string;
   nombre: string;
   level: AvailabilityLevel;
-  counts: { cotizaciones: number; apartadas: number; formalizadas: number; liquidadas: number };
+  counts: { cotizaciones: number; formalizadas: number; complementadas: number; liquidadas: number };
   quotes: { id: string; cliente: string; status: string }[];
 }
 

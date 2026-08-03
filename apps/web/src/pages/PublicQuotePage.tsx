@@ -25,7 +25,7 @@ function terminosPago(plan: Milestone[]): string[] {
     if (m.key === 'apartar') return `Apartado: ${formatMXN(m.objetivo)} para reservar la fecha.`;
     if (m.key === 'complemento') {
       const pct = m.porcentaje != null ? `${m.porcentaje}% del total = ` : '';
-      return `Complemento (formalizar): ${pct}${formatMXN(m.objetivo)}${vence}.`;
+      return `Complemento: ${pct}${formatMXN(m.objetivo)}${vence}.`;
     }
     return `Liquidación: el total (${formatMXN(m.objetivo)}) debe quedar cubierto${vence} (30 días antes del evento).`;
   });

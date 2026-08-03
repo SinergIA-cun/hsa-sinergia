@@ -30,18 +30,19 @@ function primarySpace(e: AgendaEvent, nombreById: Map<string, string>): { nombre
 }
 
 // Colores de la agenda por estado (cortesía familiar manda sobre todo):
-//  vino = tentativa · azul = apartada · blanco/negro = contratado · verde = cortesía.
+//  vino = tentativa · azul = formalizada (pagó anticipo) · blanco/negro = complemento
+//  cubierto o liquidada · verde = cortesía.
 function agendaChipStyle(e: AgendaEvent): string {
   if (e.esCortesia) return 'bg-emerald-600 text-cream';
-  if (e.status === 'formalizada' || e.status === 'liquidada') return 'bg-white text-ink ring-1 ring-ink';
-  if (e.status === 'apartada') return 'bg-blue-600 text-white';
+  if (e.status === 'complementada' || e.status === 'liquidada') return 'bg-white text-ink ring-1 ring-ink';
+  if (e.status === 'formalizada') return 'bg-blue-600 text-white';
   return 'bg-wine/15 text-wine ring-1 ring-wine/25';
 }
 
 const LEYENDA: { label: string; dot: string }[] = [
   { label: 'Tentativa', dot: 'bg-wine' },
-  { label: 'Apartada', dot: 'bg-blue-600' },
-  { label: 'Contratado', dot: 'bg-white ring-1 ring-ink' },
+  { label: 'Formalizada', dot: 'bg-blue-600' },
+  { label: 'Complemento cubierto', dot: 'bg-white ring-1 ring-ink' },
   { label: 'Cortesía familiar', dot: 'bg-emerald-600' },
 ];
 

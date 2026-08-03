@@ -580,20 +580,8 @@ function AvailabilityBanner({
       <div className="flex items-start gap-2 rounded-lg border border-wine/30 bg-wine/10 px-3 py-2.5 text-sm text-wine">
         <Ban size={16} className="mt-0.5 shrink-0" />
         <span>
-          <strong>{avail.nombre}</strong> ya está{' '}
-          {avail.counts.liquidadas > 0 ? 'liquidado' : 'formalizado'} en esta fecha. No se puede
-          cotizar este espacio para el {fecha}.
-        </span>
-      </div>
-    );
-  }
-  if (avail.level === 'apartada') {
-    return (
-      <div className="flex items-start gap-2 rounded-lg border border-gold/40 bg-gold/10 px-3 py-2.5 text-sm text-gold">
-        <AlertTriangle size={16} className="mt-0.5 shrink-0" />
-        <span>
-          Ya hay un <strong>apartado</strong> para <strong>{avail.nombre}</strong> en esta fecha
-          (aún sin formalizar el 30%). Confirma con coordinación antes de comprometerlo.
+          <strong>{avail.nombre}</strong> ya tiene un evento comprometido en esta fecha. No se
+          puede cotizar este espacio para el {fecha}.
         </span>
       </div>
     );
@@ -604,7 +592,7 @@ function AvailabilityBanner({
         <AlertTriangle size={16} className="mt-0.5 shrink-0" />
         <span>
           Hay {avail.counts.cotizaciones} contrato(s) para <strong>{avail.nombre}</strong> en
-          esta fecha, ninguno apartado aún.
+          esta fecha, ninguno con pago aún.
         </span>
       </div>
     );

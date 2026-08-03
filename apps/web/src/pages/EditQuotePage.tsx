@@ -96,7 +96,7 @@ export function EditQuotePage() {
   const enPapelera = Boolean(quote.deletedAt);
   const editable = EDITABLE_STATUSES.includes(quote.status) && !enPapelera;
   const contratoDisponible =
-    !enPapelera && ['apartada', 'formalizada', 'liquidada'].includes(quote.status);
+    !enPapelera && ['formalizada', 'complementada', 'liquidada'].includes(quote.status);
   const publicUrl = `${window.location.origin}/c/${quote.publicToken}`;
   const waUrl =
     !enPapelera
