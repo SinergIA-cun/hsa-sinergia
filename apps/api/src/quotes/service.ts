@@ -56,9 +56,9 @@ export const statusSchema = z.object({ status: z.enum(QUOTE_STATUSES) });
 
 const includeRels = { client: true, eventType: true, createdBy: { select: { id: true, nombre: true } } };
 
-// Se permite editar el desglose incluso con compromiso de pago (apartada/formalizada);
+// Se permite editar el desglose incluso con compromiso de pago (formalizada/complementada);
 // las ediciones en esos estatus quedan registradas en la bitácora de actividad.
-const EDITABLE_STATUSES = new Set(['borrador', 'enviada', 'aceptada', 'apartada', 'formalizada']);
+const EDITABLE_STATUSES = new Set(['borrador', 'enviada', 'aceptada', 'formalizada', 'complementada']);
 
 /** Calcula el desglose y enriquece las líneas de renta con el nombre del espacio. */
 async function computeAndEnrich(db: PrismaClient, selection: QuoteSelection) {
@@ -401,7 +401,7 @@ export async function updateQuote(db: PrismaClient, id: string, rawInput: unknow
     include: includeRels,
   });
 
-  if (existing.status === 'apartada' || existing.status === 'formalizada') {
+  if (existing.status === 'formalizada' || existing.status === 'complementada') {
     await logActivity(db, {
       quoteId: id,
       tipo: 'edicion',
@@ -532,7 +532,7 @@ export async function getOperativaDelDia(db: PrismaClient, fechaISO: string) {
     where: {
       fechaEvento: { gte, lt },
       deletedAt: null,
-      status: { in: ['apartada', 'formalizada', 'liquidada'] },
+      status: { in: ['formalizada', 'complementada', 'liquidada'] },
     },
     include: { client: true, eventType: true, createdBy: { select: { nombre: true } } },
     orderBy: { horaInicio: 'asc' },

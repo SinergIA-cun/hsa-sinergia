@@ -69,7 +69,7 @@ describe('getDashboard', () => {
     );
     created.push(apartada.id);
     createdClients.push(apartada.clientId);
-    await updateStatus(prisma, apartada.id, 'apartada', actor);
+    await updateStatus(prisma, apartada.id, 'formalizada', actor);
 
     const final = await getDashboard(prisma, actor);
     expect(final.kpis.eventosMes).toBe(1);

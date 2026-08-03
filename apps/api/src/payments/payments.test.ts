@@ -58,9 +58,9 @@ describe('registerPayment / anularPayment', () => {
       monto: 20000, metodo: 'transferencia', concepto: 'anticipo', fecha: '2027-01-10',
     }, actor);
     expect(res.estadoCuenta.pagado).toBe(20000);
-    expect(res.nuevoEstatus).toBe('apartada'); // Arcos anticipo 20000 → auto-apartada
+    expect(res.nuevoEstatus).toBe('formalizada'); // Arcos anticipo 20000 → auto-formalizada
     const q2 = await prisma.quote.findUnique({ where: { id: q.id } });
-    expect(q2?.status).toBe('apartada');
+    expect(q2?.status).toBe('formalizada');
   });
 
   it('reconcileStatuses pone al día una cotización que pagó y se quedó en borrador', async () => {

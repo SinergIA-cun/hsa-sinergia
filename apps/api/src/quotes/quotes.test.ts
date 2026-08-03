@@ -87,8 +87,8 @@ describe('quotes service', () => {
     createdQuoteIds.push(q.id);
     createdClientIds.push(q.clientId);
 
-    // Apartada sin pagos: el anticipo (regla de Arcos) no está cubierto ⇒ desfase.
-    await updateStatus(prisma, q.id, 'apartada', actor);
+    // Formalizada sin pagos: el anticipo (regla de Arcos) no está cubierto ⇒ desfase.
+    await updateStatus(prisma, q.id, 'formalizada', actor);
     const conDesfase = await listQuotes(prisma, actor);
     expect(conDesfase.find((x) => x.id === q.id)?.desfase).toBe(true);
 
@@ -109,7 +109,7 @@ describe('quotes service', () => {
     );
     createdQuoteIds.push(q.id);
     createdClientIds.push(q.clientId);
-    await updateStatus(prisma, q.id, 'apartada', actor); // aunque la fuente esté apartada…
+    await updateStatus(prisma, q.id, 'formalizada', actor); // aunque la fuente esté formalizada…
 
     const dup = await duplicateQuote(prisma, q.id, actor);
     createdQuoteIds.push(dup.id);
@@ -140,7 +140,7 @@ describe('quotes service', () => {
     );
     createdQuoteIds.push(reservada.id);
     createdClientIds.push(reservada.clientId);
-    await updateStatus(prisma, reservada.id, 'apartada', actor);
+    await updateStatus(prisma, reservada.id, 'formalizada', actor);
     await prisma.quote.update({ where: { id: reservada.id }, data: { vigenciaHasta: new Date('2020-01-01T00:00:00.000Z') } });
 
     const vencidas = await expireStaleQuotes(prisma);
@@ -149,7 +149,7 @@ describe('quotes service', () => {
     const p = await prisma.quote.findUnique({ where: { id: pipeline.id } });
     const r = await prisma.quote.findUnique({ where: { id: reservada.id } });
     expect(p?.status).toBe('vencida');
-    expect(r?.status).toBe('apartada'); // reserva intacta
+    expect(r?.status).toBe('formalizada'); // reserva intacta
   });
 
   it('el complemento tiene fecha de vencimiento después de formalizar (bitácora nueva)', async () => {
@@ -240,17 +240,17 @@ describe('quotes HTTP', () => {
     });
     expect(edit.statusCode).toBe(200);
 
-    // Cambiar a apartada
+    // Cambiar a formalizada
     const status = await app.inject({
       method: 'PATCH',
       url: `/api/quotes/${q.id}/status`,
       cookies: auth,
-      payload: { status: 'apartada' },
+      payload: { status: 'formalizada' },
     });
     expect(status.statusCode).toBe(200);
-    expect(status.json().quote.status).toBe('apartada');
+    expect(status.json().quote.status).toBe('formalizada');
 
-    // Editar tras apartar: ahora SE PERMITE (deja registro en bitácora)
+    // Editar tras formalizar: ahora SE PERMITE (deja registro en bitácora)
     const edit2 = await app.inject({
       method: 'PUT',
       url: `/api/quotes/${q.id}`,
@@ -290,7 +290,7 @@ describe('papelera (soft-delete)', () => {
     expect(lista2.some((x) => x.id === q.id)).toBe(true); // vuelve a la lista
 
     // No-borrador → 409
-    await updateStatus(prisma, q.id, 'apartada', actor);
+    await updateStatus(prisma, q.id, 'formalizada', actor);
     await expect(softDeleteQuote(prisma, q.id, actor)).rejects.toThrow();
 
     // La bitácora registró quién eliminó y quién restauró
@@ -312,6 +312,6 @@ describe('papelera (soft-delete)', () => {
     // Y una cotización en papelera no acepta cambios (solo lectura)
     await prisma.payment.deleteMany({ where: { quoteId: q.id } });
     await softDeleteQuote(prisma, q.id, actor);
-    await expect(updateStatus(prisma, q.id, 'apartada', actor)).rejects.toThrow(/papelera/);
+    await expect(updateStatus(prisma, q.id, 'formalizada', actor)).rejects.toThrow(/papelera/);
   });
 });
