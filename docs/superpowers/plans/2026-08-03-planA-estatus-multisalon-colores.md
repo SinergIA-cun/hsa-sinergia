@@ -1923,7 +1923,31 @@ del plan, que son los que realmente se cobran:
               </tbody>
 ```
 
-- [ ] **Step 4: Verificar el compilador**
+- [ ] **Step 4: La hoja operativa también lista todos los salones**
+
+**Hallazgo de la Task 12:** `apps/web/src/pages/HojaOperativaPage.tsx:27` saca el salón del
+texto del primer concepto de renta, así que con dos salones la hoja que usa operaciones
+mostraría solo uno — y es el documento con el que el personal monta el evento.
+
+```tsx
+  quote.breakdown.lines.find((l) => l.concepto.startsWith('Renta '))?.concepto.replace('Renta ', '') ?? '—';
+```
+
+Queda listando todas las líneas que traen `spaceId`:
+
+```tsx
+  const lugar =
+    quote.breakdown.lines
+      .filter((l) => l.spaceId)
+      .map((l) => l.concepto.replace('Renta ', ''))
+      .join(' y ') || '—';
+```
+
+Se usa el concepto (que ya trae el nombre del espacio, puesto por `computeAndEnrich`) en vez
+del catálogo, para no añadirle una consulta a esta página. Adaptar el nombre de la variable
+al que ya use el archivo.
+
+- [ ] **Step 5: Verificar el compilador**
 
 ```bash
 pnpm typecheck
@@ -1931,11 +1955,11 @@ pnpm typecheck
 
 Esperado: 4/4 exitosos.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
-git add apps/web/src/pages/ContratoPage.tsx
-git commit -m "feat(web): el contrato lista los espacios del evento"
+git add apps/web/src/pages/ContratoPage.tsx apps/web/src/pages/HojaOperativaPage.tsx apps/web/src/lib/money.ts apps/api/src/quotes/estadoCuenta.ts apps/api/src/quotes/estadoCuenta.test.ts
+git commit -m "feat(web): contrato y hoja operativa listan los espacios; porcentaje con decimal"
 ```
 
 ---

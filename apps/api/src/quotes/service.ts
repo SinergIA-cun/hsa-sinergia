@@ -68,8 +68,10 @@ async function computeAndEnrich(db: PrismaClient, selection: QuoteSelection) {
   const enriched = {
     ...breakdown,
     lines: breakdown.lines.map((l) => {
-      const m = /^Renta (.+)$/.exec(l.concepto);
-      const nombre = m ? nameById.get(m[1]!) : undefined;
+      // `spaceId` viene del motor: no hace falta interpretar el texto del concepto.
+      // El `...l` conserva el spaceId en la línea guardada, que es de donde después
+      // se recupera la renta de cada espacio para ponderar el plan de pagos.
+      const nombre = l.spaceId ? nameById.get(l.spaceId) : undefined;
       return nombre ? { ...l, concepto: `Renta ${nombre}` } : l;
     }),
   };
