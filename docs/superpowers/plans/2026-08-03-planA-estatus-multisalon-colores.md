@@ -1997,7 +1997,23 @@ Recorrer y confirmar cada punto:
 5. **Bloqueo real:** con un evento formalizado, intentar guardar otro en el mismo salón y fecha. El botón está deshabilitado y, si se fuerza por la API, responde 409.
 6. **Agenda:** los chips de eventos formalizados se ven azules y los de complemento cubierto blancos con contorno. La leyenda dice "Formalizada" y "Complemento cubierto".
 7. **Lista:** las cuatro secciones tienen los nombres nuevos y cada evento cae en la correcta.
-8. **Contrato:** generar el contrato de un evento con dos salones. Ambos nombres aparecen y la tabla de pagos de la página 3 tiene un renglón por salón.
+8. **Contrato:** generar el contrato de un evento con dos salones. Ambos nombres aparecen y la
+   tabla de pagos de la página 3 tiene un renglón por salón.
+9. **Contrato por enlace directo (hallazgo de la Task 15):** abrir
+   `/cotizaciones/:id/contrato` con una **recarga completa** del navegador, no navegando
+   desde la lista. Es la ruta que usa quien va a imprimir. No debe verse ni un instante con
+   ids crudos de la base (`cmxyz…`) en lugar de nombres de salón, ni renglones que digan
+   "por definir" cuando el espacio sí tiene regla.
+10. **Porcentaje fraccionario (hallazgo de la Task 10):** cotizar Cúpula + Arcos y comprobar
+    que el contrato y la página del cliente imprimen el porcentaje con su decimal
+    (p. ej. "20.5%") y que **multiplicarlo por el total da exactamente el monto impreso**.
+    Con un solo salón debe seguir diciendo "10%", no "10.0%".
+11. **Preview vs. servidor (nota de la Task 13):** el preview del formulario muestra el plan
+    como **tres abonos** que suman la renta (apartar + complemento + liquidación), mientras
+    que el estado de cuenta del servidor muestra **umbrales acumulados**. Las dos vistas son
+    correctas y consistentes por separado, y así era desde antes de este plan, pero conviene
+    mirarlas juntas y decidir si conviene unificar la presentación. **No cambiar nada aquí
+    sin consultar al dueño:** es una decisión de cómo se le explica el plan al cliente.
 
 - [ ] **Step 5: Commit final si hubo ajustes de la verificación**
 
