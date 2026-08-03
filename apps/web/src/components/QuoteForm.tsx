@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { computeQuote, type QuoteBreakdown } from '@hsa/shared';
+import { computeQuote, type QuoteBreakdown, type QuoteLine } from '@hsa/shared';
 import { Sparkles, RotateCcw, AlertTriangle, CheckCircle2, Ban, UserCheck, X } from 'lucide-react';
 import { api } from '../lib/api.ts';
 import { formatMXN } from '../lib/money.ts';
@@ -10,6 +10,7 @@ import { BreakdownGrouped } from './BreakdownGrouped.tsx';
 import type { Catalog, Availability, SpaceAvailability } from '../lib/types.ts';
 
 const DEFAULT_VALET_RATIO = 2.5; // 1 auto por cada 2.5 personas (fallback si no llega de catálogo)
+const MAX_ESPACIOS = 3; // Hay graduaciones que juntan salones; el tope es 3.
 
 export interface QuoteFormInitial {
   nombre: string;
@@ -142,51 +143,78 @@ export function QuoteForm({
     }
   }, [catalog, selection, spaceIds.length]);
 
-  // Preview del plan de pago según la regla del espacio. Se calcula sobre la
-  // RENTA (lo único que cobra y rastrea HSA); los alimentos se pagan al proveedor.
-  const selectedSpace = catalog.spaces.find((s) => s.id === spaceIds[0]);
+  // Preview del plan de pago. Se calcula sobre la RENTA (lo único que cobra y
+  // rastrea HSA) y replica la fórmula del servidor: los anticipos se suman y el
+  // porcentaje del complemento pesa según la renta que aporta cada espacio.
   const plan = useMemo(() => {
-    const rule = selectedSpace?.paymentRule;
-    if (!breakdown || !rule) return null;
+    if (!breakdown || spaceIds.length === 0) return null;
+    const reglas = spaceIds.map((id) => catalog.spaces.find((s) => s.id === id)?.paymentRule ?? null);
+    if (reglas.some((r) => !r)) return null; // un espacio sin regla ⇒ plan pendiente
+
+    const rentaPorEspacio = new Map<string, number>();
+    for (const l of breakdown.lines) {
+      if (l.spaceId) rentaPorEspacio.set(l.spaceId, (rentaPorEspacio.get(l.spaceId) ?? 0) + l.monto);
+    }
+    const sumRenta = [...rentaPorEspacio.values()].reduce((s, v) => s + v, 0);
+
     const base = Math.round(breakdown.rentaTotal);
-    const apartar = rule.anticipo;
-    const formalizar = Math.round(base * rule.complementoPct);
+    const apartar = reglas.reduce((s, r) => s + r!.anticipo, 0);
+    const pct =
+      sumRenta > 0
+        ? spaceIds.reduce((s, id, i) => s + reglas[i]!.complementoPct * ((rentaPorEspacio.get(id) ?? 0) / sumRenta), 0)
+        : Math.max(...reglas.map((r) => r!.complementoPct));
+    const formalizar = Math.round(pct * base);
     const liquidacion = base - apartar - formalizar;
+
+    const dias = Math.max(...reglas.map((r) => r!.liquidarDiasAntes));
     const liqFecha = fecha ? new Date(`${fecha}T00:00:00.000Z`) : null;
-    if (liqFecha) liqFecha.setUTCDate(liqFecha.getUTCDate() - rule.liquidarDiasAntes);
-    return { apartar, formalizar, liquidacion, liqFecha, dias: rule.liquidarDiasAntes };
-  }, [breakdown, selectedSpace, fecha]);
+    if (liqFecha) liqFecha.setUTCDate(liqFecha.getUTCDate() - dias);
+    return { apartar, formalizar, liquidacion, liqFecha, dias };
+  }, [breakdown, spaceIds, catalog.spaces, fecha]);
 
   const spaceNameById = new Map(catalog.spaces.map((s) => [s.id, s.nombre]));
-  const lineLabel = (concepto: string): string => {
-    const m = /^Renta (.+)$/.exec(concepto);
-    const nombreEsp = m ? spaceNameById.get(m[1]!) : undefined;
-    return nombreEsp ? `Renta ${nombreEsp}` : concepto;
+  const lineLabel = (line: QuoteLine): string => {
+    const nombre = line.spaceId ? spaceNameById.get(line.spaceId) : undefined;
+    return nombre ? `Renta ${nombre}` : line.concepto;
   };
 
-  // Disponibilidad del espacio en la fecha (global, todo el equipo de ventas).
-  const spaceId = spaceIds[0];
+  // Disponibilidad de TODOS los espacios en la fecha (global, todo el equipo de
+  // ventas), en una sola llamada: así el selector puede pintarse con colores sin
+  // que haya que hacer clic para descubrir que un salón está ocupado.
+  const todosLosEspacios = catalog.spaces.map((s) => s.id).join(',');
   const { data: availability } = useQuery({
-    queryKey: ['availability', fecha, spaceId, excludeQuoteId],
+    queryKey: ['availability', fecha, todosLosEspacios, excludeQuoteId],
     queryFn: () =>
       api.get<Availability>(
-        `/api/availability?fecha=${fecha}&spaceIds=${spaceId}` +
+        `/api/availability?fecha=${fecha}&spaceIds=${todosLosEspacios}` +
           (excludeQuoteId ? `&excludeQuoteId=${excludeQuoteId}` : ''),
       ),
-    enabled: Boolean(fecha && spaceId),
+    enabled: Boolean(fecha && todosLosEspacios),
   });
-  const avail = availability?.spaces[0];
-  const blocked = availability?.blocked ?? false;
+
+  const availBySpace = useMemo(
+    () => new Map((availability?.spaces ?? []).map((s) => [s.spaceId, s])),
+    [availability],
+  );
+  // OJO: `blocked` se mide SOLO sobre los espacios seleccionados. Si se usara el
+  // `blocked` global de la respuesta, cualquier fecha con un evento en cualquier
+  // salón impediría guardar.
+  const blocked = spaceIds.some((id) => availBySpace.get(id)?.level === 'bloqueada');
   // La capilla la pueden usar varios eventos el mismo día: solo se informa quién más.
   const capillaEventos = availability?.capillaEventos ?? [];
 
   const canSave = Boolean(
-    nombre && eventTypeId && fecha && spaceIds.length === 1 && breakdown && !calcError && !blocked,
+    nombre && eventTypeId && fecha && spaceIds.length >= 1 && spaceIds.length <= MAX_ESPACIOS &&
+    breakdown && !calcError && !blocked,
   );
 
-  // Un solo espacio por evento: seleccionar reemplaza; volver a hacer clic deselecciona.
-  function selectSpace(id: string) {
-    setSpaceIds((prev) => (prev[0] === id ? [] : [id]));
+  // Hasta 3 espacios por evento (hay graduaciones que juntan salones).
+  function toggleSpace(id: string) {
+    setSpaceIds((prev) => {
+      if (prev.includes(id)) return prev.filter((x) => x !== id);
+      if (prev.length >= MAX_ESPACIOS) return prev;
+      return [...prev, id];
+    });
   }
 
   function toggleAddOn(id: string, kind: string) {
@@ -314,26 +342,67 @@ export function QuoteForm({
 
         <Card className="space-y-3 p-6">
           <h2 className="font-display text-xl text-ink">Espacio</h2>
-          <p className="-mt-1 text-xs text-charcoal-soft">Un solo espacio por evento.</p>
+          <p className="-mt-1 text-xs text-charcoal-soft">
+            Hasta {MAX_ESPACIOS} espacios por evento. {fecha ? 'El color indica la disponibilidad.' : 'Elige la fecha para ver disponibilidad.'}
+          </p>
           <div className="grid gap-2 sm:grid-cols-2">
             {catalog.spaces.map((s) => {
-              const active = spaceIds[0] === s.id;
+              const active = spaceIds.includes(s.id);
+              const av = fecha ? availBySpace.get(s.id) : undefined;
+              const ocupado = av?.level === 'bloqueada';
+              const topeAlcanzado = !active && spaceIds.length >= MAX_ESPACIOS;
+
+              const estado = !av
+                ? 'border-ink/12 bg-white/50 text-charcoal hover:border-ink/30'
+                : av.level === 'bloqueada'
+                  ? 'border-wine/30 bg-wine/10 text-wine/70 line-through'
+                  : av.level === 'cotizaciones'
+                    ? 'border-amber-500/40 bg-amber-500/10 text-charcoal hover:border-amber-500/70'
+                    : 'border-emerald-600/30 bg-emerald-600/5 text-charcoal hover:border-emerald-600/60';
+
               return (
                 <button
                   key={s.id}
                   type="button"
-                  onClick={() => selectSpace(s.id)}
-                  className={`flex items-center justify-between rounded-lg border px-4 py-3 text-left text-sm transition-colors ${
-                    active ? 'border-gold bg-gold/10 text-ink' : 'border-ink/12 bg-white/50 text-charcoal hover:border-ink/30'
-                  }`}
+                  disabled={ocupado || topeAlcanzado}
+                  onClick={() => toggleSpace(s.id)}
+                  title={
+                    ocupado
+                      ? `${s.nombre} ya tiene un evento comprometido el ${fecha}`
+                      : topeAlcanzado
+                        ? `Máximo ${MAX_ESPACIOS} espacios`
+                        : undefined
+                  }
+                  className={`flex items-center justify-between rounded-lg border px-4 py-3 text-left text-sm transition-colors disabled:cursor-not-allowed ${
+                    active ? 'border-gold bg-gold/10 text-ink' : estado
+                  } ${topeAlcanzado && !ocupado ? 'opacity-50' : ''}`}
                 >
                   <span className="font-medium">{s.nombre}</span>
-                  {s.capacidadMax && <span className="text-xs text-charcoal-soft">hasta {s.capacidadMax}</span>}
+                  <span className="text-right text-xs">
+                    {ocupado ? (
+                      <span className="text-wine">
+                        {av!.quotes[0]?.cliente ? `apartado · ${av!.quotes[0]!.cliente}` : 'apartado'}
+                      </span>
+                    ) : av?.level === 'cotizaciones' ? (
+                      <span className="text-amber-700">{av.counts.cotizaciones} cotización(es)</span>
+                    ) : (
+                      s.capacidadMax && <span className="text-charcoal-soft">hasta {s.capacidadMax}</span>
+                    )}
+                  </span>
                 </button>
               );
             })}
           </div>
-          <AvailabilityBanner avail={avail} fecha={fecha} />
+          {fecha && (
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-charcoal-soft">
+              <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-emerald-600" />Disponible</span>
+              <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-amber-500" />Con cotizaciones</span>
+              <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-wine" />Apartado</span>
+            </div>
+          )}
+          {spaceIds.map((id) => (
+            <AvailabilityBanner key={id} avail={availBySpace.get(id)} fecha={fecha} />
+          ))}
 
           {/* Capilla: cortesía (entre semana) / $5,000 sábado. La comparten varios eventos el día. */}
           <div className={`mt-1 rounded-lg border px-4 py-3 text-sm transition-colors ${usaCapilla ? 'border-gold bg-gold/10' : 'border-ink/12 bg-white/50'}`}>
@@ -537,7 +606,7 @@ export function QuoteForm({
                         <span className="tabular-nums">{formatMXN(plan.apartar)}</span>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-charcoal-soft">Complemento (formalizar)</span>
+                        <span className="text-charcoal-soft">Complemento</span>
                         <span className="tabular-nums">{formatMXN(plan.formalizar)}</span>
                       </div>
                       <div className="flex justify-between">
