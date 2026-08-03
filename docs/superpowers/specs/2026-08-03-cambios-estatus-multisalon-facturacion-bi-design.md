@@ -496,7 +496,37 @@ de pasar al siguiente.
 
 ---
 
-## Hallazgo pendiente de decisión (descubierto al implementar, 2026-08-03)
+## Hallazgos pendientes de decisión (descubiertos al implementar, 2026-08-03)
+
+### 1. La tabla de pagos del contrato afirma una multiplicación que no cuadra
+
+**PREEXISTENTE — no lo introdujo este plan, pero sigue ahí y está en un documento que se
+firma.** Verificado en el navegador con un evento real de Cúpula + Arcos:
+
+> `Total del evento | $45,000.00 | 19.2% sobre el total = $99,350.00`
+
+19.2% de $282,500 son **$54,240**, no $99,350. El $99,350 es el objetivo **acumulado**
+(anticipo $45,000 + complemento $54,350). O sea: el porcentaje se refiere al complemento
+solo, y el monto al acumulado — la frase los presenta como si uno fuera el producto del otro.
+
+Confirmado preexistente: antes del Plan A, `objComplemento = anticipo + pct × total` y el
+contrato ya decía `${porcentaje}% sobre el total = ${objetivo}`. Con Arcos solo (10%, anticipo
+$20,000, total $100,000) imprimía "10% sobre el total = $30,000" cuando 10% de 100,000 son
+10,000. El multi-salón no lo creó; solo lo vuelve más visible al hacer los porcentajes
+fraccionarios.
+
+**No se corrigió porque es texto de un contrato legal** y puede haber pasado por revisión
+jurídica. Opciones:
+1. Mostrar el monto incremental: "19.2% sobre el total = $54,350" y poner el acumulado en
+   otra columna. Es la lectura natural de una tabla cuyos renglones son pagos a realizar.
+2. Cambiar la frase para que sea cierta sin mover números: "19.2% sobre el total, para
+   acumular $99,350".
+3. Dejarlo. Nadie se ha quejado en la operación actual.
+
+Recomendación: la 2, que es la de menor riesgo jurídico (no cambia ninguna cantidad, solo
+deja de afirmar una igualdad falsa).
+
+### 2. `updateStatus` no valida disponibilidad
 
 **`updateStatus` no valida disponibilidad, y es la vía realista de doble reserva.**
 Verificado experimentalmente: dos cotizaciones en borrador para la misma fecha y salón son
