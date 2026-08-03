@@ -404,6 +404,11 @@ Línea ~523:
 
 - [ ] **Step 4: Las constantes del dashboard**
 
+⚠️ **Estas dos NO las señala el compilador.** `EVENTOS` y `CONFIRMADOS` se usan con un
+cast `as readonly string[]` antes del `.includes()` (líneas ~220 y ~292), así que
+TypeScript acepta cualquier cadena y el error queda silencioso. Hay que corregirlas a
+mano o el dashboard dejaría de ver los eventos reales.
+
 Líneas 5 y 7 de `apps/api/src/dashboard/service.ts`:
 
 ```ts
@@ -412,6 +417,22 @@ const EVENTOS = ['formalizada', 'complementada', 'liquidada'] as const;
 // Confirmados que aún deben dinero (para alertas de finiquito).
 const CONFIRMADOS = ['formalizada', 'complementada'] as const;
 ```
+
+Y el comentario de la línea ~291 menciona los nombres viejos:
+
+```ts
+    // Alertas: confirmado (formalizada/complementada) que ya entró en sus 30 días sin finiquitar.
+```
+
+- [ ] **Step 4b: Verificar que no quedan literales viejos**
+
+```bash
+grep -rn "'apartada'\|\"apartada\"" apps packages --include='*.ts' --include='*.tsx' | grep -v node_modules
+```
+
+Esperado: **sin resultados** en la API (`apps/api`) y en `packages`. Lo que quede en
+`apps/web` es trabajo de la Task 7, y `avail.level === 'apartada'` del `QuoteForm` es del
+tipo `AvailabilityLevel` (Task 5), no de `QuoteStatus`.
 
 - [ ] **Step 5: Actualizar los literales en los tests de la API**
 
@@ -1392,6 +1413,21 @@ Luego, `pnpm typecheck` señala cada llamador al que le falta el campo. Al menos
 - `apps/api/src/dashboard/service.ts`: agregar `breakdown: true` a los `select` de cotizaciones que se pasan a `loadEstadoCuentaBulk`.
 - `listQuotes` y `getQuote` en `service.ts`, si seleccionan campos explícitamente.
 
+- [ ] **Step 4b: El espacio de la ficha del dashboard muestra todos los salones**
+
+`apps/api/src/dashboard/service.ts` línea ~224 toma solo el primer espacio:
+
+```ts
+    const espacio = espacioById.get(q.spaceIds[0] ?? '') ?? '—';
+```
+
+Con varios salones eso oculta información en la ficha operativa. Queda:
+
+```ts
+    // Un evento puede ocupar hasta 3 salones: se listan todos.
+    const espacio = q.spaceIds.map((id) => espacioById.get(id) ?? id).join(' y ') || '—';
+```
+
 ```bash
 pnpm typecheck 2>&1 | grep -A2 "breakdown"
 ```
@@ -1887,7 +1923,20 @@ Resumir: qué se construyó, resultado de tests y typecheck, qué se verificó e
 
 ## Notas para quien implemente
 
-**El renombrado del enum es el riesgo principal.** No hay forma de que un literal viejo sobreviva en silencio: `QuoteStatus` es un tipo unión y los `Record<QuoteStatus, …>` de `status.ts` obligan al compilador a cubrir todos los casos. Si `pnpm typecheck` está limpio, el renombrado está completo. La excepción son las **búsquedas por texto** sobre la bitácora, que el compilador no ve — eso es exactamente la Task 3, y es la única de su tipo en el código.
+**El renombrado del enum es el riesgo principal, y el compilador NO lo cubre por completo.**
+`QuoteStatus` es un tipo unión y los `Record<QuoteStatus, …>` de `status.ts` obligan a cubrir
+casi todos los casos, pero se verificaron **tres agujeros donde un literal viejo sobrevive en
+silencio**:
+
+1. **Búsquedas por texto en la bitácora** (`descripcion: { contains: 'apartada' }`) —
+   Task 3. Es la más peligrosa porque rompe un cálculo sin fallar.
+2. **`EVENTOS` / `CONFIRMADOS` del dashboard**, que se castean a `readonly string[]` antes
+   del `.includes()` — Task 4 Step 4.
+3. **`['apartada', …].includes(quote.status)` de `EditQuotePage`**, un arreglo sin `as const`
+   cuyo `.includes()` no se comprueba contra la unión — Task 7 Step 5.
+
+Por eso la Task 4 incluye un `grep` explícito de literales viejos: typecheck limpio **no**
+es prueba de que el renombrado esté completo.
 
 **La regresión de un solo espacio es la prueba que importa** en la Task 10. Si esa falla, la fórmula proporcional está mal y todas las cotizaciones existentes cambiarían de plan de pagos.
 
