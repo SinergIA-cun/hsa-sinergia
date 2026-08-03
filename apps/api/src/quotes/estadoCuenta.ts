@@ -1,4 +1,4 @@
-export type PaymentStatus = 'apartada' | 'formalizada' | 'liquidada';
+export type PaymentStatus = 'formalizada' | 'complementada' | 'liquidada';
 
 export interface SpaceRule {
   anticipo: number;
@@ -33,7 +33,7 @@ export interface EstadoCuenta {
 }
 
 // Orden de los estatus con umbral de pago.
-const RANK: Record<PaymentStatus, number> = { apartada: 1, formalizada: 2, liquidada: 3 };
+const RANK: Record<PaymentStatus, number> = { formalizada: 1, complementada: 2, liquidada: 3 };
 
 function addMonths(d: Date, months: number): Date {
   const r = new Date(d);
@@ -89,21 +89,21 @@ export function computeEstadoCuenta(args: {
 
   const plan: Milestone[] = [
     hito('apartar', 'Apartar fecha', objApartar, null),
-    hito('complemento', 'Complemento (formalizar)', objComplemento, complementoVence?.toISOString() ?? null, Math.round(rule.complementoPct * 100)),
+    hito('complemento', 'Complemento', objComplemento, complementoVence?.toISOString() ?? null, Math.round(rule.complementoPct * 100)),
     hito('finiquito', 'Finiquito', objFiniquito, finiquitoVence.toISOString()),
   ];
 
   let sugerido: PaymentStatus | null = null;
   if (pagado >= objFiniquito) sugerido = 'liquidada';
-  else if (pagado >= objComplemento) sugerido = 'formalizada';
-  else if (pagado >= objApartar) sugerido = 'apartada';
+  else if (pagado >= objComplemento) sugerido = 'complementada';
+  else if (pagado >= objApartar) sugerido = 'formalizada';
 
   // Desfase: el estatus actual exige un umbral que el pagado ya no cubre.
   let desfase = false;
   if (status in RANK) {
     const req = RANK[status as PaymentStatus];
-    if (req >= RANK.apartada && pagado < objApartar) desfase = true;
-    if (req >= RANK.formalizada && pagado < objComplemento) desfase = true;
+    if (req >= RANK.formalizada && pagado < objApartar) desfase = true;
+    if (req >= RANK.complementada && pagado < objComplemento) desfase = true;
     if (req >= RANK.liquidada && pagado < objFiniquito) desfase = true;
   }
 

@@ -27,21 +27,28 @@ describe('computeEstadoCuenta', () => {
     expect(ec.saldo).toBe(80000);
   });
 
-  it('umbrales: anticipo→apartada, +complemento→formalizada, total→liquidada', () => {
-    expect(computeEstadoCuenta({ ...base, rule, payments: [{ monto: 20000, anuladoAt: null }] }).sugerido).toBe('apartada');
+  it('umbrales: anticipo→formalizada, +complemento→complementada, total→liquidada', () => {
+    expect(computeEstadoCuenta({ ...base, rule, payments: [{ monto: 20000, anuladoAt: null }] }).sugerido).toBe('formalizada');
     // anticipo 20000 + 10% de 100000 = 30000
-    expect(computeEstadoCuenta({ ...base, rule, payments: [{ monto: 30000, anuladoAt: null }] }).sugerido).toBe('formalizada');
+    expect(computeEstadoCuenta({ ...base, rule, payments: [{ monto: 30000, anuladoAt: null }] }).sugerido).toBe('complementada');
     expect(computeEstadoCuenta({ ...base, rule, payments: [{ monto: 100000, anuladoAt: null }] }).sugerido).toBe('liquidada');
     expect(computeEstadoCuenta({ ...base, rule, payments: [{ monto: 1000, anuladoAt: null }] }).sugerido).toBeNull();
   });
 
-  it('desfase: estatus formalizada pero pagado no cubre el complemento', () => {
-    const ec = computeEstadoCuenta({ ...base, status: 'formalizada', rule, payments: [{ monto: 20000, anuladoAt: null }] });
+  it('el hito del complemento no menciona formalizar', () => {
+    const ec = computeEstadoCuenta({ ...base, rule, payments: [] });
+    const comp = ec.plan!.find((m) => m.key === 'complemento')!;
+    expect(comp.label).toBe('Complemento');
+    expect(ec.plan!.find((m) => m.key === 'apartar')!.label).toBe('Apartar fecha');
+  });
+
+  it('desfase: estatus complementada pero pagado no cubre el complemento', () => {
+    const ec = computeEstadoCuenta({ ...base, status: 'complementada', rule, payments: [{ monto: 20000, anuladoAt: null }] });
     expect(ec.desfase).toBe(true);
   });
 
   it('no hay desfase cuando el pagado cubre el estatus', () => {
-    const ec = computeEstadoCuenta({ ...base, status: 'apartada', rule, payments: [{ monto: 20000, anuladoAt: null }] });
+    const ec = computeEstadoCuenta({ ...base, status: 'formalizada', rule, payments: [{ monto: 20000, anuladoAt: null }] });
     expect(ec.desfase).toBe(false);
   });
 
@@ -50,7 +57,7 @@ describe('computeEstadoCuenta', () => {
     const ec = computeEstadoCuenta({
       total: 100000,
       fechaEvento: new Date('2026-07-18T00:00:00.000Z'),
-      status: 'apartada',
+      status: 'formalizada',
       rule,
       payments: [{ monto: 20000, anuladoAt: null }],
       fechaApartado: new Date('2026-07-01T00:00:00.000Z'),
@@ -66,7 +73,7 @@ describe('computeEstadoCuenta', () => {
     const ec = computeEstadoCuenta({
       total: 100000,
       fechaEvento: new Date('2027-12-31T00:00:00.000Z'),
-      status: 'apartada',
+      status: 'formalizada',
       rule,
       payments: [{ monto: 20000, anuladoAt: null }],
       fechaApartado: new Date('2027-01-10T00:00:00.000Z'),
