@@ -287,6 +287,44 @@ describe('quotes HTTP', () => {
     expect(res.statusCode).toBe(401);
   });
 
+  it('POST /quotes sobre un espacio comprometido => 409 con el nombre del salón (no 500)', async () => {
+    const { eventTypeId, arcosId } = await ids();
+    const ocupa = await createQuote(
+      prisma,
+      { fecha: '2030-01-26', invitados: 250, spaceIds: [arcosId], eventTypeId, client: { nombre: 'Ocupa HTTP' } },
+      actor,
+    );
+    createdQuoteIds.push(ocupa.id);
+    createdClientIds.push(ocupa.clientId);
+    await updateStatus(prisma, ocupa.id, 'formalizada', actor);
+
+    const login = await app.inject({
+      method: 'POST',
+      url: '/api/auth/login',
+      payload: { email: 'admin@haciendasanandres.com.mx', password: 'admin1234' },
+    });
+    const cookie = login.cookies[0]!;
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/quotes',
+      cookies: { [cookie.name]: cookie.value },
+      payload: {
+        fecha: '2030-01-26',
+        invitados: 200,
+        spaceIds: [arcosId],
+        eventTypeId,
+        client: { nombre: 'Encima HTTP' },
+      },
+    });
+
+    // El error viaja como 409 con un mensaje que dice QUÉ salón está tomado;
+    // un 500 dejaría al vendedor sin saber por qué no se guardó.
+    expect(res.statusCode).toBe(409);
+    expect(res.json().error).toMatch(/Salón Los Arcos no está disponible/i);
+    expect(await prisma.client.count({ where: { nombre: 'Encima HTTP' } })).toBe(0);
+  });
+
   it('PATCH status + PUT edit: se puede cambiar estatus; editar se permite tras apartar y se bloquea tras liquidar', async () => {
     const { eventTypeId, arcosId } = await ids();
     const q = await createQuote(

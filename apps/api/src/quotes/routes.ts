@@ -20,8 +20,13 @@ import {
 
 export async function quoteRoutes(app: FastifyInstance): Promise<void> {
   app.post('/quotes', { preHandler: requireAuth }, async (req, reply) => {
-    const quote = await createQuote(app.prisma, req.body, req.user as Actor);
-    return reply.code(201).send({ quote });
+    try {
+      const quote = await createQuote(app.prisma, req.body, req.user as Actor);
+      return reply.code(201).send({ quote });
+    } catch (e) {
+      if (e instanceof QuoteError) return reply.code(e.status).send({ error: e.message });
+      throw e;
+    }
   });
 
   app.get('/quotes', { preHandler: requireAuth }, async (req) => {
