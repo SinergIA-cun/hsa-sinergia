@@ -1779,7 +1779,69 @@ git commit -m "feat(web): colores de disponibilidad en el selector de espacios"
 
 ---
 
-## Task 15: Contrato con varios espacios
+## Task 15: Contrato con varios espacios (y el porcentaje fraccionario)
+
+**Hallazgo de la Task 10 que esta task debe resolver.** El porcentaje del complemento ahora
+es un **promedio ponderado**, así que con varios salones deja de ser un número entero.
+Ejemplo real: Cúpula (25%, renta 70,000) + Arcos (10%, renta 30,000) sobre un total de
+120,000 da 20.5%. El objetivo se calcula con 20.5% → $69,600, pero `porcentaje` se redondea
+a **21**, y el contrato imprime "21% sobre el total = $69,600". Un cliente que haga la
+multiplicación encuentra una diferencia de $600 **en un documento legal**.
+
+No es un error de la fórmula ni una regresión (un salón con porcentaje fraccionario ya tenía
+la misma brecha), pero multi-salón convierte el caso raro en el caso común.
+
+- [ ] **Step 0a: `porcentaje` deja de redondearse a entero**
+
+En `apps/api/src/quotes/estadoCuenta.ts`, el hito del complemento guarda el porcentaje con
+un decimal en vez de redondear a entero:
+
+```ts
+    hito('complemento', 'Complemento', objComplemento, complementoVence?.toISOString() ?? null, Math.round(pctPonderado * 1000) / 10),
+```
+
+Un decimal basta: los porcentajes del contrato son múltiplos de 5% y las rentas son montos
+redondos, así que la ponderación no produce más de un decimal significativo en la práctica.
+
+Agregar el test en `estadoCuenta.test.ts`:
+
+```ts
+  it('el porcentaje del complemento conserva el decimal cuando la ponderación no es entera', () => {
+    // Cúpula 25% con renta 70,000 + Arcos 10% con renta 30,000 = 20.5% ponderado.
+    const ec = computeEstadoCuenta({
+      ...base,
+      total: 120000,
+      rules: [
+        { spaceId: 'cupula', rule: { anticipo: 25000, complementoPct: 0.25, liquidarDiasAntes: 30 }, rentaBase: 70000 },
+        { spaceId: 'arcos', rule: { anticipo: 20000, complementoPct: 0.1, liquidarDiasAntes: 30 }, rentaBase: 30000 },
+      ],
+      payments: [],
+    });
+    const comp = ec.plan!.find((m) => m.key === 'complemento')!;
+    expect(comp.porcentaje).toBe(20.5);
+    // 45,000 de anticipos + 20.5% de 120,000 = 45,000 + 24,600 = 69,600
+    expect(comp.objetivo).toBe(69600);
+  });
+```
+
+Verificar que el test de regresión de un solo espacio sigue esperando `porcentaje` **10**
+(entero) y sigue pasando: `Math.round(0.1 * 1000) / 10 === 10`.
+
+- [ ] **Step 0b: Mostrar el porcentaje sin ceros de más**
+
+Los dos sitios que lo imprimen deben mostrar "20.5%" y "10%" (no "10.0%"). Agregar el
+formateador a `apps/web/src/lib/money.ts`:
+
+```ts
+/** Porcentaje legible: 10 → "10%", 20.5 → "20.5%". Evita el "10.0%" de toFixed. */
+export function formatPct(n: number): string {
+  return `${Number.isInteger(n) ? n : n.toFixed(1)}%`;
+}
+```
+
+Usarlo en `apps/web/src/pages/ContratoPage.tsx` (donde hoy dice
+`${hitoComplemento.porcentaje}% sobre el total = `) y en
+`apps/web/src/pages/PublicQuotePage.tsx` (donde dice `${m.porcentaje}% del total = `).
 
 **Files:**
 - Modify: `apps/web/src/pages/ContratoPage.tsx`
