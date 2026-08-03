@@ -26,11 +26,22 @@ export function ContratoPage() {
     queryFn: () => api.get<Catalog>('/api/catalog'),
   });
 
-  if (isLoading) {
+  // El catálogo entra en la espera: sin él los espacios saldrían con su id crudo y
+  // los renglones de pago dirían "por definir". Es un contrato que se firma, así que
+  // no se imprime hasta tener los nombres y las reglas reales.
+  if (isLoading || catalogQ.isLoading) {
     return <div className="grid min-h-screen place-items-center text-ink-500">Cargando contrato…</div>;
   }
   if (isError || !data) {
     return <div className="grid min-h-screen place-items-center text-wine">No se encontró la cotización.</div>;
+  }
+  if (catalogQ.isError || !catalogQ.data) {
+    return (
+      <div className="grid min-h-screen place-items-center px-6 text-center text-wine">
+        No se pudo cargar el catálogo de espacios. El contrato no se muestra sin los nombres y las reglas de pago
+        correctos; vuelve a intentarlo.
+      </div>
+    );
   }
 
   const { quote, estadoCuenta } = data;
