@@ -430,9 +430,13 @@ Y el comentario de la línea ~291 menciona los nombres viejos:
 grep -rn "'apartada'\|\"apartada\"" apps packages --include='*.ts' --include='*.tsx' | grep -v node_modules
 ```
 
-Esperado: **sin resultados** en la API (`apps/api`) y en `packages`. Lo que quede en
-`apps/web` es trabajo de la Task 7, y `avail.level === 'apartada'` del `QuoteForm` es del
-tipo `AvailabilityLevel` (Task 5), no de `QuoteStatus`.
+Esperado: en `apps/api` y `packages` **solo deben quedar dos coincidencias legítimas**, las
+dos cláusulas `contains: 'apartada'` que la Task 3 agregó a propósito en
+`quotes/service.ts` para seguir encontrando la bitácora escrita antes del renombrado.
+Cualquier otra coincidencia es un literal olvidado.
+
+Lo que quede en `apps/web` es trabajo de la Task 7, y `avail.level === 'apartada'` del
+`QuoteForm` es del tipo `AvailabilityLevel` (Task 5), no de `QuoteStatus`.
 
 - [ ] **Step 5: Actualizar los literales en los tests de la API**
 
