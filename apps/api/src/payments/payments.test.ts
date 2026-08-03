@@ -35,8 +35,22 @@ afterAll(async () => {
   await app.close();
 });
 
+// Cada cotización necesita SU PROPIA fecha: registrar un pago la formaliza, y el
+// servidor ya rechaza cotizar sobre un espacio comprometido. Se avanza de 7 en 7
+// días desde un sábado para que todas caigan en sábado — el precio depende del
+// tipo de día, así que el desglose es idéntico en todas.
+const PRIMER_SABADO = '2030-06-01';
+let sabadoSeq = 0;
+
+function siguienteSabado(): string {
+  const [y, m, d] = PRIMER_SABADO.split('-').map(Number) as [number, number, number];
+  const fecha = new Date(Date.UTC(y, m - 1, d));
+  fecha.setUTCDate(fecha.getUTCDate() + 7 * sabadoSeq++);
+  return fecha.toISOString().slice(0, 10);
+}
+
 async function nuevaQuote() {
-  const q = await createQuote(prisma, { fecha: '2027-05-08', invitados: 250, spaceIds: [arcosId], eventTypeId, client: { nombre: 'Pago Test' } }, actor);
+  const q = await createQuote(prisma, { fecha: siguienteSabado(), invitados: 250, spaceIds: [arcosId], eventTypeId, client: { nombre: 'Pago Test' } }, actor);
   quotes.push(q.id); clients.push(q.clientId);
   return q;
 }

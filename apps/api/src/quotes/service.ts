@@ -3,6 +3,7 @@ import { z } from 'zod';
 import type { PrismaClient, Prisma } from '@hsa/database';
 import { computeQuote, quoteSelectionSchema, type QuoteSelection } from '@hsa/shared';
 import { loadCatalog } from '../catalog/loader.js';
+import { getAvailability } from '../availability/service.js';
 import { logActivity } from './activityLog.js';
 import { computeEstadoCuenta, esUpgrade, type EstadoCuenta } from './estadoCuenta.js';
 
@@ -104,6 +105,25 @@ function toSelection(input: {
 /** Ventas solo ve/edita lo suyo; admin todo. */
 export function ownershipWhere(actor: Actor): Prisma.QuoteWhereInput {
   return actor.role === 'admin' ? {} : { createdById: actor.id };
+}
+
+/**
+ * El espacio comprometido no se puede sobrevender. El navegador ya avisa antes de
+ * guardar, pero la autoridad es el servidor: sin esto, una llamada directa a la
+ * API —o dos personas de ventas guardando al mismo tiempo— pisan el compromiso.
+ */
+async function assertEspaciosDisponibles(
+  db: PrismaClient,
+  fecha: string,
+  spaceIds: string[],
+  excludeQuoteId?: string,
+): Promise<void> {
+  const disp = await getAvailability(db, fecha, spaceIds, excludeQuoteId);
+  const ocupados = disp.spaces.filter((s) => s.level === 'bloqueada');
+  if (ocupados.length > 0) {
+    const nombres = ocupados.map((s) => s.nombre).join(', ');
+    throw new QuoteError(409, `${nombres} no está disponible el ${fecha}: ya hay un evento comprometido.`);
+  }
 }
 
 // El plan de pagos, el saldo y el finiquito se miden SOLO sobre la renta (lo que
@@ -272,6 +292,9 @@ export async function reconcileStatuses(
 
 export async function createQuote(db: PrismaClient, rawInput: unknown, actor: Actor) {
   const input = createQuoteSchema.parse(rawInput);
+  // Antes de CUALQUIER escritura (incluida la del cliente): una cotización
+  // rechazada no debe dejar un cliente huérfano en la base.
+  await assertEspaciosDisponibles(db, input.fecha, input.spaceIds);
   const { breakdown, enriched } = await computeAndEnrich(db, toSelection(input));
 
   let clientId = input.clientId;
@@ -373,6 +396,8 @@ export async function updateQuote(db: PrismaClient, id: string, rawInput: unknow
     throw new QuoteError(409, `No se puede editar una cotización en estatus "${existing.status}"`);
   }
   const input = updateQuoteSchema.parse(rawInput);
+  // Se excluye a sí misma: editar sin mover fecha ni espacio no se auto-bloquea.
+  await assertEspaciosDisponibles(db, input.fecha, input.spaceIds, id);
   const { breakdown, enriched } = await computeAndEnrich(db, toSelection(input));
 
   if (input.client) {

@@ -13,6 +13,7 @@ import {
   restoreQuote,
   listTrash,
   listQuotes,
+  updateQuote,
   updateStatus,
   type Actor,
 } from './service.js';
@@ -25,7 +26,8 @@ const createdClientIds: string[] = [];
 async function ids() {
   const eventType = await prisma.eventType.findFirst({ where: { slug: 'boda' } });
   const arcos = await prisma.space.findFirst({ where: { nombre: 'Salón Los Arcos' } });
-  return { eventTypeId: eventType!.id, arcosId: arcos!.id };
+  const campos = await prisma.space.findFirst({ where: { nombre: 'Jardín Los Campos' } });
+  return { eventTypeId: eventType!.id, arcosId: arcos!.id, camposId: campos!.id };
 }
 
 beforeAll(async () => {
@@ -49,7 +51,7 @@ describe('quotes service', () => {
   it('createQuote calcula total = motor (108,500) y persiste con token', async () => {
     const { eventTypeId, arcosId } = await ids();
     const q = await createQuote(prisma, {
-      fecha: '2027-05-08',
+      fecha: '2030-01-05', // sábado propio: el servidor bloquea el espacio comprometido
       invitados: 250,
       spaceIds: [arcosId],
       eventTypeId,
@@ -174,6 +176,78 @@ describe('quotes service', () => {
     const comp = estadoCuenta.plan!.find((m) => m.key === 'complemento')!;
     expect(comp.venceISO).not.toBeNull();
   });
+
+  it('rechaza crear sobre un espacio comprometido (bloqueo del servidor, sin pasar por el navegador)', async () => {
+    const { eventTypeId, arcosId } = await ids();
+    const ocupa = await createQuote(
+      prisma,
+      { fecha: '2029-08-11', invitados: 250, spaceIds: [arcosId], eventTypeId, client: { nombre: 'Ocupa Arcos' } },
+      actor,
+    );
+    createdQuoteIds.push(ocupa.id);
+    createdClientIds.push(ocupa.clientId);
+    await updateStatus(prisma, ocupa.id, 'formalizada', actor);
+
+    await expect(
+      createQuote(
+        prisma,
+        { fecha: '2029-08-11', invitados: 200, spaceIds: [arcosId], eventTypeId, client: { nombre: 'Encima' } },
+        actor,
+      ),
+    ).rejects.toThrow(/no está disponible/i);
+
+    // El rechazo no deja basura: el guardia corre ANTES de crear el cliente.
+    expect(await prisma.client.count({ where: { nombre: 'Encima' } })).toBe(0);
+  });
+
+  it('editar sin cambiar fecha ni espacio no se auto-bloquea', async () => {
+    const { eventTypeId, arcosId } = await ids();
+    const q = await createQuote(
+      prisma,
+      { fecha: '2029-08-12', invitados: 250, spaceIds: [arcosId], eventTypeId, client: { nombre: 'Auto Bloqueo' } },
+      actor,
+    );
+    createdQuoteIds.push(q.id);
+    createdClientIds.push(q.clientId);
+    await updateStatus(prisma, q.id, 'formalizada', actor);
+
+    const editada = await updateQuote(
+      prisma,
+      q.id,
+      { fecha: '2029-08-12', invitados: 260, spaceIds: [arcosId], eventTypeId, horasExtra: 0, addOns: [] },
+      actor,
+    );
+    expect(editada.invitados).toBe(260);
+  });
+
+  // Saltado hasta la Task 9: hoy createQuoteSchema exige exactamente un espacio,
+  // así que la combinación de dos salones no llega al guardia (falla en validación).
+  it.skip('basta que UNO de varios espacios esté comprometido para rechazar', async () => {
+    const { eventTypeId, arcosId, camposId } = await ids();
+    const ocupa = await createQuote(
+      prisma,
+      { fecha: '2029-08-13', invitados: 250, spaceIds: [camposId], eventTypeId, client: { nombre: 'Ocupa Campos' } },
+      actor,
+    );
+    createdQuoteIds.push(ocupa.id);
+    createdClientIds.push(ocupa.clientId);
+    await updateStatus(prisma, ocupa.id, 'formalizada', actor);
+
+    // Arcos está libre, pero Campos no: la combinación se rechaza.
+    await expect(
+      createQuote(
+        prisma,
+        {
+          fecha: '2029-08-13',
+          invitados: 250,
+          spaceIds: [arcosId, camposId],
+          eventTypeId,
+          client: { nombre: 'Dos Salones Uno Ocupado' },
+        },
+        actor,
+      ),
+    ).rejects.toThrow(/no está disponible/i);
+  });
 });
 
 describe('quotes HTTP', () => {
@@ -191,7 +265,7 @@ describe('quotes HTTP', () => {
       url: '/api/quotes',
       cookies: { [cookie.name]: cookie.value },
       payload: {
-        fecha: '2027-05-08',
+        fecha: '2030-01-12', // sábado propio (ver nota de fechas aisladas)
         invitados: 250,
         spaceIds: [arcosId],
         eventTypeId,
@@ -217,7 +291,9 @@ describe('quotes HTTP', () => {
     const { eventTypeId, arcosId } = await ids();
     const q = await createQuote(
       prisma,
-      { fecha: '2027-05-08', invitados: 250, spaceIds: [arcosId], eventTypeId, client: { nombre: 'Ciclo Test' } },
+      // Fecha propia: este caso llega a liquidada, así que deja el espacio
+      // comprometido y el servidor ya rechaza cualquier otra cotización ahí.
+      { fecha: '2030-01-19', invitados: 250, spaceIds: [arcosId], eventTypeId, client: { nombre: 'Ciclo Test' } },
       actor,
     );
     createdQuoteIds.push(q.id);
@@ -236,7 +312,7 @@ describe('quotes HTTP', () => {
       method: 'PUT',
       url: `/api/quotes/${q.id}`,
       cookies: auth,
-      payload: { fecha: '2027-05-08', invitados: 300, spaceIds: [arcosId], eventTypeId },
+      payload: { fecha: '2030-01-19', invitados: 300, spaceIds: [arcosId], eventTypeId },
     });
     expect(edit.statusCode).toBe(200);
 
@@ -255,7 +331,7 @@ describe('quotes HTTP', () => {
       method: 'PUT',
       url: `/api/quotes/${q.id}`,
       cookies: auth,
-      payload: { fecha: '2027-05-08', invitados: 260, spaceIds: [arcosId], eventTypeId },
+      payload: { fecha: '2030-01-19', invitados: 260, spaceIds: [arcosId], eventTypeId },
     });
     expect(edit2.statusCode).toBe(200);
 
@@ -265,7 +341,7 @@ describe('quotes HTTP', () => {
       method: 'PUT',
       url: `/api/quotes/${q.id}`,
       cookies: auth,
-      payload: { fecha: '2027-05-08', invitados: 250, spaceIds: [arcosId], eventTypeId },
+      payload: { fecha: '2030-01-19', invitados: 250, spaceIds: [arcosId], eventTypeId },
     });
     expect(edit3.statusCode).toBe(409);
   });
