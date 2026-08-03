@@ -8,6 +8,7 @@ import {
   duplicateQuote,
   expireStaleQuotes,
   getByToken,
+  loadEstadoCuenta,
   softDeleteQuote,
   restoreQuote,
   listTrash,
@@ -149,6 +150,29 @@ describe('quotes service', () => {
     const r = await prisma.quote.findUnique({ where: { id: reservada.id } });
     expect(p?.status).toBe('vencida');
     expect(r?.status).toBe('apartada'); // reserva intacta
+  });
+
+  it('el complemento tiene fecha de vencimiento después de formalizar (bitácora nueva)', async () => {
+    const { eventTypeId, arcosId } = await ids();
+    const q = await createQuote(
+      prisma,
+      { fecha: '2029-06-16', invitados: 250, spaceIds: [arcosId], eventTypeId, client: { nombre: 'Fecha Apartado' } },
+      actor,
+    );
+    createdQuoteIds.push(q.id);
+    createdClientIds.push(q.clientId);
+
+    await updateStatus(prisma, q.id, 'formalizada', actor);
+
+    const { estadoCuenta } = await loadEstadoCuenta(prisma, {
+      id: q.id,
+      rentaTotal: q.rentaTotal,
+      fechaEvento: q.fechaEvento,
+      status: 'formalizada',
+      spaceIds: q.spaceIds,
+    });
+    const comp = estadoCuenta.plan!.find((m) => m.key === 'complemento')!;
+    expect(comp.venceISO).not.toBeNull();
   });
 });
 

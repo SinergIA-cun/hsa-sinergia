@@ -117,7 +117,14 @@ export async function loadEstadoCuenta(db: PrismaClient, quote: {
     spaceId ? db.spacePaymentRule.findUnique({ where: { spaceId } }) : Promise.resolve(null),
     db.payment.findMany({ where: { quoteId: quote.id }, orderBy: { fecha: 'asc' } }),
     db.activityLog.findFirst({
-      where: { quoteId: quote.id, tipo: 'estatus', descripcion: { contains: 'apartada' } },
+      // Primer momento en que el evento alcanzó el hito del anticipo. Se aceptan
+      // ambos términos: 'formalizada' es el nombre actual y 'apartada' el que
+      // quedó escrito en la bitácora de los eventos anteriores al renombrado.
+      where: {
+        quoteId: quote.id,
+        tipo: 'estatus',
+        OR: [{ descripcion: { contains: 'formalizada' } }, { descripcion: { contains: 'apartada' } }],
+      },
       orderBy: { createdAt: 'asc' }, select: { createdAt: true },
     }),
   ]);
@@ -158,7 +165,12 @@ export async function loadEstadoCuentaBulk(
     db.spacePaymentRule.findMany({ where: { spaceId: { in: spaceIds } } }),
     db.payment.findMany({ where: { quoteId: { in: quoteIds } } }),
     db.activityLog.findMany({
-      where: { quoteId: { in: quoteIds }, tipo: 'estatus', descripcion: { contains: 'apartada' } },
+      // Ver la nota en loadEstadoCuenta: se aceptan el término nuevo y el legado.
+      where: {
+        quoteId: { in: quoteIds },
+        tipo: 'estatus',
+        OR: [{ descripcion: { contains: 'formalizada' } }, { descripcion: { contains: 'apartada' } }],
+      },
       orderBy: { createdAt: 'asc' },
       select: { quoteId: true, createdAt: true },
     }),
