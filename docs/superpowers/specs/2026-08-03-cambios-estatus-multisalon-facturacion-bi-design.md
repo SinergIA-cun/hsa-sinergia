@@ -496,6 +496,29 @@ de pasar al siguiente.
 
 ---
 
+## Hallazgo pendiente de decisión (descubierto al implementar, 2026-08-03)
+
+**`updateStatus` no valida disponibilidad, y es la vía realista de doble reserva.**
+Verificado experimentalmente: dos cotizaciones en borrador para la misma fecha y salón son
+ambas legítimas (un borrador no bloquea). Si A se formaliza y luego B se formaliza mediante
+`PATCH /quotes/:id/status`, las dos quedan comprometidas sobre el mismo espacio. El guardia
+que se agregó en el Cambio 1 cubre crear y editar, pero no el cambio de estatus.
+
+No se corrigió porque **la solución obvia es peor que el problema**: `registerPayment`
+avanza el estatus automáticamente, así que bloquear `updateStatus` significaría que un pago
+puede ser **rechazado** porque alguien más comprometió el espacio mientras tanto. Negarse a
+registrar dinero que ya entró es peor que la doble reserva que evita.
+
+Opciones para el dueño del producto:
+1. Bloquear solo el cambio de estatus **manual**, dejando pasar el automático por pago (el
+   evento queda comprometido y el desfase se resuelve a mano).
+2. Permitirlo siempre pero **alertar** en el dashboard cuando dos eventos comprometidos
+   comparten fecha y espacio.
+3. Dejarlo como está: el aviso del navegador basta y coordinación lo resuelve.
+
+Recomendación: la 2. No pierde dinero registrado, no bloquea a nadie, y hace visible el
+conflicto a quien puede resolverlo. Requiere un plan aparte.
+
 ## Fuera de alcance
 
 - Timbrado de CFDI ante un PAC (el modelo queda preparado).
