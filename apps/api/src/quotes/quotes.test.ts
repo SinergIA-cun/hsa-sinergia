@@ -27,7 +27,15 @@ async function ids() {
   const eventType = await prisma.eventType.findFirst({ where: { slug: 'boda' } });
   const arcos = await prisma.space.findFirst({ where: { nombre: 'Salón Los Arcos' } });
   const campos = await prisma.space.findFirst({ where: { nombre: 'Jardín Los Campos' } });
-  return { eventTypeId: eventType!.id, arcosId: arcos!.id, camposId: campos!.id };
+  const cupula = await prisma.space.findFirst({ where: { nombre: 'Jardín La Cúpula' } });
+  const capilla = await prisma.space.findFirst({ where: { nombre: 'La Capilla' } });
+  return {
+    eventTypeId: eventType!.id,
+    arcosId: arcos!.id,
+    camposId: campos!.id,
+    cupulaId: cupula!.id,
+    capillaId: capilla!.id,
+  };
 }
 
 beforeAll(async () => {
@@ -220,9 +228,45 @@ describe('quotes service', () => {
     expect(editada.invitados).toBe(260);
   });
 
-  // Saltado hasta la Task 9: hoy createQuoteSchema exige exactamente un espacio,
-  // así que la combinación de dos salones no llega al guardia (falla en validación).
-  it.skip('basta que UNO de varios espacios esté comprometido para rechazar', async () => {
+  it('acepta hasta 3 espacios y suma su renta', async () => {
+    const { eventTypeId, arcosId, camposId } = await ids();
+    const q = await createQuote(
+      prisma,
+      {
+        fecha: '2029-09-15',
+        invitados: 250,
+        spaceIds: [arcosId, camposId],
+        eventTypeId,
+        client: { nombre: 'Dos Salones' },
+      },
+      actor,
+    );
+    createdQuoteIds.push(q.id);
+    createdClientIds.push(q.clientId);
+
+    expect(q.spaceIds).toHaveLength(2);
+    const lineasRenta = (q.breakdown as { lines: { spaceId?: string }[] }).lines.filter((l) => l.spaceId);
+    expect(lineasRenta).toHaveLength(2);
+  });
+
+  it('rechaza más de 3 espacios', async () => {
+    const { eventTypeId, arcosId, camposId, cupulaId, capillaId } = await ids();
+    await expect(
+      createQuote(
+        prisma,
+        {
+          fecha: '2029-09-16',
+          invitados: 250,
+          spaceIds: [arcosId, camposId, cupulaId, capillaId],
+          eventTypeId,
+          client: { nombre: 'Cuatro Salones' },
+        },
+        actor,
+      ),
+    ).rejects.toThrow();
+  });
+
+  it('basta que UNO de varios espacios esté comprometido para rechazar', async () => {
     const { eventTypeId, arcosId, camposId } = await ids();
     const ocupa = await createQuote(
       prisma,

@@ -40,8 +40,7 @@ export const createQuoteSchema = quoteSelectionSchema
   })
   .refine((d) => Boolean(d.clientId ?? d.client), {
     message: 'Se requiere clientId o datos de client',
-  })
-  .refine((d) => d.spaceIds.length === 1, { message: 'Solo se permite un espacio por evento' });
+  });
 
 export const updateQuoteSchema = quoteSelectionSchema
   .extend({
@@ -50,8 +49,7 @@ export const updateQuoteSchema = quoteSelectionSchema
     esCortesia: z.boolean().default(false),
     capillaHorario: z.string().max(20).nullable().optional(),
     client: clientSchema.optional(),
-  })
-  .refine((d) => d.spaceIds.length === 1, { message: 'Solo se permite un espacio por evento' });
+  });
 
 export const statusSchema = z.object({ status: z.enum(QUOTE_STATUSES) });
 
