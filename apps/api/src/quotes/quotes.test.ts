@@ -38,6 +38,17 @@ async function ids() {
   };
 }
 
+/** Cookie de sesión del admin, lista para pasarla a `app.inject({ cookies })`. */
+async function authCookies() {
+  const login = await app.inject({
+    method: 'POST',
+    url: '/api/auth/login',
+    payload: { email: 'admin@haciendasanandres.com.mx', password: 'admin1234' },
+  });
+  const cookie = login.cookies[0]!;
+  return { [cookie.name]: cookie.value };
+}
+
 beforeAll(async () => {
   app = await buildServer({ config: loadConfig() });
   await app.ready();
@@ -505,5 +516,66 @@ describe('papelera (soft-delete)', () => {
     await prisma.payment.deleteMany({ where: { quoteId: q.id } });
     await softDeleteQuote(prisma, q.id, actor);
     await expect(updateStatus(prisma, q.id, 'formalizada', actor)).rejects.toThrow(/papelera/);
+  });
+});
+
+describe('datos fiscales (CFDI 4.0)', () => {
+  it('guarda los datos fiscales en el cliente y marca requiereFactura', async () => {
+    const { eventTypeId, camposId } = await ids();
+    const q = await createQuote(
+      prisma,
+      {
+        fecha: '2029-11-10',
+        invitados: 200,
+        spaceIds: [camposId],
+        eventTypeId,
+        requiereFactura: true,
+        client: {
+          nombre: 'Con Factura',
+          rfc: 'GODE561231GR8',
+          razonSocial: 'Juan Pérez López',
+          regimenFiscal: '612',
+          cpFiscal: '53100',
+          usoCfdi: 'G03',
+          correoFacturacion: 'facturas@ejemplo.com',
+        },
+      },
+      actor,
+    );
+    createdQuoteIds.push(q.id);
+    createdClientIds.push(q.clientId);
+
+    expect(q.requiereFactura).toBe(true);
+    const cliente = await prisma.client.findUnique({ where: { id: q.clientId } });
+    expect(cliente?.rfc).toBe('GODE561231GR8');
+    expect(cliente?.regimenFiscal).toBe('612');
+    expect(cliente?.cpFiscal).toBe('53100');
+  });
+
+  it('los datos fiscales se reutilizan al buscar el cliente existente', async () => {
+    const { eventTypeId, camposId } = await ids();
+    const q = await createQuote(
+      prisma,
+      {
+        fecha: '2029-11-17',
+        invitados: 200,
+        spaceIds: [camposId],
+        eventTypeId,
+        client: { nombre: 'Reuso Fiscal', rfc: 'ABC120101XYZ', cpFiscal: '11000' },
+      },
+      actor,
+    );
+    createdQuoteIds.push(q.id);
+    createdClientIds.push(q.clientId);
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/clients?q=Reuso',
+      cookies: await authCookies(),
+    });
+    expect(res.statusCode).toBe(200);
+    const encontrado = res.json().clients.find((c: { nombre: string }) => c.nombre === 'Reuso Fiscal');
+    expect(encontrado.rfc).toBe('ABC120101XYZ');
+    expect(encontrado.cpFiscal).toBe('11000');
   });
 });

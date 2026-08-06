@@ -27,6 +27,15 @@ const clientSchema = z.object({
   telefono: z.string().optional(),
   correo: z.string().email().optional(),
   empresa: z.string().optional(),
+  // Datos fiscales (CFDI 4.0). Se validan de forma laxa aquí —un cliente puede
+  // guardarse a medias mientras junta los papeles— y la lista de requisitos de
+  // @hsa/shared es la que dice si ya se le puede facturar.
+  rfc: z.string().max(13).optional(),
+  razonSocial: z.string().max(200).optional(),
+  regimenFiscal: z.string().max(3).optional(),
+  cpFiscal: z.string().max(5).optional(),
+  usoCfdi: z.string().max(4).optional(),
+  correoFacturacion: z.string().max(200).optional(),
 });
 
 export const createQuoteSchema = quoteSelectionSchema
@@ -34,6 +43,7 @@ export const createQuoteSchema = quoteSelectionSchema
     eventTypeId: z.string(),
     horasEvento: z.number().int().positive().optional(),
     esCortesia: z.boolean().default(false),
+    requiereFactura: z.boolean().default(false),
     capillaHorario: z.string().max(20).nullable().optional(),
     clientId: z.string().optional(),
     client: clientSchema.optional(),
@@ -47,6 +57,7 @@ export const updateQuoteSchema = quoteSelectionSchema
     eventTypeId: z.string(),
     horasEvento: z.number().int().positive().nullable().optional(),
     esCortesia: z.boolean().default(false),
+    requiereFactura: z.boolean().default(false),
     capillaHorario: z.string().max(20).nullable().optional(),
     client: clientSchema.optional(),
   });
@@ -364,6 +375,7 @@ export async function createQuote(db: PrismaClient, rawInput: unknown, actor: Ac
       usaCapilla: input.usaCapilla ?? false,
       capillaHorario: input.capillaHorario ?? null,
       esCortesia: input.esCortesia ?? false,
+      requiereFactura: input.requiereFactura,
       usaDjHoraExtra: input.usaDjHoraExtra ?? false,
       foodPackageId: input.foodPackageId ?? null,
       addOns: input.addOns as unknown as Prisma.InputJsonValue,
@@ -465,6 +477,7 @@ export async function updateQuote(db: PrismaClient, id: string, rawInput: unknow
       usaCapilla: input.usaCapilla ?? false,
       capillaHorario: input.capillaHorario ?? null,
       esCortesia: input.esCortesia ?? false,
+      requiereFactura: input.requiereFactura,
       usaDjHoraExtra: input.usaDjHoraExtra ?? false,
       foodPackageId: input.foodPackageId ?? null,
       addOns: input.addOns as unknown as Prisma.InputJsonValue,
