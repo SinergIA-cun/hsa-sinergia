@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { computeQuote, type QuoteBreakdown, type QuoteLine } from '@hsa/shared';
-import { Sparkles, RotateCcw, AlertTriangle, CheckCircle2, Ban, UserCheck, X } from 'lucide-react';
+import { Sparkles, AlertTriangle, CheckCircle2, Ban, UserCheck, X } from 'lucide-react';
 import { api } from '../lib/api.ts';
 import { formatMXN } from '../lib/money.ts';
 import { Button, Card, Field, TextInput, SelectInput } from './ui.tsx';
@@ -9,7 +9,6 @@ import { ClienteSearch, type ClienteLite } from './ClienteSearch.tsx';
 import { BreakdownGrouped } from './BreakdownGrouped.tsx';
 import type { Catalog, Availability, SpaceAvailability } from '../lib/types.ts';
 
-const DEFAULT_VALET_RATIO = 2.5; // 1 auto por cada 2.5 personas (fallback si no llega de catálogo)
 const MAX_ESPACIOS = 3; // Hay graduaciones que juntan salones; el tope es 3.
 
 export interface QuoteFormInitial {
@@ -67,9 +66,6 @@ export function QuoteForm({
   excludeQuoteId,
   enableClientSearch = false,
 }: Props) {
-  const valetAddOn = catalog.addOns.find((a) => a.nombre.toLowerCase().includes('valet'));
-  const valetRatio = catalog.config?.valetRatio ?? DEFAULT_VALET_RATIO;
-
   const [nombre, setNombre] = useState(initial?.nombre ?? '');
   const [telefono, setTelefono] = useState(initial?.telefono ?? '');
   const [correo, setCorreo] = useState(initial?.correo ?? '');
@@ -101,18 +97,6 @@ export function QuoteForm({
   const [usaDjHoraExtra, setUsaDjHoraExtra] = useState(initial?.usaDjHoraExtra ?? false);
   const [addOns, setAddOns] = useState<Record<string, number>>(initial?.addOns ?? {});
   const [busy, setBusy] = useState(false);
-
-  // Valet: sugerencia = ceil(invitados / 2.5). Se recalcula al cambiar invitados
-  // mientras ventas no lo haya ajustado a mano.
-  const valetManual = useRef(false);
-  const valetSuggestion = Math.ceil(invitados / valetRatio);
-  useEffect(() => {
-    if (!valetAddOn) return;
-    if (valetAddOn.id in addOns && !valetManual.current) {
-      setAddOns((prev) => ({ ...prev, [valetAddOn.id]: valetSuggestion }));
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [invitados, valetRatio]);
 
   const eventType = catalog.eventTypes.find((e) => e.id === eventTypeId);
   const foodPackages = eventType?.foodPackages ?? [];
@@ -217,15 +201,11 @@ export function QuoteForm({
     });
   }
 
-  function toggleAddOn(id: string, kind: string) {
+  function toggleAddOn(id: string) {
     setAddOns((prev) => {
       const next = { ...prev };
-      if (id in next) {
-        delete next[id];
-        if (valetAddOn && id === valetAddOn.id) valetManual.current = false;
-      } else {
-        next[id] = valetAddOn && id === valetAddOn.id ? valetSuggestion : kind === 'porUnidad' ? 1 : 1;
-      }
+      if (id in next) delete next[id];
+      else next[id] = 1;
       return next;
     });
   }
@@ -521,7 +501,6 @@ export function QuoteForm({
           <div className="space-y-2">
             {catalog.addOns.map((a) => {
               const active = a.id in addOns;
-              const isValet = valetAddOn?.id === a.id;
               return (
                 <div
                   key={a.id}
@@ -533,7 +512,7 @@ export function QuoteForm({
                     <input
                       type="checkbox"
                       checked={active}
-                      onChange={() => toggleAddOn(a.id, a.kind)}
+                      onChange={() => toggleAddOn(a.id)}
                       className="h-4 w-4 accent-[var(--color-gold)]"
                     />
                     <span className="font-medium text-charcoal">{a.nombre}</span>
@@ -550,25 +529,9 @@ export function QuoteForm({
                         type="number"
                         min={1}
                         value={addOns[a.id]}
-                        onChange={(e) => {
-                          if (isValet) valetManual.current = true;
-                          setAddOns((prev) => ({ ...prev, [a.id]: Number(e.target.value) }));
-                        }}
+                        onChange={(e) => setAddOns((prev) => ({ ...prev, [a.id]: Number(e.target.value) }))}
                         className="w-20 rounded-md border border-ink/15 px-2 py-1 text-sm"
                       />
-                      {isValet && (
-                        <button
-                          type="button"
-                          title={`Sugerir ${valetSuggestion} (1 auto por ${valetRatio} personas)`}
-                          onClick={() => {
-                            valetManual.current = false;
-                            setAddOns((prev) => ({ ...prev, [a.id]: valetSuggestion }));
-                          }}
-                          className="inline-flex items-center gap-1 rounded-md border border-ink/15 px-2 py-1 text-xs text-ink-500 hover:bg-ink/5"
-                        >
-                          <RotateCcw size={12} /> {valetSuggestion}
-                        </button>
-                      )}
                     </div>
                   )}
                 </div>
