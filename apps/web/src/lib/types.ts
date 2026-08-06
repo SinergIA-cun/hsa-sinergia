@@ -81,6 +81,12 @@ export interface Client {
   correo: string | null;
   empresa: string | null;
   numeroReferencia?: number;
+  rfc?: string | null;
+  razonSocial?: string | null;
+  regimenFiscal?: string | null;
+  cpFiscal?: string | null;
+  usoCfdi?: string | null;
+  correoFacturacion?: string | null;
 }
 
 export const QUOTE_STATUSES = [
@@ -108,6 +114,7 @@ export interface Quote {
   capillaHorario?: string | null;
   esCortesia?: boolean;
   usaDjHoraExtra?: boolean;
+  requiereFactura?: boolean;
   banqueteroId?: string | null;
   horasEvento?: number | null;
   horarioCivil?: string | null;

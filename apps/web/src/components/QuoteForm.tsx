@@ -1,11 +1,12 @@
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { computeQuote, type QuoteBreakdown, type QuoteLine } from '@hsa/shared';
+import { computeQuote, type DatosFiscales, type QuoteBreakdown, type QuoteLine } from '@hsa/shared';
 import { Sparkles, AlertTriangle, CheckCircle2, Ban, UserCheck, X } from 'lucide-react';
 import { api } from '../lib/api.ts';
 import { formatMXN } from '../lib/money.ts';
 import { Button, Card, Field, TextInput, SelectInput } from './ui.tsx';
 import { ClienteSearch, type ClienteLite } from './ClienteSearch.tsx';
+import { FacturacionSection } from './FacturacionSection.tsx';
 import { BreakdownGrouped } from './BreakdownGrouped.tsx';
 import type { Catalog, Availability, SpaceAvailability } from '../lib/types.ts';
 
@@ -26,6 +27,8 @@ export interface QuoteFormInitial {
   esCortesia: boolean;
   usaDjHoraExtra: boolean;
   addOns: Record<string, number>;
+  requiereFactura: boolean;
+  fiscales: DatosFiscales;
 }
 
 export interface QuotePayload {
@@ -40,7 +43,9 @@ export interface QuotePayload {
   foodPackageId?: string;
   addOns: { addOnId: string; cantidad: number }[];
   eventTypeId: string;
-  client: { nombre: string; telefono?: string; correo?: string };
+  requiereFactura: boolean;
+  /** Los datos fiscales viajan dentro del cliente: son suyos, no del evento. */
+  client: { nombre: string; telefono?: string; correo?: string } & DatosFiscales;
   /** Si se reutiliza un cliente existente, su id (el backend lo prioriza sobre `client`). */
   clientId?: string;
 }
@@ -73,6 +78,8 @@ export function QuoteForm({
   // edita cualquier dato del cliente, se "desvincula" y se tratará como nuevo.
   const [pickedClientId, setPickedClientId] = useState<string | undefined>(undefined);
   const [pickedRef, setPickedRef] = useState<number | null>(null);
+  const [requiereFactura, setRequiereFactura] = useState(initial?.requiereFactura ?? false);
+  const [fiscales, setFiscales] = useState<DatosFiscales>(initial?.fiscales ?? {});
 
   function pickCliente(c: ClienteLite) {
     setNombre(c.nombre);
@@ -80,6 +87,15 @@ export function QuoteForm({
     setCorreo(c.correo ?? '');
     setPickedClientId(c.id);
     setPickedRef(c.numeroReferencia);
+    // Los datos fiscales son del cliente: al reutilizarlo no hay que recapturarlos.
+    setFiscales({
+      rfc: c.rfc,
+      razonSocial: c.razonSocial,
+      regimenFiscal: c.regimenFiscal,
+      cpFiscal: c.cpFiscal,
+      usoCfdi: c.usoCfdi,
+      correoFacturacion: c.correoFacturacion,
+    });
   }
   function desvincular() {
     setPickedClientId(undefined);
@@ -225,7 +241,13 @@ export function QuoteForm({
         foodPackageId: foodPackageId || undefined,
         addOns: Object.entries(addOns).map(([addOnId, cantidad]) => ({ addOnId, cantidad })),
         eventTypeId,
-        client: { nombre, telefono: telefono || undefined, correo: correo || undefined },
+        requiereFactura,
+        client: {
+          nombre,
+          telefono: telefono || undefined,
+          correo: correo || undefined,
+          ...fiscales,
+        },
         clientId: pickedClientId,
       });
     } finally {
@@ -288,6 +310,13 @@ export function QuoteForm({
             </Field>
           </div>
         </Card>
+
+        <FacturacionSection
+          requiereFactura={requiereFactura}
+          onRequiereFactura={setRequiereFactura}
+          datos={fiscales}
+          onChange={(patch) => setFiscales((prev) => ({ ...prev, ...patch }))}
+        />
 
         <Card className="space-y-4 p-6">
           <h2 className="font-display text-xl text-ink">Evento</h2>

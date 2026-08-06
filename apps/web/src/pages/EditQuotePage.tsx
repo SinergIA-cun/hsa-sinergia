@@ -32,6 +32,15 @@ function toInitial(q: Quote): Partial<QuoteFormInitial> {
     esCortesia: q.esCortesia ?? false,
     usaDjHoraExtra: q.usaDjHoraExtra ?? false,
     addOns: Object.fromEntries((q.addOns ?? []).map((a) => [a.addOnId, a.cantidad])),
+    requiereFactura: q.requiereFactura ?? false,
+    fiscales: {
+      rfc: q.client?.rfc,
+      razonSocial: q.client?.razonSocial,
+      regimenFiscal: q.client?.regimenFiscal,
+      cpFiscal: q.client?.cpFiscal,
+      usoCfdi: q.client?.usoCfdi,
+      correoFacturacion: q.client?.correoFacturacion,
+    },
   };
 }
 
