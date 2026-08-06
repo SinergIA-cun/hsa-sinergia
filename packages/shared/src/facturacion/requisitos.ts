@@ -25,6 +25,14 @@ const CORREO = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const limpio = (v?: string | null): string => (v ?? '').trim();
 
 /**
+ * Clave presente en el catálogo. Con `in` no basta: recorre la cadena de
+ * prototipos, así que "toString" o "constructor" pasarían como claves válidas
+ * del SAT. `Object.hasOwn` mira solo las claves propias.
+ */
+const esClaveDe = (catalogo: Record<string, string>, clave: string): boolean =>
+  Object.hasOwn(catalogo, clave);
+
+/**
  * Qué falta para poder facturarle a este cliente. Fuente única: la consumen el
  * formulario, el contrato y el API del BI, para que las tres digan lo mismo.
  */
@@ -51,7 +59,7 @@ export function requisitosFactura(d: DatosFiscales): RequisitoFactura[] {
     {
       campo: 'regimenFiscal',
       label: 'Régimen fiscal',
-      ok: regimen in REGIMENES_FISCALES,
+      ok: esClaveDe(REGIMENES_FISCALES, regimen),
       ayuda: 'Clave del SAT, viene en la Constancia de Situación Fiscal.',
     },
     {
@@ -63,7 +71,7 @@ export function requisitosFactura(d: DatosFiscales): RequisitoFactura[] {
     {
       campo: 'usoCfdi',
       label: 'Uso del CFDI',
-      ok: uso in USOS_CFDI,
+      ok: esClaveDe(USOS_CFDI, uso),
       ayuda: 'Para la renta de un salón suele ser "Gastos en general".',
     },
     {

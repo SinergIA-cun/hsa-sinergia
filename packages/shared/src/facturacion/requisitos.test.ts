@@ -54,6 +54,14 @@ describe('requisitosFactura', () => {
     expect(requisitosFactura({ ...completo, usoCfdi: 'ZZ9' }).find((x) => x.campo === 'usoCfdi')!.ok).toBe(false);
   });
 
+  it('no acepta propiedades heredadas de Object como claves del SAT', () => {
+    // Con el operador `in` estas pasarían: recorre la cadena de prototipos.
+    for (const clave of ['toString', 'constructor', 'valueOf', 'hasOwnProperty']) {
+      expect(requisitosFactura({ ...completo, regimenFiscal: clave }).find((x) => x.campo === 'regimenFiscal')!.ok).toBe(false);
+      expect(requisitosFactura({ ...completo, usoCfdi: clave }).find((x) => x.campo === 'usoCfdi')!.ok).toBe(false);
+    }
+  });
+
   it('el correo de facturación debe tener forma de correo', () => {
     expect(requisitosFactura({ ...completo, correoFacturacion: 'no-es-correo' }).find((x) => x.campo === 'correoFacturacion')!.ok).toBe(false);
   });
