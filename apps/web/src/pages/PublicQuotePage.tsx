@@ -212,10 +212,6 @@ export function PublicQuotePage() {
           </div>
           <div className="rounded-[var(--radius-card)] border border-cream-300 bg-white/70 p-6 text-sm text-charcoal">
             <ul className="space-y-2">
-              <li className="flex gap-2">
-                <span className="text-gold">•</span>
-                El valet parking se cobra según el total de vehículos del día (costo por automóvil $100).
-              </li>
               {quote.horasEvento != null && (
                 <li className="flex gap-2">
                   <span className="text-gold">•</span>

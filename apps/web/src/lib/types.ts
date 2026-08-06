@@ -57,7 +57,6 @@ export interface Catalog {
   spaces: Space[];
   eventTypes: EventType[];
   addOns: AddOn[];
-  config?: { valetRatio: number };
 }
 
 export interface User {
@@ -73,7 +72,6 @@ export interface AdminConfig {
   ivaRate: number;
   extraHourRate: number;
   foodDiscountRate: number;
-  valetRatio: number;
 }
 
 export interface Client {

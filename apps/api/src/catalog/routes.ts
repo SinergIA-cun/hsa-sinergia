@@ -8,7 +8,7 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
   //    el desglose EN VIVO en el navegador con el mismo motor.
   //  - metadata para etiquetas (nombres de espacios, tipos de evento, add-ons).
   app.get('/catalog', { preHandler: requireAuth }, async () => {
-    const [engine, spaces, eventTypes, addOns, cfg] = await Promise.all([
+    const [engine, spaces, eventTypes, addOns] = await Promise.all([
       loadCatalog(app.prisma),
       app.prisma.space.findMany({
         where: { activo: true },
@@ -20,8 +20,7 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
         orderBy: { nombre: 'asc' },
       }),
       app.prisma.addOn.findMany({ where: { activo: true }, orderBy: { nombre: 'asc' } }),
-      app.prisma.pricingConfig.findUnique({ where: { id: 'default' } }),
     ]);
-    return { engine, spaces, eventTypes, addOns, config: { valetRatio: cfg?.valetRatio ?? 2.5 } };
+    return { engine, spaces, eventTypes, addOns };
   });
 }
