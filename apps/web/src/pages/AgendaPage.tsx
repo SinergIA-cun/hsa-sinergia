@@ -318,11 +318,14 @@ function ChipArrastrable({ id, movible, className, title, onClick, children }: {
   onClick: () => void; children: ReactNode;
 }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id, disabled: !movible });
+  // `attributes` se aplica solo si el chip se puede arrastrar: cuando está
+  // desactivado trae `aria-disabled="true"`, y el chip de un evento liquidado
+  // NO está desactivado — sigue abriendo su contrato al tocarlo. Anunciarlo
+  // como deshabilitado haría que el lector de pantalla lo diera por muerto.
   return (
     <button
       ref={setNodeRef}
-      {...(movible ? listeners : {})}
-      {...attributes}
+      {...(movible ? { ...listeners, ...attributes } : {})}
       onClick={onClick}
       title={title}
       className={`${className} ${isDragging ? 'opacity-40' : ''} ${movible ? 'cursor-grab' : ''}`}
