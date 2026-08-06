@@ -578,4 +578,44 @@ describe('datos fiscales (CFDI 4.0)', () => {
     expect(encontrado.rfc).toBe('ABC120101XYZ');
     expect(encontrado.cpFiscal).toBe('11000');
   });
+
+  it('sube la Constancia de Situación Fiscal y la devuelve por el proxy', async () => {
+    const cliente = await prisma.client.create({ data: { nombre: 'Cliente CSF' } });
+    createdClientIds.push(cliente.id);
+
+    const boundary = '----hsaTest';
+    const pdf = Buffer.from('%PDF-1.4 constancia de prueba');
+    const body = Buffer.concat([
+      Buffer.from(
+        `--${boundary}\r\nContent-Disposition: form-data; name="csf"; filename="csf.pdf"\r\nContent-Type: application/pdf\r\n\r\n`,
+      ),
+      pdf,
+      Buffer.from(`\r\n--${boundary}--\r\n`),
+    ]);
+
+    const auth = await authCookies();
+    const up = await app.inject({
+      method: 'POST',
+      url: `/api/clients/${cliente.id}/csf`,
+      headers: { 'content-type': `multipart/form-data; boundary=${boundary}` },
+      cookies: auth,
+      payload: body,
+    });
+    expect(up.statusCode).toBe(200);
+
+    const ver = await app.inject({
+      method: 'GET',
+      url: `/api/clients/${cliente.id}/csf`,
+      cookies: auth,
+    });
+    expect(ver.statusCode).toBe(200);
+    expect(ver.headers['content-type']).toContain('application/pdf');
+  });
+
+  it('la CSF exige autenticación', async () => {
+    const cliente = await prisma.client.create({ data: { nombre: 'Cliente CSF Sin Auth' } });
+    createdClientIds.push(cliente.id);
+    const res = await app.inject({ method: 'GET', url: `/api/clients/${cliente.id}/csf` });
+    expect(res.statusCode).toBe(401);
+  });
 });
