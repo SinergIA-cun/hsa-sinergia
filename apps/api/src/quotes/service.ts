@@ -512,6 +512,58 @@ export async function updateQuote(db: PrismaClient, id: string, rawInput: unknow
   return updated;
 }
 
+/**
+ * Mueve un evento a otra fecha (arrastre en la agenda).
+ *
+ * Cambiar la fecha cambia el precio: la renta depende del tipo de día. Por eso
+ * NO se escribe la fecha a secas — se reconstruye la selección actual con la
+ * fecha nueva y se delega en `updateQuote`, que recalcula el desglose, valida
+ * que el espacio esté libre en el destino y respeta ownership y estatus
+ * editables (liquidada y vencida quedan fuera por ese camino).
+ */
+export async function moveQuoteDate(db: PrismaClient, id: string, fecha: string, actor: Actor) {
+  const existing = await db.quote.findFirst({ where: { id, ...ownershipWhere(actor) } });
+  if (!existing) throw new QuoteError(404, 'Cotización no encontrada');
+  assertNotTrashed(existing);
+  if (!EDITABLE_STATUSES.has(existing.status)) {
+    throw new QuoteError(409, `No se puede mover una cotización en estatus "${existing.status}"`);
+  }
+
+  const fechaAntes = existing.fechaEvento.toISOString().slice(0, 10);
+  const addOns = (existing.addOns as unknown as { addOnId: string; cantidad: number }[]) ?? [];
+
+  const actualizada = await updateQuote(
+    db,
+    id,
+    {
+      fecha,
+      invitados: existing.invitados,
+      spaceIds: existing.spaceIds,
+      horasExtra: existing.horasExtra,
+      usaCapilla: existing.usaCapilla,
+      capillaHorario: existing.capillaHorario,
+      esCortesia: existing.esCortesia,
+      usaDjHoraExtra: existing.usaDjHoraExtra,
+      requiereFactura: existing.requiereFactura,
+      eventTypeId: existing.eventTypeId,
+      foodPackageId: existing.foodPackageId ?? undefined,
+      horasEvento: existing.horasEvento,
+      addOns,
+    },
+    actor,
+  );
+
+  await logActivity(db, {
+    quoteId: id,
+    tipo: 'edicion',
+    descripcion: `Fecha: ${fechaAntes} → ${fecha} · total ${existing.total} → ${actualizada.total}`,
+    meta: { fechaAntes, fechaDespues: fecha, totalAntes: existing.total, totalDespues: actualizada.total },
+    actorId: actor.id,
+  });
+
+  return actualizada;
+}
+
 export async function updateStatus(
   db: PrismaClient,
   id: string,

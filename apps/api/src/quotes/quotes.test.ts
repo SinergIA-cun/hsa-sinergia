@@ -13,6 +13,7 @@ import {
   restoreQuote,
   listTrash,
   listQuotes,
+  moveQuoteDate,
   updateQuote,
   updateStatus,
   type Actor,
@@ -336,6 +337,81 @@ describe('quotes service', () => {
         actor,
       ),
     ).rejects.toThrow(/no está disponible/i);
+  });
+
+  it('mover la fecha recalcula el total según el tipo de día', async () => {
+    const { eventTypeId, camposId } = await ids();
+    // 2029-12-01 es sábado; 2029-12-04 es martes (domAJue, más barato).
+    const q = await createQuote(
+      prisma,
+      { fecha: '2029-12-01', invitados: 200, spaceIds: [camposId], eventTypeId, client: { nombre: 'Mover Fecha' } },
+      actor,
+    );
+    createdQuoteIds.push(q.id);
+    createdClientIds.push(q.clientId);
+    const totalSabado = q.total;
+
+    const movida = await moveQuoteDate(prisma, q.id, '2029-12-04', actor);
+    expect(movida.fechaEvento.toISOString().slice(0, 10)).toBe('2029-12-04');
+    expect(movida.total).toBeLessThan(totalSabado);
+  });
+
+  it('no se puede mover una cotización liquidada', async () => {
+    const { eventTypeId, camposId } = await ids();
+    const q = await createQuote(
+      prisma,
+      // 2030-02: ventana libre. Las fechas de diciembre las ocupan los tests
+      // fiscales, y "liquidada" bloquea la disponibilidad de ese día.
+      { fecha: '2030-02-09', invitados: 200, spaceIds: [camposId], eventTypeId, client: { nombre: 'Mover Liquidada' } },
+      actor,
+    );
+    createdQuoteIds.push(q.id);
+    createdClientIds.push(q.clientId);
+    await updateStatus(prisma, q.id, 'liquidada', actor);
+
+    await expect(moveQuoteDate(prisma, q.id, '2030-02-16', actor)).rejects.toThrow(/liquidada/i);
+  });
+
+  it('no se puede mover a una fecha donde el espacio está comprometido', async () => {
+    const { eventTypeId, cupulaId } = await ids();
+    const ocupa = await createQuote(
+      prisma,
+      { fecha: '2029-12-22', invitados: 200, spaceIds: [cupulaId], eventTypeId, client: { nombre: 'Ocupa Destino' } },
+      actor,
+    );
+    createdQuoteIds.push(ocupa.id);
+    createdClientIds.push(ocupa.clientId);
+    await updateStatus(prisma, ocupa.id, 'formalizada', actor);
+
+    const mover = await createQuote(
+      prisma,
+      { fecha: '2029-12-29', invitados: 200, spaceIds: [cupulaId], eventTypeId, client: { nombre: 'Quiere Mover' } },
+      actor,
+    );
+    createdQuoteIds.push(mover.id);
+    createdClientIds.push(mover.clientId);
+
+    await expect(moveQuoteDate(prisma, mover.id, '2029-12-22', actor)).rejects.toThrow(/no está disponible/i);
+  });
+
+  it('el movimiento queda en la bitácora con las dos fechas', async () => {
+    const { eventTypeId, camposId } = await ids();
+    const q = await createQuote(
+      prisma,
+      { fecha: '2030-01-12', invitados: 200, spaceIds: [camposId], eventTypeId, client: { nombre: 'Bitacora Mover' } },
+      actor,
+    );
+    createdQuoteIds.push(q.id);
+    createdClientIds.push(q.clientId);
+
+    await moveQuoteDate(prisma, q.id, '2030-01-19', actor);
+    const log = await prisma.activityLog.findFirst({
+      where: { quoteId: q.id, tipo: 'edicion', descripcion: { contains: 'Fecha' } },
+      orderBy: { createdAt: 'desc' },
+    });
+    expect(log).not.toBeNull();
+    expect(log!.descripcion).toContain('2030-01-12');
+    expect(log!.descripcion).toContain('2030-01-19');
   });
 });
 
