@@ -1873,6 +1873,15 @@ web con la configuración `hsa-web` de `Projects/.claude/launch.json` (puerto 52
 10. **En tablet:** reducir la ventana al preset móvil y confirmar que el arrastre sigue
     funcionando con eventos de puntero (es la razón de usar `@dnd-kit` en vez del arrastre
     nativo).
+11. **Tocar un chip sigue abriendo el evento.** Es lo primero que hay que probar del arrastre:
+    con la configuración por defecto de `@dnd-kit`, un toque activa el arrastre y se **traga
+    el clic**, así que tocar un chip no abriría nada. Se resolvió con una distancia de
+    activación de 8 px. Verificar las dos cosas por separado: un toque abre el contrato, y un
+    desplazamiento deliberado arrastra.
+12. **El chip sigue al dedo mientras se arrastra**, no solo se atenúa. Sin eso, en tablet se
+    siente como que la app ignoró el gesto.
+13. **Un arrastre que falla lo dice.** Simular una falla de red (cortar la API un momento) y
+    arrastrar: debe aparecer el mensaje de error arriba del calendario, no quedarse callado.
 
 - [ ] **Step 4: Limpiar los datos de prueba**
 
