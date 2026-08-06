@@ -1857,6 +1857,12 @@ web con la configuración `hsa-web` de `Projects/.claude/launch.json` (puerto 52
 4. **Reutilizar cliente:** crear un segundo evento buscando ese mismo cliente y confirmar que
    los datos fiscales llegan cargados.
 5. **Contrato con factura:** generar el contrato y verificar el bloque "Datos de facturación".
+   **Usar la vista previa de impresión**, no solo la pantalla: la página 1 ya carga seis filas
+   de campos y hasta dos tablas, así que con paquete de alimentos + la tabla fiscal de seis
+   renglones puede desbordarse a la página siguiente y partir una cláusula a la mitad.
+5b. **Limpiar y guardar un dato fiscal:** borrar el RFC de un cliente que sí lo tenía, guardar,
+   reabrir y confirmar que **quedó vacío**. Si reaparece el valor viejo, el `null` no está
+   llegando a la base.
 6. **Marca en la lista:** el evento con factura muestra el badge, en rojo si faltan datos.
 7. **Arrastrar:** mover un evento de un sábado a un martes. El diálogo debe mostrar las dos
    fechas y el cambio de total. Confirmar y verificar que la agenda se actualiza, que el
