@@ -30,12 +30,16 @@ const clientSchema = z.object({
   // Datos fiscales (CFDI 4.0). Se validan de forma laxa aquí —un cliente puede
   // guardarse a medias mientras junta los papeles— y la lista de requisitos de
   // @hsa/shared es la que dice si ya se le puede facturar.
-  rfc: z.string().max(13).optional(),
-  razonSocial: z.string().max(200).optional(),
-  regimenFiscal: z.string().max(3).optional(),
-  cpFiscal: z.string().max(5).optional(),
-  usoCfdi: z.string().max(4).optional(),
-  correoFacturacion: z.string().max(200).optional(),
+  //
+  // `nullish` y no `optional`: null es un valor legítimo ("este cliente no tiene
+  // RFC") y es como se borra un dato mal capturado. Omitir el campo deja el valor
+  // anterior intacto; mandarlo en null lo limpia.
+  rfc: z.string().max(13).nullish(),
+  razonSocial: z.string().max(200).nullish(),
+  regimenFiscal: z.string().max(3).nullish(),
+  cpFiscal: z.string().max(5).nullish(),
+  usoCfdi: z.string().max(4).nullish(),
+  correoFacturacion: z.string().max(200).nullish(),
 });
 
 export const createQuoteSchema = quoteSelectionSchema

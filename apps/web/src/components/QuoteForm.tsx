@@ -12,21 +12,27 @@ import type { Catalog, Availability, SpaceAvailability } from '../lib/types.ts';
 
 const MAX_ESPACIOS = 3; // Hay graduaciones que juntan salones; el tope es 3.
 
+const vacioANull = (v: string | null | undefined): string | null => {
+  const s = (v ?? '').trim();
+  return s === '' ? null : s;
+};
+
 /**
- * Quita los campos fiscales vacíos antes de mandarlos.
+ * Normaliza los datos fiscales para mandarlos: lo vacío viaja como `null`.
  *
- * Un cliente reutilizado (o editado) trae `null` en los datos fiscales que
- * todavía no ha dado, y el API los declara opcionales pero NO nulos: mandar
- * `rfc: null` reventaría el guardado con un 400. Omitirlos es equivalente —
- * "no lo sé" y "no lo mandé" significan lo mismo aquí.
+ * Los seis campos van SIEMPRE en el payload. Omitir uno dejaría el valor
+ * anterior intacto en el cliente, así que borrar un RFC mal capturado no
+ * surtiría efecto y la corrección se perdería en silencio.
  */
-function fiscalesLimpios(d: DatosFiscales): DatosFiscales {
-  const out: DatosFiscales = {};
-  for (const campo of Object.keys(d) as (keyof DatosFiscales)[]) {
-    const valor = d[campo];
-    if (valor != null && valor !== '') out[campo] = valor;
-  }
-  return out;
+function fiscalesParaGuardar(d: DatosFiscales): DatosFiscales {
+  return {
+    rfc: vacioANull(d.rfc),
+    razonSocial: vacioANull(d.razonSocial),
+    regimenFiscal: vacioANull(d.regimenFiscal),
+    cpFiscal: vacioANull(d.cpFiscal),
+    usoCfdi: vacioANull(d.usoCfdi),
+    correoFacturacion: vacioANull(d.correoFacturacion),
+  };
 }
 
 export interface QuoteFormInitial {
@@ -115,8 +121,15 @@ export function QuoteForm({
     });
   }
   function desvincular() {
+    // El guard no es cosmético: esto corre en CADA tecla del nombre, teléfono y
+    // correo. Sin él, capturar los datos fiscales de un cliente nuevo y luego
+    // corregir una letra de su nombre los borraría.
+    if (!pickedClientId) return;
     setPickedClientId(undefined);
     setPickedRef(null);
+    // Desvincular significa "este es otro cliente": sus datos fiscales se van
+    // con él, o acabaríamos guardando el RFC del anterior en el nuevo.
+    setFiscales({});
   }
   const [eventTypeId, setEventTypeId] = useState(initial?.eventTypeId ?? '');
   const [fecha, setFecha] = useState(initial?.fecha ?? '');
@@ -263,7 +276,7 @@ export function QuoteForm({
           nombre,
           telefono: telefono || undefined,
           correo: correo || undefined,
-          ...fiscalesLimpios(fiscales),
+          ...fiscalesParaGuardar(fiscales),
         },
         clientId: pickedClientId,
       });
@@ -327,13 +340,6 @@ export function QuoteForm({
             </Field>
           </div>
         </Card>
-
-        <FacturacionSection
-          requiereFactura={requiereFactura}
-          onRequiereFactura={setRequiereFactura}
-          datos={fiscales}
-          onChange={(patch) => setFiscales((prev) => ({ ...prev, ...patch }))}
-        />
 
         <Card className="space-y-4 p-6">
           <h2 className="font-display text-xl text-ink">Evento</h2>
@@ -585,6 +591,13 @@ export function QuoteForm({
             })}
           </div>
         </Card>
+
+        <FacturacionSection
+          requiereFactura={requiereFactura}
+          onRequiereFactura={setRequiereFactura}
+          datos={fiscales}
+          onChange={(patch) => setFiscales((prev) => ({ ...prev, ...patch }))}
+        />
       </div>
 
       {/* Desglose en vivo */}

@@ -20,7 +20,7 @@ export function FacturacionSection({ requiereFactura, onRequiereFactura, datos, 
 
   return (
     <Card className="space-y-4 p-6">
-      <h2 className="font-display text-xl text-ink">Facturación</h2>
+      <h2 className="font-display text-xl text-ink">Facturación del cliente</h2>
 
       <label
         className={`flex cursor-pointer items-start gap-3 rounded-lg border px-4 py-3 text-sm transition-colors ${
