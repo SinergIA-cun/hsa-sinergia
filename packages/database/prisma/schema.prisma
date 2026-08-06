@@ -146,16 +146,26 @@ model CuadrillaMiembro {
 }
 
 model Client {
-  id               String   @id @default(cuid())
-  nombre           String
-  telefono         String?
-  correo           String?
-  empresa          String?
-  domicilio        String?
-  identificacion   String?
-  numeroReferencia Int      @unique @default(dbgenerated("nextval('client_ref_seq')"))
-  createdAt        DateTime @default(now())
-  quotes           Quote[]
+  id                String   @id @default(cuid())
+  nombre            String
+  telefono          String?
+  correo            String?
+  empresa           String?
+  domicilio         String?
+  identificacion    String?
+  numeroReferencia  Int      @unique @default(dbgenerated("nextval('client_ref_seq')"))
+  // Datos fiscales (CFDI 4.0). Opcionales: se capturan solo si el cliente
+  // pide factura, y se reutilizan en todos sus eventos.
+  rfc               String?
+  razonSocial       String?  // nombre fiscal exacto, SIN régimen societario
+  regimenFiscal     String?  // clave SAT: 601, 612, 626…
+  cpFiscal          String?  // 5 dígitos del domicilio fiscal
+  usoCfdi           String?  // clave SAT: G03, S01…
+  correoFacturacion String?
+  csfKey            String?  // Constancia de Situación Fiscal adjunta
+  csfMime           String?
+  createdAt         DateTime @default(now())
+  quotes            Quote[]
 }
 
 model Quote {
@@ -181,6 +191,7 @@ model Quote {
   capillaHorario String?    // horario de la capilla para este evento (varios eventos comparten el día).
   esCortesia    Boolean     @default(false) // cortesía familiar: se marca verde en la agenda.
   usaDjHoraExtra Boolean    @default(false) // DJ por hora extra (precio según tipo de evento).
+  requiereFactura Boolean   @default(false) // este cliente pidió factura para ESTE evento.
   banquetero    Banquetero? @relation(fields: [banqueteroId], references: [id])
   banqueteroId  String?     // proveedor de alimentos (para ventas por banquetero).
   createdBy     User?       @relation("QuoteCreatedBy", fields: [createdById], references: [id])
