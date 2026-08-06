@@ -327,7 +327,7 @@ Campos nuevos en `Client`, todos **opcionales** para no romper los clientes ya c
 | `razonSocial` | `String?` | nombre fiscal exacto, **sin** régimen societario (el SAT rechaza el CFDI 4.0 si se incluye) |
 | `regimenFiscal` | `String?` | clave SAT: 601, 603, 605, 606, 608, 612, 616, 621, 626… |
 | `cpFiscal` | `String?` | 5 dígitos del domicilio fiscal |
-| `usoCfdi` | `String?` | clave SAT: G01, G03, D10, P01… |
+| `usoCfdi` | `String?` | clave SAT: G01, G03, CP01, S01… (**no** `P01`: era de CFDI 3.3, el SAT lo retiró y su reemplazo es `S01`) |
 | `correoFacturacion` | `String?` | suele diferir del correo de contacto |
 | `csfKey` / `csfMime` | `String?` | Constancia de Situación Fiscal adjunta (ver abajo) |
 
