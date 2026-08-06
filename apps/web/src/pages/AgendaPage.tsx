@@ -11,6 +11,7 @@ import {
   useSensors,
   type DragEndEvent,
 } from '@dnd-kit/core';
+import { CSS } from '@dnd-kit/utilities';
 import { computeQuote } from '@hsa/shared';
 import { api } from '../lib/api.ts';
 import { Card, ArrowDivider, Button } from '../components/ui.tsx';
@@ -155,6 +156,10 @@ export function AgendaPage() {
   } | null>(null);
   const [moviendo, setMoviendo] = useState(false);
   const [errorMover, setErrorMover] = useState('');
+  // Falla al preparar el arrastre: el modal todavía no existe, así que el aviso
+  // va en la página. Si no, soltar el chip no haría absolutamente nada y el
+  // usuario volvería a arrastrar sin saber qué se rompió.
+  const [errorArrastre, setErrorArrastre] = useState('');
 
   // Al soltar, se pide la cotización y se calcula el total de la fecha nueva
   // EN EL NAVEGADOR con el mismo motor que usa el servidor, para poder mostrar
@@ -169,7 +174,16 @@ export function AgendaPage() {
     if (origen === destino) return;
 
     setErrorMover('');
-    const detalle = await api.get<QuoteDetail>(`/api/quotes/${quoteId}`);
+    setErrorArrastre('');
+
+    let detalle: QuoteDetail;
+    try {
+      detalle = await api.get<QuoteDetail>(`/api/quotes/${quoteId}`);
+    } catch {
+      setErrorArrastre('No se pudo cargar el evento para moverlo. Intenta de nuevo.');
+      return;
+    }
+
     let totalNuevo: number | null = null;
     if (catalogQ.data) {
       try {
@@ -234,6 +248,15 @@ export function AgendaPage() {
           </Button>
         </div>
       </div>
+
+      {errorArrastre && (
+        <div
+          role="alert"
+          className="mb-4 rounded-lg border border-wine/30 bg-wine/5 px-4 py-3 text-sm text-wine"
+        >
+          {errorArrastre}
+        </div>
+      )}
 
       <DndContext sensors={sensors} onDragEnd={onDragEnd}>
         <Card className="overflow-hidden p-0">
@@ -317,18 +340,33 @@ function ChipArrastrable({ id, movible, className, title, onClick, children }: {
   id: string; movible: boolean; className: string; title: string;
   onClick: () => void; children: ReactNode;
 }) {
-  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id, disabled: !movible });
+  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
+    id,
+    disabled: !movible,
+  });
   // `attributes` se aplica solo si el chip se puede arrastrar: cuando está
   // desactivado trae `aria-disabled="true"`, y el chip de un evento liquidado
   // NO está desactivado — sigue abriendo su contrato al tocarlo. Anunciarlo
   // como deshabilitado haría que el lector de pantalla lo diera por muerto.
+  //
+  // El chip sigue al dedo: sin `transform` solo se desvanecía en su sitio, que
+  // en tablet se lee como "la app me ignoró". `relative` + `z-index` lo
+  // mantienen por encima de las celdas vecinas mientras viaja.
+  const style = transform
+    ? { transform: CSS.Translate.toString(transform), position: 'relative' as const, zIndex: 20 }
+    : undefined;
+
   return (
     <button
       ref={setNodeRef}
       {...(movible ? { ...listeners, ...attributes } : {})}
       onClick={onClick}
       title={title}
-      className={`${className} ${isDragging ? 'opacity-40' : ''} ${movible ? 'cursor-grab' : ''}`}
+      style={style}
+      // `touch-action: none` es requisito de @dnd-kit para arrastrar con el
+      // dedo: sin esto el navegador se queda el gesto como scroll y el
+      // arrastre nunca arranca en tablet, que es donde se opera.
+      className={`${className} ${isDragging ? 'opacity-40' : ''} ${movible ? 'cursor-grab touch-none' : ''}`}
     >
       {children}
     </button>
