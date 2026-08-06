@@ -94,6 +94,9 @@ export function ContratoPage() {
         .doc-page .fill { color: #14304d; font-weight: 600; }
         .doc-page table { width: 100%; border-collapse: collapse; margin: 0.75rem 0; font-size: 0.9rem; }
         .doc-page td, .doc-page th { border: 1px solid #ccc; padding: 0.4rem 0.6rem; text-align: left; vertical-align: top; }
+        .doc-page .fiscal-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.35rem 0.9rem; margin: 0.35rem 0 0.4rem; font-size: 0.85rem; }
+        .doc-page .fiscal-grid > span { display: flex; flex-direction: column; border: 1px solid #ccc; padding: 0.3rem 0.5rem; }
+        .doc-page .fiscal-grid small { color: #666; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.03em; }
         .doc-page .campo-row { display: flex; gap: 0.75rem; margin: 0.35rem 0; }
         .doc-page .campo-row b { min-width: 11rem; }
         .doc-page .campo-row span { border-bottom: 1px solid #999; flex: 1; }
@@ -189,26 +192,6 @@ export function ContratoPage() {
                 </tbody>
               </table>
             </>
-          )}
-          {quote.requiereFactura && (
-            <div style={{ marginTop: '1rem' }}>
-              <p><b>Datos de facturación</b></p>
-              <table>
-                <tbody>
-                  <tr><td>RFC</td><td><span className="fill">{quote.client?.rfc || BLANK}</span></td></tr>
-                  <tr><td>Razón social</td><td><span className="fill">{quote.client?.razonSocial || BLANK}</span></td></tr>
-                  <tr><td>Régimen fiscal</td><td><span className="fill">{quote.client?.regimenFiscal || BLANK}</span></td></tr>
-                  <tr><td>Código postal fiscal</td><td><span className="fill">{quote.client?.cpFiscal || BLANK}</span></td></tr>
-                  <tr><td>Uso del CFDI</td><td><span className="fill">{quote.client?.usoCfdi || BLANK}</span></td></tr>
-                  <tr><td>Correo para la factura</td><td><span className="fill">{quote.client?.correoFacturacion || BLANK}</span></td></tr>
-                </tbody>
-              </table>
-              {faltanDatosFactura(quote.client ?? {}) && (
-                <p style={{ fontStyle: 'italic' }}>
-                  Faltan datos para poder emitir la factura; se solicitarán antes del evento.
-                </p>
-              )}
-            </div>
           )}
           <Foot />
         </section>
@@ -513,7 +496,31 @@ export function ContratoPage() {
             <li>No están permitidas las degustaciones para eventos contratados en otros recintos para eventos.</li>
           </ol>
           <p>Estas restricciones son medidas de Protección Civil estatal y de seguridad interna.</p>
-          <div className="firmas" style={{ marginTop: '6rem' }}>
+
+          {/* Datos de facturación justo ANTES de la firma: el cliente firma debajo de los
+              datos fiscales que declara. Va aquí y no en la página 1 porque aquella solo
+              tiene 132px libres —el bloque la desbordaba y corría los folios de las 9
+              páginas—, mientras que esta última hoja está a media capacidad. */}
+          {quote.requiereFactura && (
+            <div style={{ marginTop: '2rem' }}>
+              <p style={{ marginBottom: '0.25rem' }}><b>Datos de facturación</b></p>
+              <div className="fiscal-grid">
+                <span><small>RFC</small><span className="fill">{quote.client?.rfc || BLANK}</span></span>
+                <span><small>Razón social</small><span className="fill">{quote.client?.razonSocial || BLANK}</span></span>
+                <span><small>Régimen fiscal</small><span className="fill">{quote.client?.regimenFiscal || BLANK}</span></span>
+                <span><small>C.P. fiscal</small><span className="fill">{quote.client?.cpFiscal || BLANK}</span></span>
+                <span><small>Uso del CFDI</small><span className="fill">{quote.client?.usoCfdi || BLANK}</span></span>
+                <span><small>Correo para la factura</small><span className="fill">{quote.client?.correoFacturacion || BLANK}</span></span>
+              </div>
+              {faltanDatosFactura(quote.client ?? {}) && (
+                <p style={{ fontStyle: 'italic' }}>
+                  Faltan datos para poder emitir la factura; se solicitarán antes del evento.
+                </p>
+              )}
+            </div>
+          )}
+
+          <div className="firmas" style={{ marginTop: quote.requiereFactura ? '3rem' : '6rem' }}>
             <div className="firma" style={{ maxWidth: '28rem', margin: '0 auto' }}>
               {quote.client?.nombre}
               <div style={{ fontSize: '0.8rem', color: '#777' }}>Nombre y Firma de aceptación del Cliente</div>
