@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Plus, ExternalLink, CalendarDays, Users, UserCircle, Trash2, Search, AlertTriangle } from 'lucide-react';
+import { faltanDatosFactura } from '@hsa/shared';
 import { api } from '../lib/api.ts';
 import { formatMXN } from '../lib/money.ts';
 import { Button, Card, ArrowDivider } from '../components/ui.tsx';
@@ -69,6 +70,19 @@ function QuoteRow({ q, showSeller }: { q: Quote; showSeller: boolean }) {
               <AlertTriangle size={11} /> Desfase
             </span>
           )}
+          {q.requiereFactura && (() => {
+            const incompleto = faltanDatosFactura(q.client ?? {});
+            return (
+              <span
+                className={`rounded px-1.5 py-0.5 text-[0.65rem] font-semibold uppercase tracking-wide ${
+                  incompleto ? 'bg-wine/10 text-wine' : 'bg-emerald-600/10 text-emerald-700'
+                }`}
+                title={incompleto ? 'Requiere factura y faltan datos fiscales' : 'Requiere factura · datos completos'}
+              >
+                Factura
+              </span>
+            );
+          })()}
           <span
             className={`inline-block rounded-full px-2.5 py-0.5 text-[0.65rem] font-semibold uppercase tracking-wide ${STATUS_STYLE[q.status]}`}
           >

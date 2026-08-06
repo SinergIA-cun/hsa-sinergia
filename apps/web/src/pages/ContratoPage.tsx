@@ -1,6 +1,7 @@
 import { useParams, Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { ArrowLeft, Printer } from 'lucide-react';
+import { faltanDatosFactura } from '@hsa/shared';
 import { api } from '../lib/api.ts';
 import { formatMXNCents, formatPct } from '../lib/money.ts';
 import { formatEventDate } from '../lib/date.ts';
@@ -188,6 +189,26 @@ export function ContratoPage() {
                 </tbody>
               </table>
             </>
+          )}
+          {quote.requiereFactura && (
+            <div style={{ marginTop: '1rem' }}>
+              <p><b>Datos de facturación</b></p>
+              <table>
+                <tbody>
+                  <tr><td>RFC</td><td><span className="fill">{quote.client?.rfc || BLANK}</span></td></tr>
+                  <tr><td>Razón social</td><td><span className="fill">{quote.client?.razonSocial || BLANK}</span></td></tr>
+                  <tr><td>Régimen fiscal</td><td><span className="fill">{quote.client?.regimenFiscal || BLANK}</span></td></tr>
+                  <tr><td>Código postal fiscal</td><td><span className="fill">{quote.client?.cpFiscal || BLANK}</span></td></tr>
+                  <tr><td>Uso del CFDI</td><td><span className="fill">{quote.client?.usoCfdi || BLANK}</span></td></tr>
+                  <tr><td>Correo para la factura</td><td><span className="fill">{quote.client?.correoFacturacion || BLANK}</span></td></tr>
+                </tbody>
+              </table>
+              {faltanDatosFactura(quote.client ?? {}) && (
+                <p style={{ fontStyle: 'italic' }}>
+                  Faltan datos para poder emitir la factura; se solicitarán antes del evento.
+                </p>
+              )}
+            </div>
           )}
           <Foot />
         </section>
