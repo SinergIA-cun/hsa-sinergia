@@ -12,6 +12,23 @@ import type { Catalog, Availability, SpaceAvailability } from '../lib/types.ts';
 
 const MAX_ESPACIOS = 3; // Hay graduaciones que juntan salones; el tope es 3.
 
+/**
+ * Quita los campos fiscales vacíos antes de mandarlos.
+ *
+ * Un cliente reutilizado (o editado) trae `null` en los datos fiscales que
+ * todavía no ha dado, y el API los declara opcionales pero NO nulos: mandar
+ * `rfc: null` reventaría el guardado con un 400. Omitirlos es equivalente —
+ * "no lo sé" y "no lo mandé" significan lo mismo aquí.
+ */
+function fiscalesLimpios(d: DatosFiscales): DatosFiscales {
+  const out: DatosFiscales = {};
+  for (const campo of Object.keys(d) as (keyof DatosFiscales)[]) {
+    const valor = d[campo];
+    if (valor != null && valor !== '') out[campo] = valor;
+  }
+  return out;
+}
+
 export interface QuoteFormInitial {
   nombre: string;
   telefono: string;
@@ -246,7 +263,7 @@ export function QuoteForm({
           nombre,
           telefono: telefono || undefined,
           correo: correo || undefined,
-          ...fiscales,
+          ...fiscalesLimpios(fiscales),
         },
         clientId: pickedClientId,
       });
