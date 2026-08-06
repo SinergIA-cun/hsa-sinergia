@@ -526,7 +526,30 @@ jurídica. Opciones:
 Recomendación: la 2, que es la de menor riesgo jurídico (no cambia ninguna cantidad, solo
 deja de afirmar una igualdad falsa).
 
-### 2. `updateStatus` no valida disponibilidad
+### 2. La Constancia de Situación Fiscal la puede ver (y sobrescribir) cualquier usuario
+
+`GET /clients/:id/csf` y `POST /clients/:id/csf` exigen sesión iniciada, pero **no filtran por
+rol ni por pertenencia**: cualquier persona de ventas puede descargar —o reemplazar— la
+constancia de cualquier cliente. Y no queda protegido por lo difícil que sea adivinar el id,
+porque `GET /clients?q=` también es abierto a todo usuario autenticado y devuelve los ids.
+
+Contexto para decidir:
+- **Es consistente** con el resto del módulo de clientes, que siempre ha sido abierto entre
+  todo el equipo de ventas.
+- **Pero es más laxo que su análogo más cercano:** el proxy de la foto del comprobante de pago
+  (`GET /quotes/:id/comprobante/:paymentId`) sí aplica `ownershipWhere`, así que ventas solo ve
+  los recibos de sus propias cotizaciones. Un documento fiscal es más sensible que una foto de
+  transferencia, así que la inconsistencia va en la dirección incómoda.
+- **No hay un "dueño" natural del cliente.** Los clientes no pertenecen a una vendedora (las
+  cotizaciones sí), y un mismo cliente puede tener cotizaciones de varias personas. Así que
+  "filtrar por pertenencia" no está bien definido: las opciones reales son dejarlo abierto,
+  restringirlo a admin, o permitirlo a quien tenga alguna cotización con ese cliente.
+
+Recomendación: restringir **la escritura** a admin (nadie de ventas debería poder reemplazar
+la constancia de un cliente ajeno) y dejar la lectura abierta, que es lo que la operación
+necesita. Pero es una decisión sobre confianza interna del equipo, no técnica.
+
+### 3. `updateStatus` no valida disponibilidad
 
 **`updateStatus` no valida disponibilidad, y es la vía realista de doble reserva.**
 Verificado experimentalmente: dos cotizaciones en borrador para la misma fecha y salón son
