@@ -579,6 +579,116 @@ describe('datos fiscales (CFDI 4.0)', () => {
     expect(encontrado.cpFiscal).toBe('11000');
   });
 
+  // El caso principal de la tarjeta: el cliente que vuelve y hasta su segundo
+  // evento da el RFC. Se manda clientId (se reutiliza) junto con los datos
+  // fiscales nuevos, y esos datos tienen que llegar a la base.
+  it('captura los datos fiscales de un cliente reutilizado por clientId', async () => {
+    const { eventTypeId, camposId } = await ids();
+    const primera = await createQuote(
+      prisma,
+      {
+        fecha: '2029-11-24',
+        invitados: 150,
+        spaceIds: [camposId],
+        eventTypeId,
+        client: { nombre: 'Vuelve Sin RFC' },
+      },
+      actor,
+    );
+    createdQuoteIds.push(primera.id);
+    createdClientIds.push(primera.clientId);
+    const antes = await prisma.client.findUnique({ where: { id: primera.clientId } });
+    expect(antes?.rfc).toBeNull();
+
+    const segunda = await createQuote(
+      prisma,
+      {
+        fecha: '2029-12-01',
+        invitados: 150,
+        spaceIds: [camposId],
+        eventTypeId,
+        requiereFactura: true,
+        clientId: primera.clientId,
+        client: { nombre: 'Vuelve Sin RFC', rfc: 'ABC120101XYZ', cpFiscal: '11000' },
+      },
+      actor,
+    );
+    createdQuoteIds.push(segunda.id);
+
+    expect(segunda.clientId).toBe(primera.clientId);
+    const despues = await prisma.client.findUnique({ where: { id: primera.clientId } });
+    expect(despues?.rfc).toBe('ABC120101XYZ');
+    expect(despues?.cpFiscal).toBe('11000');
+  });
+
+  // Reutilizar un cliente SIN tocar la tarjeta no debe borrarle lo que ya tenía:
+  // el formulario manda los seis campos siempre, con los valores que cargó del
+  // propio cliente, así que el rewrite es un no-op. Si algún día el buscador
+  // dejara de devolver un campo, llegaría null y este test lo caza.
+  it('reutilizar un cliente sin tocar sus datos fiscales no los borra', async () => {
+    const { eventTypeId, camposId } = await ids();
+    const primera = await createQuote(
+      prisma,
+      {
+        fecha: '2029-12-08',
+        invitados: 150,
+        spaceIds: [camposId],
+        eventTypeId,
+        requiereFactura: true,
+        client: {
+          nombre: 'Vuelve Con RFC',
+          rfc: 'GODE561231GR8',
+          razonSocial: 'Juan Pérez López',
+          regimenFiscal: '612',
+          cpFiscal: '53100',
+          usoCfdi: 'G03',
+          correoFacturacion: 'facturas@ejemplo.com',
+        },
+      },
+      actor,
+    );
+    createdQuoteIds.push(primera.id);
+    createdClientIds.push(primera.clientId);
+
+    // Se pasa por el buscador de verdad en lugar de escribir el payload a mano:
+    // así, si el select de GET /clients dejara de devolver un campo fiscal, el
+    // formulario mandaría null ahí y este test cazaría el borrado.
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/clients?q=Vuelve Con RFC',
+      cookies: await authCookies(),
+    });
+    const cargado = res.json().clients.find((c: { nombre: string }) => c.nombre === 'Vuelve Con RFC');
+    const comoLoMandaElFormulario = {
+      nombre: cargado.nombre,
+      rfc: cargado.rfc ?? null,
+      razonSocial: cargado.razonSocial ?? null,
+      regimenFiscal: cargado.regimenFiscal ?? null,
+      cpFiscal: cargado.cpFiscal ?? null,
+      usoCfdi: cargado.usoCfdi ?? null,
+      correoFacturacion: cargado.correoFacturacion ?? null,
+    };
+
+    const segunda = await createQuote(
+      prisma,
+      {
+        fecha: '2029-12-15',
+        invitados: 150,
+        spaceIds: [camposId],
+        eventTypeId,
+        clientId: primera.clientId,
+        client: comoLoMandaElFormulario,
+      },
+      actor,
+    );
+    createdQuoteIds.push(segunda.id);
+
+    const cliente = await prisma.client.findUnique({ where: { id: primera.clientId } });
+    expect(cliente?.rfc).toBe('GODE561231GR8');
+    expect(cliente?.usoCfdi).toBe('G03');
+    expect(cliente?.correoFacturacion).toBe('facturas@ejemplo.com');
+  });
+
   it('sube la Constancia de Situación Fiscal y la devuelve por el proxy', async () => {
     const cliente = await prisma.client.create({ data: { nombre: 'Cliente CSF' } });
     createdClientIds.push(cliente.id);

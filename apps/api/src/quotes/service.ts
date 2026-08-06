@@ -365,6 +365,13 @@ export async function createQuote(db: PrismaClient, rawInput: unknown, actor: Ac
   if (!clientId && input.client) {
     const created = await db.client.create({ data: input.client });
     clientId = created.id;
+  } else if (clientId && input.client) {
+    // Cliente reutilizado: sus datos fiscales pueden venir capturados por
+    // primera vez en ESTE evento (el que vuelve y hasta ahora pide factura).
+    // Sin esto se perdían en silencio, que es justo lo que la tarjeta existe
+    // para capturar. Nombre, teléfono y correo no divergen: editarlos en el
+    // formulario desvincula al cliente, así que reescribirlos es un no-op.
+    await db.client.update({ where: { id: clientId }, data: input.client });
   }
 
   const created = await db.quote.create({
