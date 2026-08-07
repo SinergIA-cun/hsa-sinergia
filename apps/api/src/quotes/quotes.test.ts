@@ -413,6 +413,54 @@ describe('quotes service', () => {
     expect(log!.descripcion).toContain('2030-01-12');
     expect(log!.descripcion).toContain('2030-01-19');
   });
+
+  it('la bitácora de edición registra el antes y después de espacios e invitados', async () => {
+    const { eventTypeId, arcosId, camposId } = await ids();
+    const q = await createQuote(
+      prisma,
+      { fecha: '2030-03-09', invitados: 200, spaceIds: [arcosId], eventTypeId, client: { nombre: 'Bitacora Rica' } },
+      actor,
+    );
+    createdQuoteIds.push(q.id);
+    createdClientIds.push(q.clientId);
+
+    await updateQuote(
+      prisma, q.id,
+      { fecha: '2030-03-09', invitados: 260, spaceIds: [arcosId, camposId], eventTypeId, horasExtra: 0, addOns: [] },
+      actor,
+    );
+
+    const log = await prisma.activityLog.findFirst({
+      where: { quoteId: q.id, tipo: 'edicion' },
+      orderBy: { createdAt: 'desc' },
+    });
+    expect(log).not.toBeNull();
+    const meta = log!.meta as Record<string, unknown>;
+    expect(meta.invitadosAntes).toBe(200);
+    expect(meta.invitadosDespues).toBe(260);
+    expect(meta.espaciosAntes).toEqual([arcosId]);
+    expect(meta.espaciosDespues).toEqual([arcosId, camposId]);
+  });
+
+  it('guardar sin cambiar nada no ensucia la bitácora', async () => {
+    const { eventTypeId, camposId } = await ids();
+    const q = await createQuote(
+      prisma,
+      { fecha: '2030-03-16', invitados: 200, spaceIds: [camposId], eventTypeId, client: { nombre: 'Sin Cambios' } },
+      actor,
+    );
+    createdQuoteIds.push(q.id);
+    createdClientIds.push(q.clientId);
+
+    await updateQuote(
+      prisma, q.id,
+      { fecha: '2030-03-16', invitados: 200, spaceIds: [camposId], eventTypeId, horasExtra: 0, addOns: [] },
+      actor,
+    );
+
+    const ediciones = await prisma.activityLog.count({ where: { quoteId: q.id, tipo: 'edicion' } });
+    expect(ediciones).toBe(0);
+  });
 });
 
 describe('quotes HTTP', () => {

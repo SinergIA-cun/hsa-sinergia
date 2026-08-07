@@ -531,12 +531,36 @@ export async function updateQuote(db: PrismaClient, id: string, rawInput: unknow
     include: includeRels,
   });
 
-  if (existing.status === 'formalizada' || existing.status === 'complementada') {
+  // Se registra CUALQUIER edición que cambie algo material, no solo las de eventos
+  // con compromiso de pago: el BI necesita el historial completo de cambios de
+  // salón y de tamaño de evento. Si no cambió nada, no se escribe: una bitácora
+  // llena de ruido no sirve para auditar.
+  const antes = {
+    invitados: existing.invitados,
+    espacios: [...existing.spaceIds].sort(),
+    fecha: existing.fechaEvento.toISOString().slice(0, 10),
+    total: existing.total,
+    rentaTotal: existing.rentaTotal,
+  };
+  const despues = {
+    invitados: updated.invitados,
+    espacios: [...updated.spaceIds].sort(),
+    fecha: updated.fechaEvento.toISOString().slice(0, 10),
+    total: updated.total,
+    rentaTotal: updated.rentaTotal,
+  };
+  if (JSON.stringify(antes) !== JSON.stringify(despues)) {
     await logActivity(db, {
       quoteId: id,
       tipo: 'edicion',
       descripcion: `Edición en ${existing.status}: total ${existing.total} → ${updated.total}`,
-      meta: { totalAntes: existing.total, totalDespues: updated.total },
+      meta: {
+        invitadosAntes: antes.invitados, invitadosDespues: despues.invitados,
+        espaciosAntes: existing.spaceIds, espaciosDespues: updated.spaceIds,
+        fechaAntes: antes.fecha, fechaDespues: despues.fecha,
+        totalAntes: antes.total, totalDespues: despues.total,
+        rentaTotalAntes: antes.rentaTotal, rentaTotalDespues: despues.rentaTotal,
+      },
       actorId: actor.id,
     });
   }
