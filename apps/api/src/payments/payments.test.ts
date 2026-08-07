@@ -3,7 +3,7 @@ import type { FastifyInstance } from 'fastify';
 import { prisma } from '@hsa/database';
 import { buildServer } from '../server.js';
 import { loadConfig } from '../config.js';
-import { createQuote, getByToken, getQuote, loadEstadoCuenta, reconcileStatuses, updateQuote, type Actor } from '../quotes/service.js';
+import { createQuote, getByToken, getQuote, loadEstadoCuenta, reconcileStatuses, softDeleteQuote, updateQuote, type Actor } from '../quotes/service.js';
 import { registerPayment, anularPayment, desbloquearFactura, loadComprobanteInterno, loadComprobantePublico } from './service.js';
 import { ServerStorage } from './storage.js';
 import { tmpdir } from 'node:os';
@@ -348,6 +348,22 @@ describe('candado de facturación', () => {
         client: { nombre: 'Pago Test', rfc: 'XAXX010101000' },
       }, actor),
     ).rejects.toThrow(/público en general/i);
+  });
+
+  it('no se desbloquea un pago de una cotización en la papelera', async () => {
+    // La papelera es evidencia de auditoría: solo lectura, también para el
+    // desbloqueo. Que el botón no se pinte en la UI no basta.
+    const q = await nuevaQuote();
+    const p = await registerPayment(prisma, storage, q.id,
+      { monto: 15000, metodo: 'transferencia', concepto: 'anticipo', fecha: '2020-03-15' },
+      actor);
+    await anularPayment(prisma, q.id, p.payment.id, 'error de captura', actor);
+    await softDeleteQuote(prisma, q.id, actor);
+
+    await expect(desbloquearFactura(prisma, q.id, p.payment.id, actor)).rejects.toThrow(/papelera/i);
+
+    const sinTocar = await prisma.payment.findUnique({ where: { id: p.payment.id } });
+    expect(sinTocar?.desbloqueoAt).toBeNull();
   });
 
   it('solo un admin puede desbloquear la facturación de un pago', async () => {

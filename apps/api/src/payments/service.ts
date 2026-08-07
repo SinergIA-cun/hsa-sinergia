@@ -125,6 +125,9 @@ export async function desbloquearFactura(
   if (actor.role !== 'admin') {
     throw new QuoteError(403, 'Solo un admin puede desbloquear la facturación de un pago.');
   }
+  // Igual que al anular: una cotización en la papelera es evidencia de auditoría
+  // y no admite escrituras, tampoco por esta puerta.
+  await findOwnedQuote(db, quoteId, actor);
   const pago = await db.payment.findFirst({ where: { id: paymentId, quoteId } });
   if (!pago) throw new QuoteError(404, 'Pago no encontrado');
   if (pago.facturadoAt) {
