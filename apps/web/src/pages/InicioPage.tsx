@@ -6,6 +6,7 @@ import { formatMXN } from '../lib/money.ts';
 import { formatEventDate } from '../lib/date.ts';
 import { Card, ArrowDivider, Button } from '../components/ui.tsx';
 import { STATUS_LABEL, STATUS_STYLE } from '../lib/status.ts';
+import { AvisoEmpalmes } from '../components/AvisoEmpalmes.tsx';
 import { FichaOperativaCard } from '../components/FichaOperativaCard.tsx';
 import { FichaOperativaPrint } from '../components/FichaOperativaPrint.tsx';
 import { useAuth } from '../auth/auth.tsx';
@@ -138,6 +139,11 @@ export function InicioPage() {
             </Card>
           </div>
         )}
+      </div>
+
+      {/* Empalmes primero: es lo único del panel que exige hablarle hoy a un cliente. */}
+      <div className="mb-8 empty:mb-0">
+        <AvisoEmpalmes />
       </div>
 
       {isLoading && <p className="text-charcoal-soft">Cargando panel…</p>}

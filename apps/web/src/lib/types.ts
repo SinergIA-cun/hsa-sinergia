@@ -300,6 +300,18 @@ export interface AgendaEvent {
   esCortesia: boolean;
 }
 
+/**
+ * Cotización viva cuya fecha y espacio ya fueron apartados por otra.
+ * Se calcula al vuelo en el servidor: no hay tabla ni "marcar como leído".
+ */
+export interface Desplazada {
+  id: string;
+  clienteNombre: string;
+  fechaEvento: string;
+  spaceIds: string[];
+  bloqueadaPor: { id: string; clienteNombre: string };
+}
+
 export type Semaforo = 'verde' | 'amarillo' | 'rojo';
 
 export interface FiniquitoFicha {
