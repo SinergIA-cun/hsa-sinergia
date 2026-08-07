@@ -1,6 +1,6 @@
 import { useMemo, useState, type ReactNode } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import {
   DndContext,
@@ -16,6 +16,7 @@ import { computeQuote } from '@hsa/shared';
 import { api } from '../lib/api.ts';
 import { Card, ArrowDivider, Button } from '../components/ui.tsx';
 import { MoverFechaModal } from '../components/MoverFechaModal.tsx';
+import { DESPLAZADAS_KEY, useDesplazadas } from '../lib/desplazadas.ts';
 import { STATUS_LABEL } from '../lib/status.ts';
 import type { AgendaEvent, Catalog, QuoteDetail } from '../lib/types.ts';
 
@@ -86,6 +87,13 @@ export function AgendaPage() {
     queryKey: ['catalog'],
     queryFn: () => api.get<Catalog>('/api/catalog'),
   });
+  // Mismo caché que el aviso del panel: la agenda solo lo lee para marcar chips.
+  const desplazadasQ = useDesplazadas();
+  const qc = useQueryClient();
+  const desplazadas = useMemo(
+    () => new Set((desplazadasQ.data?.items ?? []).map((d) => d.id)),
+    [desplazadasQ.data],
+  );
 
   const nombreById = useMemo(
     () => new Map((catalogQ.data?.spaces ?? []).map((s) => [s.id, s.nombre])),
@@ -223,6 +231,9 @@ export function AgendaPage() {
     try {
       await api.patch(`/api/quotes/${mover.quoteId}/fecha`, { fecha: mover.destino });
       await agendaQ.refetch();
+      // Mover la fecha es una de las dos formas de resolver un empalme: el
+      // símbolo del chip tiene que desaparecer sin recargar la página.
+      await qc.invalidateQueries({ queryKey: DESPLAZADAS_KEY });
       setMover(null);
     } catch (e) {
       setErrorMover(e instanceof Error ? e.message : 'No se pudo mover el evento.');
@@ -279,6 +290,7 @@ export function AgendaPage() {
                   <div className="space-y-1">
                     {eventos.map((e) => {
                       const espacio = primarySpace(e, nombreById).nombre;
+                      const empalmada = desplazadas.has(e.quoteId);
                       return (
                         <ChipArrastrable
                           key={e.quoteId}
@@ -287,10 +299,24 @@ export function AgendaPage() {
                           onClick={() => abrir(e.quoteId)}
                           title={`${espacio || e.eventoNombre} · ${e.cliente} · ${e.eventoNombre} · ${
                             e.esCortesia ? 'Cortesía familiar' : STATUS_LABEL[e.status]
-                          }`}
+                          }${empalmada ? ' · El espacio ya fue apartado por otro evento' : ''}`}
                           className={`block w-full rounded px-1.5 py-1 text-left text-[0.7rem] leading-tight ${agendaChipStyle(e)}`}
                         >
-                          <span className="block truncate font-semibold">{espacio || e.eventoNombre}</span>
+                          <span className="flex items-start gap-1">
+                            {/* Texto real, no `::before` de CSS: un lector de pantalla debe anunciarlo. */}
+                            {empalmada && (
+                              <span
+                                role="img"
+                                aria-label="El espacio ya fue apartado por otro evento"
+                                className="shrink-0 leading-none"
+                              >
+                                ⚠
+                              </span>
+                            )}
+                            <span className="block min-w-0 truncate font-semibold">
+                              {espacio || e.eventoNombre}
+                            </span>
+                          </span>
                           <span className="block truncate opacity-80">{e.cliente}</span>
                         </ChipArrastrable>
                       );
@@ -314,7 +340,8 @@ export function AgendaPage() {
       </div>
       <p className="mt-2 text-xs text-charcoal-soft">
         El chip muestra el espacio (Cúpula → Arcos → Campos). Toca un evento para abrir su
-        contrato, o arrástralo a otro día para cambiarle la fecha.
+        contrato, o arrástralo a otro día para cambiarle la fecha. El símbolo ⚠ marca las
+        cotizaciones cuyo espacio ya fue apartado por otro evento ese mismo día.
       </p>
 
       {mover && (

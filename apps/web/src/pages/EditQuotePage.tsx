@@ -10,11 +10,27 @@ import { Button, Card, SelectInput, ArrowDivider } from '../components/ui.tsx';
 import { QuoteForm, type QuotePayload, type QuoteFormInitial } from '../components/QuoteForm.tsx';
 import { PagosPanel } from '../components/PagosPanel.tsx';
 import { CompartirClienteModal } from '../components/CompartirClienteModal.tsx';
+import { ConfirmarEmpalmeModal, type EspacioOcupado } from '../components/ConfirmarEmpalmeModal.tsx';
 import { OperativaSection } from '../components/OperativaSection.tsx';
+import { DESPLAZADAS_KEY } from '../lib/desplazadas.ts';
 import { STATUS_LABEL, STATUS_STYLE, EDITABLE_STATUSES } from '../lib/status.ts';
 import { formatEventDate, formatTimestamp } from '../lib/date.ts';
-import { QUOTE_STATUSES, type Catalog, type Quote, type QuoteDetail, type QuoteStatus } from '../lib/types.ts';
+import {
+  QUOTE_STATUSES,
+  type Availability,
+  type Catalog,
+  type Quote,
+  type QuoteDetail,
+  type QuoteStatus,
+} from '../lib/types.ts';
 import { useAuth } from '../auth/auth.tsx';
+
+/**
+ * Estatus que apartan la fecha de verdad. Debe seguir a `BLOQUEO` del servidor
+ * (`apps/api/src/availability/service.ts`) y a `BLOQUEANTES` de `empalmes.ts`.
+ */
+const ESTATUS_QUE_APARTAN: QuoteStatus[] = ['formalizada', 'complementada', 'liquidada'];
+const APARTAN = new Set<string>(ESTATUS_QUE_APARTAN);
 
 function toInitial(q: Quote): Partial<QuoteFormInitial> {
   return {
@@ -58,6 +74,9 @@ export function EditQuotePage() {
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState('');
   const [compartir, setCompartir] = useState(false);
+  const [empalme, setEmpalme] = useState<{ status: QuoteStatus; ocupados: EspacioOcupado[] } | null>(null);
+  const [empalmeBusy, setEmpalmeBusy] = useState(false);
+  const [empalmeError, setEmpalmeError] = useState('');
   // Al recién crearlo llegamos con ?creado=1 para confirmar sin sacar del contrato.
   const recienCreado = sp.get('creado') === '1';
 
@@ -74,11 +93,64 @@ export function EditQuotePage() {
   const catalog = catalogQ.data;
   const isAdmin = user?.role === 'admin';
 
-  async function changeStatus(status: QuoteStatus) {
+  async function aplicarStatus(status: QuoteStatus) {
     if (!quote) return;
     await api.patch(`/api/quotes/${quote.id}/status`, { status });
     await qc.invalidateQueries({ queryKey: ['quote', id] });
     await qc.invalidateQueries({ queryKey: ['quotes'] });
+    // Apartar (o soltar) una fecha cambia quién queda desplazado.
+    await qc.invalidateQueries({ queryKey: DESPLAZADAS_KEY });
+  }
+
+  /**
+   * Apartar una fecha ya comprometida AVISA, nunca bloquea: el cambio se manda
+   * igual si quien vende lo confirma, porque el pago del cliente siempre se
+   * registra. La API tampoco lo rechaza — esto es solo el aviso.
+   */
+  async function changeStatus(status: QuoteStatus) {
+    if (!quote) return;
+    const yaApartaba = ESTATUS_QUE_APARTAN.includes(quote.status);
+    if (!ESTATUS_QUE_APARTAN.includes(status) || yaApartaba) {
+      await aplicarStatus(status);
+      return;
+    }
+    const fecha = quote.fechaEvento.slice(0, 10);
+    let disp: Availability;
+    try {
+      disp = await api.get<Availability>(
+        `/api/availability?fecha=${fecha}&spaceIds=${quote.spaceIds.join(',')}&excludeQuoteId=${quote.id}`,
+      );
+    } catch {
+      // Sin disponibilidad no se puede avisar, pero tampoco se puede frenar la
+      // operación: se aparta igual. Peor sería dejar el pago sin registrar.
+      await aplicarStatus(status);
+      return;
+    }
+    const ocupados = disp.spaces
+      .filter((s) => s.level === 'bloqueada')
+      .map((s) => ({
+        nombre: s.nombre,
+        clientes: [...new Set(s.quotes.filter((q) => APARTAN.has(q.status)).map((q) => q.cliente))],
+      }));
+    if (ocupados.length === 0) {
+      await aplicarStatus(status);
+      return;
+    }
+    setEmpalme({ status, ocupados });
+  }
+
+  async function confirmarEmpalme() {
+    if (!empalme) return;
+    setEmpalmeBusy(true);
+    setEmpalmeError('');
+    try {
+      await aplicarStatus(empalme.status);
+      setEmpalme(null);
+    } catch {
+      setEmpalmeError('No se pudo cambiar el estatus. Intenta de nuevo.');
+    } finally {
+      setEmpalmeBusy(false);
+    }
   }
 
 
@@ -262,6 +334,21 @@ export function EditQuotePage() {
 
       {compartir && (
         <CompartirClienteModal quote={quote} publicUrl={publicUrl} onClose={() => setCompartir(false)} />
+      )}
+
+      {empalme && (
+        <ConfirmarEmpalmeModal
+          fecha={quote.fechaEvento.slice(0, 10)}
+          estatusLabel={STATUS_LABEL[empalme.status]}
+          ocupados={empalme.ocupados}
+          busy={empalmeBusy}
+          error={empalmeError}
+          onCancel={() => {
+            setEmpalme(null);
+            setEmpalmeError('');
+          }}
+          onConfirm={() => void confirmarEmpalme()}
+        />
       )}
     </div>
   );
