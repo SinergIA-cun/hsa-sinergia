@@ -26,12 +26,10 @@ afterAll(async () => {
 });
 
 describe('getAvailability', () => {
-  it('escala el nivel: libre → cotizaciones → apartada → bloqueada, y excluye la propia', async () => {
-    // Libre inicialmente
+  it('escala el nivel: libre → cotizaciones → bloqueada, y excluye la propia', async () => {
     const libre = await getAvailability(prisma, FECHA, [arcosId]);
     expect(libre.spaces[0]!.level).toBe('libre');
 
-    // Una cotización borrador
     const q = await createQuote(
       prisma,
       { fecha: FECHA, invitados: 250, spaceIds: [arcosId], eventTypeId, client: { nombre: 'Dispo Test' } },
@@ -40,20 +38,25 @@ describe('getAvailability', () => {
     created.push(q.id);
     createdClients.push(q.clientId);
 
-    expect((await getAvailability(prisma, FECHA, [arcosId])).spaces[0]!.level).toBe('cotizaciones');
+    // Cotización sin pago: avisa pero no bloquea.
+    const conCotizacion = await getAvailability(prisma, FECHA, [arcosId]);
+    expect(conCotizacion.spaces[0]!.level).toBe('cotizaciones');
+    expect(conCotizacion.blocked).toBe(false);
 
-    await updateStatus(prisma, q.id, 'apartada', actor);
-    expect((await getAvailability(prisma, FECHA, [arcosId])).spaces[0]!.level).toBe('apartada');
-
+    // Formalizada (pagó el anticipo): a partir de aquí bloquea.
     await updateStatus(prisma, q.id, 'formalizada', actor);
-    const bloq = await getAvailability(prisma, FECHA, [arcosId]);
-    expect(bloq.spaces[0]!.level).toBe('bloqueada');
-    expect(bloq.blocked).toBe(true);
+    const formalizada = await getAvailability(prisma, FECHA, [arcosId]);
+    expect(formalizada.spaces[0]!.level).toBe('bloqueada');
+    expect(formalizada.blocked).toBe(true);
 
-    // Excluyendo la propia cotización, vuelve a libre (para no bloquearse al editar)
-    const excl = await getAvailability(prisma, FECHA, [arcosId], q.id);
-    expect(excl.blocked).toBe(false);
-    expect(excl.spaces[0]!.level).toBe('libre');
+    // Complementada sigue bloqueando.
+    await updateStatus(prisma, q.id, 'complementada', actor);
+    expect((await getAvailability(prisma, FECHA, [arcosId])).spaces[0]!.level).toBe('bloqueada');
+
+    // Excluyéndose a sí misma, el espacio vuelve a verse libre (caso de edición).
+    const excluida = await getAvailability(prisma, FECHA, [arcosId], q.id);
+    expect(excluida.spaces[0]!.level).toBe('libre');
+    expect(excluida.blocked).toBe(false);
   });
 
   it('capillaEventos: informa (sin bloquear) qué otros eventos usan la capilla ese día', async () => {

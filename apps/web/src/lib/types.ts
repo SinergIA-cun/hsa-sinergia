@@ -57,7 +57,6 @@ export interface Catalog {
   spaces: Space[];
   eventTypes: EventType[];
   addOns: AddOn[];
-  config?: { valetRatio: number };
 }
 
 export interface User {
@@ -73,7 +72,6 @@ export interface AdminConfig {
   ivaRate: number;
   extraHourRate: number;
   foodDiscountRate: number;
-  valetRatio: number;
 }
 
 export interface Client {
@@ -83,14 +81,20 @@ export interface Client {
   correo: string | null;
   empresa: string | null;
   numeroReferencia?: number;
+  rfc?: string | null;
+  razonSocial?: string | null;
+  regimenFiscal?: string | null;
+  cpFiscal?: string | null;
+  usoCfdi?: string | null;
+  correoFacturacion?: string | null;
 }
 
 export const QUOTE_STATUSES = [
   'borrador',
   'enviada',
   'aceptada',
-  'apartada',
   'formalizada',
+  'complementada',
   'liquidada',
   'vencida',
 ] as const;
@@ -110,6 +114,7 @@ export interface Quote {
   capillaHorario?: string | null;
   esCortesia?: boolean;
   usaDjHoraExtra?: boolean;
+  requiereFactura?: boolean;
   banqueteroId?: string | null;
   horasEvento?: number | null;
   horarioCivil?: string | null;
@@ -140,6 +145,13 @@ export interface Payment {
   comprobanteKey: string | null;
   anuladoAt: string | null;
   motivoAnulacion: string | null;
+  // Candado de facturación: el servidor lo calcula al vuelo con el calendario.
+  facturable?: boolean;
+  motivoFactura?: string | null;
+  facturadoAt?: string | null;
+  /** Folio fiscal del CFDI, si se capturó al sellar el pago. */
+  facturaUuid?: string | null;
+  desbloqueoAt?: string | null;
 }
 
 export interface HojaOperativa {
@@ -163,6 +175,14 @@ export interface HojaOperativa {
   anotaciones?: string;
 }
 
+/** Un renglón del complemento: `pct × rentaBase == monto`, exacto. */
+export interface ComplementoPorEspacio {
+  spaceId: string;
+  rentaBase: number;
+  pct: number;
+  monto: number;
+}
+
 export interface Milestone {
   key: 'apartar' | 'complemento' | 'finiquito';
   label: string;
@@ -171,7 +191,8 @@ export interface Milestone {
   restante: number;
   completo: boolean;
   venceISO: string | null;
-  porcentaje?: number;
+  /** Solo el complemento: qué aporta cada salón. */
+  desglose?: ComplementoPorEspacio[];
 }
 
 export interface EstadoCuenta {
@@ -180,7 +201,7 @@ export interface EstadoCuenta {
   saldo: number;
   plan: Milestone[] | null;
   planPendiente: boolean;
-  sugerido: 'apartada' | 'formalizada' | 'liquidada' | null;
+  sugerido: 'formalizada' | 'complementada' | 'liquidada' | null;
   desfase: boolean;
   pagos?: unknown[];
 }
@@ -197,16 +218,18 @@ export interface QuoteDetail {
   quote: Quote;
   estadoCuenta: EstadoCuenta;
   payments: Payment[];
+  /** `editable: false` cuando ya se emitió una factura con estos datos. */
+  fiscalEditable?: { editable: boolean; motivo: string | null };
   activityLog: ActivityEntry[];
 }
 
-export type AvailabilityLevel = 'libre' | 'cotizaciones' | 'apartada' | 'bloqueada';
+export type AvailabilityLevel = 'libre' | 'cotizaciones' | 'bloqueada';
 
 export interface SpaceAvailability {
   spaceId: string;
   nombre: string;
   level: AvailabilityLevel;
-  counts: { cotizaciones: number; apartadas: number; formalizadas: number; liquidadas: number };
+  counts: { cotizaciones: number; formalizadas: number; complementadas: number; liquidadas: number };
   quotes: { id: string; cliente: string; status: string }[];
 }
 
@@ -275,6 +298,18 @@ export interface AgendaEvent {
   spaceIds: string[];
   status: QuoteStatus;
   esCortesia: boolean;
+}
+
+/**
+ * Cotización viva cuya fecha y espacio ya fueron apartados por otra.
+ * Se calcula al vuelo en el servidor: no hay tabla ni "marcar como leído".
+ */
+export interface Desplazada {
+  id: string;
+  clienteNombre: string;
+  fechaEvento: string;
+  spaceIds: string[];
+  bloqueadaPor: { id: string; clienteNombre: string };
 }
 
 export type Semaforo = 'verde' | 'amarillo' | 'rojo';

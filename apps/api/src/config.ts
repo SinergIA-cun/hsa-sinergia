@@ -18,6 +18,17 @@ const envSchema = z.object({
   // debe apuntar a un volumen persistente del VPS. (El adaptador Drive futuro
   // ignorará este valor.)
   COMPROBANTES_DIR: z.string().default('./data/comprobantes'),
+  // Llave del API de solo lectura para el BI. Si no está, el módulo /api/bi
+  // NO se registra y sus rutas responden 404: no hay modo "abierto" por descuido.
+  //
+  // La cadena vacía (BI_API_KEY= en el .env) llega como '' y fallaría el min(32);
+  // se traduce a `undefined` primero para que se comporte como ausente y la API
+  // arranque igual.
+  BI_API_KEY: z
+    .string()
+    .transform((v) => (v === '' ? undefined : v))
+    .pipe(z.string().min(32, 'BI_API_KEY debe tener al menos 32 caracteres').optional())
+    .optional(),
 });
 
 export type AppConfig = z.infer<typeof envSchema>;

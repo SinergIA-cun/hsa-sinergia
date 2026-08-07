@@ -3,8 +3,9 @@ import { formatMXN, formatMXNCents } from '../lib/money.ts';
 
 interface Props {
   breakdown: QuoteBreakdown;
-  /** Reetiqueta conceptos (p. ej. "Renta arcos" → "Renta Salón Los Arcos"). */
-  lineLabel?: (concepto: string) => string;
+  /** Reetiqueta conceptos usando la línea completa (p. ej. usando `spaceId` para
+   *  poner "Renta Salón Los Arcos" en vez de "Renta <id>"). */
+  lineLabel?: (line: QuoteLine) => string;
 }
 
 interface BloqueProps {
@@ -15,7 +16,7 @@ interface BloqueProps {
   iva: number;
   total: number;
   totalLabel: string;
-  lineLabel: (concepto: string) => string;
+  lineLabel: (line: QuoteLine) => string;
   className?: string;
 }
 
@@ -31,7 +32,7 @@ function Bloque({ titulo, nota, lines, subtotal, iva, total, totalLabel, lineLab
         {lines.map((l, i) => (
           <li key={i} className="flex justify-between gap-4">
             <span className="text-charcoal-soft">
-              {lineLabel(l.concepto)}
+              {lineLabel(l)}
               {l.detalle && <span className="ml-1 text-xs text-charcoal-soft/60">({l.detalle})</span>}
             </span>
             <span className="tabular-nums text-charcoal">{formatMXNCents(l.monto)}</span>
@@ -57,14 +58,14 @@ function Bloque({ titulo, nota, lines, subtotal, iva, total, totalLabel, lineLab
 }
 
 /** Desglose de solo lectura para cotizaciones antiguas (sin `grupo`). */
-function Plano({ breakdown, lineLabel }: { breakdown: QuoteBreakdown; lineLabel: (c: string) => string }) {
+function Plano({ breakdown, lineLabel }: { breakdown: QuoteBreakdown; lineLabel: (line: QuoteLine) => string }) {
   return (
     <div className="text-sm">
       <ul className="space-y-2">
         {breakdown.lines.map((l, i) => (
           <li key={i} className="flex justify-between gap-4">
             <span className="text-charcoal-soft">
-              {lineLabel(l.concepto)}
+              {lineLabel(l)}
               {l.detalle && <span className="ml-1 text-xs text-charcoal-soft/60">({l.detalle})</span>}
             </span>
             <span className="tabular-nums text-charcoal">{formatMXNCents(l.monto)}</span>
@@ -94,7 +95,7 @@ function Plano({ breakdown, lineLabel }: { breakdown: QuoteBreakdown; lineLabel:
  * que se paga al proveedor (alimentos + servicios). Cada bloque trae su propio
  * subtotal + IVA + total para que quede claro qué medimos (la renta) y qué no.
  */
-export function BreakdownGrouped({ breakdown, lineLabel = (c) => c }: Props) {
+export function BreakdownGrouped({ breakdown, lineLabel = (l) => l.concepto }: Props) {
   // Cotizaciones antiguas (desglose congelado antes de este cambio) no traen `grupo`.
   const tieneGrupos = breakdown.lines.some((l) => l.grupo);
   if (!tieneGrupos) return <Plano breakdown={breakdown} lineLabel={lineLabel} />;

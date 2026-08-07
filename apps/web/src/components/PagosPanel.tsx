@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { Lock, ReceiptText } from 'lucide-react';
 import { api } from '../lib/api.ts';
 import { formatMXN } from '../lib/money.ts';
 import { formatEventDate, formatTimestamp } from '../lib/date.ts';
@@ -29,6 +30,9 @@ export function PagosPanel({ quoteId, isAdmin, estadoCuenta, payments, activityL
   const [info, setInfo] = useState('');
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
+  const [pagoAFacturar, setPagoAFacturar] = useState<Payment | null>(null);
+  const [uuidFactura, setUuidFactura] = useState('');
+  const [errFactura, setErrFactura] = useState('');
 
   const apiBase = (import.meta.env.VITE_API_URL ?? '').replace(/\/$/, '');
 
@@ -69,6 +73,30 @@ export function PagosPanel({ quoteId, isAdmin, estadoCuenta, payments, activityL
       setBusy(false);
     }
   }
+
+  // Reabrir la facturación de un pago cuyo mes ya cerró. Solo admin, y queda en
+  // la bitácora: por eso el candado puede ser estricto, la salida es visible.
+  const desbloquear = useMutation({
+    mutationFn: (paymentId: string) =>
+      api.patch(`/api/quotes/${quoteId}/payments/${paymentId}/desbloquear-factura`, {}),
+    onSuccess: refresh,
+  });
+
+  // Sellar el pago como facturado. Sin PAC conectado este es el único disparador
+  // del candado de datos fiscales, así que es una acción manual de admin.
+  const marcarFacturado = useMutation({
+    mutationFn: ({ paymentId, uuid }: { paymentId: string; uuid: string }) =>
+      api.post(`/api/quotes/${quoteId}/payments/${paymentId}/facturado`, {
+        facturaUuid: uuid.trim() || null,
+      }),
+    onSuccess: async () => {
+      setPagoAFacturar(null);
+      setUuidFactura('');
+      setErrFactura('');
+      await refresh();
+    },
+    onError: () => setErrFactura('No se pudo sellar. Revisa que el folio fiscal sea un UUID válido.'),
+  });
 
   async function anular(paymentId: string) {
     const motivo = window.prompt('Motivo de la anulación:');
@@ -172,12 +200,87 @@ export function PagosPanel({ quoteId, isAdmin, estadoCuenta, payments, activityL
                       Ver comprobante
                     </a>
                   )}
+                  {p.facturadoAt && (
+                    <span
+                      className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700"
+                      title={p.facturaUuid ? `Folio fiscal ${p.facturaUuid}` : 'Sin folio fiscal capturado'}
+                    >
+                      <ReceiptText size={12} /> Facturado
+                    </span>
+                  )}
+                  {isAdmin && !readOnly && !p.anuladoAt && !p.facturadoAt && (
+                    <button
+                      type="button"
+                      onClick={() => { setPagoAFacturar(p); setUuidFactura(''); setErrFactura(''); }}
+                      className="text-xs text-ink hover:underline"
+                    >
+                      Marcar facturado
+                    </button>
+                  )}
                   {isAdmin && !readOnly && !p.anuladoAt && <button onClick={() => anular(p.id)} className="text-xs text-wine hover:underline">Anular</button>}
                 </span>
+                {p.facturable === false && !p.anuladoAt && !p.facturadoAt && (
+                  <div className="flex w-full flex-wrap items-center gap-2 text-xs text-charcoal-soft">
+                    <span className="inline-flex items-center gap-1">
+                      <Lock size={12} /> {p.motivoFactura}
+                    </span>
+                    {isAdmin && !readOnly && (
+                      <button
+                        type="button"
+                        onClick={() => desbloquear.mutate(p.id)}
+                        disabled={desbloquear.isPending}
+                        className="rounded border border-ink/15 px-2 py-0.5 text-xs text-ink hover:bg-ink/5 disabled:opacity-50"
+                      >
+                        Reabrir facturación
+                      </button>
+                    )}
+                  </div>
+                )}
               </li>
             ))}
           </ul>
         </Card>
+      )}
+
+      {/* Sellar un pago como facturado */}
+      {pagoAFacturar && (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-ink/40 px-4" role="dialog" aria-modal="true">
+          <Card className="w-full max-w-md space-y-4 p-6">
+            <h2 className="font-display text-xl text-ink">Marcar pago como facturado</h2>
+            <p className="text-sm text-charcoal">
+              Pago <strong>#{pagoAFacturar.folio}</strong> de{' '}
+              <strong>{formatMXN(pagoAFacturar.monto)}</strong> del {formatEventDate(pagoAFacturar.fecha)}.
+            </p>
+            <p className="rounded-lg bg-cream-200/70 px-3 py-2 text-sm text-ink">
+              A partir de aquí los datos fiscales del cliente quedan congelados: solo un
+              administrador podrá cambiarlos, y el cambio quedará en la bitácora.
+            </p>
+            <Field label="Folio fiscal (UUID)" hint="Opcional. Puedes capturarlo después si aún no lo tienes.">
+              <TextInput
+                value={uuidFactura}
+                onChange={(e) => setUuidFactura(e.target.value)}
+                placeholder="11111111-2222-3333-4444-555555555555"
+              />
+            </Field>
+            {errFactura && <p className="text-sm text-wine">{errFactura}</p>}
+            <div className="flex justify-end gap-2">
+              <Button
+                variant="ghost"
+                onClick={() => setPagoAFacturar(null)}
+                disabled={marcarFacturado.isPending}
+              >
+                Cancelar
+              </Button>
+              <Button
+                variant="gold"
+                onClick={() => marcarFacturado.mutate({ paymentId: pagoAFacturar.id, uuid: uuidFactura })}
+                disabled={marcarFacturado.isPending}
+              >
+                {marcarFacturado.isPending ? 'Sellando…' : 'Marcar facturado'}
+              </Button>
+            </div>
+          </Card>
+        </div>
       )}
 
       {/* Bitácora */}

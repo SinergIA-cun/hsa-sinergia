@@ -37,8 +37,6 @@ afterAll(async () => {
   await prisma.cuadrilla.deleteMany({ where: { id: { in: createdCuadrillaIds } } });
   await prisma.empleado.deleteMany({ where: { id: { in: createdEmpleadoIds } } });
   await prisma.banquetero.deleteMany({ where: { id: { in: createdBanqueteroIds } } });
-  // Restaura valetRatio por si algún assert falla antes de la restauración manual.
-  await prisma.pricingConfig.update({ where: { id: 'default' }, data: { valetRatio: 2.5 } });
   await app.close();
 });
 
@@ -167,44 +165,14 @@ describe('borrado de usuarios', () => {
 });
 
 describe('admin config', () => {
-  it('GET /admin/config devuelve valetRatio', async () => {
-    const res = await app.inject({
-      method: 'GET',
-      url: '/api/admin/config',
-      cookies: { [adminCookie.name]: adminCookie.value },
-    });
-    expect(res.statusCode).toBe(200);
-    expect(res.json().config).toHaveProperty('valetRatio');
-  });
-
-  it('PATCH /admin/config actualiza valetRatio y luego se restaura', async () => {
-    const patchRes = await app.inject({
-      method: 'PATCH',
-      url: '/api/admin/config',
-      cookies: { [adminCookie.name]: adminCookie.value },
-      payload: { valetRatio: 3 },
-    });
-    expect(patchRes.statusCode).toBe(200);
-    expect(patchRes.json().config.valetRatio).toBe(3);
-
-    const restoreRes = await app.inject({
-      method: 'PATCH',
-      url: '/api/admin/config',
-      cookies: { [adminCookie.name]: adminCookie.value },
-      payload: { valetRatio: 2.5 },
-    });
-    expect(restoreRes.statusCode).toBe(200);
-    expect(restoreRes.json().config.valetRatio).toBe(2.5);
-  });
-
-  it('GET /catalog incluye config.valetRatio', async () => {
+  it('GET /catalog ya no expone config del valet', async () => {
     const res = await app.inject({
       method: 'GET',
       url: '/api/catalog',
       cookies: { [adminCookie.name]: adminCookie.value },
     });
     expect(res.statusCode).toBe(200);
-    expect(res.json().config).toHaveProperty('valetRatio');
+    expect(res.json()).not.toHaveProperty('config');
   });
 
   it('GET /admin/config sin auth => 401', async () => {

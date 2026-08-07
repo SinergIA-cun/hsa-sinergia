@@ -23,8 +23,13 @@ export function HojaOperativaPage() {
 
   const { quote } = data;
   const hoja = quote.operativa ?? {};
+  // Todas las líneas con `spaceId` son rentas de espacio; el concepto ya trae el
+  // nombre (lo pone `computeAndEnrich`), así que no hace falta consultar el catálogo.
   const espacio =
-    quote.breakdown.lines.find((l) => l.concepto.startsWith('Renta '))?.concepto.replace('Renta ', '') ?? '—';
+    quote.breakdown.lines
+      .filter((l) => l.spaceId)
+      .map((l) => l.concepto.replace('Renta ', ''))
+      .join(' y ') || '—';
   const costoHoraExtra = Math.round(quote.rentaTotal * 0.05);
   const evento = `${quote.eventType?.nombre ?? 'Evento'}${hoja.nombreFestejado ? ` · ${hoja.nombreFestejado}` : ''}`;
   const cliente = `${quote.client?.nombre ?? 'Cliente'}${hoja.relacionCliente ? ` — ${hoja.relacionCliente}` : ''}`;

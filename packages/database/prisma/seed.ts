@@ -71,7 +71,6 @@ async function seedCatalog() {
   // Add-ons de ejemplo
   await prisma.addOn.createMany({
     data: [
-      { nombre: 'Valet parking', kind: AddOnKind.porUnidad, price: 100 },
       { nombre: 'DJ Hora extra', kind: AddOnKind.porUnidad, price: 2950 },
       { nombre: 'Mesa de dulces (por persona)', kind: AddOnKind.porPersona, price: 110 },
     ],

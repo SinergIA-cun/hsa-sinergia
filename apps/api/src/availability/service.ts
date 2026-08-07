@@ -1,12 +1,12 @@
 import type { PrismaClient } from '@hsa/database';
 
-export type AvailabilityLevel = 'libre' | 'cotizaciones' | 'apartada' | 'bloqueada';
+export type AvailabilityLevel = 'libre' | 'cotizaciones' | 'bloqueada';
 
 export interface SpaceAvailability {
   spaceId: string;
   nombre: string;
   level: AvailabilityLevel;
-  counts: { cotizaciones: number; apartadas: number; formalizadas: number; liquidadas: number };
+  counts: { cotizaciones: number; formalizadas: number; complementadas: number; liquidadas: number };
   quotes: { id: string; cliente: string; status: string }[];
 }
 
@@ -25,10 +25,10 @@ function dayRange(fechaISO: string): { gte: Date; lt: Date } {
   return { gte, lt };
 }
 
-// Estatus que "ocupan": borrador/enviada/aceptada = cotización (aviso suave);
-// apartada = aviso fuerte; formalizada/liquidada = bloqueo. vencida se ignora.
+// Estatus que "ocupan": borrador/enviada/aceptada = cotización sin pago (aviso
+// suave); cualquier cosa con compromiso de pago bloquea. vencida se ignora.
 const COTIZACION = new Set(['borrador', 'enviada', 'aceptada']);
-const BLOQUEO = new Set(['formalizada', 'liquidada']);
+const BLOQUEO = new Set(['formalizada', 'complementada', 'liquidada']);
 
 /**
  * Disponibilidad por espacio+fecha. GLOBAL (no filtra por ventas): cualquiera
@@ -79,13 +79,12 @@ export async function getAvailability(
     const relevantes = quotes.filter((q) => q.spaceIds.includes(spaceId));
     const counts = {
       cotizaciones: relevantes.filter((q) => COTIZACION.has(q.status)).length,
-      apartadas: relevantes.filter((q) => q.status === 'apartada').length,
       formalizadas: relevantes.filter((q) => q.status === 'formalizada').length,
+      complementadas: relevantes.filter((q) => q.status === 'complementada').length,
       liquidadas: relevantes.filter((q) => q.status === 'liquidada').length,
     };
     let level: AvailabilityLevel = 'libre';
     if (relevantes.some((q) => BLOQUEO.has(q.status))) level = 'bloqueada';
-    else if (counts.apartadas > 0) level = 'apartada';
     else if (counts.cotizaciones > 0) level = 'cotizaciones';
 
     return {

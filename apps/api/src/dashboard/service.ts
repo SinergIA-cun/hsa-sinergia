@@ -2,9 +2,9 @@ import type { PrismaClient } from '@hsa/database';
 import { ownershipWhere, loadEstadoCuentaBulk, expireStaleQuotes, type Actor } from '../quotes/service.js';
 
 // Estatus de evento real (ya reservado) — para fichas, próxima semana y alertas.
-const EVENTOS = ['apartada', 'formalizada', 'liquidada'] as const;
+const EVENTOS = ['formalizada', 'complementada', 'liquidada'] as const;
 // Confirmados que aún deben dinero (para alertas de finiquito).
-const CONFIRMADOS = ['apartada', 'formalizada'] as const;
+const CONFIRMADOS = ['formalizada', 'complementada'] as const;
 
 export type Semaforo = 'verde' | 'amarillo' | 'rojo';
 
@@ -221,7 +221,8 @@ export async function getDashboard(
 
     const cliente = q.client?.nombre ?? 'Cliente';
     const evento = q.eventType?.nombre ?? 'Evento';
-    const espacio = espacioById.get(q.spaceIds[0] ?? '') ?? '—';
+    // Un evento puede ocupar hasta 3 salones: se listan todos.
+    const espacio = q.spaceIds.map((id) => espacioById.get(id) ?? id).join(' y ') || '—';
     const ec = estados.get(q.id)!;
 
     if (q.fechaEvento >= desde && q.fechaEvento < hasta) eventosMes += 1;
@@ -288,7 +289,7 @@ export async function getDashboard(
       }
     }
 
-    // Alertas: confirmado (apartada/formalizada) que ya entró en sus 30 días sin finiquitar.
+    // Alertas: confirmado (formalizada/complementada) que ya entró en sus 30 días sin finiquitar.
     if ((CONFIRMADOS as readonly string[]).includes(q.status) && finiquito.pendiente) {
       const dias = Math.round((hoy.getTime() - new Date(finiquito.venceISO).getTime()) / 86_400_000);
       alertas.push({

@@ -38,7 +38,7 @@ const catalog: Catalog = {
     },
   ],
   addOns: [
-    { id: 'valet', name: 'Valet parking', kind: 'porUnidad', price: 100 },
+    { id: 'porunidad', name: 'Servicio por unidad', kind: 'porUnidad', price: 100 },
     { id: 'dj', name: 'DJ', kind: 'fijo', price: 2950 },
   ],
 };
@@ -78,8 +78,8 @@ describe('computeQuote', () => {
     expect(r.total).toBeCloseTo(108500 + 2 * 0.05 * 108500, 2);
   });
 
-  it('add-ons: valet porUnidad e IVA; DJ fijo con IVA', () => {
-    const r = computeQuote(catalog, mk({ addOns: [{ addOnId: 'valet', cantidad: 50 }, { addOnId: 'dj', cantidad: 1 }] }));
+  it('add-ons: porUnidad e IVA; DJ fijo con IVA', () => {
+    const r = computeQuote(catalog, mk({ addOns: [{ addOnId: 'porunidad', cantidad: 50 }, { addOnId: 'dj', cantidad: 1 }] }));
     const addonBase = 100 * 50 + 2950;
     expect(r.total).toBeCloseTo(108500 + addonBase * 1.16, 2);
   });
@@ -111,10 +111,10 @@ describe('computeQuote', () => {
   it('rentaTotal + otrosTotal === total y otros = alimentos + servicios', () => {
     const r = computeQuote(
       catalog,
-      mk({ foodPackageId: 'boda-supreme', addOns: [{ addOnId: 'valet', cantidad: 50 }] }),
+      mk({ foodPackageId: 'boda-supreme', addOns: [{ addOnId: 'porunidad', cantidad: 50 }] }),
     );
     expect(round2(r.rentaTotal + r.otrosTotal)).toBe(r.total);
-    // "otros" = alimentos con IVA + valet con IVA.
+    // "otros" = alimentos con IVA + add-on por unidad con IVA.
     const otrosEsperado = 799 * 250 * 1.16 + 100 * 50 * 1.16;
     expect(r.otrosTotal).toBeCloseTo(otrosEsperado, 2);
   });
@@ -169,7 +169,7 @@ describe('computeQuote', () => {
   it('cada bloque cuadra: rentaSubtotal+rentaIva=rentaTotal y otrosSubtotal+otrosIva=otrosTotal', () => {
     const r = computeQuote(
       catalog,
-      mk({ foodPackageId: 'boda-supreme', addOns: [{ addOnId: 'valet', cantidad: 50 }] }),
+      mk({ foodPackageId: 'boda-supreme', addOns: [{ addOnId: 'porunidad', cantidad: 50 }] }),
     );
     expect(round2(r.rentaSubtotal + r.rentaIva)).toBe(r.rentaTotal);
     expect(round2(r.otrosSubtotal + r.otrosIva)).toBe(r.otrosTotal);
@@ -180,7 +180,7 @@ describe('computeQuote', () => {
   });
 
   it('subtotal + iva === total', () => {
-    const r = computeQuote(catalog, mk({ horasExtra: 1, foodPackageId: 'boda-supreme', addOns: [{ addOnId: 'valet', cantidad: 50 }] }));
+    const r = computeQuote(catalog, mk({ horasExtra: 1, foodPackageId: 'boda-supreme', addOns: [{ addOnId: 'porunidad', cantidad: 50 }] }));
     expect(r.subtotal + r.iva).toBeCloseTo(r.total, 2);
   });
 
@@ -192,5 +192,26 @@ describe('computeQuote', () => {
       ],
     };
     expect(() => computeQuote(roto, mk({ spaceIds: ['roto'], invitados: 100 }))).toThrow(/Falta precio/i);
+  });
+
+  it('las líneas de renta llevan spaceId; las demás no', () => {
+    // El catálogo de prueba tiene 'arcos' (201-300) y 'cupula' (50-300): con 250
+    // invitados ambos tienen fila de renta.
+    const b = computeQuote(catalog, {
+      fecha: '2027-05-08',
+      invitados: 250,
+      spaceIds: ['arcos', 'cupula'],
+      horasExtra: 1,
+      usaCapilla: false,
+      usaDjHoraExtra: false,
+      addOns: [],
+    });
+
+    const rentas = b.lines.filter((l) => l.spaceId != null);
+    expect(rentas).toHaveLength(2);
+    expect(rentas.map((l) => l.spaceId).sort()).toEqual(['arcos', 'cupula']);
+
+    const horasExtra = b.lines.find((l) => l.concepto === 'Horas extra')!;
+    expect(horasExtra.spaceId).toBeUndefined();
   });
 });

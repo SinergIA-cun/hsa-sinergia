@@ -6,6 +6,7 @@ export const quoteSelectionSchema = z.object({
   spaceIds: z
     .array(z.string())
     .min(1)
+    .max(3, { message: 'Máximo 3 espacios por evento' })
     .refine((ids) => new Set(ids).size === ids.length, {
       message: 'spaceIds no debe tener duplicados',
     }),

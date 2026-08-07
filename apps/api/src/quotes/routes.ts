@@ -1,11 +1,14 @@
 import type { FastifyInstance } from 'fastify';
+import { z } from 'zod';
 import { requireAuth } from '../auth/plugin.js';
+import { cotizacionesDesplazadas } from './empalmes.js';
 import {
   createQuote,
   duplicateQuote,
   getQuote,
   listQuotes,
   getByToken,
+  moveQuoteDate,
   updateQuote,
   updateStatus,
   updateOperativa,
@@ -20,8 +23,13 @@ import {
 
 export async function quoteRoutes(app: FastifyInstance): Promise<void> {
   app.post('/quotes', { preHandler: requireAuth }, async (req, reply) => {
-    const quote = await createQuote(app.prisma, req.body, req.user as Actor);
-    return reply.code(201).send({ quote });
+    try {
+      const quote = await createQuote(app.prisma, req.body, req.user as Actor);
+      return reply.code(201).send({ quote });
+    } catch (e) {
+      if (e instanceof QuoteError) return reply.code(e.status).send({ error: e.message });
+      throw e;
+    }
   });
 
   app.get('/quotes', { preHandler: requireAuth }, async (req) => {
@@ -31,6 +39,12 @@ export async function quoteRoutes(app: FastifyInstance): Promise<void> {
   // Papelera: ruta estática ANTES de /quotes/:id (find-my-way prioriza estáticas de todos modos).
   app.get('/quotes/trash', { preHandler: requireAuth }, async (req) => {
     return { quotes: await listTrash(app.prisma, req.user as Actor) };
+  });
+
+  // Empalmes: cotizaciones vivas cuya fecha y espacio ya fueron apartados por otra.
+  // También estática y también antes de /quotes/:id, por la misma razón que la papelera.
+  app.get('/quotes/desplazadas', { preHandler: requireAuth }, async (req) => {
+    return { items: await cotizacionesDesplazadas(app.prisma, req.user as Actor) };
   });
 
   app.delete<{ Params: { id: string } }>(
@@ -119,6 +133,18 @@ export async function quoteRoutes(app: FastifyInstance): Promise<void> {
       }
     },
   );
+
+  app.patch<{ Params: { id: string } }>('/quotes/:id/fecha', { preHandler: requireAuth }, async (req, reply) => {
+    const parsed = z.object({ fecha: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }).safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ error: 'Fecha inválida' });
+    try {
+      const quote = await moveQuoteDate(app.prisma, req.params.id, parsed.data.fecha, req.user as Actor);
+      return { quote };
+    } catch (e) {
+      if (e instanceof QuoteError) return reply.code(e.status).send({ error: e.message });
+      throw e;
+    }
+  });
 
   app.patch<{ Params: { id: string } }>(
     '/quotes/:id/operativa',

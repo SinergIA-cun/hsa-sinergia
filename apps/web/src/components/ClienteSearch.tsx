@@ -10,6 +10,12 @@ export interface ClienteLite {
   correo: string | null;
   empresa: string | null;
   numeroReferencia: number;
+  rfc?: string | null;
+  razonSocial?: string | null;
+  regimenFiscal?: string | null;
+  cpFiscal?: string | null;
+  usoCfdi?: string | null;
+  correoFacturacion?: string | null;
 }
 
 /** Buscador de clientes existentes para reutilizarlos (evita duplicados). */

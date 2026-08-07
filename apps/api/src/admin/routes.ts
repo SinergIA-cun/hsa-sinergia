@@ -57,7 +57,6 @@ const configSchema = z.object({
   ivaRate: z.number().min(0).max(1).optional(),
   extraHourRate: z.number().min(0).max(1).optional(),
   foodDiscountRate: z.number().min(0).max(1).optional(),
-  valetRatio: z.number().positive().optional(),
 });
 
 export async function adminRoutes(app: FastifyInstance): Promise<void> {

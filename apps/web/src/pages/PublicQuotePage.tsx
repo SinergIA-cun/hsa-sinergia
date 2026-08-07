@@ -2,7 +2,7 @@ import { useParams, Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { CalendarDays, Users, MapPin, Printer, Receipt } from 'lucide-react';
 import { api } from '../lib/api.ts';
-import { formatMXN } from '../lib/money.ts';
+import { formatMXN, formatPctFraccion } from '../lib/money.ts';
 import { formatEventDate } from '../lib/date.ts';
 import { Logo } from '../components/Logo.tsx';
 import { BreakdownGrouped } from '../components/BreakdownGrouped.tsx';
@@ -24,8 +24,13 @@ function terminosPago(plan: Milestone[]): string[] {
     const vence = m.venceISO ? ` a más tardar el ${formatEventDate(m.venceISO, 'long')}` : '';
     if (m.key === 'apartar') return `Apartado: ${formatMXN(m.objetivo)} para reservar la fecha.`;
     if (m.key === 'complemento') {
-      const pct = m.porcentaje != null ? `${m.porcentaje}% del total = ` : '';
-      return `Complemento (formalizar): ${pct}${formatMXN(m.objetivo)}${vence}.`;
+      // El complemento es lo que se suma al apartado, no el acumulado. Se imprime
+      // la multiplicación de cada salón para que el cliente la pueda verificar.
+      const desglose = m.desglose ?? [];
+      const suma = desglose.reduce((s, d) => s + d.monto, 0);
+      const cuentas = desglose.map((d) => `${formatPctFraccion(d.pct)} de ${formatMXN(d.rentaBase)}`).join(' + ');
+      const detalle = cuentas ? ` (${cuentas})` : '';
+      return `Complemento: ${formatMXN(suma)}${detalle}, adicional al apartado${vence}. Con el apartado, lo pagado acumulado suma ${formatMXN(m.objetivo)}.`;
     }
     return `Liquidación: el total (${formatMXN(m.objetivo)}) debe quedar cubierto${vence} (30 días antes del evento).`;
   });
@@ -212,10 +217,6 @@ export function PublicQuotePage() {
           </div>
           <div className="rounded-[var(--radius-card)] border border-cream-300 bg-white/70 p-6 text-sm text-charcoal">
             <ul className="space-y-2">
-              <li className="flex gap-2">
-                <span className="text-gold">•</span>
-                El valet parking se cobra según el total de vehículos del día (costo por automóvil $100).
-              </li>
               {quote.horasEvento != null && (
                 <li className="flex gap-2">
                   <span className="text-gold">•</span>

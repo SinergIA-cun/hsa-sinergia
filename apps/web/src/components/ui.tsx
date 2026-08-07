@@ -61,7 +61,10 @@ export function Field({
 const inputBase =
   'w-full rounded-lg border border-ink/15 bg-white/70 px-3.5 py-2.5 text-sm text-charcoal ' +
   'placeholder:text-charcoal-soft/60 transition-colors ' +
-  'focus:border-gold focus:outline-none focus:ring-2 focus:ring-gold/30';
+  'focus:border-gold focus:outline-none focus:ring-2 focus:ring-gold/30 ' +
+  // Sin esto un campo deshabilitado se ve idéntico a uno editable: el fondo propio
+  // pisa el gris que el navegador aplicaría por omisión.
+  'disabled:cursor-not-allowed disabled:bg-ink/5 disabled:text-charcoal-soft';
 
 export const TextInput = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement>>(
   function TextInput({ className, ...props }, ref) {

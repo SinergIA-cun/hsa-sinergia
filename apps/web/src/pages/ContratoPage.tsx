@@ -1,10 +1,11 @@
 import { useParams, Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { ArrowLeft, Printer } from 'lucide-react';
+import { faltanDatosFactura } from '@hsa/shared';
 import { api } from '../lib/api.ts';
-import { formatMXNCents } from '../lib/money.ts';
+import { formatMXNCents, formatPctFraccion } from '../lib/money.ts';
 import { formatEventDate } from '../lib/date.ts';
-import type { QuoteDetail } from '../lib/types.ts';
+import type { QuoteDetail, Catalog } from '../lib/types.ts';
 
 const MESES = [
   'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
@@ -21,12 +22,27 @@ export function ContratoPage() {
     queryFn: () => api.get<QuoteDetail>(`/api/quotes/${id}`),
     retry: false,
   });
+  const catalogQ = useQuery({
+    queryKey: ['catalog'],
+    queryFn: () => api.get<Catalog>('/api/catalog'),
+  });
 
-  if (isLoading) {
+  // El catálogo entra en la espera: sin él los espacios saldrían con su id crudo y
+  // los renglones de pago dirían "por definir". Es un contrato que se firma, así que
+  // no se imprime hasta tener los nombres y las reglas reales.
+  if (isLoading || catalogQ.isLoading) {
     return <div className="grid min-h-screen place-items-center text-ink-500">Cargando contrato…</div>;
   }
   if (isError || !data) {
     return <div className="grid min-h-screen place-items-center text-wine">No se encontró la cotización.</div>;
+  }
+  if (catalogQ.isError || !catalogQ.data) {
+    return (
+      <div className="grid min-h-screen place-items-center px-6 text-center text-wine">
+        No se pudo cargar el catálogo de espacios. El contrato no se muestra sin los nombres y las reglas de pago
+        correctos; vuelve a intentarlo.
+      </div>
+    );
   }
 
   const { quote, estadoCuenta } = data;
@@ -41,8 +57,15 @@ export function ContratoPage() {
   const descuento = lines.find((l) => l.concepto.toLowerCase().includes('descuento'));
   const foodLine = lines.find((l) => l.concepto.startsWith('Alimentos '));
   const paqueteNombre = foodLine ? foodLine.concepto.replace('Alimentos ', '') : null;
-  const espacioNombre =
-    rentaLines.find((l) => l.concepto.startsWith('Renta '))?.concepto.replace('Renta ', '') ?? BLANK;
+  const espaciosById = new Map((catalogQ.data?.spaces ?? []).map((s) => [s.id, s.nombre]));
+  // Nombres de los espacios del evento. Se prefiere `spaceId` de las líneas; si el
+  // desglose es anterior a ese campo, se usa el texto del concepto como respaldo.
+  const nombresEspacios = quote.spaceIds.length > 0
+    ? quote.spaceIds.map((id) => espaciosById.get(id) ?? id)
+    : rentaLines
+        .filter((l) => l.concepto.startsWith('Renta '))
+        .map((l) => l.concepto.replace('Renta ', ''));
+  const espacioNombre = nombresEspacios.length > 0 ? nombresEspacios.join(' y ') : BLANK;
 
   const hoy = new Date();
   const correo = quote.client?.correo || '____________';
@@ -71,9 +94,13 @@ export function ContratoPage() {
         .doc-page .fill { color: #14304d; font-weight: 600; }
         .doc-page table { width: 100%; border-collapse: collapse; margin: 0.75rem 0; font-size: 0.9rem; }
         .doc-page td, .doc-page th { border: 1px solid #ccc; padding: 0.4rem 0.6rem; text-align: left; vertical-align: top; }
+        .doc-page .fiscal-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.35rem 0.9rem; margin: 0.35rem 0 0.4rem; font-size: 0.85rem; }
+        .doc-page .fiscal-grid > span { display: flex; flex-direction: column; border: 1px solid #ccc; padding: 0.3rem 0.5rem; }
+        .doc-page .fiscal-grid small { color: #666; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.03em; }
         .doc-page .campo-row { display: flex; gap: 0.75rem; margin: 0.35rem 0; }
         .doc-page .campo-row b { min-width: 11rem; }
         .doc-page .campo-row span { border-bottom: 1px solid #999; flex: 1; }
+        .doc-page .nota { font-size: 0.82rem; color: #555; font-style: italic; margin-top: -0.35rem; }
         .doc-page ol, .doc-page ul { margin: 0 0 0.85rem 1.25rem; }
         .doc-page li { margin-bottom: 0.4rem; text-align: justify; }
         .doc-page .firmas { display: flex; justify-content: space-between; gap: 3rem; margin-top: 4rem; text-align: center; }
@@ -232,25 +259,53 @@ export function ContratoPage() {
               acordado con Hacienda San Andrés Atoto, S.A.
             </p>
           ) : (
-            <table>
-              <thead>
-                <tr><th>Espacio</th><th>Anticipo</th><th>Complemento<br />(3 meses después de contratar)</th><th>Finiquito</th></tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <td>{espacioNombre}</td>
-                  <td>{hitoApartar ? formatMXNCents(hitoApartar.objetivo) : '—'}</td>
-                  <td>
-                    {hitoComplemento?.porcentaje != null ? `${hitoComplemento.porcentaje}% sobre el total = ` : ''}
-                    {hitoComplemento ? formatMXNCents(hitoComplemento.objetivo) : '—'}
-                  </td>
-                  <td>
-                    {hitoFiniquito ? formatMXNCents(hitoFiniquito.objetivo) : '—'}, cubierto{' '}
-                    {hitoFiniquito?.venceISO ? `el ${formatEventDate(hitoFiniquito.venceISO, 'long')}` : '30 días antes del evento'}.
-                  </td>
-                </tr>
-              </tbody>
-            </table>
+            <>
+              <table>
+                <thead>
+                  <tr>
+                    <th>Espacio</th><th>Renta</th><th>Apartado</th>
+                    <th>Complemento<br />(3 meses después de contratar)</th><th>Finiquito</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {quote.spaceIds.map((id) => {
+                    // El monto sale del desglose que calculó el servidor: el contrato
+                    // imprime lo que se cobra, no una cuenta recalculada aparte.
+                    const d = hitoComplemento?.desglose?.find((x) => x.spaceId === id);
+                    const regla = catalogQ.data?.spaces.find((s) => s.id === id)?.paymentRule;
+                    return (
+                      <tr key={id}>
+                        <td>{espaciosById.get(id) ?? id}</td>
+                        <td>{d ? formatMXNCents(d.rentaBase) : '—'}</td>
+                        <td>{regla ? formatMXNCents(regla.anticipo) : 'por definir'}</td>
+                        <td>{d ? `${formatPctFraccion(d.pct)} = ${formatMXNCents(d.monto)}` : 'por definir'}</td>
+                        <td />
+                      </tr>
+                    );
+                  })}
+                  <tr>
+                    <td><b>{quote.spaceIds.length > 1 ? 'Total del evento' : 'Total'}</b></td>
+                    <td><b>{formatMXNCents(quote.rentaTotal)}</b></td>
+                    <td><b>{hitoApartar ? formatMXNCents(hitoApartar.objetivo) : '—'}</b></td>
+                    <td>
+                      <b>
+                        {hitoComplemento?.desglose
+                          ? formatMXNCents(hitoComplemento.desglose.reduce((s, d) => s + d.monto, 0))
+                          : '—'}
+                      </b>
+                    </td>
+                    <td>
+                      {hitoFiniquito ? formatMXNCents(hitoFiniquito.objetivo) : '—'}, cubierto{' '}
+                      {hitoFiniquito?.venceISO ? `el ${formatEventDate(hitoFiniquito.venceISO, 'long')}` : '30 días antes del evento'}.
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+              <p className="nota">
+                El complemento es adicional al apartado. Al cubrirlo, lo pagado acumulado
+                suma {hitoComplemento ? formatMXNCents(hitoComplemento.objetivo) : '—'}.
+              </p>
+            </>
           )}
           <p>
             Si no está liquidado El Evento en su totalidad para la fecha contratada, no se les permitirá el acceso al
@@ -457,7 +512,31 @@ export function ContratoPage() {
             <li>No están permitidas las degustaciones para eventos contratados en otros recintos para eventos.</li>
           </ol>
           <p>Estas restricciones son medidas de Protección Civil estatal y de seguridad interna.</p>
-          <div className="firmas" style={{ marginTop: '6rem' }}>
+
+          {/* Datos de facturación justo ANTES de la firma: el cliente firma debajo de los
+              datos fiscales que declara. Va aquí y no en la página 1 porque aquella solo
+              tiene 132px libres —el bloque la desbordaba y corría los folios de las 9
+              páginas—, mientras que esta última hoja está a media capacidad. */}
+          {quote.requiereFactura && (
+            <div style={{ marginTop: '2rem' }}>
+              <p style={{ marginBottom: '0.25rem' }}><b>Datos de facturación</b></p>
+              <div className="fiscal-grid">
+                <span><small>RFC</small><span className="fill">{quote.client?.rfc || BLANK}</span></span>
+                <span><small>Razón social</small><span className="fill">{quote.client?.razonSocial || BLANK}</span></span>
+                <span><small>Régimen fiscal</small><span className="fill">{quote.client?.regimenFiscal || BLANK}</span></span>
+                <span><small>C.P. fiscal</small><span className="fill">{quote.client?.cpFiscal || BLANK}</span></span>
+                <span><small>Uso del CFDI</small><span className="fill">{quote.client?.usoCfdi || BLANK}</span></span>
+                <span><small>Correo para la factura</small><span className="fill">{quote.client?.correoFacturacion || BLANK}</span></span>
+              </div>
+              {faltanDatosFactura(quote.client ?? {}) && (
+                <p style={{ fontStyle: 'italic' }}>
+                  Faltan datos para poder emitir la factura; se solicitarán antes del evento.
+                </p>
+              )}
+            </div>
+          )}
+
+          <div className="firmas" style={{ marginTop: quote.requiereFactura ? '3rem' : '6rem' }}>
             <div className="firma" style={{ maxWidth: '28rem', margin: '0 auto' }}>
               {quote.client?.nombre}
               <div style={{ fontSize: '0.8rem', color: '#777' }}>Nombre y Firma de aceptación del Cliente</div>

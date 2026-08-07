@@ -1,10 +1,19 @@
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import type { PrismaClient, Prisma } from '@hsa/database';
-import { computeQuote, quoteSelectionSchema, type QuoteSelection } from '@hsa/shared';
+import {
+  computeQuote,
+  quoteSelectionSchema,
+  estadoFacturaPago,
+  datosFiscalesEditables,
+  hoyCivilMexico,
+  prorratearRenta,
+  type QuoteSelection,
+} from '@hsa/shared';
 import { loadCatalog } from '../catalog/loader.js';
+import { getAvailability } from '../availability/service.js';
 import { logActivity } from './activityLog.js';
-import { computeEstadoCuenta, esUpgrade, type EstadoCuenta } from './estadoCuenta.js';
+import { computeEstadoCuenta, esUpgrade, type EstadoCuenta, type SpaceRuleWithRent } from './estadoCuenta.js';
 
 export interface Actor {
   id: string;
@@ -15,8 +24,8 @@ export const QUOTE_STATUSES = [
   'borrador',
   'enviada',
   'aceptada',
-  'apartada',
   'formalizada',
+  'complementada',
   'liquidada',
   'vencida',
 ] as const;
@@ -26,6 +35,19 @@ const clientSchema = z.object({
   telefono: z.string().optional(),
   correo: z.string().email().optional(),
   empresa: z.string().optional(),
+  // Datos fiscales (CFDI 4.0). Se validan de forma laxa aquí —un cliente puede
+  // guardarse a medias mientras junta los papeles— y la lista de requisitos de
+  // @hsa/shared es la que dice si ya se le puede facturar.
+  //
+  // `nullish` y no `optional`: null es un valor legítimo ("este cliente no tiene
+  // RFC") y es como se borra un dato mal capturado. Omitir el campo deja el valor
+  // anterior intacto; mandarlo en null lo limpia.
+  rfc: z.string().max(13).nullish(),
+  razonSocial: z.string().max(200).nullish(),
+  regimenFiscal: z.string().max(3).nullish(),
+  cpFiscal: z.string().max(5).nullish(),
+  usoCfdi: z.string().max(4).nullish(),
+  correoFacturacion: z.string().max(200).nullish(),
 });
 
 export const createQuoteSchema = quoteSelectionSchema
@@ -33,32 +55,35 @@ export const createQuoteSchema = quoteSelectionSchema
     eventTypeId: z.string(),
     horasEvento: z.number().int().positive().optional(),
     esCortesia: z.boolean().default(false),
+    requiereFactura: z.boolean().default(false),
     capillaHorario: z.string().max(20).nullable().optional(),
     clientId: z.string().optional(),
     client: clientSchema.optional(),
   })
   .refine((d) => Boolean(d.clientId ?? d.client), {
     message: 'Se requiere clientId o datos de client',
-  })
-  .refine((d) => d.spaceIds.length === 1, { message: 'Solo se permite un espacio por evento' });
+  });
 
 export const updateQuoteSchema = quoteSelectionSchema
   .extend({
     eventTypeId: z.string(),
     horasEvento: z.number().int().positive().nullable().optional(),
     esCortesia: z.boolean().default(false),
+    requiereFactura: z.boolean().default(false),
     capillaHorario: z.string().max(20).nullable().optional(),
     client: clientSchema.optional(),
-  })
-  .refine((d) => d.spaceIds.length === 1, { message: 'Solo se permite un espacio por evento' });
+  });
 
 export const statusSchema = z.object({ status: z.enum(QUOTE_STATUSES) });
 
+/** Los seis campos del cliente que congela el candado de facturación. */
+const CAMPOS_FISCALES = ['rfc', 'razonSocial', 'regimenFiscal', 'cpFiscal', 'usoCfdi', 'correoFacturacion'] as const;
+
 const includeRels = { client: true, eventType: true, createdBy: { select: { id: true, nombre: true } } };
 
-// Se permite editar el desglose incluso con compromiso de pago (apartada/formalizada);
+// Se permite editar el desglose incluso con compromiso de pago (formalizada/complementada);
 // las ediciones en esos estatus quedan registradas en la bitácora de actividad.
-const EDITABLE_STATUSES = new Set(['borrador', 'enviada', 'aceptada', 'apartada', 'formalizada']);
+const EDITABLE_STATUSES = new Set(['borrador', 'enviada', 'aceptada', 'formalizada', 'complementada']);
 
 /** Calcula el desglose y enriquece las líneas de renta con el nombre del espacio. */
 async function computeAndEnrich(db: PrismaClient, selection: QuoteSelection) {
@@ -69,8 +94,10 @@ async function computeAndEnrich(db: PrismaClient, selection: QuoteSelection) {
   const enriched = {
     ...breakdown,
     lines: breakdown.lines.map((l) => {
-      const m = /^Renta (.+)$/.exec(l.concepto);
-      const nombre = m ? nameById.get(m[1]!) : undefined;
+      // `spaceId` viene del motor: no hace falta interpretar el texto del concepto.
+      // El `...l` conserva el spaceId en la línea guardada, que es de donde después
+      // se recupera la renta de cada espacio para ponderar el plan de pagos.
+      const nombre = l.spaceId ? nameById.get(l.spaceId) : undefined;
       return nombre ? { ...l, concepto: `Renta ${nombre}` } : l;
     }),
   };
@@ -106,26 +133,96 @@ export function ownershipWhere(actor: Actor): Prisma.QuoteWhereInput {
   return actor.role === 'admin' ? {} : { createdById: actor.id };
 }
 
+/**
+ * El espacio comprometido no se puede sobrevender. El navegador ya avisa antes de
+ * guardar, pero la autoridad es el servidor: sin esto, una llamada directa a la
+ * API —o dos personas de ventas guardando al mismo tiempo— pisan el compromiso.
+ */
+async function assertEspaciosDisponibles(
+  db: PrismaClient,
+  fecha: string,
+  spaceIds: string[],
+  excludeQuoteId?: string,
+): Promise<void> {
+  const disp = await getAvailability(db, fecha, spaceIds, excludeQuoteId);
+  const ocupados = disp.spaces.filter((s) => s.level === 'bloqueada');
+  if (ocupados.length > 0) {
+    const nombres = ocupados.map((s) => s.nombre).join(', ');
+    throw new QuoteError(409, `${nombres} no está disponible el ${fecha}: ya hay un evento comprometido.`);
+  }
+}
+
+/**
+ * Renta atribuida a cada espacio, con las horas extra y la capilla ya repartidas.
+ *
+ * Los renglones `Renta {spaceId}` del desglose son los únicos que traen `spaceId`;
+ * horas extra y capilla entran a `rentaTotal` sin dueño. Se prorratean para que
+ * la suma de las bases sea exactamente `rentaTotal` y el complemento no cambie.
+ *
+ * Las cotizaciones anteriores al campo `spaceId` no lo traen: su catálogo queda
+ * en ceros y el prorrateo reparte en partes iguales, que para un solo espacio es
+ * el monto completo.
+ */
+function rentaBasePorEspacio(breakdown: unknown, spaceIds: string[], rentaTotal: number): Map<string, number> {
+  const lines = (breakdown as { lines?: { spaceId?: string; monto?: number }[] } | null)?.lines ?? [];
+  const catalogo = new Map<string, number>();
+  for (const id of spaceIds) catalogo.set(id, 0);
+  for (const l of lines) {
+    if (l.spaceId && typeof l.monto === 'number' && catalogo.has(l.spaceId)) {
+      catalogo.set(l.spaceId, (catalogo.get(l.spaceId) ?? 0) + l.monto);
+    }
+  }
+  return prorratearRenta(catalogo, rentaTotal);
+}
+
+/**
+ * Reglas de pago listas para el motor, o `null` si falta la de algún espacio.
+ *
+ * Basta que UN espacio no tenga regla para que el plan quede pendiente: no se
+ * puede cobrar un plan a medias. Cuatro espacios (Balcones, Pajaritos, Jardín
+ * del Caballo, Capilla) todavía no tienen montos definidos.
+ */
+function armarReglas(
+  reglas: { spaceId: string; anticipo: number; complementoPct: number; liquidarDiasAntes: number }[],
+  spaceIds: string[],
+  rentaBase: Map<string, number>,
+): SpaceRuleWithRent[] | null {
+  if (spaceIds.length === 0 || reglas.length !== spaceIds.length) return null;
+  return reglas.map((r) => ({
+    spaceId: r.spaceId,
+    rule: { anticipo: r.anticipo, complementoPct: r.complementoPct, liquidarDiasAntes: r.liquidarDiasAntes },
+    rentaBase: rentaBase.get(r.spaceId) ?? 0,
+  }));
+}
+
 // El plan de pagos, el saldo y el finiquito se miden SOLO sobre la renta (lo que
 // cobra HSA). Los alimentos se pagan directo al banquetero y no se rastrean aquí.
-/** Carga regla del espacio + pagos y arma el estado de cuenta (base: renta). */
+/** Carga las reglas de los espacios + pagos y arma el estado de cuenta (base: renta). */
 export async function loadEstadoCuenta(db: PrismaClient, quote: {
-  id: string; rentaTotal: number; fechaEvento: Date; status: string; spaceIds: string[];
+  id: string; rentaTotal: number; fechaEvento: Date; status: string; spaceIds: string[]; breakdown: unknown;
 }) {
-  const spaceId = quote.spaceIds[0];
-  const [rule, payments, firstApartado] = await Promise.all([
-    spaceId ? db.spacePaymentRule.findUnique({ where: { spaceId } }) : Promise.resolve(null),
+  const [rules, payments, firstApartado] = await Promise.all([
+    db.spacePaymentRule.findMany({ where: { spaceId: { in: quote.spaceIds } } }),
     db.payment.findMany({ where: { quoteId: quote.id }, orderBy: { fecha: 'asc' } }),
     db.activityLog.findFirst({
-      where: { quoteId: quote.id, tipo: 'estatus', descripcion: { contains: 'apartada' } },
+      // Primer momento en que el evento alcanzó el hito del anticipo. Se aceptan
+      // ambos términos: 'formalizada' es el nombre actual y 'apartada' el que
+      // quedó escrito en la bitácora de los eventos anteriores al renombrado.
+      where: {
+        quoteId: quote.id,
+        tipo: 'estatus',
+        OR: [{ descripcion: { contains: 'formalizada' } }, { descripcion: { contains: 'apartada' } }],
+      },
       orderBy: { createdAt: 'asc' }, select: { createdAt: true },
     }),
   ]);
+
+  const rentaBase = rentaBasePorEspacio(quote.breakdown, quote.spaceIds, quote.rentaTotal);
   const ec = computeEstadoCuenta({
     total: quote.rentaTotal,
     fechaEvento: quote.fechaEvento,
     status: quote.status,
-    rule: rule ? { anticipo: rule.anticipo, complementoPct: rule.complementoPct, liquidarDiasAntes: rule.liquidarDiasAntes } : null,
+    rules: armarReglas(rules, quote.spaceIds, rentaBase),
     payments: payments.map((p) => ({ monto: p.monto, anuladoAt: p.anuladoAt })),
     fechaApartado: firstApartado?.createdAt ?? null,
   });
@@ -138,6 +235,7 @@ export interface QuoteEC {
   fechaEvento: Date;
   status: string;
   spaceIds: string[];
+  breakdown: unknown;
 }
 
 /**
@@ -152,13 +250,19 @@ export async function loadEstadoCuentaBulk(
   if (quotes.length === 0) return out;
 
   const quoteIds = quotes.map((q) => q.id);
-  const spaceIds = [...new Set(quotes.map((q) => q.spaceIds[0]).filter(Boolean) as string[])];
+  // Todos los espacios de todas las cotizaciones: un evento puede usar hasta 3.
+  const spaceIds = [...new Set(quotes.flatMap((q) => q.spaceIds))];
 
   const [rules, payments, apartados] = await Promise.all([
     db.spacePaymentRule.findMany({ where: { spaceId: { in: spaceIds } } }),
     db.payment.findMany({ where: { quoteId: { in: quoteIds } } }),
     db.activityLog.findMany({
-      where: { quoteId: { in: quoteIds }, tipo: 'estatus', descripcion: { contains: 'apartada' } },
+      // Ver la nota en loadEstadoCuenta: se aceptan el término nuevo y el legado.
+      where: {
+        quoteId: { in: quoteIds },
+        tipo: 'estatus',
+        OR: [{ descripcion: { contains: 'formalizada' } }, { descripcion: { contains: 'apartada' } }],
+      },
       orderBy: { createdAt: 'asc' },
       select: { quoteId: true, createdAt: true },
     }),
@@ -177,16 +281,17 @@ export async function loadEstadoCuentaBulk(
   }
 
   for (const q of quotes) {
-    const rule = ruleBySpace.get(q.spaceIds[0] ?? '');
+    const rentaBase = rentaBasePorEspacio(q.breakdown, q.spaceIds, q.rentaTotal);
+    const reglas = q.spaceIds
+      .map((id) => ruleBySpace.get(id))
+      .filter((r): r is NonNullable<typeof r> => r != null);
     out.set(
       q.id,
       computeEstadoCuenta({
         total: q.rentaTotal,
         fechaEvento: q.fechaEvento,
         status: q.status,
-        rule: rule
-          ? { anticipo: rule.anticipo, complementoPct: rule.complementoPct, liquidarDiasAntes: rule.liquidarDiasAntes }
-          : null,
+        rules: armarReglas(reglas, q.spaceIds, rentaBase),
         payments: pagosByQuote.get(q.id) ?? [],
         fechaApartado: apartadoByQuote.get(q.id) ?? null,
       }),
@@ -223,6 +328,8 @@ export async function reconcileStatuses(
       rentaTotal: true,
       fechaEvento: true,
       spaceIds: true,
+      // El desglose lleva la renta de cada espacio, que pondera el complemento.
+      breakdown: true,
       client: { select: { nombre: true } },
     },
   });
@@ -260,12 +367,22 @@ export async function reconcileStatuses(
 
 export async function createQuote(db: PrismaClient, rawInput: unknown, actor: Actor) {
   const input = createQuoteSchema.parse(rawInput);
+  // Antes de CUALQUIER escritura (incluida la del cliente): una cotización
+  // rechazada no debe dejar un cliente huérfano en la base.
+  await assertEspaciosDisponibles(db, input.fecha, input.spaceIds);
   const { breakdown, enriched } = await computeAndEnrich(db, toSelection(input));
 
   let clientId = input.clientId;
   if (!clientId && input.client) {
     const created = await db.client.create({ data: input.client });
     clientId = created.id;
+  } else if (clientId && input.client) {
+    // Cliente reutilizado: sus datos fiscales pueden venir capturados por
+    // primera vez en ESTE evento (el que vuelve y hasta ahora pide factura).
+    // Sin esto se perdían en silencio, que es justo lo que la tarjeta existe
+    // para capturar. Nombre, teléfono y correo no divergen: editarlos en el
+    // formulario desvincula al cliente, así que reescribirlos es un no-op.
+    await db.client.update({ where: { id: clientId }, data: input.client });
   }
 
   const created = await db.quote.create({
@@ -280,6 +397,7 @@ export async function createQuote(db: PrismaClient, rawInput: unknown, actor: Ac
       usaCapilla: input.usaCapilla ?? false,
       capillaHorario: input.capillaHorario ?? null,
       esCortesia: input.esCortesia ?? false,
+      requiereFactura: input.requiereFactura,
       usaDjHoraExtra: input.usaDjHoraExtra ?? false,
       foodPackageId: input.foodPackageId ?? null,
       addOns: input.addOns as unknown as Prisma.InputJsonValue,
@@ -361,9 +479,46 @@ export async function updateQuote(db: PrismaClient, id: string, rawInput: unknow
     throw new QuoteError(409, `No se puede editar una cotización en estatus "${existing.status}"`);
   }
   const input = updateQuoteSchema.parse(rawInput);
+  // Se excluye a sí misma: editar sin mover fecha ni espacio no se auto-bloquea.
+  await assertEspaciosDisponibles(db, input.fecha, input.spaceIds, id);
   const { breakdown, enriched } = await computeAndEnrich(db, toSelection(input));
 
+  let bitacoraFiscal: { campos: string[]; desbloqueoDeAdmin: boolean } | null = null;
   if (input.client) {
+    // Los datos fiscales se congelan cuando ya salió un CFDI con ellos: cambiarlos
+    // por debajo desalinea lo timbrado. Un admin sí puede corregirlos (típicamente
+    // tras cancelar el CFDI) y el cambio queda en la bitácora.
+    //
+    // Se compara VALOR contra valor, y solo de las llaves presentes:
+    //  · El formulario manda SIEMPRE los seis campos fiscales (ver
+    //    `fiscalesParaGuardar` en el front). Bloquear por presencia haría imposible
+    //    editar cualquier otra cosa del evento —invitados, horas extra— en cuanto
+    //    se emite la primera factura.
+    //  · `Object.hasOwn` y no `in`: `in` recorre la cadena de prototipos, así que
+    //    un campo ausente que exista en `Object.prototype` se leería como enviado.
+    //  · Omitir una llave significa "déjala como está" (así lo trata Prisma), no
+    //    "ponla en null"; por eso la ausencia nunca cuenta como cambio.
+    const clienteActual = await db.client.findUnique({ where: { id: existing.clientId } });
+    const camposFiscalesCambiados = CAMPOS_FISCALES.filter(
+      (campo) =>
+        Object.hasOwn(input.client!, campo) &&
+        (input.client![campo] ?? null) !== (clienteActual?.[campo] ?? null),
+    );
+
+    let congelado = false;
+    if (camposFiscalesCambiados.length > 0) {
+      const pagos = await db.payment.findMany({
+        where: { quoteId: id },
+        select: { fecha: true, facturadoAt: true, desbloqueoAt: true, anuladoAt: true },
+      });
+      const edicion = datosFiscalesEditables(pagos);
+      congelado = !edicion.editable;
+      if (congelado && actor.role !== 'admin') {
+        throw new QuoteError(409, edicion.motivo ?? 'Los datos fiscales ya no se pueden modificar.');
+      }
+      bitacoraFiscal = { campos: [...camposFiscalesCambiados], desbloqueoDeAdmin: congelado };
+    }
+
     await db.client.update({ where: { id: existing.clientId }, data: input.client });
   }
 
@@ -379,6 +534,7 @@ export async function updateQuote(db: PrismaClient, id: string, rawInput: unknow
       usaCapilla: input.usaCapilla ?? false,
       capillaHorario: input.capillaHorario ?? null,
       esCortesia: input.esCortesia ?? false,
+      requiereFactura: input.requiereFactura,
       usaDjHoraExtra: input.usaDjHoraExtra ?? false,
       foodPackageId: input.foodPackageId ?? null,
       addOns: input.addOns as unknown as Prisma.InputJsonValue,
@@ -389,17 +545,106 @@ export async function updateQuote(db: PrismaClient, id: string, rawInput: unknow
     include: includeRels,
   });
 
-  if (existing.status === 'apartada' || existing.status === 'formalizada') {
+  // Todo cambio de datos fiscales se registra, esté o no congelado el candado:
+  // el RFC con el que se timbra es información que hay que poder auditar hacia
+  // atrás. La marca de "desbloqueo de admin" señala los que rompieron el candado.
+  if (bitacoraFiscal) {
+    await logActivity(db, {
+      quoteId: id,
+      tipo: 'fiscal',
+      descripcion: `Datos fiscales actualizados${bitacoraFiscal.desbloqueoDeAdmin ? ' (desbloqueo de admin)' : ''}: ${bitacoraFiscal.campos.join(', ')}`,
+      meta: { campos: bitacoraFiscal.campos, desbloqueoDeAdmin: bitacoraFiscal.desbloqueoDeAdmin },
+      actorId: actor.id,
+    });
+  }
+
+  // Se registra CUALQUIER edición que cambie algo material, no solo las de eventos
+  // con compromiso de pago: el BI necesita el historial completo de cambios de
+  // salón y de tamaño de evento. Si no cambió nada, no se escribe: una bitácora
+  // llena de ruido no sirve para auditar.
+  const antes = {
+    invitados: existing.invitados,
+    espacios: [...existing.spaceIds].sort(),
+    fecha: existing.fechaEvento.toISOString().slice(0, 10),
+    total: existing.total,
+    rentaTotal: existing.rentaTotal,
+  };
+  const despues = {
+    invitados: updated.invitados,
+    espacios: [...updated.spaceIds].sort(),
+    fecha: updated.fechaEvento.toISOString().slice(0, 10),
+    total: updated.total,
+    rentaTotal: updated.rentaTotal,
+  };
+  if (JSON.stringify(antes) !== JSON.stringify(despues)) {
     await logActivity(db, {
       quoteId: id,
       tipo: 'edicion',
       descripcion: `Edición en ${existing.status}: total ${existing.total} → ${updated.total}`,
-      meta: { totalAntes: existing.total, totalDespues: updated.total },
+      meta: {
+        invitadosAntes: antes.invitados, invitadosDespues: despues.invitados,
+        espaciosAntes: existing.spaceIds, espaciosDespues: updated.spaceIds,
+        fechaAntes: antes.fecha, fechaDespues: despues.fecha,
+        totalAntes: antes.total, totalDespues: despues.total,
+        rentaTotalAntes: antes.rentaTotal, rentaTotalDespues: despues.rentaTotal,
+      },
       actorId: actor.id,
     });
   }
 
   return updated;
+}
+
+/**
+ * Mueve un evento a otra fecha (arrastre en la agenda).
+ *
+ * Cambiar la fecha cambia el precio: la renta depende del tipo de día. Por eso
+ * NO se escribe la fecha a secas — se reconstruye la selección actual con la
+ * fecha nueva y se delega en `updateQuote`, que recalcula el desglose, valida
+ * que el espacio esté libre en el destino y respeta ownership y estatus
+ * editables (liquidada y vencida quedan fuera por ese camino).
+ */
+export async function moveQuoteDate(db: PrismaClient, id: string, fecha: string, actor: Actor) {
+  const existing = await db.quote.findFirst({ where: { id, ...ownershipWhere(actor) } });
+  if (!existing) throw new QuoteError(404, 'Cotización no encontrada');
+  assertNotTrashed(existing);
+  if (!EDITABLE_STATUSES.has(existing.status)) {
+    throw new QuoteError(409, `No se puede mover una cotización en estatus "${existing.status}"`);
+  }
+
+  const fechaAntes = existing.fechaEvento.toISOString().slice(0, 10);
+  const addOns = (existing.addOns as unknown as { addOnId: string; cantidad: number }[]) ?? [];
+
+  const actualizada = await updateQuote(
+    db,
+    id,
+    {
+      fecha,
+      invitados: existing.invitados,
+      spaceIds: existing.spaceIds,
+      horasExtra: existing.horasExtra,
+      usaCapilla: existing.usaCapilla,
+      capillaHorario: existing.capillaHorario,
+      esCortesia: existing.esCortesia,
+      usaDjHoraExtra: existing.usaDjHoraExtra,
+      requiereFactura: existing.requiereFactura,
+      eventTypeId: existing.eventTypeId,
+      foodPackageId: existing.foodPackageId ?? undefined,
+      horasEvento: existing.horasEvento,
+      addOns,
+    },
+    actor,
+  );
+
+  await logActivity(db, {
+    quoteId: id,
+    tipo: 'edicion',
+    descripcion: `Fecha: ${fechaAntes} → ${fecha} · total ${existing.total} → ${actualizada.total}`,
+    meta: { fechaAntes, fechaDespues: fecha, totalAntes: existing.total, totalDespues: actualizada.total },
+    actorId: actor.id,
+  });
+
+  return actualizada;
 }
 
 export async function updateStatus(
@@ -520,7 +765,7 @@ export async function getOperativaDelDia(db: PrismaClient, fechaISO: string) {
     where: {
       fechaEvento: { gte, lt },
       deletedAt: null,
-      status: { in: ['apartada', 'formalizada', 'liquidada'] },
+      status: { in: ['formalizada', 'complementada', 'liquidada'] },
     },
     include: { client: true, eventType: true, createdBy: { select: { nombre: true } } },
     orderBy: { horaInicio: 'asc' },
@@ -696,7 +941,22 @@ export async function getQuote(db: PrismaClient, id: string, actor: Actor) {
   if (!quote) return null;
   const { estadoCuenta, payments } = await loadEstadoCuenta(db, quote);
   const activityLog = await db.activityLog.findMany({ where: { quoteId: id }, orderBy: { createdAt: 'desc' }, include: { actor: { select: { nombre: true } } } });
-  return { quote, estadoCuenta, payments, activityLog };
+
+  // El candado de facturación se calcula al vuelo: depende del calendario, no de
+  // un campo guardado, así que un pago "caduca" solo al cerrar su mes.
+  const hoy = hoyCivilMexico();
+  const paymentsConCandado = payments.map((p) => {
+    const est = estadoFacturaPago(p, hoy);
+    return { ...p, facturable: est.facturable, motivoFactura: est.motivo };
+  });
+
+  return {
+    quote,
+    estadoCuenta,
+    payments: paymentsConCandado,
+    fiscalEditable: datosFiscalesEditables(payments),
+    activityLog,
+  };
 }
 
 /** Vista pública por token: cotización + estado de cuenta con pagos. */

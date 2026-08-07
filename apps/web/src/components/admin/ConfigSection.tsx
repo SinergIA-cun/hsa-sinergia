@@ -17,7 +17,6 @@ export function ConfigSection() {
   const [ivaPct, setIvaPct] = useState('');
   const [extraHourPct, setExtraHourPct] = useState('');
   const [foodDiscountPct, setFoodDiscountPct] = useState('');
-  const [valetRatio, setValetRatio] = useState('');
   const [error, setError] = useState('');
   const [savedAt, setSavedAt] = useState<number | null>(null);
   const [touched, setTouched] = useState(false);
@@ -29,7 +28,6 @@ export function ConfigSection() {
     setIvaPct(String(config.ivaRate * 100));
     setExtraHourPct(String(config.extraHourRate * 100));
     setFoodDiscountPct(String(config.foodDiscountRate * 100));
-    setValetRatio(String(config.valetRatio));
   }, [config, touched]);
 
   const saveConfig = useMutation({
@@ -51,9 +49,8 @@ export function ConfigSection() {
     const iva = Number(ivaPct);
     const extraHour = Number(extraHourPct);
     const foodDiscount = Number(foodDiscountPct);
-    const ratio = Number(valetRatio);
-    if ([iva, extraHour, foodDiscount, ratio].some((n) => Number.isNaN(n)) || ratio <= 0) {
-      setError('Revisa que todos los campos sean números válidos y el valet sea mayor a 0.');
+    if ([iva, extraHour, foodDiscount].some((n) => Number.isNaN(n))) {
+      setError('Revisa que todos los campos sean números válidos.');
       return;
     }
     setError('');
@@ -61,7 +58,6 @@ export function ConfigSection() {
       ivaRate: iva / 100,
       extraHourRate: extraHour / 100,
       foodDiscountRate: foodDiscount / 100,
-      valetRatio: ratio,
     });
   }
 
@@ -83,9 +79,6 @@ export function ConfigSection() {
                 <TextInput type="number" min={0} max={100} step="0.01" value={foodDiscountPct} onChange={(e) => setFoodDiscountPct(e.target.value)} />
               </Field>
             </div>
-            <Field label="Valet: 1 auto por cada N personas" hint="Ej. 2.5 = 1 auto por cada 2.5 invitados">
-              <TextInput type="number" min={0.1} step="0.1" value={valetRatio} onChange={(e) => setValetRatio(e.target.value)} />
-            </Field>
             {error && <p className="text-xs text-wine">{error}</p>}
             {savedAt && !error && <p className="text-xs text-emerald-700">Configuración guardada.</p>}
             <Button type="submit" variant="gold" disabled={saveConfig.isPending}>
