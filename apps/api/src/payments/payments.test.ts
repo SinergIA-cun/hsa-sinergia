@@ -303,14 +303,18 @@ describe('candado de facturación', () => {
     expect(pago.motivoFactura).toMatch(/público en general/i);
   });
 
-  it('sin ningún pago facturable, el detalle marca los datos fiscales como no editables', async () => {
+  it('un mes cerrado marca el pago como no facturable pero NO congela los datos fiscales', async () => {
+    // El pago se fue a la factura global de público en general: nunca llevó los
+    // datos del cliente a un CFDI, así que no hay nada que proteger. El candado
+    // de los datos fiscales lo cierra la primera factura emitida, no el mes.
     const q = await nuevaQuote();
     await registerPayment(prisma, storage, q.id,
       { monto: 15000, metodo: 'transferencia', concepto: 'anticipo', fecha: '2020-03-15' },
       actor);
     const detalle = (await getQuote(prisma, q.id, actor))!;
-    expect(detalle.fiscalEditable.editable).toBe(false);
-    expect(detalle.fiscalEditable.motivo).toMatch(/público en general/i);
+    expect(detalle.payments[0]!.facturable).toBe(false);
+    expect(detalle.fiscalEditable.editable).toBe(true);
+    expect(detalle.fiscalEditable.motivo).toBeNull();
   });
 
   it('una cotización sin pagos deja capturar datos fiscales con normalidad', async () => {
@@ -326,7 +330,7 @@ describe('candado de facturación', () => {
     expect(actualizada.client.rfc).toBe('XAXX010101000');
   });
 
-  it('con el mes cerrado, cambiar un dato fiscal devuelve 409 pero reenviar el mismo valor no', async () => {
+  it('con el mes cerrado y sin factura emitida, el RFC todavía se puede corregir', async () => {
     const q = await nuevaQuote();
     await registerPayment(prisma, storage, q.id,
       { monto: 15000, metodo: 'transferencia', concepto: 'anticipo', fecha: '2020-03-15' },
@@ -341,13 +345,12 @@ describe('candado de facturación', () => {
     }, actor);
     expect(sinCambioFiscal.invitados).toBe(260);
 
-    await expect(
-      updateQuote(prisma, q.id, {
-        ...selectionDe(q),
-        invitados: 260,
-        client: { nombre: 'Pago Test', rfc: 'XAXX010101000' },
-      }, actor),
-    ).rejects.toThrow(/público en general/i);
+    const conRfc = await updateQuote(prisma, q.id, {
+      ...selectionDe(q),
+      invitados: 260,
+      client: { nombre: 'Pago Test', rfc: 'XAXX010101000' },
+    }, actor);
+    expect(conRfc.client.rfc).toBe('XAXX010101000');
   });
 
   it('no se desbloquea un pago de una cotización en la papelera', async () => {

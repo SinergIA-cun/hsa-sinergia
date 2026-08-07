@@ -81,16 +81,20 @@ export interface EstadoEdicionFiscal {
 /**
  * ¿Se pueden todavía tocar los datos fiscales del cliente?
  *
- * Sí mientras quede al menos un pago facturable: ese pago aún puede llevar el
- * RFC corregido. Un cliente sin pagos (o con todos anulados) siempre es editable.
+ * Se congelan en cuanto existe UNA factura emitida con ellos: el CFDI ya salió
+ * con ese RFC y esa razón social, y cambiarlos por debajo desalinea lo timbrado.
+ * Un admin sí puede moverlos (el rol se verifica en la API, no aquí).
+ *
+ * El corte de mes NO congela: un pago que se fue a la factura global dejó de ser
+ * facturable, pero nunca llevó los datos del cliente a ningún CFDI.
+ *
+ * No recibe `hoy` a propósito: esta regla no depende del calendario.
  */
-export function datosFiscalesEditables(pagos: PagoParaCandado[], hoy: Date): EstadoEdicionFiscal {
-  const vigentes = pagos.filter((p) => !p.anuladoAt);
-  if (vigentes.length === 0) return { editable: true, motivo: null };
-  const alguno = vigentes.some((p) => estadoFacturaPago(p, hoy).facturable);
-  if (alguno) return { editable: true, motivo: null };
+export function datosFiscalesEditables(pagos: PagoParaCandado[]): EstadoEdicionFiscal {
+  const facturado = pagos.some((p) => !p.anuladoAt && p.facturadoAt);
+  if (!facturado) return { editable: true, motivo: null };
   return {
     editable: false,
-    motivo: 'Todos los pagos de este evento ya se facturaron o se fueron a público en general.',
+    motivo: 'Ya se emitió una factura con estos datos. Solo un administrador puede cambiarlos.',
   };
 }

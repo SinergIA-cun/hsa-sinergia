@@ -496,7 +496,7 @@ export async function updateQuote(db: PrismaClient, id: string, rawInput: unknow
       where: { quoteId: id },
       select: { fecha: true, facturadoAt: true, desbloqueoAt: true, anuladoAt: true },
     });
-    const edicion = datosFiscalesEditables(pagos, hoyCivilMexico());
+    const edicion = datosFiscalesEditables(pagos);
     if (!edicion.editable) {
       const clienteActual = await db.client.findUnique({ where: { id: existing.clientId } });
       const tocaFiscales = CAMPOS_FISCALES.some(
@@ -928,7 +928,7 @@ export async function getQuote(db: PrismaClient, id: string, actor: Actor) {
     quote,
     estadoCuenta,
     payments: paymentsConCandado,
-    fiscalEditable: datosFiscalesEditables(payments, hoy),
+    fiscalEditable: datosFiscalesEditables(payments),
     activityLog,
   };
 }

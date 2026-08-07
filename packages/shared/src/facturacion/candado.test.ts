@@ -64,34 +64,42 @@ describe('estadoFacturaPago', () => {
 });
 
 describe('datosFiscalesEditables', () => {
-  it('un cliente sin pagos se puede editar', () => {
-    expect(datosFiscalesEditables([], HOY).editable).toBe(true);
+  const hoy = new Date(Date.UTC(2026, 7, 7));
+
+  it('sin pagos, editables', () => {
+    expect(datosFiscalesEditables([]).editable).toBe(true);
   });
 
-  it('con al menos un pago aún facturable, se puede editar', () => {
-    const r = datosFiscalesEditables(
-      [{ fecha: new Date('2026-03-01T00:00:00.000Z') }, { fecha: new Date('2026-04-02T00:00:00.000Z') }],
-      HOY,
-    );
-    expect(r.editable).toBe(true);
+  it('con pagos pero ninguno facturado, editables', () => {
+    const pagos = [{ fecha: new Date(Date.UTC(2026, 2, 10)) }];
+    expect(datosFiscalesEditables(pagos).editable).toBe(true);
   });
 
-  it('si todos los pagos ya están cerrados, no se puede editar', () => {
-    const r = datosFiscalesEditables(
-      [{ fecha: new Date('2026-02-10T00:00:00.000Z') }, { fecha: new Date('2026-03-01T00:00:00.000Z') }],
-      HOY,
-    );
+  it('un mes cerrado SIN factura ya no congela los datos', () => {
+    // Marzo cerró y el pago se fue a público en general: el pago no es
+    // facturable, pero los datos del cliente siguen siendo suyos y editables.
+    const pagos = [{ fecha: new Date(Date.UTC(2026, 2, 10)) }];
+    expect(estadoFacturaPago(pagos[0]!, hoy).facturable).toBe(false);
+    expect(datosFiscalesEditables(pagos).editable).toBe(true);
+  });
+
+  it('una sola factura emitida congela los datos', () => {
+    const pagos = [
+      { fecha: new Date(Date.UTC(2026, 6, 10)), facturadoAt: new Date(Date.UTC(2026, 6, 11)) },
+      { fecha: new Date(Date.UTC(2026, 7, 1)) },
+    ];
+    const r = datosFiscalesEditables(pagos);
     expect(r.editable).toBe(false);
-    expect(r.motivo).toMatch(/público en general/i);
+    expect(r.motivo).toContain('factura');
   });
 
-  it('los pagos anulados se ignoran al decidir', () => {
-    const r = datosFiscalesEditables(
-      [{ fecha: new Date('2026-04-02T00:00:00.000Z'), anuladoAt: new Date('2026-04-03T00:00:00.000Z') }],
-      HOY,
-    );
-    // Solo tenía un pago y está anulado ⇒ es como no tener pagos.
-    expect(r.editable).toBe(true);
+  it('una factura de un pago anulado no congela nada', () => {
+    const pagos = [{
+      fecha: new Date(Date.UTC(2026, 6, 10)),
+      facturadoAt: new Date(Date.UTC(2026, 6, 11)),
+      anuladoAt: new Date(Date.UTC(2026, 6, 20)),
+    }];
+    expect(datosFiscalesEditables(pagos).editable).toBe(true);
   });
 });
 
