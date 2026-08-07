@@ -340,6 +340,64 @@ git commit -m "feat(shared): regla del candado de facturación por pago"
 
 ## Task 3: Exponer y hacer valer el candado en la API
 
+### Step 0 (obligatorio antes que nada): el "hoy" debe ser el día civil de México
+
+**Hallazgo de la Task 2, verificado.** Los pagos se guardan como día calendario pinchado a
+medianoche UTC (`new Date(\`${fecha}T00:00:00.000Z\`)`). Pero `inicioDelMesSiguiente` devuelve
+la medianoche UTC del día 1, que son las **18:00 de CDMX del último día del mes**. Si se pasa
+`new Date()` como `hoy`, el candado cierra seis horas antes de tiempo, **todos los meses**:
+
+```
+CDMX 30/4/2026 17:30 → facturable: true
+CDMX 30/4/2026 18:00 → facturable: false   ← en México todavía es abril
+```
+
+Ambos lados tienen que vivir en el mismo espacio de días calendario. Agregar a
+`packages/shared/src/facturacion/candado.ts`:
+
+```ts
+/**
+ * El día civil de México como fecha a medianoche UTC.
+ *
+ * Los pagos se guardan como día calendario pinchado a medianoche UTC, así que el
+ * "hoy" del candado tiene que estar en ese mismo espacio. Usar `new Date()` a
+ * secas haría que el mes cerrara a las 18:00 hora de México del último día.
+ * México no aplica horario de verano desde 2022, así que el desfase fijo basta.
+ */
+const OFFSET_MEXICO_HORAS = -6;
+
+export function hoyCivilMexico(ahora: Date = new Date()): Date {
+  const local = new Date(ahora.getTime() + OFFSET_MEXICO_HORAS * 3600_000);
+  return new Date(Date.UTC(local.getUTCFullYear(), local.getUTCMonth(), local.getUTCDate()));
+}
+```
+
+Y su test en `candado.test.ts`:
+
+```ts
+describe('hoyCivilMexico', () => {
+  it('a las 18:00 UTC del último día del mes en México sigue siendo ese día', () => {
+    // 2026-04-30T23:59Z = 2026-04-30 17:59 en CDMX → sigue siendo el 30 de abril
+    expect(hoyCivilMexico(new Date('2026-04-30T23:59:00.000Z')).toISOString()).toBe('2026-04-30T00:00:00.000Z');
+  });
+
+  it('pasada la medianoche de México ya es el día siguiente', () => {
+    // 2026-05-01T06:30Z = 2026-05-01 00:30 en CDMX
+    expect(hoyCivilMexico(new Date('2026-05-01T06:30:00.000Z')).toISOString()).toBe('2026-05-01T00:00:00.000Z');
+  });
+
+  it('un pago del último día del mes sigue siendo facturable a las 23:00 UTC de ese día', () => {
+    const hoy = hoyCivilMexico(new Date('2026-04-30T23:00:00.000Z'));
+    expect(estadoFacturaPago({ fecha: new Date('2026-04-30T00:00:00.000Z') }, hoy).facturable).toBe(true);
+  });
+});
+```
+
+**En TODO el resto de esta task y de la Task 7, `hoy` se obtiene con `hoyCivilMexico()`, nunca
+con `new Date()`.** Donde el plan diga `new Date()` como argumento del candado, sustituirlo.
+
+
+
 **Files:**
 - Modify: `apps/api/src/payments/service.ts`, `apps/api/src/payments/routes.ts`
 - Modify: `apps/api/src/quotes/service.ts`
