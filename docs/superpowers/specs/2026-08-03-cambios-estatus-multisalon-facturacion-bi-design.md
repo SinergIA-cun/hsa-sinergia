@@ -526,6 +526,37 @@ jurídica. Opciones:
 Recomendación: la 2, que es la de menor riesgo jurídico (no cambia ninguna cantidad, solo
 deja de afirmar una igualdad falsa).
 
+### RESUELTO · Candado de los datos fiscales (decidido 2026-08-06)
+
+Reemplaza al hallazgo 2 de abajo en lo que toca a **escritura**. El dueño definió la regla real
+del negocio: los datos fiscales se pueden cambiar **hasta que se emitió la factura**, y si al
+cierre del mes no se pidió CFDI, ese ingreso se va a la **factura global de público en
+general** y el cliente ya no puede solicitarla.
+
+**Se factura por PAGO, no por evento.** Es lo que exige el SAT: el ingreso se factura en el mes
+en que se recibe. Un anticipo cobrado en marzo para un evento de octubre se factura en marzo.
+Consecuencia de modelo: **el candado vive en `Payment`**, y un mismo evento puede tener el
+anticipo ya cerrado y el finiquito todavía abierto.
+
+El candado tiene dos disparadores, y solo uno se puede construir ahora:
+
+| Disparador | Cuándo | ¿Se construye ya? |
+|---|---|---|
+| **Cierre de mes** | el mes del pago terminó sin CFDI ⇒ se fue a la global | **Sí.** Es aritmética de calendario sobre `Payment.fecha`, no necesita el PAC |
+| **Factura emitida** | se timbró el CFDI de ese pago | **No.** El dueño eligió que llegue automático al conectar el PAC |
+
+Reglas acordadas:
+- Mientras el pago esté **abierto** (mismo mes, sin facturar), ventas puede capturar y corregir
+  los datos fiscales del cliente.
+- Una vez **cerrado**, los datos quedan de solo lectura para ventas, con la razón visible
+  ("se facturó a público en general el 31 de marzo").
+- **Solo un admin puede desbloquear**, y queda en la bitácora — mismo patrón que anular un
+  pago. Existe porque las facturas se cancelan y se reemiten, y sin salida habría que crear un
+  cliente nuevo para corregir un RFC mal capturado.
+
+Nota de alcance: esto **no emite** el CFDI. Solo protege los datos y le dice a la operación qué
+todavía se puede facturar.
+
 ### 2. La Constancia de Situación Fiscal la puede ver (y sobrescribir) cualquier usuario
 
 `GET /clients/:id/csf` y `POST /clients/:id/csf` exigen sesión iniciada, pero **no filtran por
