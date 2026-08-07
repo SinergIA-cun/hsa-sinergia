@@ -7,6 +7,7 @@ import {
   estadoFacturaPago,
   datosFiscalesEditables,
   hoyCivilMexico,
+  prorratearRenta,
   type QuoteSelection,
 } from '@hsa/shared';
 import { loadCatalog } from '../catalog/loader.js';
@@ -152,26 +153,26 @@ async function assertEspaciosDisponibles(
 }
 
 /**
- * Renta base por espacio, leída de las líneas del desglose congelado.
+ * Renta atribuida a cada espacio, con las horas extra y la capilla ya repartidas.
  *
- * Las cotizaciones anteriores al campo `spaceId` no lo traen; en ese caso se
- * reparte la renta en partes iguales entre sus espacios. Como esas cotizaciones
- * tienen exactamente un espacio, el reparto equivale al monto completo, que es
- * el valor correcto.
+ * Los renglones `Renta {spaceId}` del desglose son los únicos que traen `spaceId`;
+ * horas extra y capilla entran a `rentaTotal` sin dueño. Se prorratean para que
+ * la suma de las bases sea exactamente `rentaTotal` y el complemento no cambie.
+ *
+ * Las cotizaciones anteriores al campo `spaceId` no lo traen: su catálogo queda
+ * en ceros y el prorrateo reparte en partes iguales, que para un solo espacio es
+ * el monto completo.
  */
 function rentaBasePorEspacio(breakdown: unknown, spaceIds: string[], rentaTotal: number): Map<string, number> {
   const lines = (breakdown as { lines?: { spaceId?: string; monto?: number }[] } | null)?.lines ?? [];
-  const out = new Map<string, number>();
+  const catalogo = new Map<string, number>();
+  for (const id of spaceIds) catalogo.set(id, 0);
   for (const l of lines) {
-    if (l.spaceId && typeof l.monto === 'number') {
-      out.set(l.spaceId, (out.get(l.spaceId) ?? 0) + l.monto);
+    if (l.spaceId && typeof l.monto === 'number' && catalogo.has(l.spaceId)) {
+      catalogo.set(l.spaceId, (catalogo.get(l.spaceId) ?? 0) + l.monto);
     }
   }
-  if (out.size === 0 && spaceIds.length > 0) {
-    const parte = rentaTotal / spaceIds.length;
-    for (const id of spaceIds) out.set(id, parte);
-  }
-  return out;
+  return prorratearRenta(catalogo, rentaTotal);
 }
 
 /**

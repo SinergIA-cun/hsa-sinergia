@@ -278,6 +278,50 @@ describe('quotes service', () => {
     expect(estadoCuenta.plan!.find((m) => m.key === 'apartar')!.objetivo).toBe(35000);
   });
 
+  it('con horas extra, la suma de las rentas por salón es exactamente la renta total', async () => {
+    // Las horas extra entran a `rentaTotal` sin `spaceId`. Sin prorrateo la suma
+    // de las bases se quedaría corta y el complemento bajaría.
+    const { eventTypeId, arcosId, camposId } = await ids();
+    const q = await createQuote(
+      prisma,
+      {
+        fecha: '2029-11-03',
+        invitados: 250,
+        spaceIds: [arcosId, camposId],
+        eventTypeId,
+        horasExtra: 2,
+        client: { nombre: 'Prorrateo Horas Extra' },
+      },
+      actor,
+    );
+    createdQuoteIds.push(q.id);
+    createdClientIds.push(q.clientId);
+
+    const { estadoCuenta } = await loadEstadoCuenta(prisma, q);
+    const comp = estadoCuenta.plan!.find((m) => m.key === 'complemento')!;
+    const sumaBases = comp.desglose!.reduce((s, d) => s + d.rentaBase, 0);
+    expect(Math.round(sumaBases * 100) / 100).toBe(q.rentaTotal);
+
+    // Y el dinero no se movió: `Σ pct_i × base_i` tiene que dar lo mismo que el
+    // viejo `pctPonderado × rentaTotal` calculado sobre la renta de catálogo.
+    const lineas = (q.breakdown as { lines: { spaceId?: string; monto?: number }[] }).lines;
+    const catalogo = new Map<string, number>();
+    for (const l of lineas) {
+      if (l.spaceId && typeof l.monto === 'number') {
+        catalogo.set(l.spaceId, (catalogo.get(l.spaceId) ?? 0) + l.monto);
+      }
+    }
+    const sumaCatalogo = [...catalogo.values()].reduce((s, v) => s + v, 0);
+    const pctPonderado = comp.desglose!.reduce(
+      (s, d) => s + d.pct * ((catalogo.get(d.spaceId) ?? 0) / sumaCatalogo),
+      0,
+    );
+    const objApartar = estadoCuenta.plan!.find((m) => m.key === 'apartar')!.objetivo;
+    const viejo = objApartar + Math.round(pctPonderado * q.rentaTotal);
+    // Redondear por salón puede diferir de redondear la suma en un peso o dos.
+    expect(Math.abs(comp.objetivo - viejo)).toBeLessThanOrEqual(2);
+  });
+
   it('si un salón del evento no tiene regla, el plan queda pendiente', async () => {
     // La Capilla no tiene SpacePaymentRule (el cliente aún no da sus montos).
     const { eventTypeId, arcosId, capillaId } = await ids();
