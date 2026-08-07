@@ -173,6 +173,14 @@ export interface HojaOperativa {
   anotaciones?: string;
 }
 
+/** Un renglón del complemento: `pct × rentaBase == monto`, exacto. */
+export interface ComplementoPorEspacio {
+  spaceId: string;
+  rentaBase: number;
+  pct: number;
+  monto: number;
+}
+
 export interface Milestone {
   key: 'apartar' | 'complemento' | 'finiquito';
   label: string;
@@ -181,7 +189,8 @@ export interface Milestone {
   restante: number;
   completo: boolean;
   venceISO: string | null;
-  porcentaje?: number;
+  /** Solo el complemento: qué aporta cada salón. */
+  desglose?: ComplementoPorEspacio[];
 }
 
 export interface EstadoCuenta {

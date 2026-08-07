@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { ArrowLeft, Printer } from 'lucide-react';
 import { faltanDatosFactura } from '@hsa/shared';
 import { api } from '../lib/api.ts';
-import { formatMXNCents, formatPct } from '../lib/money.ts';
+import { formatMXNCents, formatPctFraccion } from '../lib/money.ts';
 import { formatEventDate } from '../lib/date.ts';
 import type { QuoteDetail, Catalog } from '../lib/types.ts';
 
@@ -100,6 +100,7 @@ export function ContratoPage() {
         .doc-page .campo-row { display: flex; gap: 0.75rem; margin: 0.35rem 0; }
         .doc-page .campo-row b { min-width: 11rem; }
         .doc-page .campo-row span { border-bottom: 1px solid #999; flex: 1; }
+        .doc-page .nota { font-size: 0.82rem; color: #555; font-style: italic; margin-top: -0.35rem; }
         .doc-page ol, .doc-page ul { margin: 0 0 0.85rem 1.25rem; }
         .doc-page li { margin-bottom: 0.4rem; text-align: justify; }
         .doc-page .firmas { display: flex; justify-content: space-between; gap: 3rem; margin-top: 4rem; text-align: center; }
@@ -258,38 +259,53 @@ export function ContratoPage() {
               acordado con Hacienda San Andrés Atoto, S.A.
             </p>
           ) : (
-            <table>
-              <thead>
-                <tr><th>Espacio</th><th>Anticipo</th><th>Complemento<br />(3 meses después de contratar)</th><th>Finiquito</th></tr>
-              </thead>
-              <tbody>
-                {quote.spaceIds.map((id) => {
-                  const regla = catalogQ.data?.spaces.find((s) => s.id === id)?.paymentRule;
-                  return (
-                    <tr key={id}>
-                      <td>{espaciosById.get(id) ?? id}</td>
-                      <td>{regla ? formatMXNCents(regla.anticipo) : 'por definir'}</td>
-                      <td>{regla ? `${Math.round(regla.complementoPct * 100)}% de su renta` : 'por definir'}</td>
-                      <td />
-                    </tr>
-                  );
-                })}
-                <tr>
-                  <td><b>{quote.spaceIds.length > 1 ? 'Total del evento' : 'Total'}</b></td>
-                  <td><b>{hitoApartar ? formatMXNCents(hitoApartar.objetivo) : '—'}</b></td>
-                  <td>
-                    <b>
-                      {hitoComplemento?.porcentaje != null ? `${formatPct(hitoComplemento.porcentaje)} sobre el total = ` : ''}
-                      {hitoComplemento ? formatMXNCents(hitoComplemento.objetivo) : '—'}
-                    </b>
-                  </td>
-                  <td>
-                    {hitoFiniquito ? formatMXNCents(hitoFiniquito.objetivo) : '—'}, cubierto{' '}
-                    {hitoFiniquito?.venceISO ? `el ${formatEventDate(hitoFiniquito.venceISO, 'long')}` : '30 días antes del evento'}.
-                  </td>
-                </tr>
-              </tbody>
-            </table>
+            <>
+              <table>
+                <thead>
+                  <tr>
+                    <th>Espacio</th><th>Renta</th><th>Apartado</th>
+                    <th>Complemento<br />(3 meses después de contratar)</th><th>Finiquito</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {quote.spaceIds.map((id) => {
+                    // El monto sale del desglose que calculó el servidor: el contrato
+                    // imprime lo que se cobra, no una cuenta recalculada aparte.
+                    const d = hitoComplemento?.desglose?.find((x) => x.spaceId === id);
+                    const regla = catalogQ.data?.spaces.find((s) => s.id === id)?.paymentRule;
+                    return (
+                      <tr key={id}>
+                        <td>{espaciosById.get(id) ?? id}</td>
+                        <td>{d ? formatMXNCents(d.rentaBase) : '—'}</td>
+                        <td>{regla ? formatMXNCents(regla.anticipo) : 'por definir'}</td>
+                        <td>{d ? `${formatPctFraccion(d.pct)} = ${formatMXNCents(d.monto)}` : 'por definir'}</td>
+                        <td />
+                      </tr>
+                    );
+                  })}
+                  <tr>
+                    <td><b>{quote.spaceIds.length > 1 ? 'Total del evento' : 'Total'}</b></td>
+                    <td><b>{formatMXNCents(quote.rentaTotal)}</b></td>
+                    <td><b>{hitoApartar ? formatMXNCents(hitoApartar.objetivo) : '—'}</b></td>
+                    <td>
+                      <b>
+                        {hitoComplemento?.desglose
+                          ? formatMXNCents(hitoComplemento.desglose.reduce((s, d) => s + d.monto, 0))
+                          : '—'}
+                      </b>
+                    </td>
+                    <td>
+                      {hitoFiniquito ? formatMXNCents(hitoFiniquito.objetivo) : '—'}, cubierto{' '}
+                      {hitoFiniquito?.venceISO ? `el ${formatEventDate(hitoFiniquito.venceISO, 'long')}` : '30 días antes del evento'}.
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+              <p className="nota">
+                El complemento es adicional al apartado. Al cubrirlo, lo pagado acumulado
+                suma {hitoComplemento ? formatMXNCents(hitoComplemento.objetivo) : '—'}.
+              </p>
+            </>
           )}
           <p>
             Si no está liquidado El Evento en su totalidad para la fecha contratada, no se les permitirá el acceso al

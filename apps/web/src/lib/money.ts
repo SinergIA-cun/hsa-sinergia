@@ -25,3 +25,13 @@ export function formatMXNCents(n: number): string {
 export function formatPct(n: number): string {
   return `${Number.isInteger(n) ? n : n.toFixed(1)}%`;
 }
+
+/**
+ * Porcentaje legible a partir de una fracción: 0.1 → "10%", 0.125 → "12.5%".
+ *
+ * Redondea a un decimal antes de formatear porque `0.1 * 100` da
+ * 10.000000000000002 en coma flotante, y eso se imprimiría como "10.0%".
+ */
+export function formatPctFraccion(fraccion: number): string {
+  return formatPct(Math.round(fraccion * 1000) / 10);
+}
