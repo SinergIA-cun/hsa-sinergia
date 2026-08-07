@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { requireAuth } from '../auth/plugin.js';
+import { cotizacionesDesplazadas } from './empalmes.js';
 import {
   createQuote,
   duplicateQuote,
@@ -38,6 +39,12 @@ export async function quoteRoutes(app: FastifyInstance): Promise<void> {
   // Papelera: ruta estática ANTES de /quotes/:id (find-my-way prioriza estáticas de todos modos).
   app.get('/quotes/trash', { preHandler: requireAuth }, async (req) => {
     return { quotes: await listTrash(app.prisma, req.user as Actor) };
+  });
+
+  // Empalmes: cotizaciones vivas cuya fecha y espacio ya fueron apartados por otra.
+  // También estática y también antes de /quotes/:id, por la misma razón que la papelera.
+  app.get('/quotes/desplazadas', { preHandler: requireAuth }, async (req) => {
+    return { items: await cotizacionesDesplazadas(app.prisma, req.user as Actor) };
   });
 
   app.delete<{ Params: { id: string } }>(
