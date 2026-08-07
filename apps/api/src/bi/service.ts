@@ -10,6 +10,14 @@ export interface RangoBI {
   cursor?: string;
 }
 
+/**
+ * El cursor de paginación es el `id` de la última fila, así que el orden tiene
+ * que ser TOTAL: si solo se ordena por fecha, las filas que empatan quedan en
+ * posición ambigua y la página siguiente repite unas y se salta otras (pasa de
+ * verdad: varios eventos caen el mismo día). El `id` desempata.
+ */
+const DESEMPATE = { id: 'asc' } as const;
+
 const incluirEvento = {
   client: true,
   eventType: { select: { nombre: true, slug: true } },
@@ -33,7 +41,7 @@ export async function biEventos(db: PrismaClient, r: RangoBI) {
   const quotes = await db.quote.findMany({
     where: { fechaEvento: { gte: r.desde, lte: r.hasta }, deletedAt: null },
     include: incluirEvento,
-    orderBy: { fechaEvento: 'asc' },
+    orderBy: [{ fechaEvento: 'asc' }, DESEMPATE],
     take: r.limit,
     ...(r.cursor ? { skip: 1, cursor: { id: r.cursor } } : {}),
   });
@@ -69,7 +77,7 @@ export async function biPagos(db: PrismaClient, r: RangoBI) {
       registradoBy: { select: { nombre: true } },
       anuladoBy: { select: { nombre: true } },
     },
-    orderBy: { fecha: 'asc' },
+    orderBy: [{ fecha: 'asc' }, DESEMPATE],
     take: r.limit,
     ...(r.cursor ? { skip: 1, cursor: { id: r.cursor } } : {}),
   });
@@ -145,7 +153,7 @@ export async function biCambios(db: PrismaClient, r: RangoBI) {
   const logs = await db.activityLog.findMany({
     where: { createdAt: { gte: r.desde, lte: r.hasta }, quote: { deletedAt: null } },
     include: { actor: { select: { nombre: true } }, quote: { select: { client: { select: { nombre: true } } } } },
-    orderBy: { createdAt: 'asc' },
+    orderBy: [{ createdAt: 'asc' }, DESEMPATE],
     take: r.limit,
     ...(r.cursor ? { skip: 1, cursor: { id: r.cursor } } : {}),
   });
@@ -166,7 +174,7 @@ export async function biFacturacion(db: PrismaClient, r: RangoBI) {
   const quotes = await db.quote.findMany({
     where: { fechaEvento: { gte: r.desde, lte: r.hasta }, deletedAt: null, requiereFactura: true },
     include: { client: true },
-    orderBy: { fechaEvento: 'asc' },
+    orderBy: [{ fechaEvento: 'asc' }, DESEMPATE],
     take: r.limit,
     ...(r.cursor ? { skip: 1, cursor: { id: r.cursor } } : {}),
   });

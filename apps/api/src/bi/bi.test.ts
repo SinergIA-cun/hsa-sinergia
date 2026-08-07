@@ -87,6 +87,27 @@ describe('API del BI · datos', () => {
     expect(r.statusCode).toBe(400);
   });
 
+  it('el cursor avanza sin repetir filas aunque empaten las fechas', async () => {
+    // Varios eventos caen el mismo día. Si el orden no desempata por id, la
+    // página siguiente devuelve otra vez filas de la anterior.
+    const url = (cursor?: string) =>
+      `/api/bi/eventos?desde=2020-01-01&hasta=2035-12-31&limit=2${cursor ? `&cursor=${cursor}` : ''}`;
+    const vistos = new Set<string>();
+    let cursor: string | null = null;
+    for (let pagina = 0; pagina < 10; pagina++) {
+      const r = await app.inject({ method: 'GET', url: url(cursor ?? undefined), headers: { 'x-api-key': LLAVE } });
+      expect(r.statusCode).toBe(200);
+      const body = r.json() as { datos: { id: string }[]; siguienteCursor: string | null };
+      for (const fila of body.datos) {
+        expect(vistos.has(fila.id), `id repetido entre páginas: ${fila.id}`).toBe(false);
+        vistos.add(fila.id);
+      }
+      cursor = body.siguienteCursor;
+      if (!cursor) break;
+    }
+    expect(cursor).toBeNull();
+  });
+
   it('no expone ningún endpoint de escritura', async () => {
     for (const method of ['POST', 'PATCH', 'DELETE'] as const) {
       const r = await app.inject({ method, url: '/api/bi/eventos', headers: { 'x-api-key': LLAVE } });
