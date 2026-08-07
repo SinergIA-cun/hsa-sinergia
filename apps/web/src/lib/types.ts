@@ -149,6 +149,8 @@ export interface Payment {
   facturable?: boolean;
   motivoFactura?: string | null;
   facturadoAt?: string | null;
+  /** Folio fiscal del CFDI, si se capturó al sellar el pago. */
+  facturaUuid?: string | null;
   desbloqueoAt?: string | null;
 }
 
@@ -216,7 +218,7 @@ export interface QuoteDetail {
   quote: Quote;
   estadoCuenta: EstadoCuenta;
   payments: Payment[];
-  /** `editable: false` cuando ya no queda ningún pago facturable. */
+  /** `editable: false` cuando ya se emitió una factura con estos datos. */
   fiscalEditable?: { editable: boolean; motivo: string | null };
   activityLog: ActivityEntry[];
 }

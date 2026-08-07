@@ -1,4 +1,4 @@
-import { Check, X, FileText, Lock } from 'lucide-react';
+import { Check, X, FileText, Lock, ShieldAlert } from 'lucide-react';
 import { REGIMENES_FISCALES, USOS_CFDI, requisitosFactura, type DatosFiscales } from '@hsa/shared';
 import { Card, Field, TextInput, SelectInput } from './ui.tsx';
 
@@ -7,9 +7,11 @@ interface Props {
   onRequiereFactura: (v: boolean) => void;
   datos: DatosFiscales;
   onChange: (patch: Partial<DatosFiscales>) => void;
-  /** `false` cuando ya no queda ningún pago facturable. */
+  /** `false` cuando ya se emitió una factura con estos datos. */
   editable?: boolean;
   motivoBloqueo?: string | null;
+  /** Un admin puede corregir datos ya facturados; el cambio queda en la bitácora. */
+  esAdmin?: boolean;
 }
 
 /**
@@ -24,11 +26,16 @@ export function FacturacionSection({
   onChange,
   editable = true,
   motivoBloqueo,
+  esAdmin = false,
 }: Props) {
   const requisitos = requisitosFactura(datos);
   const faltan = requisitos.filter((r) => !r.ok).length;
   // Por omisión editable: una cotización nueva no tiene pagos y se captura igual que siempre.
-  const bloqueado = editable === false;
+  const congelado = editable === false;
+  // El candado congela los datos para ventas, no para admin: el servidor aplica
+  // la misma excepción, así que deshabilitar los campos aquí solo escondería la
+  // única salida que tiene la operación cuando hay que cancelar y reemitir.
+  const bloqueado = congelado && !esAdmin;
 
   return (
     <Card className="space-y-4 p-6">
@@ -58,9 +65,16 @@ export function FacturacionSection({
           {bloqueado && (
             <p className="flex items-start gap-2 rounded-lg border border-ink/15 bg-ink/5 px-3 py-2.5 text-sm text-ink-500">
               <Lock size={15} className="mt-0.5 shrink-0" />
+              <span>{motivoBloqueo ?? 'Los datos fiscales ya no se pueden modificar.'}</span>
+            </p>
+          )}
+
+          {congelado && esAdmin && (
+            <p className="flex items-start gap-2 rounded-lg border border-gold/40 bg-gold/10 px-3 py-2.5 text-sm text-ink">
+              <ShieldAlert size={15} className="mt-0.5 shrink-0 text-gold" />
               <span>
-                {motivoBloqueo ?? 'Los datos fiscales ya no se pueden modificar.'}{' '}
-                Un administrador puede reabrir un pago desde el panel de pagos.
+                Ya se facturó con estos datos. Puedes cambiarlos porque eres administrador;
+                quedará registrado en la bitácora. Cancela primero el CFDI que salió con los datos viejos.
               </span>
             </p>
           )}

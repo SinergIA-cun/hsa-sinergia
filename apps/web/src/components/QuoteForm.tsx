@@ -88,6 +88,8 @@ interface Props {
    * nueva no tiene pagos, así que sus datos fiscales siempre son capturables.
    */
   fiscalEditable?: { editable: boolean; motivo: string | null };
+  /** Un admin puede corregir datos fiscales ya congelados por una factura emitida. */
+  isAdmin?: boolean;
 }
 
 export function QuoteForm({
@@ -99,6 +101,7 @@ export function QuoteForm({
   excludeQuoteId,
   enableClientSearch = false,
   fiscalEditable,
+  isAdmin = false,
 }: Props) {
   const [nombre, setNombre] = useState(initial?.nombre ?? '');
   const [telefono, setTelefono] = useState(initial?.telefono ?? '');
@@ -605,6 +608,7 @@ export function QuoteForm({
           onChange={(patch) => setFiscales((prev) => ({ ...prev, ...patch }))}
           editable={fiscalEditable?.editable ?? true}
           motivoBloqueo={fiscalEditable?.motivo}
+          esAdmin={isAdmin}
         />
       </div>
 
