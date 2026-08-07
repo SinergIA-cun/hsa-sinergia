@@ -57,7 +57,7 @@ HOST=0.0.0.0
 PUBLIC_WEB_URL=https://hsa.somossinergia.com
 COOKIE_SECURE=true
 COOKIE_SAME_SITE=lax
-COMPROBANTES_DIR=/data/comprobantes
+COMPROBANTES_DIR=/app/data/comprobantes
 ```
 
 Opcional — solo si quieres el API de solo lectura del BI en línea:
@@ -67,16 +67,22 @@ BI_API_KEY=<mínimo 32 caracteres, ej. openssl rand -hex 32>
 Sin esa variable, el módulo `/api/bi` **no se registra** y sus rutas responden 404. No hay
 modo "abierto por descuido": la ausencia de la llave cierra el API, no lo abre.
 
-> ### ⚠️ Volumen persistente obligatorio
+> ### ⚠️ Volumen persistente
 >
-> `COMPROBANTES_DIR` guarda las fotos de comprobante de pago **y** las Constancias de
-> Situación Fiscal de los clientes. Sin un volumen montado en esa ruta, **cada redeploy
-> las borra**. En EasyPanel: pestaña **Mounts** del servicio `api` → agrega un volumen
-> montado en `/data`, y deja `COMPROBANTES_DIR=/data/comprobantes`.
+> `COMPROBANTES_DIR` guarda las fotos de comprobante de pago **y**, desde el Plan B, las
+> Constancias de Situación Fiscal de los clientes. Es el único dato de la app que **no
+> vive en Postgres**: ningún respaldo de base de datos lo recupera, y sin volumen cada
+> redeploy lo borra.
 >
-> Verifícalo ANTES del primer redeploy que suba las Constancias: es el único dato de la
-> app que no vive en Postgres y que, por lo tanto, ningún respaldo de base de datos
-> recupera.
+> **En producción esto ya está resuelto:** hay un volumen montado y
+> `COMPROBANTES_DIR=/app/data/comprobantes`, que es además el valor por defecto del código
+> (`WORKDIR /app` + `./data/comprobantes`). Las Constancias caen en ese mismo volumen sin
+> configurar nada nuevo.
+>
+> **No cambies esa ruta.** Mover `COMPROBANTES_DIR` a otro directorio no migra los
+> archivos: la app se pone a buscar en el nuevo, vacío, y los comprobantes existentes
+> quedan invisibles aunque sigan en disco. Si alguna vez hace falta moverlos, hay que
+> copiar el contenido del directorio **antes** de tocar la variable.
 
 **Dominio**: pestaña Domains → agrega `hsaapi.somossinergia.com` → puerto `3001`.
 ⚠️ **Gotcha conocido (igual que Motipreca):** en la config del dominio, el
@@ -138,12 +144,12 @@ agregue, o actualiza el hash directo en la tabla `User` vía la consola de Postg
 ## Checklist para subir los planes A/B/C/D
 
 La app ya está en línea, pero al 7-ago-2026 servía un build **anterior al Plan A** (el
-bundle todavía contenía "Apartada" y "Valet"). Para subir los 67 commits de la rama
+bundle todavía contenía "Apartada" y "Valet"). Para subir los commits de la rama
 `feat/planA-estatus-multisalon`:
 
 1. **Mergear la rama a `main`** (o apuntar los dos servicios de EasyPanel a la rama).
-2. **Verificar el volumen de `COMPROBANTES_DIR`** antes de redesplegar la API. Ver la
-   advertencia del paso 3: sin volumen, el redeploy borra comprobantes y constancias.
+2. **El volumen de `COMPROBANTES_DIR` ya está montado** (`/app/data/comprobantes`); no hay
+   nada que hacer, pero tampoco cambies esa ruta. Ver la advertencia del paso 3.
 3. **Reconstruir las DOS imágenes.** La de web no es opcional: `VITE_API_URL` se hornea
    en build-time, así que un contenedor web viejo seguirá sirviendo el JS viejo aunque
    la API ya esté nueva.
