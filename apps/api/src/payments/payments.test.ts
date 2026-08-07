@@ -6,6 +6,7 @@ import { loadConfig } from '../config.js';
 import { createQuote, getByToken, getQuote, loadEstadoCuenta, reconcileStatuses, softDeleteQuote, updateQuote, type Actor } from '../quotes/service.js';
 import { registerPayment, anularPayment, desbloquearFactura, loadComprobanteInterno, loadComprobantePublico } from './service.js';
 import { ServerStorage } from './storage.js';
+import { hashPassword } from '../auth/password.js';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -15,6 +16,8 @@ const storage = new ServerStorage(join(tmpdir(), 'hsa-pay-test-' + randomUUID())
 let actor: Actor;
 let arcosId: string, eventTypeId: string;
 let app: FastifyInstance;
+let ventasId: string;
+const ventasEmail = `ventas-pay-${randomUUID()}@haciendasanandres.com.mx`;
 const quotes: string[] = [];
 const clients: string[] = [];
 
@@ -23,6 +26,15 @@ beforeAll(async () => {
   actor = { id: admin!.id, role: 'admin' };
   arcosId = (await prisma.space.findFirst({ where: { nombre: 'Salón Los Arcos' } }))!.id;
   eventTypeId = (await prisma.eventType.findFirst({ where: { slug: 'boda' } }))!.id;
+  const ventas = await prisma.user.create({
+    data: {
+      nombre: 'Vendedora de prueba',
+      email: ventasEmail,
+      passwordHash: await hashPassword('ventas1234'),
+      role: 'ventas',
+    },
+  });
+  ventasId = ventas.id;
   app = await buildServer({ config: loadConfig() });
   await app.ready();
 });
@@ -32,6 +44,7 @@ afterAll(async () => {
   await prisma.activityLog.deleteMany({ where: { quoteId: { in: quotes } } });
   await prisma.quote.deleteMany({ where: { id: { in: quotes } } });
   await prisma.client.deleteMany({ where: { id: { in: clients } } });
+  await prisma.user.delete({ where: { id: ventasId } });
   await app.close();
 });
 
@@ -74,6 +87,31 @@ async function adminAuthCookie() {
   });
   const cookie = login.cookies[0]!;
   return { [cookie.name]: cookie.value };
+}
+
+/** Cookie de una vendedora real: `requireAdmin` solo se puede probar con un rol distinto. */
+async function ventasAuthCookie() {
+  const login = await app.inject({
+    method: 'POST',
+    url: '/api/auth/login',
+    payload: { email: ventasEmail, password: 'ventas1234' },
+  });
+  const cookie = login.cookies[0]!;
+  return { [cookie.name]: cookie.value };
+}
+
+/** Cotización nueva con un pago vigente, lista para sellarse como facturada. */
+async function crearPagoDePrueba() {
+  const q = await nuevaQuote();
+  const { payment } = await registerPayment(prisma, storage, q.id,
+    { monto: 20000, metodo: 'transferencia', concepto: 'anticipo', fecha: '2027-01-10' }, actor);
+  return { quoteId: q.id, paymentId: payment.id };
+}
+
+async function crearPagoAnulado() {
+  const { quoteId, paymentId } = await crearPagoDePrueba();
+  await anularPayment(prisma, quoteId, paymentId, 'error de captura', actor);
+  return { quoteId, paymentId };
 }
 
 describe('registerPayment / anularPayment', () => {
@@ -388,5 +426,87 @@ describe('candado de facturación', () => {
     const detalle = (await getQuote(prisma, q.id, actor))!;
     expect(detalle.payments.find((x) => x.id === p.payment.id)!.facturable).toBe(true);
     expect(detalle.fiscalEditable.editable).toBe(true);
+  });
+});
+
+describe('marcar facturado', () => {
+  it('un admin sella el pago y queda en la bitácora', async () => {
+    const { quoteId, paymentId } = await crearPagoDePrueba();
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/quotes/${quoteId}/payments/${paymentId}/facturado`,
+      cookies: await adminAuthCookie(),
+      payload: { facturaUuid: '11111111-2222-3333-4444-555555555555' },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().facturadoAt).not.toBeNull();
+    expect(res.json().facturaUuid).toBe('11111111-2222-3333-4444-555555555555');
+
+    const logs = await prisma.activityLog.findMany({ where: { quoteId, tipo: 'factura' } });
+    expect(logs).toHaveLength(1);
+  });
+
+  it('sellar un pago congela los datos fiscales del cliente', async () => {
+    const { quoteId, paymentId } = await crearPagoDePrueba();
+    const antes = (await getQuote(prisma, quoteId, actor))!;
+    expect(antes.fiscalEditable.editable).toBe(true);
+
+    await app.inject({
+      method: 'POST',
+      url: `/api/quotes/${quoteId}/payments/${paymentId}/facturado`,
+      cookies: await adminAuthCookie(),
+      payload: {},
+    });
+
+    const despues = (await getQuote(prisma, quoteId, actor))!;
+    expect(despues.fiscalEditable.editable).toBe(false);
+    expect(despues.fiscalEditable.motivo).toMatch(/factura/i);
+  });
+
+  it('un vendedor no puede', async () => {
+    const { quoteId, paymentId } = await crearPagoDePrueba();
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/quotes/${quoteId}/payments/${paymentId}/facturado`,
+      cookies: await ventasAuthCookie(),
+      payload: {},
+    });
+    expect(res.statusCode).toBe(403);
+
+    const sinTocar = await prisma.payment.findUnique({ where: { id: paymentId } });
+    expect(sinTocar?.facturadoAt).toBeNull();
+  });
+
+  it('no se puede facturar dos veces', async () => {
+    const { quoteId, paymentId } = await crearPagoDePrueba();
+    const cookies = await adminAuthCookie();
+    const url = `/api/quotes/${quoteId}/payments/${paymentId}/facturado`;
+    expect((await app.inject({ method: 'POST', url, cookies, payload: {} })).statusCode).toBe(200);
+    const res = await app.inject({ method: 'POST', url, cookies, payload: {} });
+    expect(res.statusCode).toBe(409);
+  });
+
+  it('un pago anulado no se puede facturar', async () => {
+    const { quoteId, paymentId } = await crearPagoAnulado();
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/quotes/${quoteId}/payments/${paymentId}/facturado`,
+      cookies: await adminAuthCookie(),
+      payload: {},
+    });
+    expect(res.statusCode).toBe(409);
+  });
+
+  it('un UUID mal formado devuelve 400 y no sella nada', async () => {
+    const { quoteId, paymentId } = await crearPagoDePrueba();
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/quotes/${quoteId}/payments/${paymentId}/facturado`,
+      cookies: await adminAuthCookie(),
+      payload: { facturaUuid: 'no-es-un-uuid' },
+    });
+    expect(res.statusCode).toBe(400);
+    const sinTocar = await prisma.payment.findUnique({ where: { id: paymentId } });
+    expect(sinTocar?.facturadoAt).toBeNull();
   });
 });

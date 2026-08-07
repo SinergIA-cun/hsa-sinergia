@@ -148,6 +148,49 @@ export async function desbloquearFactura(
   return { payment: actualizado, facturable: est.facturable };
 }
 
+export const marcarFacturadoSchema = z.object({
+  facturaUuid: z.string().uuid().nullish(),
+});
+
+/**
+ * Sella un pago como facturado. Mientras no exista el PAC, este es el único
+ * disparador del candado de datos fiscales, y por eso es de admin.
+ *
+ * Limpia `desbloqueoAt`: el desbloqueo era el permiso para timbrar fuera de
+ * plazo, y una vez timbrado ya no aplica a nada.
+ */
+export async function marcarFacturado(
+  db: PrismaClient,
+  quoteId: string,
+  paymentId: string,
+  input: z.infer<typeof marcarFacturadoSchema>,
+  actor: Actor,
+) {
+  if (actor.role !== 'admin') {
+    throw new QuoteError(403, 'Solo un admin puede marcar un pago como facturado.');
+  }
+  // Igual que al anular: una cotización en la papelera es evidencia de auditoría
+  // y no admite escrituras, tampoco por esta puerta.
+  await findOwnedQuote(db, quoteId, actor);
+  const pago = await db.payment.findFirst({ where: { id: paymentId, quoteId } });
+  if (!pago) throw new QuoteError(404, 'Pago no encontrado');
+  if (pago.anuladoAt) throw new QuoteError(409, 'El pago está anulado.');
+  if (pago.facturadoAt) throw new QuoteError(409, 'Este pago ya está facturado.');
+
+  const actualizado = await db.payment.update({
+    where: { id: paymentId },
+    data: { facturadoAt: new Date(), facturaUuid: input.facturaUuid ?? null, desbloqueoAt: null },
+  });
+  await logActivity(db, {
+    quoteId,
+    tipo: 'factura',
+    descripcion: `Pago folio ${pago.folio} marcado como facturado${input.facturaUuid ? ` (UUID ${input.facturaUuid})` : ''}`,
+    meta: { paymentId, folio: pago.folio, facturaUuid: input.facturaUuid ?? null },
+    actorId: actor.id,
+  });
+  return actualizado;
+}
+
 export interface ComprobanteData {
   data: Buffer;
   mime: string;

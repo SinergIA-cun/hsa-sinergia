@@ -1,11 +1,13 @@
 import type { FastifyInstance } from 'fastify';
-import { requireAuth } from '../auth/plugin.js';
+import { requireAuth, requireAdmin } from '../auth/plugin.js';
 import { QuoteError, type Actor } from '../quotes/service.js';
 import {
   registerPayment,
   anularPayment,
   anularSchema,
   desbloquearFactura,
+  marcarFacturado,
+  marcarFacturadoSchema,
   loadComprobanteInterno,
   loadComprobantePublico,
 } from './service.js';
@@ -75,6 +77,23 @@ export async function paymentRoutes(app: FastifyInstance): Promise<void> {
     async (req, reply) => {
       try {
         return await desbloquearFactura(app.prisma, req.params.id, req.params.paymentId, req.user as Actor);
+      } catch (e) {
+        if (e instanceof QuoteError) return reply.code(e.status).send({ error: e.message });
+        throw e;
+      }
+    },
+  );
+
+  // Sellar un pago como facturado (solo admin). Sin PAC conectado, esta es la
+  // única forma de que exista un `facturadoAt` y de que el candado fiscal cierre.
+  app.post<{ Params: { id: string; paymentId: string } }>(
+    '/quotes/:id/payments/:paymentId/facturado',
+    { preHandler: requireAdmin },
+    async (req, reply) => {
+      const parsed = marcarFacturadoSchema.safeParse(req.body ?? {});
+      if (!parsed.success) return reply.code(400).send({ error: 'Datos inválidos' });
+      try {
+        return await marcarFacturado(app.prisma, req.params.id, req.params.paymentId, parsed.data, req.user as Actor);
       } catch (e) {
         if (e instanceof QuoteError) return reply.code(e.status).send({ error: e.message });
         throw e;
