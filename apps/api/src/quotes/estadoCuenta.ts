@@ -19,6 +19,14 @@ export interface PaymentLite {
   anuladoAt: Date | null;
 }
 
+/** Un renglón del complemento: lo que aporta un salón, con su multiplicación a la vista. */
+export interface ComplementoPorEspacio {
+  spaceId: string;
+  rentaBase: number;
+  pct: number;
+  monto: number;
+}
+
 export interface Milestone {
   key: 'apartar' | 'complemento' | 'finiquito';
   label: string;
@@ -27,7 +35,8 @@ export interface Milestone {
   restante: number;
   completo: boolean;
   venceISO: string | null;
-  porcentaje?: number; // solo el complemento: % sobre el total
+  /** Solo el complemento: qué aporta cada salón. `pct × rentaBase == monto`, exacto. */
+  desglose?: ComplementoPorEspacio[];
 }
 
 export interface EstadoCuenta {
@@ -74,18 +83,17 @@ export function computeEstadoCuenta(args: {
   // Anticipo: cada espacio aporta el suyo (sección H del contrato, por espacio).
   const objApartar = rules.reduce((s, r) => s + r.rule.anticipo, 0);
 
-  // Complemento: el porcentaje de cada espacio pesa según la renta que ese
-  // espacio aporta. Con un solo espacio el peso es 1 y la fórmula se reduce
-  // exactamente a `pct × total`, idéntica a la de antes del multi-salón.
-  const sumRenta = rules.reduce((s, r) => s + r.rentaBase, 0);
-  const pctPonderado =
-    sumRenta > 0
-      ? rules.reduce((s, r) => s + r.rule.complementoPct * (r.rentaBase / sumRenta), 0)
-      : // Sin renta base (dato faltante) no hay proporción posible: se toma el
-        // porcentaje más alto, que es el criterio conservador para el negocio.
-        Math.max(...rules.map((r) => r.rule.complementoPct));
-
-  const objComplemento = objApartar + Math.round(pctPonderado * total);
+  // Complemento: cada salón aporta el porcentaje de SU renta. La renta que se le
+  // pasa aquí ya viene prorrateada (incluye su parte de horas extra y capilla),
+  // así que la suma de los renglones es idéntica al viejo `pctPonderado × total`
+  // pero cada renglón multiplica exacto y se puede imprimir en el contrato.
+  const desglose: ComplementoPorEspacio[] = rules.map((r) => ({
+    spaceId: r.spaceId,
+    rentaBase: r.rentaBase,
+    pct: r.rule.complementoPct,
+    monto: Math.round(r.rule.complementoPct * r.rentaBase),
+  }));
+  const objComplemento = objApartar + desglose.reduce((s, d) => s + d.monto, 0);
   const objFiniquito = total;
 
   // El finiquito más exigente manda cuando los espacios difieren.
@@ -105,15 +113,15 @@ export function computeEstadoCuenta(args: {
     label: string,
     objetivo: number,
     venceISO: string | null,
-    porcentaje?: number,
+    desgloseHito?: ComplementoPorEspacio[],
   ): Milestone => {
     const cubierto = Math.min(pagado, objetivo);
-    return { key, label, objetivo, cubierto, restante: Math.max(0, objetivo - cubierto), completo: pagado >= objetivo, venceISO, porcentaje };
+    return { key, label, objetivo, cubierto, restante: Math.max(0, objetivo - cubierto), completo: pagado >= objetivo, venceISO, desglose: desgloseHito };
   };
 
   const plan: Milestone[] = [
     hito('apartar', 'Apartar fecha', objApartar, null),
-    hito('complemento', 'Complemento', objComplemento, complementoVence?.toISOString() ?? null, Math.round(pctPonderado * 1000) / 10),
+    hito('complemento', 'Complemento', objComplemento, complementoVence?.toISOString() ?? null, desglose),
     hito('finiquito', 'Finiquito', objFiniquito, finiquitoVence.toISOString()),
   ];
 
