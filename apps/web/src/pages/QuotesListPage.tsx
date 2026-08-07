@@ -32,7 +32,6 @@ function QuoteRow({ q, showSeller }: { q: Quote; showSeller: boolean }) {
   return (
     <Card
       className="flex cursor-pointer flex-wrap items-center justify-between gap-4 p-5 transition-shadow hover:shadow-md"
-      // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions
     >
       <div className="min-w-[11rem] flex-1" onClick={() => navigate(`/cotizaciones/${q.id}`)}>
         <p className="font-display text-xl text-ink">{q.client?.nombre ?? 'Cliente'}</p>

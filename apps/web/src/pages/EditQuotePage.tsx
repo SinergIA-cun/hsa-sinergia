@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link, useParams, useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, ExternalLink, Printer, FileText, MessageCircle, QrCode, Check } from 'lucide-react';
 import { api } from '../lib/api.ts';
@@ -62,7 +62,6 @@ function toInitial(q: Quote): Partial<QuoteFormInitial> {
 
 export function EditQuotePage() {
   const { id } = useParams<{ id: string }>();
-  const navigate = useNavigate();
   const [sp] = useSearchParams();
   const qc = useQueryClient();
 
