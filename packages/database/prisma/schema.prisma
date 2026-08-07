@@ -270,6 +270,11 @@ model Payment {
   fecha                DateTime
   referencia           String?
   folio                Int            @unique @default(dbgenerated("nextval('recibo_folio_seq')"))
+  // Candado de facturación (ver docs del Plan C). El ingreso se factura en el mes
+  // en que se recibe; pasado ese mes se va a la global de público en general.
+  facturadoAt          DateTime?
+  facturaUuid          String?
+  desbloqueoAt         DateTime?
   comprobanteKey       String?
   comprobanteMime      String?
   registradoBy         User?          @relation("PaymentRegistradoBy", fields: [registradoById], references: [id])
