@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { estadoFacturaPago, datosFiscalesEditables } from './candado.js';
+import { estadoFacturaPago, datosFiscalesEditables, hoyCivilMexico } from './candado.js';
 
 const HOY = new Date('2026-04-15T12:00:00.000Z');
 
@@ -92,5 +92,22 @@ describe('datosFiscalesEditables', () => {
     );
     // Solo tenía un pago y está anulado ⇒ es como no tener pagos.
     expect(r.editable).toBe(true);
+  });
+});
+
+describe('hoyCivilMexico', () => {
+  it('a las 18:00 UTC del último día del mes en México sigue siendo ese día', () => {
+    // 2026-04-30T23:59Z = 2026-04-30 17:59 en CDMX → sigue siendo el 30 de abril
+    expect(hoyCivilMexico(new Date('2026-04-30T23:59:00.000Z')).toISOString()).toBe('2026-04-30T00:00:00.000Z');
+  });
+
+  it('pasada la medianoche de México ya es el día siguiente', () => {
+    // 2026-05-01T06:30Z = 2026-05-01 00:30 en CDMX
+    expect(hoyCivilMexico(new Date('2026-05-01T06:30:00.000Z')).toISOString()).toBe('2026-05-01T00:00:00.000Z');
+  });
+
+  it('un pago del último día del mes sigue siendo facturable a las 23:00 UTC de ese día', () => {
+    const hoy = hoyCivilMexico(new Date('2026-04-30T23:00:00.000Z'));
+    expect(estadoFacturaPago({ fecha: new Date('2026-04-30T00:00:00.000Z') }, hoy).facturable).toBe(true);
   });
 });

@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import type { PrismaClient } from '@hsa/database';
+import { estadoFacturaPago, hoyCivilMexico } from '@hsa/shared';
 import { QuoteError, ownershipWhere, loadEstadoCuenta, assertNotTrashed, type Actor } from '../quotes/service.js';
 import { logActivity } from '../quotes/activityLog.js';
 import { esUpgrade, type PaymentStatus } from '../quotes/estadoCuenta.js';
@@ -106,6 +107,42 @@ export async function anularPayment(
 
   const { estadoCuenta } = await loadEstadoCuenta(db, quote);
   return { estadoCuenta };
+}
+
+/**
+ * Reabre la facturación de un pago cuyo mes ya cerró. Solo admin.
+ *
+ * Existe porque los CFDI se cancelan y se reemiten: sin esta salida habría que
+ * crear un cliente nuevo para corregir un RFC mal capturado. No reabre un pago
+ * que YA se facturó — para eso primero hay que cancelar el CFDI.
+ */
+export async function desbloquearFactura(
+  db: PrismaClient,
+  quoteId: string,
+  paymentId: string,
+  actor: Actor,
+) {
+  if (actor.role !== 'admin') {
+    throw new QuoteError(403, 'Solo un admin puede desbloquear la facturación de un pago.');
+  }
+  const pago = await db.payment.findFirst({ where: { id: paymentId, quoteId } });
+  if (!pago) throw new QuoteError(404, 'Pago no encontrado');
+  if (pago.facturadoAt) {
+    throw new QuoteError(409, 'Este pago ya tiene CFDI. Cancélalo antes de reabrirlo.');
+  }
+  const actualizado = await db.payment.update({
+    where: { id: paymentId },
+    data: { desbloqueoAt: new Date() },
+  });
+  await logActivity(db, {
+    quoteId,
+    tipo: 'edicion',
+    descripcion: `Desbloqueo de facturación del pago folio ${pago.folio}`,
+    meta: { paymentId, folio: pago.folio },
+    actorId: actor.id,
+  });
+  const est = estadoFacturaPago(actualizado, hoyCivilMexico());
+  return { payment: actualizado, facturable: est.facturable };
 }
 
 export interface ComprobanteData {

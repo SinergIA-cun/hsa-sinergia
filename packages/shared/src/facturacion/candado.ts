@@ -31,6 +31,21 @@ export interface EstadoFactura {
 
 const aFecha = (v: Date | string): Date => (v instanceof Date ? v : new Date(v));
 
+/**
+ * El día civil de México como fecha a medianoche UTC.
+ *
+ * Los pagos se guardan como día calendario pinchado a medianoche UTC, así que el
+ * "hoy" del candado tiene que estar en ese mismo espacio. Usar `new Date()` a
+ * secas haría que el mes cerrara a las 18:00 hora de México del último día.
+ * México no aplica horario de verano desde 2022, así que el desfase fijo basta.
+ */
+const OFFSET_MEXICO_HORAS = -6;
+
+export function hoyCivilMexico(ahora: Date = new Date()): Date {
+  const local = new Date(ahora.getTime() + OFFSET_MEXICO_HORAS * 3600_000);
+  return new Date(Date.UTC(local.getUTCFullYear(), local.getUTCMonth(), local.getUTCDate()));
+}
+
 /** Primer instante del mes siguiente al de `d`, en UTC. */
 function inicioDelMesSiguiente(d: Date): Date {
   return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1));

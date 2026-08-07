@@ -3,8 +3,8 @@ import type { FastifyInstance } from 'fastify';
 import { prisma } from '@hsa/database';
 import { buildServer } from '../server.js';
 import { loadConfig } from '../config.js';
-import { createQuote, getByToken, loadEstadoCuenta, reconcileStatuses, type Actor } from '../quotes/service.js';
-import { registerPayment, anularPayment, loadComprobanteInterno, loadComprobantePublico } from './service.js';
+import { createQuote, getByToken, getQuote, loadEstadoCuenta, reconcileStatuses, updateQuote, type Actor } from '../quotes/service.js';
+import { registerPayment, anularPayment, desbloquearFactura, loadComprobanteInterno, loadComprobantePublico } from './service.js';
 import { ServerStorage } from './storage.js';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -53,6 +53,17 @@ async function nuevaQuote() {
   const q = await createQuote(prisma, { fecha: siguienteSabado(), invitados: 250, spaceIds: [arcosId], eventTypeId, client: { nombre: 'Pago Test' } }, actor);
   quotes.push(q.id); clients.push(q.clientId);
   return q;
+}
+
+/** Payload base de `updateQuote` reconstruido desde una cotización recién creada. */
+function selectionDe(q: { fechaEvento: Date; invitados: number; spaceIds: string[]; eventTypeId: string; horasExtra: number }) {
+  return {
+    fecha: q.fechaEvento.toISOString().slice(0, 10),
+    invitados: q.invitados,
+    spaceIds: q.spaceIds,
+    eventTypeId: q.eventTypeId,
+    horasExtra: q.horasExtra,
+  };
 }
 
 async function adminAuthCookie() {
@@ -261,5 +272,102 @@ describe('pagos HTTP', () => {
     });
     expect(anular.statusCode).toBe(200);
     expect(anular.json().estadoCuenta.pagado).toBe(0);
+  });
+});
+
+describe('candado de facturación', () => {
+  it('un pago del mes en curso viene marcado como facturable', async () => {
+    const q = await nuevaQuote();
+    await registerPayment(prisma, storage, q.id,
+      { monto: 15000, metodo: 'transferencia', concepto: 'anticipo', fecha: new Date().toISOString().slice(0, 10) },
+      actor);
+    const { payments } = await loadEstadoCuenta(prisma, {
+      id: q.id, breakdown: q.breakdown, rentaTotal: q.rentaTotal,
+      fechaEvento: q.fechaEvento, status: q.status, spaceIds: q.spaceIds,
+    });
+    expect(payments[0]).toBeDefined();
+    const detalle = (await getQuote(prisma, q.id, actor))!;
+    expect(detalle.payments[0]!.facturable).toBe(true);
+    expect(detalle.payments[0]!.motivoFactura).toBeNull();
+  });
+
+  it('un pago de un mes cerrado ya no es facturable', async () => {
+    const q = await nuevaQuote();
+    const p = await registerPayment(prisma, storage, q.id,
+      { monto: 15000, metodo: 'transferencia', concepto: 'anticipo', fecha: '2020-03-15' },
+      actor);
+    expect(p.payment).toBeDefined();
+    const detalle = (await getQuote(prisma, q.id, actor))!;
+    const pago = detalle.payments.find((x) => x.id === p.payment.id)!;
+    expect(pago.facturable).toBe(false);
+    expect(pago.motivoFactura).toMatch(/público en general/i);
+  });
+
+  it('sin ningún pago facturable, el detalle marca los datos fiscales como no editables', async () => {
+    const q = await nuevaQuote();
+    await registerPayment(prisma, storage, q.id,
+      { monto: 15000, metodo: 'transferencia', concepto: 'anticipo', fecha: '2020-03-15' },
+      actor);
+    const detalle = (await getQuote(prisma, q.id, actor))!;
+    expect(detalle.fiscalEditable.editable).toBe(false);
+    expect(detalle.fiscalEditable.motivo).toMatch(/público en general/i);
+  });
+
+  it('una cotización sin pagos deja capturar datos fiscales con normalidad', async () => {
+    const q = await nuevaQuote();
+    const detalle = (await getQuote(prisma, q.id, actor))!;
+    expect(detalle.payments).toHaveLength(0);
+    expect(detalle.fiscalEditable.editable).toBe(true);
+
+    const actualizada = await updateQuote(prisma, q.id, {
+      ...selectionDe(q),
+      client: { nombre: 'Pago Test', rfc: 'XAXX010101000', razonSocial: 'Cliente Nuevo' },
+    }, actor);
+    expect(actualizada.client.rfc).toBe('XAXX010101000');
+  });
+
+  it('con el mes cerrado, cambiar un dato fiscal devuelve 409 pero reenviar el mismo valor no', async () => {
+    const q = await nuevaQuote();
+    await registerPayment(prisma, storage, q.id,
+      { monto: 15000, metodo: 'transferencia', concepto: 'anticipo', fecha: '2020-03-15' },
+      actor);
+
+    // El formulario manda SIEMPRE los seis campos fiscales: reenviarlos sin
+    // cambio no debe impedir editar el resto del evento.
+    const sinCambioFiscal = await updateQuote(prisma, q.id, {
+      ...selectionDe(q),
+      invitados: 260,
+      client: { nombre: 'Pago Test', rfc: null, razonSocial: null, regimenFiscal: null, cpFiscal: null, usoCfdi: null, correoFacturacion: null },
+    }, actor);
+    expect(sinCambioFiscal.invitados).toBe(260);
+
+    await expect(
+      updateQuote(prisma, q.id, {
+        ...selectionDe(q),
+        invitados: 260,
+        client: { nombre: 'Pago Test', rfc: 'XAXX010101000' },
+      }, actor),
+    ).rejects.toThrow(/público en general/i);
+  });
+
+  it('solo un admin puede desbloquear la facturación de un pago', async () => {
+    const q = await nuevaQuote();
+    const p = await registerPayment(prisma, storage, q.id,
+      { monto: 15000, metodo: 'transferencia', concepto: 'anticipo', fecha: '2020-03-15' },
+      actor);
+    const ventas = { id: actor.id, role: 'ventas' as const };
+    await expect(desbloquearFactura(prisma, q.id, p.payment.id, ventas)).rejects.toThrow(/admin/i);
+
+    const ok = await desbloquearFactura(prisma, q.id, p.payment.id, actor);
+    expect(ok.facturable).toBe(true);
+    const log = await prisma.activityLog.findFirst({
+      where: { quoteId: q.id, descripcion: { contains: 'Desbloqueo' } },
+    });
+    expect(log).not.toBeNull();
+
+    // Y el candado reabierto se ve en el detalle.
+    const detalle = (await getQuote(prisma, q.id, actor))!;
+    expect(detalle.payments.find((x) => x.id === p.payment.id)!.facturable).toBe(true);
+    expect(detalle.fiscalEditable.editable).toBe(true);
   });
 });

@@ -5,6 +5,7 @@ import {
   registerPayment,
   anularPayment,
   anularSchema,
+  desbloquearFactura,
   loadComprobanteInterno,
   loadComprobantePublico,
 } from './service.js';
@@ -60,6 +61,20 @@ export async function paymentRoutes(app: FastifyInstance): Promise<void> {
       try {
         const result = await anularPayment(app.prisma, req.params.id, req.params.paymentId, parsed.data.motivo, req.user as Actor);
         return result;
+      } catch (e) {
+        if (e instanceof QuoteError) return reply.code(e.status).send({ error: e.message });
+        throw e;
+      }
+    },
+  );
+
+  // Reabrir la facturación de un pago cuyo mes ya cerró (solo admin; queda en bitácora).
+  app.patch<{ Params: { id: string; paymentId: string } }>(
+    '/quotes/:id/payments/:paymentId/desbloquear-factura',
+    { preHandler: requireAuth },
+    async (req, reply) => {
+      try {
+        return await desbloquearFactura(app.prisma, req.params.id, req.params.paymentId, req.user as Actor);
       } catch (e) {
         if (e instanceof QuoteError) return reply.code(e.status).send({ error: e.message });
         throw e;

@@ -1,7 +1,14 @@
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import type { PrismaClient, Prisma } from '@hsa/database';
-import { computeQuote, quoteSelectionSchema, type QuoteSelection } from '@hsa/shared';
+import {
+  computeQuote,
+  quoteSelectionSchema,
+  estadoFacturaPago,
+  datosFiscalesEditables,
+  hoyCivilMexico,
+  type QuoteSelection,
+} from '@hsa/shared';
 import { loadCatalog } from '../catalog/loader.js';
 import { getAvailability } from '../availability/service.js';
 import { logActivity } from './activityLog.js';
@@ -67,6 +74,9 @@ export const updateQuoteSchema = quoteSelectionSchema
   });
 
 export const statusSchema = z.object({ status: z.enum(QUOTE_STATUSES) });
+
+/** Los seis campos del cliente que congela el candado de facturación. */
+const CAMPOS_FISCALES = ['rfc', 'razonSocial', 'regimenFiscal', 'cpFiscal', 'usoCfdi', 'correoFacturacion'] as const;
 
 const includeRels = { client: true, eventType: true, createdBy: { select: { id: true, nombre: true } } };
 
@@ -473,6 +483,28 @@ export async function updateQuote(db: PrismaClient, id: string, rawInput: unknow
   const { breakdown, enriched } = await computeAndEnrich(db, toSelection(input));
 
   if (input.client) {
+    // Si ya no queda ningún pago facturable, los datos fiscales quedan congelados:
+    // el ingreso se fue a la global de público en general y reescribir el RFC solo
+    // crearía una discrepancia con lo ya declarado.
+    //
+    // Se compara VALOR contra valor, no presencia de la llave: el formulario manda
+    // SIEMPRE los seis campos fiscales (ver `fiscalesParaGuardar` en el front), así
+    // que bloquear por presencia haría imposible editar cualquier otra cosa del
+    // evento —invitados, horas extra— en cuanto cierra el mes del último pago.
+    const pagos = await db.payment.findMany({
+      where: { quoteId: id },
+      select: { fecha: true, facturadoAt: true, desbloqueoAt: true, anuladoAt: true },
+    });
+    const edicion = datosFiscalesEditables(pagos, hoyCivilMexico());
+    if (!edicion.editable) {
+      const clienteActual = await db.client.findUnique({ where: { id: existing.clientId } });
+      const tocaFiscales = CAMPOS_FISCALES.some(
+        (campo) => campo in input.client! && (input.client![campo] ?? null) !== (clienteActual?.[campo] ?? null),
+      );
+      if (tocaFiscales) {
+        throw new QuoteError(409, edicion.motivo ?? 'Los datos fiscales ya no se pueden modificar.');
+      }
+    }
     await db.client.update({ where: { id: existing.clientId }, data: input.client });
   }
 
@@ -858,7 +890,22 @@ export async function getQuote(db: PrismaClient, id: string, actor: Actor) {
   if (!quote) return null;
   const { estadoCuenta, payments } = await loadEstadoCuenta(db, quote);
   const activityLog = await db.activityLog.findMany({ where: { quoteId: id }, orderBy: { createdAt: 'desc' }, include: { actor: { select: { nombre: true } } } });
-  return { quote, estadoCuenta, payments, activityLog };
+
+  // El candado de facturación se calcula al vuelo: depende del calendario, no de
+  // un campo guardado, así que un pago "caduca" solo al cerrar su mes.
+  const hoy = hoyCivilMexico();
+  const paymentsConCandado = payments.map((p) => {
+    const est = estadoFacturaPago(p, hoy);
+    return { ...p, facturable: est.facturable, motivoFactura: est.motivo };
+  });
+
+  return {
+    quote,
+    estadoCuenta,
+    payments: paymentsConCandado,
+    fiscalEditable: datosFiscalesEditables(payments, hoy),
+    activityLog,
+  };
 }
 
 /** Vista pública por token: cotización + estado de cuenta con pagos. */
