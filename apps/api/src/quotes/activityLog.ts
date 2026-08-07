@@ -9,7 +9,9 @@ export type LogTipo =
   | 'eliminada'
   | 'restaurada'
   /** Se emitió (o se selló a mano) un CFDI por un pago. */
-  | 'factura';
+  | 'factura'
+  /** Cambiaron los datos fiscales del cliente (incluido el desbloqueo de admin). */
+  | 'fiscal';
 
 /** Escribe una entrada de bitácora. Nunca lanza: la bitácora no debe tumbar la operación. */
 export async function logActivity(

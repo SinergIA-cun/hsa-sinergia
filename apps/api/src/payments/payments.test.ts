@@ -105,13 +105,23 @@ async function crearPagoDePrueba() {
   const q = await nuevaQuote();
   const { payment } = await registerPayment(prisma, storage, q.id,
     { monto: 20000, metodo: 'transferencia', concepto: 'anticipo', fecha: '2027-01-10' }, actor);
-  return { quoteId: q.id, paymentId: payment.id };
+  return { quoteId: q.id, paymentId: payment.id, quote: q };
 }
 
 async function crearPagoAnulado() {
   const { quoteId, paymentId } = await crearPagoDePrueba();
   await anularPayment(prisma, quoteId, paymentId, 'error de captura', actor);
   return { quoteId, paymentId };
+}
+
+async function marcarFacturadoComoAdmin(quoteId: string, paymentId: string) {
+  const res = await app.inject({
+    method: 'POST',
+    url: `/api/quotes/${quoteId}/payments/${paymentId}/facturado`,
+    cookies: await adminAuthCookie(),
+    payload: {},
+  });
+  expect(res.statusCode).toBe(200);
 }
 
 describe('registerPayment / anularPayment', () => {
@@ -508,5 +518,92 @@ describe('marcar facturado', () => {
     expect(res.statusCode).toBe(400);
     const sinTocar = await prisma.payment.findUnique({ where: { id: paymentId } });
     expect(sinTocar?.facturadoAt).toBeNull();
+  });
+});
+
+describe('datos fiscales con una factura emitida', () => {
+  /** Los seis campos que el formulario manda SIEMPRE, aunque no se toque ninguno. */
+  const fiscalesSinCambio = {
+    rfc: null, razonSocial: null, regimenFiscal: null,
+    cpFiscal: null, usoCfdi: null, correoFacturacion: null,
+  };
+
+  it('un vendedor no puede cambiar el RFC después de facturar', async () => {
+    const { quoteId, paymentId, quote } = await crearPagoDePrueba();
+    await marcarFacturadoComoAdmin(quoteId, paymentId);
+
+    const ventas = { id: actor.id, role: 'ventas' as const };
+    await expect(
+      updateQuote(prisma, quoteId, {
+        ...selectionDe(quote),
+        client: { nombre: 'Pago Test', rfc: 'XAXX010101000' },
+      }, ventas),
+    ).rejects.toThrow(/factura/i);
+
+    const cliente = await prisma.client.findUnique({ where: { id: quote.clientId } });
+    expect(cliente?.rfc).toBeNull();
+  });
+
+  it('un admin sí puede, y queda en la bitácora', async () => {
+    const { quoteId, paymentId, quote } = await crearPagoDePrueba();
+    await marcarFacturadoComoAdmin(quoteId, paymentId);
+
+    const actualizada = await updateQuote(prisma, quoteId, {
+      ...selectionDe(quote),
+      client: { nombre: 'Pago Test', rfc: 'XAXX010101000' },
+    }, actor);
+    expect(actualizada.client.rfc).toBe('XAXX010101000');
+
+    const logs = await prisma.activityLog.findMany({ where: { quoteId, tipo: 'fiscal' } });
+    expect(logs).toHaveLength(1);
+    expect(logs[0]!.descripcion).toMatch(/desbloqueo de admin/i);
+  });
+
+  it('editar solo los invitados sigue funcionando con datos congelados', async () => {
+    // La guardia compara VALORES, no presencia de llave: el formulario reenvía
+    // los seis campos fiscales en cada guardado. Si comparara presencia, esto
+    // sería un 409 y la vendedora no podría tocar nada más del evento.
+    const { quoteId, paymentId, quote } = await crearPagoDePrueba();
+    await marcarFacturadoComoAdmin(quoteId, paymentId);
+
+    const ventas = { id: actor.id, role: 'ventas' as const };
+    const actualizada = await updateQuote(prisma, quoteId, {
+      ...selectionDe(quote),
+      invitados: 180,
+      client: { nombre: 'Pago Test', ...fiscalesSinCambio },
+    }, ventas);
+    expect(actualizada.invitados).toBe(180);
+  });
+
+  it('omitir un campo fiscal no cuenta como borrarlo', async () => {
+    // `rfc` ausente significa "déjalo como está", no "ponlo en null". Sin esta
+    // distinción, guardar el formulario reducido dispararía un 409 fantasma.
+    const { quoteId, paymentId, quote } = await crearPagoDePrueba();
+    await updateQuote(prisma, quoteId, {
+      ...selectionDe(quote),
+      client: { nombre: 'Pago Test', rfc: 'XAXX010101000' },
+    }, actor);
+    await marcarFacturadoComoAdmin(quoteId, paymentId);
+
+    const ventas = { id: actor.id, role: 'ventas' as const };
+    const actualizada = await updateQuote(prisma, quoteId, {
+      ...selectionDe(quote),
+      invitados: 190,
+      client: { nombre: 'Pago Test' },
+    }, ventas);
+    expect(actualizada.invitados).toBe(190);
+    expect(actualizada.client.rfc).toBe('XAXX010101000');
+  });
+
+  it('sin factura emitida no se escribe bitácora fiscal de desbloqueo', async () => {
+    const { quoteId, quote } = await crearPagoDePrueba();
+    await updateQuote(prisma, quoteId, {
+      ...selectionDe(quote),
+      client: { nombre: 'Pago Test', rfc: 'XAXX010101000' },
+    }, actor);
+
+    const logs = await prisma.activityLog.findMany({ where: { quoteId, tipo: 'fiscal' } });
+    expect(logs).toHaveLength(1);
+    expect(logs[0]!.descripcion).not.toMatch(/desbloqueo/i);
   });
 });

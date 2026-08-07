@@ -483,29 +483,42 @@ export async function updateQuote(db: PrismaClient, id: string, rawInput: unknow
   await assertEspaciosDisponibles(db, input.fecha, input.spaceIds, id);
   const { breakdown, enriched } = await computeAndEnrich(db, toSelection(input));
 
+  let bitacoraFiscal: { campos: string[]; desbloqueoDeAdmin: boolean } | null = null;
   if (input.client) {
-    // Si ya no queda ningún pago facturable, los datos fiscales quedan congelados:
-    // el ingreso se fue a la global de público en general y reescribir el RFC solo
-    // crearía una discrepancia con lo ya declarado.
+    // Los datos fiscales se congelan cuando ya salió un CFDI con ellos: cambiarlos
+    // por debajo desalinea lo timbrado. Un admin sí puede corregirlos (típicamente
+    // tras cancelar el CFDI) y el cambio queda en la bitácora.
     //
-    // Se compara VALOR contra valor, no presencia de la llave: el formulario manda
-    // SIEMPRE los seis campos fiscales (ver `fiscalesParaGuardar` en el front), así
-    // que bloquear por presencia haría imposible editar cualquier otra cosa del
-    // evento —invitados, horas extra— en cuanto cierra el mes del último pago.
-    const pagos = await db.payment.findMany({
-      where: { quoteId: id },
-      select: { fecha: true, facturadoAt: true, desbloqueoAt: true, anuladoAt: true },
-    });
-    const edicion = datosFiscalesEditables(pagos);
-    if (!edicion.editable) {
-      const clienteActual = await db.client.findUnique({ where: { id: existing.clientId } });
-      const tocaFiscales = CAMPOS_FISCALES.some(
-        (campo) => campo in input.client! && (input.client![campo] ?? null) !== (clienteActual?.[campo] ?? null),
-      );
-      if (tocaFiscales) {
+    // Se compara VALOR contra valor, y solo de las llaves presentes:
+    //  · El formulario manda SIEMPRE los seis campos fiscales (ver
+    //    `fiscalesParaGuardar` en el front). Bloquear por presencia haría imposible
+    //    editar cualquier otra cosa del evento —invitados, horas extra— en cuanto
+    //    se emite la primera factura.
+    //  · `Object.hasOwn` y no `in`: `in` recorre la cadena de prototipos, así que
+    //    un campo ausente que exista en `Object.prototype` se leería como enviado.
+    //  · Omitir una llave significa "déjala como está" (así lo trata Prisma), no
+    //    "ponla en null"; por eso la ausencia nunca cuenta como cambio.
+    const clienteActual = await db.client.findUnique({ where: { id: existing.clientId } });
+    const camposFiscalesCambiados = CAMPOS_FISCALES.filter(
+      (campo) =>
+        Object.hasOwn(input.client!, campo) &&
+        (input.client![campo] ?? null) !== (clienteActual?.[campo] ?? null),
+    );
+
+    let congelado = false;
+    if (camposFiscalesCambiados.length > 0) {
+      const pagos = await db.payment.findMany({
+        where: { quoteId: id },
+        select: { fecha: true, facturadoAt: true, desbloqueoAt: true, anuladoAt: true },
+      });
+      const edicion = datosFiscalesEditables(pagos);
+      congelado = !edicion.editable;
+      if (congelado && actor.role !== 'admin') {
         throw new QuoteError(409, edicion.motivo ?? 'Los datos fiscales ya no se pueden modificar.');
       }
+      bitacoraFiscal = { campos: [...camposFiscalesCambiados], desbloqueoDeAdmin: congelado };
     }
+
     await db.client.update({ where: { id: existing.clientId }, data: input.client });
   }
 
@@ -531,6 +544,19 @@ export async function updateQuote(db: PrismaClient, id: string, rawInput: unknow
     },
     include: includeRels,
   });
+
+  // Todo cambio de datos fiscales se registra, esté o no congelado el candado:
+  // el RFC con el que se timbra es información que hay que poder auditar hacia
+  // atrás. La marca de "desbloqueo de admin" señala los que rompieron el candado.
+  if (bitacoraFiscal) {
+    await logActivity(db, {
+      quoteId: id,
+      tipo: 'fiscal',
+      descripcion: `Datos fiscales actualizados${bitacoraFiscal.desbloqueoDeAdmin ? ' (desbloqueo de admin)' : ''}: ${bitacoraFiscal.campos.join(', ')}`,
+      meta: { campos: bitacoraFiscal.campos, desbloqueoDeAdmin: bitacoraFiscal.desbloqueoDeAdmin },
+      actorId: actor.id,
+    });
+  }
 
   // Se registra CUALQUIER edición que cambie algo material, no solo las de eventos
   // con compromiso de pago: el BI necesita el historial completo de cambios de
