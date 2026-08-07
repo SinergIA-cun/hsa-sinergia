@@ -145,6 +145,11 @@ export interface Payment {
   comprobanteKey: string | null;
   anuladoAt: string | null;
   motivoAnulacion: string | null;
+  // Candado de facturación: el servidor lo calcula al vuelo con el calendario.
+  facturable?: boolean;
+  motivoFactura?: string | null;
+  facturadoAt?: string | null;
+  desbloqueoAt?: string | null;
 }
 
 export interface HojaOperativa {
@@ -202,6 +207,8 @@ export interface QuoteDetail {
   quote: Quote;
   estadoCuenta: EstadoCuenta;
   payments: Payment[];
+  /** `editable: false` cuando ya no queda ningún pago facturable. */
+  fiscalEditable?: { editable: boolean; motivo: string | null };
   activityLog: ActivityEntry[];
 }
 

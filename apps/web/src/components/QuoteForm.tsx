@@ -83,6 +83,11 @@ interface Props {
   excludeQuoteId?: string;
   /** Habilita el buscador de clientes existentes (solo al crear). */
   enableClientSearch?: boolean;
+  /**
+   * Candado de facturación del evento. Solo lo manda la edición: una cotización
+   * nueva no tiene pagos, así que sus datos fiscales siempre son capturables.
+   */
+  fiscalEditable?: { editable: boolean; motivo: string | null };
 }
 
 export function QuoteForm({
@@ -93,6 +98,7 @@ export function QuoteForm({
   errorMsg,
   excludeQuoteId,
   enableClientSearch = false,
+  fiscalEditable,
 }: Props) {
   const [nombre, setNombre] = useState(initial?.nombre ?? '');
   const [telefono, setTelefono] = useState(initial?.telefono ?? '');
@@ -597,6 +603,8 @@ export function QuoteForm({
           onRequiereFactura={setRequiereFactura}
           datos={fiscales}
           onChange={(patch) => setFiscales((prev) => ({ ...prev, ...patch }))}
+          editable={fiscalEditable?.editable ?? true}
+          motivoBloqueo={fiscalEditable?.motivo}
         />
       </div>
 

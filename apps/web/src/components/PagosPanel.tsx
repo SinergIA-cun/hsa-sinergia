@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { Lock } from 'lucide-react';
 import { api } from '../lib/api.ts';
 import { formatMXN } from '../lib/money.ts';
 import { formatEventDate, formatTimestamp } from '../lib/date.ts';
@@ -69,6 +70,14 @@ export function PagosPanel({ quoteId, isAdmin, estadoCuenta, payments, activityL
       setBusy(false);
     }
   }
+
+  // Reabrir la facturación de un pago cuyo mes ya cerró. Solo admin, y queda en
+  // la bitácora: por eso el candado puede ser estricto, la salida es visible.
+  const desbloquear = useMutation({
+    mutationFn: (paymentId: string) =>
+      api.patch(`/api/quotes/${quoteId}/payments/${paymentId}/desbloquear-factura`, {}),
+    onSuccess: refresh,
+  });
 
   async function anular(paymentId: string) {
     const motivo = window.prompt('Motivo de la anulación:');
@@ -174,6 +183,23 @@ export function PagosPanel({ quoteId, isAdmin, estadoCuenta, payments, activityL
                   )}
                   {isAdmin && !readOnly && !p.anuladoAt && <button onClick={() => anular(p.id)} className="text-xs text-wine hover:underline">Anular</button>}
                 </span>
+                {p.facturable === false && !p.anuladoAt && (
+                  <div className="flex w-full flex-wrap items-center gap-2 text-xs text-charcoal-soft">
+                    <span className="inline-flex items-center gap-1">
+                      <Lock size={12} /> {p.motivoFactura}
+                    </span>
+                    {isAdmin && !readOnly && (
+                      <button
+                        type="button"
+                        onClick={() => desbloquear.mutate(p.id)}
+                        disabled={desbloquear.isPending}
+                        className="rounded border border-ink/15 px-2 py-0.5 text-xs text-ink hover:bg-ink/5 disabled:opacity-50"
+                      >
+                        Reabrir facturación
+                      </button>
+                    )}
+                  </div>
+                )}
               </li>
             ))}
           </ul>

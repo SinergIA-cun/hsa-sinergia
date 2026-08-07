@@ -211,6 +211,7 @@ export function EditQuotePage() {
             onSubmit={handleSave}
             errorMsg={error}
             excludeQuoteId={quote.id}
+            fiscalEditable={quoteQ.data?.fiscalEditable}
           />
           <PagosPanel
             quoteId={quote.id}

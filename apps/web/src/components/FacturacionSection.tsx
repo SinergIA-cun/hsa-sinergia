@@ -1,4 +1,4 @@
-import { Check, X, FileText } from 'lucide-react';
+import { Check, X, FileText, Lock } from 'lucide-react';
 import { REGIMENES_FISCALES, USOS_CFDI, requisitosFactura, type DatosFiscales } from '@hsa/shared';
 import { Card, Field, TextInput, SelectInput } from './ui.tsx';
 
@@ -7,6 +7,9 @@ interface Props {
   onRequiereFactura: (v: boolean) => void;
   datos: DatosFiscales;
   onChange: (patch: Partial<DatosFiscales>) => void;
+  /** `false` cuando ya no queda ningún pago facturable. */
+  editable?: boolean;
+  motivoBloqueo?: string | null;
 }
 
 /**
@@ -14,9 +17,18 @@ interface Props {
  * facturarle. Los datos viven en el CLIENTE, no en el evento: se capturan una
  * vez y se reaprovechan en todos sus eventos.
  */
-export function FacturacionSection({ requiereFactura, onRequiereFactura, datos, onChange }: Props) {
+export function FacturacionSection({
+  requiereFactura,
+  onRequiereFactura,
+  datos,
+  onChange,
+  editable = true,
+  motivoBloqueo,
+}: Props) {
   const requisitos = requisitosFactura(datos);
   const faltan = requisitos.filter((r) => !r.ok).length;
+  // Por omisión editable: una cotización nueva no tiene pagos y se captura igual que siempre.
+  const bloqueado = editable === false;
 
   return (
     <Card className="space-y-4 p-6">
@@ -43,12 +55,23 @@ export function FacturacionSection({ requiereFactura, onRequiereFactura, datos, 
 
       {requiereFactura && (
         <>
+          {bloqueado && (
+            <p className="flex items-start gap-2 rounded-lg border border-ink/15 bg-ink/5 px-3 py-2.5 text-sm text-ink-500">
+              <Lock size={15} className="mt-0.5 shrink-0" />
+              <span>
+                {motivoBloqueo ?? 'Los datos fiscales ya no se pueden modificar.'}{' '}
+                Un administrador puede reabrir un pago desde el panel de pagos.
+              </span>
+            </p>
+          )}
+
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="RFC">
               <TextInput
                 value={datos.rfc ?? ''}
                 onChange={(e) => onChange({ rfc: e.target.value.toUpperCase() })}
                 placeholder="GODE561231GR8"
+                disabled={bloqueado}
               />
             </Field>
             <Field label="Código postal fiscal">
@@ -56,6 +79,7 @@ export function FacturacionSection({ requiereFactura, onRequiereFactura, datos, 
                 value={datos.cpFiscal ?? ''}
                 onChange={(e) => onChange({ cpFiscal: e.target.value })}
                 placeholder="53100"
+                disabled={bloqueado}
               />
             </Field>
           </div>
@@ -65,6 +89,7 @@ export function FacturacionSection({ requiereFactura, onRequiereFactura, datos, 
               value={datos.razonSocial ?? ''}
               onChange={(e) => onChange({ razonSocial: e.target.value })}
               placeholder="Como aparece en la Constancia de Situación Fiscal"
+              disabled={bloqueado}
             />
           </Field>
 
@@ -73,6 +98,7 @@ export function FacturacionSection({ requiereFactura, onRequiereFactura, datos, 
               <SelectInput
                 value={datos.regimenFiscal ?? ''}
                 onChange={(e) => onChange({ regimenFiscal: e.target.value })}
+                disabled={bloqueado}
               >
                 <option value="">Selecciona…</option>
                 {Object.entries(REGIMENES_FISCALES).map(([clave, nombre]) => (
@@ -83,7 +109,11 @@ export function FacturacionSection({ requiereFactura, onRequiereFactura, datos, 
               </SelectInput>
             </Field>
             <Field label="Uso del CFDI">
-              <SelectInput value={datos.usoCfdi ?? ''} onChange={(e) => onChange({ usoCfdi: e.target.value })}>
+              <SelectInput
+                value={datos.usoCfdi ?? ''}
+                onChange={(e) => onChange({ usoCfdi: e.target.value })}
+                disabled={bloqueado}
+              >
                 <option value="">Selecciona…</option>
                 {Object.entries(USOS_CFDI).map(([clave, nombre]) => (
                   <option key={clave} value={clave}>
@@ -100,6 +130,7 @@ export function FacturacionSection({ requiereFactura, onRequiereFactura, datos, 
               value={datos.correoFacturacion ?? ''}
               onChange={(e) => onChange({ correoFacturacion: e.target.value })}
               placeholder="Puede ser distinto al de contacto"
+              disabled={bloqueado}
             />
           </Field>
 
