@@ -39,7 +39,11 @@ export async function loadCatalog(
     db.rentalPrice.findMany({ where: { priceListId: priceList.id } }),
     flatList ? db.rentalPrice.findMany({ where: { priceListId: flatList.id } }) : Promise.resolve([]),
     db.foodPackage.findMany({ include: { brackets: true } }),
-    db.addOn.findMany({ where: { activo: true } }),
+    // SIN filtrar por `activo`: el catálogo tiene que RESOLVER todos los
+    // add-ons, incluidos los dados de baja, porque las cotizaciones ya emitidas
+    // los referencian por id y el motor lanza si no los encuentra. Quién se
+    // sigue OFRECIENDO lo decide la interfaz con la bandera `activo`.
+    db.addOn.findMany(),
     db.eventType.findMany({ select: { id: true, djHoraExtra: true, rentaPlana: true } }),
   ]);
 
@@ -76,6 +80,7 @@ export async function loadCatalog(
       name: a.nombre,
       kind: a.kind,
       price: a.price,
+      activo: a.activo,
     })),
   } satisfies Catalog;
 }

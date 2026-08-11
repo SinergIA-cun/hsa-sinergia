@@ -31,6 +31,11 @@ export interface AddOn {
   name: string;
   kind: AddOnKind;
   price: number; // sin IVA
+  /** Si se sigue OFRECIENDO en el cotizador. Distinto de si el catálogo lo
+   *  RESUELVE: los inactivos siguen presentes para poder recalcular las
+   *  cotizaciones ya emitidas que los referencian por id. El motor no
+   *  distingue —cobra igual— y la interfaz es la que deja de ofrecerlos. */
+  activo: boolean;
 }
 
 export interface Catalog {

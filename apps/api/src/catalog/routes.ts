@@ -19,7 +19,11 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
         include: { foodPackages: { include: { brackets: true } } },
         orderBy: { nombre: 'asc' },
       }),
-      app.prisma.addOn.findMany({ where: { activo: true }, orderBy: { nombre: 'asc' } }),
+      // También sin filtrar: el formulario solo OFRECE los `activo: true`, pero
+      // necesita poder nombrar uno inactivo que la cotización ya traiga
+      // seleccionado. Si se esconde aquí, no hay forma de quitarlo desde la
+      // interfaz y la cotización queda ineditable.
+      app.prisma.addOn.findMany({ orderBy: { nombre: 'asc' } }),
     ]);
     return { engine, spaces, eventTypes, addOns };
   });

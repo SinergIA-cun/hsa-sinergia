@@ -211,6 +211,12 @@ export function QuoteForm({
     return { apartar, formalizar, liquidacion, liqFecha, dias };
   }, [breakdown, spaceIds, catalog.spaces, fecha]);
 
+  // El selector solo OFRECE los add-ons vigentes. Uno dado de baja aparece SOLO
+  // si esta cotización ya lo trae seleccionado: el motor lo sigue cobrando, así
+  // que hay que poder verlo y quitarlo A PROPÓSITO. Quitarlo solo, en automático,
+  // le movería el dinero a una cotización sin que nadie lo decida.
+  const addOnsVisibles = catalog.addOns.filter((a) => a.activo || a.id in addOns);
+
   const spaceNameById = new Map(catalog.spaces.map((s) => [s.id, s.nombre]));
   const lineLabel = (line: QuoteLine): string => {
     const nombre = line.spaceId ? spaceNameById.get(line.spaceId) : undefined;
@@ -560,13 +566,18 @@ export function QuoteForm({
           )}
 
           <div className="space-y-2">
-            {catalog.addOns.map((a) => {
+            {addOnsVisibles.map((a) => {
               const active = a.id in addOns;
+              const dadoDeBaja = !a.activo;
               return (
                 <div
                   key={a.id}
                   className={`flex flex-wrap items-center justify-between gap-3 rounded-lg border px-4 py-2.5 text-sm ${
-                    active ? 'border-gold/60 bg-gold/5' : 'border-ink/10'
+                    dadoDeBaja
+                      ? 'border-wine/50 bg-wine/5'
+                      : active
+                        ? 'border-gold/60 bg-gold/5'
+                        : 'border-ink/10'
                   }`}
                 >
                   <label className="flex flex-1 cursor-pointer items-center gap-3">
@@ -576,12 +587,20 @@ export function QuoteForm({
                       onChange={() => toggleAddOn(a.id)}
                       className="h-4 w-4 accent-[var(--color-gold)]"
                     />
-                    <span className="font-medium text-charcoal">{a.nombre}</span>
-                    <span className="text-xs text-charcoal-soft">
-                      {formatMXN(a.price)}
-                      {a.kind === 'porPersona' && ' /persona'}
-                      {a.kind === 'porUnidad' &&
-                        (a.nombre.toLowerCase().includes('hora') ? ' /hora' : ' /unidad')}
+                    <span className="flex-1">
+                      <span className="font-medium text-charcoal">{a.nombre}</span>{' '}
+                      <span className="text-xs text-charcoal-soft">
+                        {formatMXN(a.price)}
+                        {a.kind === 'porPersona' && ' /persona'}
+                        {a.kind === 'porUnidad' &&
+                          (a.nombre.toLowerCase().includes('hora') ? ' /hora' : ' /unidad')}
+                      </span>
+                      {dadoDeBaja && (
+                        <span className="mt-1 block text-xs font-medium text-wine">
+                          Ya no se ofrece, pero se sigue cobrando en esta cotización. Quítalo para
+                          dejar de cobrarlo.
+                        </span>
+                      )}
                     </span>
                   </label>
                   {active && a.kind === 'porUnidad' && (

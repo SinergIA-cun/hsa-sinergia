@@ -1,7 +1,12 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, afterAll } from 'vitest';
 import { prisma } from '@hsa/database';
 import { computeQuote } from '@hsa/shared';
 import { loadCatalog } from './loader.js';
+
+const addOnsCreados: string[] = [];
+afterAll(async () => {
+  await prisma.addOn.deleteMany({ where: { id: { in: addOnsCreados } } });
+});
 
 describe('loadCatalog', () => {
   it('carga el catálogo seedeado (renta por-día + plana)', async () => {
@@ -75,6 +80,61 @@ describe('loadCatalog', () => {
     });
     const alimento = r.lines.find((l) => l.concepto.startsWith('Alimentos'));
     expect(alimento?.monto).toBe(989 * 250); // bracket 201–300 de XV
+  });
+
+  // El catálogo separa "resolver" de "ofrecer": trae TODOS los add-ons y marca
+  // con `activo` cuáles se siguen ofreciendo. Sin esto, dar de baja un add-on
+  // (p. ej. el valet, backfill fase12) dejaba irrecalculable toda cotización
+  // histórica que lo referenciara.
+  it('el catálogo RESUELVE los add-ons desactivados y los marca activo=false', async () => {
+    const inactivo = await prisma.addOn.create({
+      data: { nombre: 'ZZZ Prueba inactivo', kind: 'porUnidad', price: 100, activo: false },
+    });
+    addOnsCreados.push(inactivo.id);
+
+    const catalog = await loadCatalog(prisma);
+    const cargado = catalog.addOns.find((a) => a.id === inactivo.id);
+    expect(cargado).toBeDefined();
+    expect(cargado!.activo).toBe(false);
+    // Y los que sí se ofrecen quedan marcados como tal.
+    expect(catalog.addOns.some((a) => a.activo)).toBe(true);
+  });
+
+  it('una cotización que referencia un add-on desactivado se puede recalcular', async () => {
+    const inactivo = await prisma.addOn.create({
+      data: { nombre: 'ZZZ Valet de prueba', kind: 'porUnidad', price: 100, activo: false },
+    });
+    addOnsCreados.push(inactivo.id);
+
+    const catalog = await loadCatalog(prisma);
+    const arcos = await prisma.space.findFirst({ where: { nombre: 'Salón Los Arcos' } });
+    const r = computeQuote(catalog, {
+      fecha: '2027-05-08',
+      invitados: 250,
+      spaceIds: [arcos!.id],
+      horasExtra: 0,
+      usaCapilla: false,
+      usaDjHoraExtra: false,
+      addOns: [{ addOnId: inactivo.id, cantidad: 4 }],
+    });
+    // Se sigue cobrando: el precio de una cotización emitida no se mueve solo.
+    expect(r.lines.find((l) => l.concepto === 'ZZZ Valet de prueba')?.monto).toBe(400);
+  });
+
+  it('un add-on con id inexistente (no solo inactivo) sigue lanzando error', async () => {
+    const catalog = await loadCatalog(prisma);
+    const arcos = await prisma.space.findFirst({ where: { nombre: 'Salón Los Arcos' } });
+    expect(() =>
+      computeQuote(catalog, {
+        fecha: '2027-05-08',
+        invitados: 250,
+        spaceIds: [arcos!.id],
+        horasExtra: 0,
+        usaCapilla: false,
+        usaDjHoraExtra: false,
+        addOns: [{ addOnId: 'basura-que-nunca-existio', cantidad: 1 }],
+      }),
+    ).toThrow(/no existe/);
   });
 
   it('catálogo 2027: Empresarial (y Fin de año) tienen los 7 paquetes del folleto', async () => {
