@@ -65,13 +65,10 @@ enum ActivityType {
 /// cambiar el catálogo de este año nunca represia lo cotizado el año pasado.
 model PriceList {
   id        String    @id @default(cuid())
-  nombre    String?   @unique // "2027", "2028". Nullable hasta el backfill fase13.
+  nombre    String    @unique // "2027", "2028"
   anio      Int
   vigencia  DateTime?
   activa    Boolean   @default(false)
-  // `tipo` queda VIVO en la fase 1 a propósito: el backfill fase13 lo lee para
-  // copiarlo a los renglones de RentalPrice. Se cae en la fase 2, no antes.
-  tipo      String    @default("dia")
   createdAt DateTime  @default(now())
 
   // Parámetros de precio. Vivían en el singleton PricingConfig, que era la
@@ -230,8 +227,8 @@ model Quote {
   deletedAt     DateTime?
   /// Catálogo con el que se coteó. MANDA al recalcular: reeditar una cotización
   /// de 2027 usa precios de 2027 aunque el catálogo activo ya sea 2028.
-  priceList     PriceList?  @relation(fields: [priceListId], references: [id])
-  priceListId   String?
+  priceList     PriceList   @relation(fields: [priceListId], references: [id])
+  priceListId   String
   payments      Payment[]
   activityLog   ActivityLog[]
 
@@ -251,8 +248,8 @@ model FoodPackage {
   nombre      String
   ivaIncluido Boolean            @default(false)
   incluye     String?
-  priceList   PriceList?         @relation(fields: [priceListId], references: [id])
-  priceListId String?
+  priceList   PriceList          @relation(fields: [priceListId], references: [id])
+  priceListId String
   brackets    FoodPackagePrice[]
 
   @@index([priceListId])
@@ -272,20 +269,11 @@ model AddOn {
   nombre      String
   kind        AddOnKind
   price       Int
-  activo      Boolean    @default(true)
-  priceList   PriceList? @relation(fields: [priceListId], references: [id])
-  priceListId String?
+  activo      Boolean   @default(true)
+  priceList   PriceList @relation(fields: [priceListId], references: [id])
+  priceListId String
 
   @@index([priceListId])
-}
-
-model PricingConfig {
-  id               String @id @default("default")
-  ivaRate          Float  @default(0.16)
-  extraHourRate    Float  @default(0.05)
-  foodDiscountRate Float  @default(0.05)
-  valetRatio       Float  @default(2.5)
-  capillaSabado    Int    @default(5000) // renta de la capilla en sábado (cortesía el resto)
 }
 
 model SpacePaymentRule {
