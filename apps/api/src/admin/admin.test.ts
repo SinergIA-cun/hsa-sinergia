@@ -175,6 +175,27 @@ describe('admin config', () => {
     expect(res.json()).not.toHaveProperty('config');
   });
 
+  // El selector del formulario solo OFRECE los activos, pero necesita poder
+  // NOMBRAR uno inactivo que la cotización ya traiga seleccionado; si el
+  // endpoint lo esconde, no hay forma de quitarlo desde la interfaz.
+  it('GET /catalog expone los add-ons inactivos marcados con activo=false', async () => {
+    const inactivo = await prisma.addOn.create({
+      data: { nombre: 'ZZZ Add-on dado de baja', kind: 'porUnidad', price: 100, activo: false },
+    });
+    createdAddOnIds.push(inactivo.id);
+
+    const res = await app.inject({ method: 'GET', url: '/api/catalog', cookies: cookie() });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as {
+      addOns: { id: string; activo: boolean }[];
+      engine: { addOns: { id: string; activo: boolean }[] };
+    };
+    expect(body.addOns.find((a) => a.id === inactivo.id)?.activo).toBe(false);
+    // Y el catálogo del motor (el que calcula en el navegador) también lo resuelve.
+    expect(body.engine.addOns.find((a) => a.id === inactivo.id)?.activo).toBe(false);
+    expect(body.addOns.some((a) => a.activo)).toBe(true);
+  });
+
   it('GET /admin/config sin auth => 401', async () => {
     const res = await app.inject({ method: 'GET', url: '/api/admin/config' });
     expect(res.statusCode).toBe(401);

@@ -38,8 +38,11 @@ const catalog: Catalog = {
     },
   ],
   addOns: [
-    { id: 'porunidad', name: 'Servicio por unidad', kind: 'porUnidad', price: 100 },
-    { id: 'dj', name: 'DJ', kind: 'fijo', price: 2950 },
+    { id: 'porunidad', name: 'Servicio por unidad', kind: 'porUnidad', price: 100, activo: true },
+    { id: 'dj', name: 'DJ', kind: 'fijo', price: 2950, activo: true },
+    // Ya no se OFRECE, pero el catálogo lo sigue RESOLVIENDO: las cotizaciones
+    // emitidas antes de darlo de baja lo referencian por id en su selección.
+    { id: 'valet', name: 'Valet parking', kind: 'porUnidad', price: 100, activo: false },
   ],
 };
 
@@ -82,6 +85,29 @@ describe('computeQuote', () => {
     const r = computeQuote(catalog, mk({ addOns: [{ addOnId: 'porunidad', cantidad: 50 }, { addOnId: 'dj', cantidad: 1 }] }));
     const addonBase = 100 * 50 + 2950;
     expect(r.total).toBeCloseTo(108500 + addonBase * 1.16, 2);
+  });
+
+  // "Resolver" y "ofrecer" son cosas distintas: el catálogo deja de OFRECER un
+  // add-on dado de baja, pero tiene que seguir RESOLVIÉNDOLO o toda cotización
+  // histórica que lo referencie queda irrecalculable (y por tanto ineditable).
+  it('un add-on inactivo se sigue resolviendo y cobrando igual que uno activo', () => {
+    const r = computeQuote(catalog, mk({ addOns: [{ addOnId: 'valet', cantidad: 4 }] }));
+    const linea = r.lines.find((l) => l.concepto === 'Valet parking');
+    expect(linea).toBeDefined();
+    expect(linea!.monto).toBe(100 * 4);
+    expect(r.total).toBeCloseTo(108500 + 100 * 4 * 1.16, 2);
+  });
+
+  it('el precio NO se mueve solo: inactivo cobra lo mismo que activo con el mismo precio', () => {
+    const conInactivo = computeQuote(catalog, mk({ addOns: [{ addOnId: 'valet', cantidad: 7 }] }));
+    const conActivo = computeQuote(catalog, mk({ addOns: [{ addOnId: 'porunidad', cantidad: 7 }] }));
+    expect(conInactivo.total).toBe(conActivo.total);
+  });
+
+  it('un add-on que de verdad NO existe (id basura) sigue lanzando error', () => {
+    expect(() =>
+      computeQuote(catalog, mk({ addOns: [{ addOnId: 'id-que-no-existe-en-ninguna-parte', cantidad: 1 }] })),
+    ).toThrow(/Add-on id-que-no-existe-en-ninguna-parte no existe/);
   });
 
   it('usaCapilla en sábado agrega $5,000; entre semana es cortesía ($0)', () => {
