@@ -60,14 +60,31 @@ enum ActivityType {
   fiscal
 }
 
+/// El catálogo completo de un año: renta, servicios, alimentos y parámetros.
+/// Una cotización queda casada a uno y recalcula SIEMPRE contra él, de modo que
+/// cambiar el catálogo de este año nunca represia lo cotizado el año pasado.
 model PriceList {
-  id           String        @id @default(cuid())
-  anio         Int
-  vigencia     DateTime?
-  activa       Boolean       @default(true)
-  tipo         String        @default("dia") // "dia" = renta por tipo de día · "plano" = renta plana (Team Building)
-  createdAt    DateTime      @default(now())
+  id        String    @id @default(cuid())
+  nombre    String?   @unique // "2027", "2028". Nullable hasta el backfill fase13.
+  anio      Int
+  vigencia  DateTime?
+  activa    Boolean   @default(false)
+  // `tipo` queda VIVO en la fase 1 a propósito: el backfill fase13 lo lee para
+  // copiarlo a los renglones de RentalPrice. Se cae en la fase 2, no antes.
+  tipo      String    @default("dia")
+  createdAt DateTime  @default(now())
+
+  // Parámetros de precio. Vivían en el singleton PricingConfig, que era la
+  // última fuente global capaz de represiar TODA cotización al reeditarla.
+  ivaRate          Float @default(0.16)
+  extraHourRate    Float @default(0.05)
+  foodDiscountRate Float @default(0.05)
+  capillaSabado    Int   @default(5000)
+
   rentalPrices RentalPrice[]
+  addOns       AddOn[]
+  foodPackages FoodPackage[]
+  quotes       Quote[]
 }
 
 model Space {
@@ -91,8 +108,13 @@ model RentalPrice {
   viernesEspecial Int
   sabado          Int
   domAJue         Int
+  /// "dia" = renta por tipo de día · "plano" = renta plana (Team Building).
+  /// Antes vivía en PriceList, lo que obligaba a tener DOS listas por año y
+  /// dejaba la plana fuera del filtro `activa`.
+  tipo            String    @default("dia")
 
   @@index([priceListId, spaceId])
+  @@index([priceListId, tipo])
 }
 
 model EventType {
@@ -206,6 +228,10 @@ model Quote {
   // JSON flexible para alimentar el documento interno, el correo diario y el ERP futuro.
   operativa     Json?
   deletedAt     DateTime?
+  /// Catálogo con el que se coteó. MANDA al recalcular: reeditar una cotización
+  /// de 2027 usa precios de 2027 aunque el catálogo activo ya sea 2028.
+  priceList     PriceList?  @relation(fields: [priceListId], references: [id])
+  priceListId   String?
   payments      Payment[]
   activityLog   ActivityLog[]
 
@@ -215,6 +241,7 @@ model Quote {
   @@index([fechaEvento])
   @@index([deletedAt])
   @@index([banqueteroId])
+  @@index([priceListId])
 }
 
 model FoodPackage {
@@ -224,7 +251,11 @@ model FoodPackage {
   nombre      String
   ivaIncluido Boolean            @default(false)
   incluye     String?
+  priceList   PriceList?         @relation(fields: [priceListId], references: [id])
+  priceListId String?
   brackets    FoodPackagePrice[]
+
+  @@index([priceListId])
 }
 
 model FoodPackagePrice {
@@ -237,11 +268,15 @@ model FoodPackagePrice {
 }
 
 model AddOn {
-  id     String    @id @default(cuid())
-  nombre String
-  kind   AddOnKind
-  price  Int
-  activo Boolean   @default(true)
+  id          String     @id @default(cuid())
+  nombre      String
+  kind        AddOnKind
+  price       Int
+  activo      Boolean    @default(true)
+  priceList   PriceList? @relation(fields: [priceListId], references: [id])
+  priceListId String?
+
+  @@index([priceListId])
 }
 
 model PricingConfig {
