@@ -79,7 +79,15 @@ export const statusSchema = z.object({ status: z.enum(QUOTE_STATUSES) });
 /** Los seis campos del cliente que congela el candado de facturación. */
 const CAMPOS_FISCALES = ['rfc', 'razonSocial', 'regimenFiscal', 'cpFiscal', 'usoCfdi', 'correoFacturacion'] as const;
 
-const includeRels = { client: true, eventType: true, createdBy: { select: { id: true, nombre: true } } };
+// El catálogo viaja con la cotización porque es el dato que explica por qué dos
+// cotizaciones de fechas parecidas tienen precios distintos. Sin él, la interfaz
+// solo puede enseñar un cuid, que no le dice nada a nadie.
+const includeRels = {
+  client: true,
+  eventType: true,
+  createdBy: { select: { id: true, nombre: true } },
+  priceList: { select: { id: true, nombre: true, anio: true } },
+};
 
 // Se permite editar el desglose incluso con compromiso de pago (formalizada/complementada);
 // las ediciones en esos estatus quedan registradas en la bitácora de actividad.
@@ -733,14 +741,16 @@ async function traducirSeleccion(
 }
 
 /**
- * Mueve una cotización a otro catálogo y la represia A PROPÓSITO.
+ * Todo lo que hace falta para mover una cotización de catálogo, SIN escribir
+ * nada: validaciones, traducción de la selección y el recálculo con el catálogo
+ * destino.
  *
- * Es la única puerta que rompe el casamiento hecho al crear, y por eso es de
- * admin y deja rastro: el caso real es el cliente que apartó para 2027 y corre su
- * evento a 2029, donde los precios ya son otros. Devuelve el antes y el después
- * para que quien confirme vea con cuánto se va a quedar el cliente.
+ * Existe separado para que la vista previa y el movimiento real corran
+ * exactamente el mismo código. Si la previa calculara por su cuenta —o peor, en
+ * el navegador—, el número que alguien aprueba y el que se guarda podrían
+ * diferir, y es dinero.
  */
-export async function moverCatalogo(db: PrismaClient, id: string, priceListId: string, actor: Actor) {
+async function prepararMovimiento(db: PrismaClient, id: string, priceListId: string, actor: Actor) {
   if (actor.role !== 'admin') {
     throw new QuoteError(403, 'Solo un admin puede mover una cotización de catálogo.');
   }
@@ -772,8 +782,43 @@ export async function moverCatalogo(db: PrismaClient, id: string, priceListId: s
     destino.id,
   );
 
-  const antes = existing.total;
-  const despues = Math.round(breakdown.total);
+  return {
+    existing,
+    destino,
+    origen,
+    seleccion,
+    breakdown,
+    enriched,
+    antes: existing.total,
+    despues: Math.round(breakdown.total),
+  };
+}
+
+/**
+ * Vista previa del movimiento: el mismo cálculo que `moverCatalogo`, sin tocar
+ * la cotización ni la bitácora.
+ *
+ * La interfaz la usa para enseñar el antes y el después ANTES de confirmar.
+ * Falla igual que el movimiento real (403, 404, 409 si el catálogo destino no
+ * trae un paquete o servicio equivalente), y ese es el punto: quien va a mover
+ * se entera del problema mientras todavía puede cancelar.
+ */
+export async function simularCatalogo(db: PrismaClient, id: string, priceListId: string, actor: Actor) {
+  const { antes, despues } = await prepararMovimiento(db, id, priceListId, actor);
+  return { antes, despues };
+}
+
+/**
+ * Mueve una cotización a otro catálogo y la represia A PROPÓSITO.
+ *
+ * Es la única puerta que rompe el casamiento hecho al crear, y por eso es de
+ * admin y deja rastro: el caso real es el cliente que apartó para 2027 y corre su
+ * evento a 2029, donde los precios ya son otros. Devuelve el antes y el después
+ * para que quien confirme vea con cuánto se va a quedar el cliente.
+ */
+export async function moverCatalogo(db: PrismaClient, id: string, priceListId: string, actor: Actor) {
+  const { existing, destino, origen, seleccion, breakdown, enriched, antes, despues } =
+    await prepararMovimiento(db, id, priceListId, actor);
 
   const quote = await db.quote.update({
     where: { id },

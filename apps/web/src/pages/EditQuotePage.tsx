@@ -1,7 +1,16 @@
 import { useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, ExternalLink, Printer, FileText, MessageCircle, QrCode, Check } from 'lucide-react';
+import {
+  ArrowLeft,
+  BookMarked,
+  ExternalLink,
+  Printer,
+  FileText,
+  MessageCircle,
+  QrCode,
+  Check,
+} from 'lucide-react';
 import { api } from '../lib/api.ts';
 import { formatMXN } from '../lib/money.ts';
 import { BreakdownGrouped } from '../components/BreakdownGrouped.tsx';
@@ -11,6 +20,7 @@ import { QuoteForm, type QuotePayload, type QuoteFormInitial } from '../componen
 import { PagosPanel } from '../components/PagosPanel.tsx';
 import { CompartirClienteModal } from '../components/CompartirClienteModal.tsx';
 import { ConfirmarEmpalmeModal, type EspacioOcupado } from '../components/ConfirmarEmpalmeModal.tsx';
+import { MoverCatalogoModal } from '../components/MoverCatalogoModal.tsx';
 import { OperativaSection } from '../components/OperativaSection.tsx';
 import { DESPLAZADAS_KEY } from '../lib/desplazadas.ts';
 import { STATUS_LABEL, STATUS_STYLE, EDITABLE_STATUSES } from '../lib/status.ts';
@@ -73,6 +83,7 @@ export function EditQuotePage() {
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState('');
   const [compartir, setCompartir] = useState(false);
+  const [moverCatalogo, setMoverCatalogo] = useState(false);
   const [empalme, setEmpalme] = useState<{ status: QuoteStatus; ocupados: EspacioOcupado[] } | null>(null);
   const [empalmeBusy, setEmpalmeBusy] = useState(false);
   const [empalmeError, setEmpalmeError] = useState('');
@@ -83,7 +94,18 @@ export function EditQuotePage() {
     queryKey: ['quote', id],
     queryFn: () => api.get<QuoteDetail>(`/api/quotes/${id}`),
   });
-  const catalogQ = useQuery({ queryKey: ['catalog'], queryFn: () => api.get<Catalog>('/api/catalog') });
+
+  // El catálogo que se pide es EL DE LA COTIZACIÓN, no el activo. Con el activo,
+  // una cotización de 2027 abierta cuando ya corre 2028 mostraría precios que no
+  // son los suyos, y peor: el paquete y los servicios que trae seleccionados son
+  // registros de 2027 que no existen en 2028, así que el formulario los perdería
+  // al guardar. Es la misma clase de bug que el plan vino a matar.
+  const priceListId = quoteQ.data?.quote.priceListId;
+  const catalogQ = useQuery({
+    queryKey: ['catalog', priceListId],
+    queryFn: () => api.get<Catalog>(`/api/catalog?priceListId=${priceListId!}`),
+    enabled: Boolean(priceListId),
+  });
 
   const quote = quoteQ.data?.quote;
   const estadoCuenta = quoteQ.data?.estadoCuenta;
@@ -168,10 +190,15 @@ export function EditQuotePage() {
     }
   }
 
-  if (quoteQ.isLoading || catalogQ.isLoading) return <p className="text-charcoal-soft">Cargando…</p>;
-  if (!quote || !catalog || !estadoCuenta || !payments || !activityLog) {
+  if (quoteQ.isLoading) return <p className="text-charcoal-soft">Cargando…</p>;
+  if (!quote || !estadoCuenta || !payments || !activityLog) {
     return <p className="text-wine">No se encontró el contrato.</p>;
   }
+  // El catálogo arranca deshabilitado hasta saber cuál pide la cotización, así
+  // que se espera por `isPending`: con `isLoading` habría un parpadeo de "no se
+  // encontró el contrato" entre que llega la cotización y arranca el catálogo.
+  if (catalogQ.isPending) return <p className="text-charcoal-soft">Cargando…</p>;
+  if (!catalog) return <p className="text-wine">No se pudo cargar el catálogo de la cotización.</p>;
 
   const enPapelera = Boolean(quote.deletedAt);
   const editable = EDITABLE_STATUSES.includes(quote.status) && !enPapelera;
@@ -209,6 +236,23 @@ export function EditQuotePage() {
           <p className="mt-1 text-sm text-charcoal-soft">
             {formatEventDate(quote.fechaEvento, 'long')} · {quote.invitados} invitados ·{' '}
             {formatMXN(quote.total)}
+          </p>
+          {/* A qué catálogo pertenece: es el dato que explica por qué dos
+              cotizaciones de fechas parecidas tienen precios distintos. */}
+          <p className="mt-1.5 flex flex-wrap items-center gap-2 text-xs text-charcoal-soft">
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-cream-200 px-2.5 py-0.5 font-semibold uppercase tracking-wide text-ink-500">
+              <BookMarked size={12} /> Catálogo {quote.priceList?.nombre ?? '—'}
+            </span>
+            <span>Sus precios mandan aunque el catálogo activo sea otro.</span>
+            {isAdmin && !enPapelera && (
+              <button
+                type="button"
+                className="rounded text-xs font-medium text-gold underline underline-offset-2 hover:text-gold-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold/60"
+                onClick={() => setMoverCatalogo(true)}
+              >
+                Mover de catálogo
+              </button>
+            )}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -333,6 +377,26 @@ export function EditQuotePage() {
 
       {compartir && (
         <CompartirClienteModal quote={quote} publicUrl={publicUrl} onClose={() => setCompartir(false)} />
+      )}
+
+      {moverCatalogo && (
+        <MoverCatalogoModal
+          quoteId={quote.id}
+          catalogoActual={quote.priceList ?? null}
+          totalActual={quote.total}
+          pagado={estadoCuenta.pagado}
+          onClose={() => setMoverCatalogo(false)}
+          onMoved={async () => {
+            // Mover represia: cambian el total, el desglose Y el catálogo con el
+            // que se pinta el formulario. Sin invalidar los tres, la pantalla
+            // sigue mostrando los precios viejos como si nada hubiera pasado.
+            await Promise.all([
+              qc.invalidateQueries({ queryKey: ['quote', id] }),
+              qc.invalidateQueries({ queryKey: ['quotes'] }),
+              qc.invalidateQueries({ queryKey: ['catalog'] }),
+            ]);
+          }}
+        />
       )}
 
       {empalme && (

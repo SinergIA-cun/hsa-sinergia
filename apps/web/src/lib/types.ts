@@ -135,6 +135,12 @@ export interface Quote {
   client?: Client;
   eventTypeId: string;
   eventType?: { id: string; nombre: string; slug: string };
+  /**
+   * Catálogo al que la cotización está casada. Manda al recalcular: reeditar una
+   * de 2027 usa precios de 2027 aunque el catálogo activo ya sea 2028.
+   */
+  priceListId: string;
+  priceList?: { id: string; nombre: string; anio: number } | null;
   fechaEvento: string;
   invitados: number;
   spaceIds: string[];
@@ -237,7 +243,20 @@ export interface EstadoCuenta {
 
 export interface ActivityEntry {
   id: string;
-  tipo: 'creada' | 'estatus' | 'pago' | 'pagoAnulado' | 'edicion';
+  // Debe seguir a `LogTipo` de `apps/api/src/quotes/activityLog.ts`. La bitácora
+  // se pinta con `descripcion`, así que un valor de más no rompe la pantalla,
+  // pero un tipo desalineado sí engaña a quien filtre por él.
+  tipo:
+    | 'creada'
+    | 'estatus'
+    | 'pago'
+    | 'pagoAnulado'
+    | 'edicion'
+    | 'eliminada'
+    | 'restaurada'
+    | 'factura'
+    | 'fiscal'
+    | 'catalogo';
   descripcion: string;
   createdAt: string;
   actor?: { nombre: string } | null;

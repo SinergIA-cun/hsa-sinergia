@@ -15,6 +15,7 @@ import {
   moverCatalogo,
   softDeleteQuote,
   restoreQuote,
+  simularCatalogo,
   listTrash,
   listQuotes,
   moveQuoteDate,
@@ -1180,6 +1181,42 @@ describe('mover de catálogo', () => {
     await expect(moverCatalogo(prisma, q.id, caro.id, actor)).rejects.toThrow(/papelera/i);
     const sinTocar = await prisma.quote.findUniqueOrThrow({ where: { id: q.id } });
     expect(sinTocar.priceListId).toBe(q.priceListId);
+  });
+
+  it('simular da el mismo antes/después que mover, sin tocar nada', async () => {
+    // El número que el modal enseña ANTES de confirmar tiene que ser el mismo
+    // que se guarda. Si difieren, la interfaz miente sobre dinero.
+    const q = await cotizacion('2032-07-03', 'Simular Catalogo');
+    const caro = await clonCaro(q.priceListId, 'CARO-SIMULA', 2084);
+
+    const previa = await simularCatalogo(prisma, q.id, caro.id, actor);
+    expect(previa.antes).toBe(q.total);
+    expect(previa.despues).toBeGreaterThan(previa.antes);
+
+    // Nada se escribió: ni la cotización ni la bitácora.
+    const sinTocar = await prisma.quote.findUniqueOrThrow({ where: { id: q.id } });
+    expect(sinTocar.priceListId).toBe(q.priceListId);
+    expect(sinTocar.total).toBe(q.total);
+    expect(await prisma.activityLog.count({ where: { quoteId: q.id, tipo: 'catalogo' } })).toBe(0);
+
+    const real = await moverCatalogo(prisma, q.id, caro.id, actor);
+    expect(real.antes).toBe(previa.antes);
+    expect(real.despues).toBe(previa.despues);
+  });
+
+  it('simular respeta los mismos permisos y errores que mover', async () => {
+    const q = await cotizacion('2032-07-10', 'Simular Sin Permiso');
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/quotes/${q.id}/catalogo/simular`,
+      cookies: await ventasCookies(),
+      payload: { priceListId: q.priceListId },
+    });
+    expect(res.statusCode).toBe(403);
+
+    await expect(simularCatalogo(prisma, q.id, 'no-existe', actor)).rejects.toMatchObject({
+      status: 404,
+    });
   });
 
   it('un admin la mueve por HTTP y recibe el antes y el después', async () => {

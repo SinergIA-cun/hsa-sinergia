@@ -1,21 +1,16 @@
 import { useState, type FormEvent } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Copy, Check } from 'lucide-react';
 import { api } from '../../lib/api.ts';
+import { PRICE_LISTS_KEY, usePriceLists } from '../../lib/catalogos.ts';
 import { formatMXN, formatPctFraccion } from '../../lib/money.ts';
 import { Button, Card, Field, TextInput, SelectInput } from '../ui.tsx';
 import type { PriceList } from '../../lib/types.ts';
 import { apiErrorMessage } from './shared.tsx';
 
-/** Clave de la lista de catálogos: se invalida tras clonar y tras activar. */
-export const PRICE_LISTS_KEY = ['admin-price-lists'] as const;
-
 export function CatalogosSection() {
   const qc = useQueryClient();
-  const { data, isLoading } = useQuery({
-    queryKey: PRICE_LISTS_KEY,
-    queryFn: () => api.get<{ priceLists: PriceList[] }>('/api/admin/price-lists'),
-  });
+  const { data, isLoading } = usePriceLists();
   const priceLists = data?.priceLists ?? [];
 
   /**

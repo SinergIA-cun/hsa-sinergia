@@ -192,11 +192,25 @@ export function AgendaPage() {
       return;
     }
 
+    // La previa se calcula con el catálogo DE LA COTIZACIÓN, no con el activo:
+    // mover la fecha no la represia (el servidor recalcula contra el catálogo
+    // que fijó), así que usar el activo enseñaría un precio que nunca se guarda.
+    let engine: Catalog['engine'] | null = null;
+    try {
+      const suyo = await qc.fetchQuery({
+        queryKey: ['catalog', detalle.quote.priceListId],
+        queryFn: () => api.get<Catalog>(`/api/catalog?priceListId=${detalle.quote.priceListId}`),
+      });
+      engine = suyo.engine;
+    } catch {
+      engine = null; // sin catálogo no hay previa, pero el arrastre sigue siendo posible
+    }
+
     let totalNuevo: number | null = null;
-    if (catalogQ.data) {
+    if (engine) {
       try {
         totalNuevo = Math.round(
-          computeQuote(catalogQ.data.engine, {
+          computeQuote(engine, {
             fecha: destino,
             invitados: detalle.quote.invitados,
             spaceIds: detalle.quote.spaceIds,

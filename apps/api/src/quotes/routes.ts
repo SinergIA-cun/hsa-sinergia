@@ -11,6 +11,7 @@ import {
   moveQuoteDate,
   moverCatalogo,
   moverCatalogoSchema,
+  simularCatalogo,
   updateQuote,
   updateStatus,
   updateOperativa,
@@ -147,6 +148,24 @@ export async function quoteRoutes(app: FastifyInstance): Promise<void> {
       throw e;
     }
   });
+
+  // Vista previa del movimiento: el mismo cálculo, sin escribir nada. Es lo que
+  // deja que el modal enseñe el antes y el después ANTES de confirmar, con el
+  // número exacto que se va a guardar. POST porque lleva cuerpo, no porque mute.
+  app.post<{ Params: { id: string } }>(
+    '/quotes/:id/catalogo/simular',
+    { preHandler: requireAdmin },
+    async (req, reply) => {
+      const parsed = moverCatalogoSchema.safeParse(req.body);
+      if (!parsed.success) return reply.code(400).send({ error: 'Catálogo inválido' });
+      try {
+        return await simularCatalogo(app.prisma, req.params.id, parsed.data.priceListId, req.user as Actor);
+      } catch (e) {
+        if (e instanceof QuoteError) return reply.code(e.status).send({ error: e.message });
+        throw e;
+      }
+    },
+  );
 
   // Mover de catálogo represia la cotización a propósito: es de admin y queda en
   // bitácora. Ver `moverCatalogo`.
