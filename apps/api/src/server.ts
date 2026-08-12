@@ -15,6 +15,7 @@ import { userRoutes } from './users/routes.js';
 import { availabilityRoutes } from './availability/routes.js';
 import { paymentRoutes } from './payments/routes.js';
 import { adminRoutes } from './admin/routes.js';
+import { priceListRoutes } from './pricelists/routes.js';
 import { clientRoutes } from './clients/routes.js';
 import { dashboardRoutes } from './dashboard/routes.js';
 import { biRoutes } from './bi/routes.js';
@@ -71,6 +72,7 @@ export async function buildServer(opts: BuildOptions = {}): Promise<FastifyInsta
   await app.register(availabilityRoutes, { prefix: '/api' });
   await app.register(paymentRoutes, { prefix: '/api' });
   await app.register(adminRoutes, { prefix: '/api' });
+  await app.register(priceListRoutes, { prefix: '/api' });
   await app.register(clientRoutes, { prefix: '/api' });
   await app.register(dashboardRoutes, { prefix: '/api' });
   await app.register(biRoutes, { prefix: '/api' });
