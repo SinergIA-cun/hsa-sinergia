@@ -79,6 +79,30 @@ export interface AdminConfig {
   foodDiscountRate: number;
 }
 
+/**
+ * Un catálogo versionado tal como lo lista `GET /api/admin/price-lists`: el
+ * año completo de precios (renta, servicios, alimentos) más sus parámetros.
+ *
+ * Los conteos vienen aplanados desde el `_count` de Prisma. `cotizaciones` es
+ * el dato que dice si un catálogo se puede tocar sin represiar a nadie.
+ */
+export interface PriceList {
+  id: string;
+  nombre: string;
+  anio: number;
+  vigencia: string | null;
+  activa: boolean;
+  createdAt: string;
+  ivaRate: number;
+  extraHourRate: number;
+  foodDiscountRate: number;
+  capillaSabado: number;
+  cotizaciones: number;
+  renta: number;
+  servicios: number;
+  paquetes: number;
+}
+
 export interface Client {
   id: string;
   nombre: string;
