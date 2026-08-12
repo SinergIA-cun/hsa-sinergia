@@ -675,6 +675,132 @@ export async function moveQuoteDate(db: PrismaClient, id: string, fecha: string,
   return actualizada;
 }
 
+export const moverCatalogoSchema = z.object({ priceListId: z.string().min(1) });
+
+/** Lo que la cotización guarda como selección de alimentos y servicios. */
+type SeleccionCatalogo = { foodPackageId: string | null; addOns: { addOnId: string; cantidad: number }[] };
+
+/**
+ * Traduce el paquete y los servicios elegidos a los registros EQUIVALENTES del
+ * catálogo destino.
+ *
+ * Clonar un catálogo crea filas nuevas con ids nuevos: el paquete "SUPREME" de
+ * 2028 no es el mismo registro que el "SUPREME" de 2027. Mover la cotización sin
+ * retraducir la dejaría irrecalculable —el motor lanza `Paquete de alimentos …
+ * no existe`—, que es exactamente la clase de bug que este plan vino a matar.
+ *
+ * El casamiento es por nombre, que es lo que el clon conserva; el paquete lleva
+ * además su tipo de evento porque el mismo nombre ("3 Tiempos") se repite entre
+ * tipos. Si el destino no trae el equivalente, se aborta con 409 y se dice cuál
+ * falta: mover borrando conceptos cobrados sería peor que no mover.
+ */
+async function traducirSeleccion(
+  db: PrismaClient,
+  quote: { foodPackageId: string | null; addOns: unknown; eventTypeId: string },
+  destinoId: string,
+): Promise<SeleccionCatalogo> {
+  const addOns = (quote.addOns as unknown as { addOnId: string; cantidad: number }[] | null) ?? [];
+
+  let foodPackageId: string | null = null;
+  if (quote.foodPackageId) {
+    const actual = await db.foodPackage.findUnique({ where: { id: quote.foodPackageId } });
+    if (!actual) throw new QuoteError(409, 'El paquete de alimentos de la cotización ya no existe.');
+    const equivalente = await db.foodPackage.findFirst({
+      where: { priceListId: destinoId, nombre: actual.nombre, eventTypeId: actual.eventTypeId },
+    });
+    if (!equivalente) {
+      throw new QuoteError(409, `El catálogo destino no tiene el paquete "${actual.nombre}".`);
+    }
+    foodPackageId = equivalente.id;
+  }
+
+  if (addOns.length === 0) return { foodPackageId, addOns: [] };
+
+  const actuales = await db.addOn.findMany({ where: { id: { in: addOns.map((a) => a.addOnId) } } });
+  const nombrePorId = new Map(actuales.map((a) => [a.id, a.nombre]));
+  const destino = await db.addOn.findMany({ where: { priceListId: destinoId } });
+  const idPorNombre = new Map(destino.map((a) => [a.nombre, a.id]));
+
+  const traducidos = addOns.map((a) => {
+    const nombre = nombrePorId.get(a.addOnId);
+    if (!nombre) throw new QuoteError(409, 'Un servicio de la cotización ya no existe.');
+    const id = idPorNombre.get(nombre);
+    if (!id) throw new QuoteError(409, `El catálogo destino no tiene el servicio "${nombre}".`);
+    return { addOnId: id, cantidad: a.cantidad };
+  });
+
+  return { foodPackageId, addOns: traducidos };
+}
+
+/**
+ * Mueve una cotización a otro catálogo y la represia A PROPÓSITO.
+ *
+ * Es la única puerta que rompe el casamiento hecho al crear, y por eso es de
+ * admin y deja rastro: el caso real es el cliente que apartó para 2027 y corre su
+ * evento a 2029, donde los precios ya son otros. Devuelve el antes y el después
+ * para que quien confirme vea con cuánto se va a quedar el cliente.
+ */
+export async function moverCatalogo(db: PrismaClient, id: string, priceListId: string, actor: Actor) {
+  if (actor.role !== 'admin') {
+    throw new QuoteError(403, 'Solo un admin puede mover una cotización de catálogo.');
+  }
+  const existing = await db.quote.findFirst({ where: { id, ...ownershipWhere(actor) } });
+  if (!existing) throw new QuoteError(404, 'Cotización no encontrada');
+  assertNotTrashed(existing);
+
+  const destino = await db.priceList.findUnique({ where: { id: priceListId } });
+  if (!destino) throw new QuoteError(404, `El catálogo ${priceListId} no existe`);
+  const origen = await db.priceList.findUnique({
+    where: { id: existing.priceListId },
+    select: { nombre: true },
+  });
+
+  const seleccion = await traducirSeleccion(db, existing, destino.id);
+  const { breakdown, enriched } = await computeAndEnrich(
+    db,
+    toSelection({
+      fecha: existing.fechaEvento.toISOString().slice(0, 10),
+      invitados: existing.invitados,
+      spaceIds: existing.spaceIds,
+      horasExtra: existing.horasExtra,
+      usaCapilla: existing.usaCapilla,
+      usaDjHoraExtra: existing.usaDjHoraExtra,
+      eventTypeId: existing.eventTypeId,
+      foodPackageId: seleccion.foodPackageId ?? undefined,
+      addOns: seleccion.addOns,
+    }),
+    destino.id,
+  );
+
+  const antes = existing.total;
+  const despues = Math.round(breakdown.total);
+
+  const quote = await db.quote.update({
+    where: { id },
+    data: {
+      priceListId: destino.id,
+      // El paquete y los servicios se guardan RETRADUCIDOS: si se dejaran los
+      // ids viejos, el siguiente guardado del formulario reventaría.
+      foodPackageId: seleccion.foodPackageId,
+      addOns: seleccion.addOns as unknown as Prisma.InputJsonValue,
+      breakdown: enriched as unknown as Prisma.InputJsonValue,
+      total: despues,
+      rentaTotal: Math.round(breakdown.rentaTotal),
+    },
+    include: includeRels,
+  });
+
+  await logActivity(db, {
+    quoteId: id,
+    tipo: 'catalogo',
+    descripcion: `Catálogo: ${origen?.nombre ?? existing.priceListId} → ${destino.nombre} · total ${antes} → ${despues}`,
+    meta: { de: existing.priceListId, a: destino.id, totalAntes: antes, totalDespues: despues },
+    actorId: actor.id,
+  });
+
+  return { quote, antes, despues };
+}
+
 export async function updateStatus(
   db: PrismaClient,
   id: string,

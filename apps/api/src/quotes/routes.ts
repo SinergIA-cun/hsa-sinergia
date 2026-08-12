@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { requireAuth } from '../auth/plugin.js';
+import { requireAdmin, requireAuth } from '../auth/plugin.js';
 import { cotizacionesDesplazadas } from './empalmes.js';
 import {
   createQuote,
@@ -9,6 +9,8 @@ import {
   listQuotes,
   getByToken,
   moveQuoteDate,
+  moverCatalogo,
+  moverCatalogoSchema,
   updateQuote,
   updateStatus,
   updateOperativa,
@@ -140,6 +142,19 @@ export async function quoteRoutes(app: FastifyInstance): Promise<void> {
     try {
       const quote = await moveQuoteDate(app.prisma, req.params.id, parsed.data.fecha, req.user as Actor);
       return { quote };
+    } catch (e) {
+      if (e instanceof QuoteError) return reply.code(e.status).send({ error: e.message });
+      throw e;
+    }
+  });
+
+  // Mover de catálogo represia la cotización a propósito: es de admin y queda en
+  // bitácora. Ver `moverCatalogo`.
+  app.post<{ Params: { id: string } }>('/quotes/:id/catalogo', { preHandler: requireAdmin }, async (req, reply) => {
+    const parsed = moverCatalogoSchema.safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ error: 'Catálogo inválido' });
+    try {
+      return await moverCatalogo(app.prisma, req.params.id, parsed.data.priceListId, req.user as Actor);
     } catch (e) {
       if (e instanceof QuoteError) return reply.code(e.status).send({ error: e.message });
       throw e;

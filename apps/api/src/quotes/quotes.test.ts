@@ -1,14 +1,18 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import type { FastifyInstance } from 'fastify';
+import { randomUUID } from 'node:crypto';
 import { prisma } from '@hsa/database';
 import { buildServer } from '../server.js';
 import { loadConfig } from '../config.js';
+import { hashPassword } from '../auth/password.js';
+import { clonarCatalogo } from '../pricelists/service.js';
 import {
   createQuote,
   duplicateQuote,
   expireStaleQuotes,
   getByToken,
   loadEstadoCuenta,
+  moverCatalogo,
   softDeleteQuote,
   restoreQuote,
   listTrash,
@@ -21,8 +25,15 @@ import {
 
 let app: FastifyInstance;
 let actor: Actor;
+let ventasId: string;
+/** El catálogo que estaba activo antes de estos tests. Se restaura POR ID. */
+let activoOriginalId: string;
+const ventasEmail = `ventas-quotes-${randomUUID()}@haciendasanandres.com.mx`;
+/** El nombre del catálogo es único: un sufijo por corrida evita envenenar la siguiente. */
+const SUF = randomUUID().slice(0, 8);
 const createdQuoteIds: string[] = [];
 const createdClientIds: string[] = [];
+const createdPriceListIds: string[] = [];
 
 async function ids() {
   const eventType = await prisma.eventType.findFirst({ where: { slug: 'boda' } });
@@ -53,6 +64,17 @@ async function authCookies() {
   return { [cookie.name]: cookie.value };
 }
 
+/** Cookie de una vendedora real: `requireAdmin` solo se puede probar con otro rol. */
+async function ventasCookies() {
+  const login = await app.inject({
+    method: 'POST',
+    url: '/api/auth/login',
+    payload: { email: ventasEmail, password: 'ventas1234' },
+  });
+  const cookie = login.cookies[0]!;
+  return { [cookie.name]: cookie.value };
+}
+
 beforeAll(async () => {
   app = await buildServer({ config: loadConfig() });
   await app.ready();
@@ -60,6 +82,16 @@ beforeAll(async () => {
     where: { email: 'admin@haciendasanandres.com.mx' },
   });
   actor = { id: admin!.id, role: 'admin' };
+  const ventas = await prisma.user.create({
+    data: {
+      nombre: 'Vendedora de cotizaciones',
+      email: ventasEmail,
+      passwordHash: await hashPassword('ventas1234'),
+      role: 'ventas',
+    },
+  });
+  ventasId = ventas.id;
+  activoOriginalId = (await prisma.priceList.findFirstOrThrow({ where: { activa: true } })).id;
 });
 
 afterAll(async () => {
@@ -67,6 +99,20 @@ afterAll(async () => {
   await prisma.activityLog.deleteMany({ where: { quoteId: { in: createdQuoteIds } } });
   await prisma.quote.deleteMany({ where: { id: { in: createdQuoteIds } } });
   await prisma.client.deleteMany({ where: { id: { in: createdClientIds } } });
+  // Los catálogos de prueba, de adentro hacia afuera: los FK son RESTRICT y las
+  // cotizaciones que los apuntaban ya se borraron arriba.
+  await prisma.foodPackagePrice.deleteMany({ where: { package: { priceListId: { in: createdPriceListIds } } } });
+  await prisma.foodPackage.deleteMany({ where: { priceListId: { in: createdPriceListIds } } });
+  await prisma.addOn.deleteMany({ where: { priceListId: { in: createdPriceListIds } } });
+  await prisma.rentalPrice.deleteMany({ where: { priceListId: { in: createdPriceListIds } } });
+  await prisma.priceList.deleteMany({ where: { id: { in: createdPriceListIds } } });
+  // Se restaura por ID y no por año: dos catálogos pueden compartir año, y dejar
+  // activo el equivocado represiaría a las suites que corren después.
+  await prisma.$transaction([
+    prisma.priceList.updateMany({ data: { activa: false } }),
+    prisma.priceList.update({ where: { id: activoOriginalId }, data: { activa: true } }),
+  ]);
+  await prisma.user.delete({ where: { id: ventasId } });
   await app.close();
 });
 
@@ -981,5 +1027,174 @@ describe('casamiento con el catálogo', () => {
         prisma.priceList.update({ where: { id: viejo.id }, data: { activa: true } }),
       ]);
     }
+  });
+});
+
+describe('mover de catálogo', () => {
+  /** Clona el catálogo de una cotización y apunta el clon para el `afterAll`. */
+  async function clonCaro(priceListId: string, nombre: string, anio: number, incrementoPct = 100) {
+    const clon = await clonarCatalogo(prisma, {
+      nombre: `${nombre}-${SUF}`,
+      anio,
+      clonarDe: priceListId,
+      incrementoPct,
+    });
+    createdPriceListIds.push(clon.id);
+    return clon;
+  }
+
+  async function cotizacion(fecha: string, nombre: string) {
+    const { eventTypeId, camposId } = await ids();
+    const q = await createQuote(
+      prisma,
+      { fecha, invitados: 200, spaceIds: [camposId], eventTypeId, client: { nombre } },
+      actor,
+    );
+    createdQuoteIds.push(q.id);
+    createdClientIds.push(q.clientId);
+    return q;
+  }
+
+  it('un admin la mueve, se represia y queda en bitácora', async () => {
+    const q = await cotizacion('2032-05-15', 'Mover Catalogo');
+    const caro = await clonCaro(q.priceListId, 'CARO', 2092);
+
+    const r = await moverCatalogo(prisma, q.id, caro.id, actor);
+
+    expect(r.antes).toBe(q.total);
+    expect(r.despues).toBeGreaterThan(r.antes);
+    expect(r.quote.priceListId).toBe(caro.id);
+    expect(r.quote.total).toBe(r.despues);
+
+    const logs = await prisma.activityLog.findMany({ where: { quoteId: q.id, tipo: 'catalogo' } });
+    expect(logs).toHaveLength(1); // si esto da 0, falta el ALTER TYPE
+    expect(logs[0]!.meta).toMatchObject({
+      de: q.priceListId,
+      a: caro.id,
+      totalAntes: r.antes,
+      totalDespues: r.despues,
+    });
+  });
+
+  it('la cotización movida se puede reeditar con los precios del catálogo NUEVO', async () => {
+    // Mover y no poder guardar después sería una trampa: el recálculo posterior
+    // usa el catálogo fijado, que ahora es el destino.
+    const q = await cotizacion('2032-05-22', 'Mover y Reeditar');
+    const { eventTypeId, camposId } = await ids();
+    const caro = await clonCaro(q.priceListId, 'CARO-REEDITA', 2088);
+    const r = await moverCatalogo(prisma, q.id, caro.id, actor);
+
+    const editada = await updateQuote(
+      prisma, q.id,
+      { fecha: '2032-05-22', invitados: 200, spaceIds: [camposId], eventTypeId, horasExtra: 0, addOns: [] },
+      actor,
+    );
+    expect(editada.priceListId).toBe(caro.id);
+    expect(editada.total).toBe(r.despues);
+  });
+
+  it('mueve también los servicios y el paquete de alimentos, que en el clon son OTROS registros', async () => {
+    // Clonar crea filas NUEVAS: el paquete "SUPREME" de 2028 no es el mismo
+    // registro que el de 2027. Sin retraducir los ids, el motor lanza
+    // "Paquete de alimentos … no existe" en el primer recálculo.
+    const { eventTypeId, camposId } = await ids();
+    const paquete = await prisma.foodPackage.findFirstOrThrow({
+      where: { nombre: 'SUPREME', eventTypeId, priceList: { activa: true } },
+    });
+    const servicio = await prisma.addOn.findFirstOrThrow({
+      where: { nombre: 'Mesa de dulces (por persona)', priceList: { activa: true } },
+    });
+    const q = await createQuote(
+      prisma,
+      {
+        fecha: '2032-05-29',
+        invitados: 200,
+        spaceIds: [camposId],
+        eventTypeId,
+        foodPackageId: paquete.id,
+        addOns: [{ addOnId: servicio.id, cantidad: 1 }],
+        client: { nombre: 'Mover Con Alimentos' },
+      },
+      actor,
+    );
+    createdQuoteIds.push(q.id);
+    createdClientIds.push(q.clientId);
+
+    const caro = await clonCaro(q.priceListId, 'CARO-ALIMENTOS', 2087);
+    const r = await moverCatalogo(prisma, q.id, caro.id, actor);
+
+    expect(r.quote.foodPackageId).not.toBe(paquete.id);
+    const paqueteDestino = await prisma.foodPackage.findUniqueOrThrow({
+      where: { id: r.quote.foodPackageId! },
+    });
+    expect(paqueteDestino.priceListId).toBe(caro.id);
+    expect(paqueteDestino.nombre).toBe('SUPREME');
+
+    const addOnsGuardados = r.quote.addOns as unknown as { addOnId: string }[];
+    expect(addOnsGuardados[0]!.addOnId).not.toBe(servicio.id);
+    const servicioDestino = await prisma.addOn.findUniqueOrThrow({
+      where: { id: addOnsGuardados[0]!.addOnId },
+    });
+    expect(servicioDestino.priceListId).toBe(caro.id);
+
+    // Y la cotización movida sigue siendo recalculable.
+    const editada = await updateQuote(
+      prisma, q.id,
+      {
+        fecha: '2032-05-29', invitados: 200, spaceIds: [camposId], eventTypeId, horasExtra: 0,
+        foodPackageId: r.quote.foodPackageId!,
+        addOns: [{ addOnId: addOnsGuardados[0]!.addOnId, cantidad: 1 }],
+      },
+      actor,
+    );
+    expect(editada.total).toBe(r.despues);
+  });
+
+  it('un vendedor no puede', async () => {
+    const q = await cotizacion('2032-06-05', 'Mover Sin Permiso');
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/quotes/${q.id}/catalogo`,
+      cookies: await ventasCookies(),
+      payload: { priceListId: q.priceListId },
+    });
+    expect(res.statusCode).toBe(403);
+
+    const sinTocar = await prisma.quote.findUniqueOrThrow({ where: { id: q.id } });
+    expect(sinTocar.priceListId).toBe(q.priceListId);
+  });
+
+  it('un catálogo inexistente da 404 y no toca la cotización', async () => {
+    const q = await cotizacion('2032-06-12', 'Mover A Ninguna Parte');
+    await expect(moverCatalogo(prisma, q.id, 'no-existe', actor)).rejects.toMatchObject({ status: 404 });
+    const sinTocar = await prisma.quote.findUniqueOrThrow({ where: { id: q.id } });
+    expect(sinTocar.priceListId).toBe(q.priceListId);
+    expect(sinTocar.total).toBe(q.total);
+  });
+
+  it('una cotización en la papelera no se mueve de catálogo', async () => {
+    const q = await cotizacion('2032-06-19', 'Mover En Papelera');
+    const caro = await clonCaro(q.priceListId, 'CARO-PAPELERA', 2086);
+    await softDeleteQuote(prisma, q.id, actor);
+
+    await expect(moverCatalogo(prisma, q.id, caro.id, actor)).rejects.toThrow(/papelera/i);
+    const sinTocar = await prisma.quote.findUniqueOrThrow({ where: { id: q.id } });
+    expect(sinTocar.priceListId).toBe(q.priceListId);
+  });
+
+  it('un admin la mueve por HTTP y recibe el antes y el después', async () => {
+    const q = await cotizacion('2032-06-26', 'Mover HTTP');
+    const caro = await clonCaro(q.priceListId, 'CARO-HTTP', 2085);
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/quotes/${q.id}/catalogo`,
+      cookies: await authCookies(),
+      payload: { priceListId: caro.id },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().antes).toBe(q.total);
+    expect(res.json().despues).toBeGreaterThan(q.total);
+    expect(res.json().quote.priceListId).toBe(caro.id);
   });
 });

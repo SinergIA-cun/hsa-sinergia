@@ -58,6 +58,8 @@ enum ActivityType {
   restaurada
   factura
   fiscal
+  /// Un admin movió la cotización a otro catálogo (se represió a propósito).
+  catalogo
 }
 
 /// El catálogo completo de un año: renta, servicios, alimentos y parámetros.
