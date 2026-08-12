@@ -828,3 +828,79 @@ No mergear sin autorización del dueño.
 - [ ] **Step 5: Actualizar la memoria del proyecto**
 
 Anotar: que el catálogo versionado mató la clase de bug del valet y la Capilla; que `PricingConfig` ya no existe; que `tipo` vive en `RentalPrice`; y que el tramo 2 (editores finos de renta, servicios y paquetes) sigue pendiente.
+
+---
+
+## Task 11: El DJ hora extra pasa al catálogo (agregada 2026-08-11 por decisión del dueño)
+
+**Contexto.** `EventType.djHoraExtra` es un precio en pesos **global**: clonar el catálogo con +8% lo deja igual, y editarlo represia toda cotización que se reedite. Es la misma clase de bug que este plan vino a matar, y se colaba por la puerta de atrás.
+
+**Decisión del dueño: conservar los dos precios.** No es un precio único — hoy vale $2,950 en boda/XV/empresarial/fin de año y $2,750 en bautizo/cumpleaños, y en graduación/renta/team building no se ofrece (`null`). Colapsarlo a un precio movería lo que cuesta un bautizo. Así que el servicio vive en el catálogo **con un precio por tipo de evento**, igual que ya funcionan los paquetes de alimentos.
+
+**Lo que NO cambia:** sigue siendo una casilla que multiplica por `horasExtra` y va a "otros" sin IVA. Y sobre todo, **el motor no se toca**: ya recibe `djHoraExtraByEventType: Record<string, number>` y esa forma se conserva; solo cambia de dónde se llena.
+
+**Files:**
+- Modify: `packages/database/prisma/schema.prisma`
+- Create: migración + `packages/database/prisma/backfill-fase14.ts`
+- Modify: `apps/api/src/catalog/loader.ts`, `apps/api/src/pricelists/service.ts`
+- Modify: `packages/database/prisma/seed.ts` y los datos del catálogo
+- Modify: `apps/web/src/components/admin/CatalogosSection.tsx`
+
+- [ ] **Step 1: Modelo**
+
+```prisma
+/// Precio de la hora extra de DJ, por catálogo y por tipo de evento.
+/// Es por tipo de evento porque el precio real difiere ($2,950 en boda, $2,750
+/// en bautizo) y un tipo sin renglón simplemente no ofrece el servicio.
+model DjHoraExtraPrice {
+  id          String    @id @default(cuid())
+  priceList   PriceList @relation(fields: [priceListId], references: [id])
+  priceListId String
+  eventType   EventType @relation(fields: [eventTypeId], references: [id])
+  eventTypeId String
+  price       Int
+
+  @@unique([priceListId, eventTypeId])
+  @@index([priceListId])
+}
+```
+
+`PriceList` gana `djPrices DjHoraExtraPrice[]`; `EventType` gana la relación inversa. **`EventType.djHoraExtra` se borra en la fase 2**, no antes: el backfill lo necesita para leer los valores.
+
+- [ ] **Step 2: Backfill (entre las dos migraciones, como el fase13)**
+
+Para **cada** catálogo existente, crear un renglón por cada `EventType` con `djHoraExtra` no nulo, copiando el valor. Idempotente (`skipDuplicates` o comprobar antes). Registrar cuántos creó. Agregarlo al `CMD` del Dockerfile después de `fase13`.
+
+- [ ] **Step 3: El loader llena el mapa desde la tabla nueva**
+
+```ts
+const djPrices = await db.djHoraExtraPrice.findMany({ where: { priceListId: priceList.id } });
+const djHoraExtraByEventType: Record<string, number> = {};
+for (const d of djPrices) djHoraExtraByEventType[d.eventTypeId] = d.price;
+```
+
+Y se quita el `djHoraExtra` de la consulta de `eventTypes` (que sigue necesitándose para `rentaPlana`).
+
+- [ ] **Step 4: Clonar los copia con el incremento**
+
+En `clonarCatalogo`, dentro de la misma transacción, copiar `DjHoraExtraPrice` aplicando `conIncremento` con `Math.round`, igual que renta, servicios y alimentos.
+
+- [ ] **Step 5: Tests**
+
+- El precio del DJ sale del catálogo pedido, no de `EventType`.
+- Clonar con % lo sube: `2950 → Math.round(2950 × 1.08) = 3186`.
+- Un tipo de evento sin renglón **no cobra DJ** aunque la casilla esté marcada (hoy es el caso de graduación, renta y team building).
+- **El test que da sentido a la task:** una cotización con DJ, un catálogo nuevo activo con el DJ al doble, y al reeditar el total **no se mueve**.
+- Ningún flotante llega a la base.
+
+- [ ] **Step 6: La pantalla de catálogos lo muestra**
+
+Junto a los servicios: una lista de tipo de evento → precio del DJ. Solo lectura en este tramo (editarlos es del tramo 2).
+
+- [ ] **Step 7: Migración fase 2 y cierre**
+
+Recién ahora `DROP COLUMN "djHoraExtra"` de `EventType`. Correr `pnpm typecheck && pnpm test && pnpm lint`, y confirmar en la base que ningún catálogo quedó sin sus renglones de DJ.
+
+> **No borres el add-on desactivado "DJ Hora extra"** que quedó en la tabla `AddOn`.
+> Está inactivo y el catálogo ya sabe resolver add-ons dados de baja (PR #2);
+> borrarlo antes de un despliegue solo agrega riesgo sin ganar nada.
