@@ -502,7 +502,14 @@ export async function updateQuote(db: PrismaClient, id: string, rawInput: unknow
   const input = updateQuoteSchema.parse(rawInput);
   // Se excluye a sí misma: editar sin mover fecha ni espacio no se auto-bloquea.
   await assertEspaciosDisponibles(db, input.fecha, input.spaceIds, id);
-  const { breakdown, enriched } = await computeAndEnrich(db, toSelection(input));
+  // Con el catálogo que la cotización FIJÓ al crearse, nunca con el activo:
+  // reeditar una cotización de 2027 debe usar precios de 2027 aunque el catálogo
+  // vigente ya sea 2028. Sin esto, cambiarle el nombre al cliente la represia.
+  const { breakdown, enriched } = await computeAndEnrich(
+    db,
+    toSelection(input),
+    existing.priceListId,
+  );
 
   let bitacoraFiscal: { campos: string[]; desbloqueoDeAdmin: boolean } | null = null;
   if (input.client) {

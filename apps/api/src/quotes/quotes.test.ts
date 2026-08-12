@@ -902,3 +902,84 @@ describe('datos fiscales (CFDI 4.0)', () => {
     expect(res.statusCode).toBe(401);
   });
 });
+
+describe('casamiento con el catálogo', () => {
+  /** Catálogo clonado del activo con la renta multiplicada, y activado. */
+  async function catalogoCaroYActivo(factor: number, nombre: string) {
+    const viejo = await prisma.priceList.findFirstOrThrow({ where: { activa: true } });
+    const nuevo = await prisma.priceList.create({
+      data: {
+        nombre,
+        anio: 2099,
+        activa: false,
+        ivaRate: viejo.ivaRate,
+        extraHourRate: viejo.extraHourRate,
+        foodDiscountRate: viejo.foodDiscountRate,
+        capillaSabado: viejo.capillaSabado,
+      },
+    });
+    const rentas = await prisma.rentalPrice.findMany({ where: { priceListId: viejo.id } });
+    await prisma.rentalPrice.createMany({
+      data: rentas.map((r) => ({
+        priceListId: nuevo.id,
+        spaceId: r.spaceId,
+        tipo: r.tipo,
+        min: r.min,
+        max: r.max,
+        viernes: r.viernes * factor,
+        viernesEspecial: r.viernesEspecial * factor,
+        sabado: r.sabado * factor,
+        domAJue: r.domAJue * factor,
+      })),
+    });
+    await prisma.$transaction([
+      prisma.priceList.updateMany({ data: { activa: false } }),
+      prisma.priceList.update({ where: { id: nuevo.id }, data: { activa: true } }),
+    ]);
+    return { nuevo, viejo };
+  }
+
+  it('crear una cotización fija el catálogo activo', async () => {
+    const { eventTypeId, arcosId } = await ids();
+    const q = await createQuote(
+      prisma,
+      { fecha: '2031-03-15', invitados: 200, spaceIds: [arcosId], eventTypeId, client: { nombre: 'Casada al catálogo' } },
+      actor,
+    );
+    createdQuoteIds.push(q.id);
+    createdClientIds.push(q.clientId);
+    const activo = await prisma.priceList.findFirstOrThrow({ where: { activa: true } });
+    expect(q.priceListId).toBe(activo.id);
+  });
+
+  it('reeditar usa el catálogo FIJADO, no el activo', async () => {
+    const { eventTypeId, arcosId } = await ids();
+    const q = await createQuote(
+      prisma,
+      { fecha: '2031-04-19', invitados: 200, spaceIds: [arcosId], eventTypeId, client: { nombre: 'No me represies' } },
+      actor,
+    );
+    createdQuoteIds.push(q.id);
+    createdClientIds.push(q.clientId);
+    const totalOriginal = q.total;
+    const { nuevo, viejo } = await catalogoCaroYActivo(3, 'PRUEBA-TRIPLE');
+
+    try {
+      // Se edita SOLO el nombre del cliente: nada que justifique un cambio de precio.
+      const editada = await updateQuote(
+        prisma,
+        q.id,
+        { fecha: '2031-04-19', invitados: 200, spaceIds: [arcosId], eventTypeId, client: { nombre: 'Sigo igual' } },
+        actor,
+      );
+      expect(editada.priceListId).toBe(viejo.id);
+      expect(editada.total).toBe(totalOriginal);
+    } finally {
+      await prisma.$transaction([
+        prisma.rentalPrice.deleteMany({ where: { priceListId: nuevo.id } }),
+        prisma.priceList.delete({ where: { id: nuevo.id } }),
+        prisma.priceList.update({ where: { id: viejo.id }, data: { activa: true } }),
+      ]);
+    }
+  });
+});
