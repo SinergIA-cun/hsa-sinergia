@@ -109,13 +109,16 @@ async function main(): Promise<void> {
   });
   console.log(`· ${desactivados} catálogos secundarios desactivados`);
 
-  // 4. Casar servicios, paquetes y cotizaciones huérfanos al catálogo.
-  const servicios = await prisma.addOn.updateMany({ where: { priceListId: null }, data: { priceListId: canon.id } });
-  const paquetes = await prisma.foodPackage.updateMany({ where: { priceListId: null }, data: { priceListId: canon.id } });
-  const cotizaciones = await prisma.quote.updateMany({ where: { priceListId: null }, data: { priceListId: canon.id } });
-  console.log(`· ${servicios.count} servicios casados al catálogo`);
-  console.log(`· ${paquetes.count} paquetes casados al catálogo`);
-  console.log(`· ${cotizaciones.count} cotizaciones casadas al catálogo`);
+  // 4. Casar servicios, paquetes y cotizaciones huérfanos: ya lo hizo la
+  //    migración de fusión, y desde la fase 2 los tres `priceListId` son NOT
+  //    NULL, así que un huérfano es imposible por construcción. Se reporta el
+  //    conteo por catálogo para que el arranque deje rastro de lo que hay.
+  const [servicios, paquetes, cotizaciones] = await Promise.all([
+    prisma.addOn.count({ where: { priceListId: canon.id } }),
+    prisma.foodPackage.count({ where: { priceListId: canon.id } }),
+    prisma.quote.count({ where: { priceListId: canon.id } }),
+  ]);
+  console.log(`· En el catálogo: ${servicios} servicios, ${paquetes} paquetes, ${cotizaciones} cotizaciones`);
 
   // 5. La Capilla vestigial.
   const capilla = await prisma.space.findFirst({ where: { nombre: { contains: 'apilla' } } });

@@ -68,7 +68,12 @@ export interface User {
   createdAt: string;
 }
 
+// Los parámetros de precio ya no son un singleton global: son los del CATÁLOGO
+// ACTIVO (PriceList). `nombre` va aquí para que la pantalla diga cuál está
+// editando — cambiarlos afecta lo que se cotice de aquí en adelante, nunca lo ya
+// cotizado, porque cada cotización recalcula contra el catálogo que fijó.
 export interface AdminConfig {
+  nombre: string;
   ivaRate: number;
   extraHourRate: number;
   foodDiscountRate: number;

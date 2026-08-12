@@ -54,25 +54,38 @@ async function ensureSpace(prisma: PrismaClient, nombre: string, capacidadMax: n
   return prisma.space.create({ data: { nombre, capacidadMax, activo: true } });
 }
 
-/** Reemplaza las filas de renta de un espacio en una lista dada (idempotente). */
+/**
+ * Reemplaza las filas de renta de un espacio en un catálogo, para UN tipo de
+ * renta (idempotente).
+ *
+ * `tipo` es obligatorio y entra también en el `deleteMany`: la renta por día y la
+ * plana viven en el MISMO catálogo desde el catálogo versionado, así que borrar
+ * por (catálogo, espacio) a secas se llevaría de paso las filas del otro tipo.
+ */
 async function setRentalRows(
   prisma: PrismaClient,
   priceListId: string,
   spaceId: string,
+  tipo: 'dia' | 'plano',
   rows: FlatRow[],
 ) {
-  await prisma.rentalPrice.deleteMany({ where: { priceListId, spaceId } });
+  await prisma.rentalPrice.deleteMany({ where: { priceListId, spaceId, tipo } });
   await prisma.rentalPrice.createMany({
-    data: rows.map((r) => ({ priceListId, spaceId, min: r.min, max: r.max, ...flatCols(r.precio) })),
+    data: rows.map((r) => ({ priceListId, spaceId, tipo, min: r.min, max: r.max, ...flatCols(r.precio) })),
   });
 }
 
 /**
  * Aplica la renta plana de Team Building de forma idempotente:
  *  - Crea los espacios Los Balcones y Los Pajaritos.
- *  - Crea/actualiza una lista de precios "plano" con TODOS los espacios en flat.
- *  - Agrega Balcones/Pajaritos a la lista "dia" (precio plano en las 4 columnas),
- *    para que se puedan cotizar en cualquier evento.
+ *  - Escribe la renta plana de TODOS los espacios en el catálogo activo, en los
+ *    renglones marcados `tipo: 'plano'`.
+ *  - Agrega Balcones/Pajaritos también a los renglones `tipo: 'dia'` (con el
+ *    mismo precio en las 4 columnas), para que se coticen en cualquier evento.
+ *
+ * Antes esto vivía en una SEGUNDA PriceList con `tipo: 'plano'`, que quedaba
+ * fuera del filtro `activa` y obligaba a dos listas por año. Con el catálogo
+ * versionado hay UN catálogo por año y el tipo vive en el renglón.
  *
  * NOTA: no define reglas de pago (SpacePaymentRule) para Balcones/Pajaritos;
  * quedan como "plan pendiente" hasta que el cliente indique el anticipo.
@@ -87,21 +100,20 @@ export async function applyTeamBuilding2027(prisma: PrismaClient): Promise<void>
   const balcones = await ensureSpace(prisma, 'Salón Los Balcones', 70);
   const pajaritos = await ensureSpace(prisma, 'Salón Los Pajaritos', 50);
 
-  // Lista de precios PLANA (Team Building). Se busca/crea por tipo.
-  const flatList =
-    (await prisma.priceList.findFirst({ where: { tipo: 'plano', anio: 2027 } })) ??
-    (await prisma.priceList.create({ data: { anio: 2027, activa: false, tipo: 'plano' } }));
+  const catalogo = await prisma.priceList.findFirst({ where: { activa: true }, orderBy: { anio: 'desc' } });
+  if (!catalogo) throw new Error('No hay catálogo (PriceList) activo al que colgar la renta plana.');
 
-  await setRentalRows(prisma, flatList.id, cupula.id, CUPULA_FLAT);
-  await setRentalRows(prisma, flatList.id, arcos.id, ARCOS_CAMPOS_FLAT);
-  await setRentalRows(prisma, flatList.id, campos.id, ARCOS_CAMPOS_FLAT);
-  await setRentalRows(prisma, flatList.id, balcones.id, BALCONES_FLAT);
-  await setRentalRows(prisma, flatList.id, pajaritos.id, PAJARITOS_FLAT);
-
-  // Balcones/Pajaritos también en la lista "dia" (precio plano) para eventos normales.
-  const diaList = await prisma.priceList.findFirst({ where: { tipo: 'dia', activa: true } });
-  if (diaList) {
-    await setRentalRows(prisma, diaList.id, balcones.id, BALCONES_FLAT);
-    await setRentalRows(prisma, diaList.id, pajaritos.id, PAJARITOS_FLAT);
+  for (const [spaceId, rows] of [
+    [cupula.id, CUPULA_FLAT],
+    [arcos.id, ARCOS_CAMPOS_FLAT],
+    [campos.id, ARCOS_CAMPOS_FLAT],
+    [balcones.id, BALCONES_FLAT],
+    [pajaritos.id, PAJARITOS_FLAT],
+  ] as const) {
+    await setRentalRows(prisma, catalogo.id, spaceId, 'plano', rows);
   }
+
+  // Balcones/Pajaritos también en la renta por-día (precio plano) para eventos normales.
+  await setRentalRows(prisma, catalogo.id, balcones.id, 'dia', BALCONES_FLAT);
+  await setRentalRows(prisma, catalogo.id, pajaritos.id, 'dia', PAJARITOS_FLAT);
 }

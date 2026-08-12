@@ -17,6 +17,11 @@ function cookie() {
   return { [adminCookie.name]: adminCookie.value };
 }
 
+/** El catálogo activo: servicios y cotizaciones cuelgan de un catálogo. */
+function catalogoActivo() {
+  return prisma.priceList.findFirstOrThrow({ where: { activa: true }, orderBy: { anio: 'desc' } });
+}
+
 beforeAll(async () => {
   app = await buildServer({ config: loadConfig() });
   await app.ready();
@@ -105,6 +110,7 @@ describe('admin borrado con guardas', () => {
         total: 0,
         rentaTotal: 0,
         publicToken: `tok-${Date.now()}`,
+        priceListId: (await catalogoActivo()).id,
       },
     });
     createdQuoteIds.push(quote.id);
@@ -180,7 +186,13 @@ describe('admin config', () => {
   // endpoint lo esconde, no hay forma de quitarlo desde la interfaz.
   it('GET /catalog expone los add-ons inactivos marcados con activo=false', async () => {
     const inactivo = await prisma.addOn.create({
-      data: { nombre: 'ZZZ Add-on dado de baja', kind: 'porUnidad', price: 100, activo: false },
+      data: {
+        nombre: 'ZZZ Add-on dado de baja',
+        kind: 'porUnidad',
+        price: 100,
+        activo: false,
+        priceListId: (await catalogoActivo()).id,
+      },
     });
     createdAddOnIds.push(inactivo.id);
 

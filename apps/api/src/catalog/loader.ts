@@ -14,36 +14,37 @@ function toRentalRows(
 }
 
 /**
- * Carga el catálogo desde Postgres y lo mapea al tipo `Catalog` que consume el
- * motor de `@hsa/shared`. Usa la lista de precios activa (o la del año dado).
+ * Carga un catálogo completo desde Postgres y lo mapea al tipo `Catalog` que
+ * consume el motor de `@hsa/shared`: renta (por día y plana), servicios,
+ * paquetes de alimentos y los parámetros de precio.
+ *
+ * Resuelve el catálogo PEDIDO, o el activo si no se pide ninguno. Los parámetros
+ * salen del catálogo y no de un singleton global: ese singleton era la última
+ * fuente capaz de represiar TODA cotización con solo reeditarla.
  */
 export async function loadCatalog(
   db: PrismaClient,
-  opts: { anio?: number } = {},
+  opts: { priceListId?: string } = {},
 ): Promise<Catalog> {
-  const config = await db.pricingConfig.findUnique({ where: { id: 'default' } });
-  if (!config) throw new Error('Falta PricingConfig (id=default)');
+  // NUNCA se cae al activo en silencio cuando se pidió uno concreto: eso
+  // represiaría la cotización que lo fijó, que es el bug que este diseño mata.
+  const priceList = opts.priceListId
+    ? await db.priceList.findUnique({ where: { id: opts.priceListId } })
+    : await db.priceList.findFirst({ where: { activa: true }, orderBy: { anio: 'desc' } });
+  if (!priceList) {
+    throw new Error(
+      opts.priceListId ? `El catálogo ${opts.priceListId} no existe` : 'No hay catálogo activo',
+    );
+  }
 
-  const priceList = opts.anio
-    ? await db.priceList.findFirst({ where: { anio: opts.anio, tipo: 'dia' } })
-    : await db.priceList.findFirst({ where: { activa: true, tipo: 'dia' }, orderBy: { anio: 'desc' } });
-  if (!priceList) throw new Error('No hay lista de precios activa');
-
-  // Lista PLANA (Team Building): opcional, puede no existir aún.
-  const flatList = await db.priceList.findFirst({
-    where: { tipo: 'plano', ...(opts.anio ? { anio: opts.anio } : {}) },
-    orderBy: { anio: 'desc' },
-  });
-
-  const [rentals, flatRentals, packages, addOns, eventTypes] = await Promise.all([
+  const [rentals, packages, addOns, eventTypes] = await Promise.all([
     db.rentalPrice.findMany({ where: { priceListId: priceList.id } }),
-    flatList ? db.rentalPrice.findMany({ where: { priceListId: flatList.id } }) : Promise.resolve([]),
-    db.foodPackage.findMany({ include: { brackets: true } }),
+    db.foodPackage.findMany({ where: { priceListId: priceList.id }, include: { brackets: true } }),
     // SIN filtrar por `activo`: el catálogo tiene que RESOLVER todos los
     // add-ons, incluidos los dados de baja, porque las cotizaciones ya emitidas
     // los referencian por id y el motor lanza si no los encuentra. Quién se
     // sigue OFRECIENDO lo decide la interfaz con la bandera `activo`.
-    db.addOn.findMany(),
+    db.addOn.findMany({ where: { priceListId: priceList.id } }),
     db.eventType.findMany({ select: { id: true, djHoraExtra: true, rentaPlana: true } }),
   ]);
 
@@ -55,13 +56,14 @@ export async function loadCatalog(
   }
 
   return {
-    ivaRate: config.ivaRate,
-    extraHourRate: config.extraHourRate,
-    foodDiscountRate: config.foodDiscountRate,
-    capillaSabado: config.capillaSabado,
+    ivaRate: priceList.ivaRate,
+    extraHourRate: priceList.extraHourRate,
+    foodDiscountRate: priceList.foodDiscountRate,
+    capillaSabado: priceList.capillaSabado,
     djHoraExtraByEventType,
-    rentalPrices: toRentalRows(rentals),
-    rentalPricesFlat: toRentalRows(flatRentals),
+    // Un solo catálogo lleva las dos rentas; `tipo` en el renglón las distingue.
+    rentalPrices: toRentalRows(rentals.filter((r) => r.tipo === 'dia')),
+    rentalPricesFlat: toRentalRows(rentals.filter((r) => r.tipo === 'plano')),
     flatRentalEventTypeIds,
     foodPackages: packages.map((p) => ({
       id: p.id,

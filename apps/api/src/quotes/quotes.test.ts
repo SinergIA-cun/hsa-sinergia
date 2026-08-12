@@ -29,13 +29,16 @@ async function ids() {
   const arcos = await prisma.space.findFirst({ where: { nombre: 'Salón Los Arcos' } });
   const campos = await prisma.space.findFirst({ where: { nombre: 'Jardín Los Campos' } });
   const cupula = await prisma.space.findFirst({ where: { nombre: 'Jardín La Cúpula' } });
-  const capilla = await prisma.space.findFirst({ where: { nombre: 'La Capilla' } });
+  // Balcones es el espacio SIN SpacePaymentRule (ver data/payment-rules.ts) y el
+  // cuarto salón para probar el tope. Antes se usaba La Capilla, que dejó de ser
+  // un espacio: es la casilla por evento con tarifa de sábado.
+  const balcones = await prisma.space.findFirst({ where: { nombre: 'Salón Los Balcones' } });
   return {
     eventTypeId: eventType!.id,
     arcosId: arcos!.id,
     camposId: campos!.id,
     cupulaId: cupula!.id,
-    capillaId: capilla!.id,
+    balconesId: balcones!.id,
   };
 }
 
@@ -323,11 +326,12 @@ describe('quotes service', () => {
   });
 
   it('si un salón del evento no tiene regla, el plan queda pendiente', async () => {
-    // La Capilla no tiene SpacePaymentRule (el cliente aún no da sus montos).
-    const { eventTypeId, arcosId, capillaId } = await ids();
+    // Los Balcones no tiene SpacePaymentRule (el cliente aún no da sus montos).
+    const { eventTypeId, arcosId, balconesId } = await ids();
+    // 40 invitados: es el rango que Los Balcones sí cubre (1–50 y 51–70).
     const q = await createQuote(
       prisma,
-      { fecha: '2029-10-13', invitados: 150, spaceIds: [arcosId, capillaId], eventTypeId, client: { nombre: 'Plan Incompleto' } },
+      { fecha: '2029-10-13', invitados: 40, spaceIds: [arcosId, balconesId], eventTypeId, client: { nombre: 'Plan Incompleto' } },
       actor,
     );
     createdQuoteIds.push(q.id);
@@ -340,20 +344,21 @@ describe('quotes service', () => {
   });
 
   it('rechaza más de 3 espacios', async () => {
-    const { eventTypeId, arcosId, camposId, cupulaId, capillaId } = await ids();
+    const { eventTypeId, arcosId, camposId, cupulaId, balconesId } = await ids();
     await expect(
       createQuote(
         prisma,
         {
           fecha: '2029-09-16',
           invitados: 250,
-          spaceIds: [arcosId, camposId, cupulaId, capillaId],
+          spaceIds: [arcosId, camposId, cupulaId, balconesId],
           eventTypeId,
           client: { nombre: 'Cuatro Salones' },
         },
         actor,
       ),
-    ).rejects.toThrow();
+      // Por el tope, no por un rango de renta que le falte al cuarto salón.
+    ).rejects.toThrow(/Máximo 3 espacios/);
   });
 
   it('basta que UNO de varios espacios esté comprometido para rechazar', async () => {

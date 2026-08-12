@@ -93,6 +93,12 @@ export const EVENT_TYPES_2027: EventTypeDef[] = [
  * global de DJ (migrado a toggle). NO toca espacios, rentas ni reglas de pago.
  */
 export async function applyCatalog2027(prisma: PrismaClient): Promise<void> {
+  // Los paquetes de alimentos pertenecen a un catálogo (PriceList). Este seed es
+  // el del catálogo 2027, así que apunta al activo: si no hay ninguno, no hay a
+  // dónde colgarlos y es mejor gritar que colgarlos del catálogo equivocado.
+  const catalogo = await prisma.priceList.findFirst({ where: { activa: true }, orderBy: { anio: 'desc' } });
+  if (!catalogo) throw new Error('No hay catálogo (PriceList) activo al que colgar los paquetes de alimentos.');
+
   for (const et of EVENT_TYPES_2027) {
     const type = await prisma.eventType.upsert({
       where: { slug: et.slug },
@@ -102,12 +108,12 @@ export async function applyCatalog2027(prisma: PrismaClient): Promise<void> {
 
     for (const pkg of et.packages) {
       const existing = await prisma.foodPackage.findFirst({
-        where: { eventTypeId: type.id, nombre: pkg.nombre },
+        where: { eventTypeId: type.id, nombre: pkg.nombre, priceListId: catalogo.id },
       });
       const paquete =
         existing ??
         (await prisma.foodPackage.create({
-          data: { eventTypeId: type.id, nombre: pkg.nombre, ivaIncluido: false },
+          data: { eventTypeId: type.id, nombre: pkg.nombre, ivaIncluido: false, priceListId: catalogo.id },
         }));
       // Reemplaza los precios (preserva el id del paquete para no romper cotizaciones existentes).
       await prisma.foodPackagePrice.deleteMany({ where: { packageId: paquete.id } });
@@ -130,11 +136,7 @@ export async function applyCatalog2027(prisma: PrismaClient): Promise<void> {
     data: { activo: false },
   });
 
-  // La Capilla deja de ser un espacio cotizable: ahora es una cortesía por-evento
-  // (toggle "usaCapilla", $5,000 en sábado). Se desactiva para que no aparezca en
-  // el selector de espacios, pero se conserva la fila por historial.
-  await prisma.space.updateMany({
-    where: { nombre: 'La Capilla' },
-    data: { activo: false },
-  });
+  // La Capilla ya no es espacio ni fila desactivada: el backfill fase13 borró el
+  // espacio vestigial. Es la casilla por evento (toggle "usaCapilla") con la
+  // tarifa de sábado en PriceList.capillaSabado.
 }

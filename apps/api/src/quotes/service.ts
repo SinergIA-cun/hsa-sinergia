@@ -85,9 +85,23 @@ const includeRels = { client: true, eventType: true, createdBy: { select: { id: 
 // las ediciones en esos estatus quedan registradas en la bitácora de actividad.
 const EDITABLE_STATUSES = new Set(['borrador', 'enviada', 'aceptada', 'formalizada', 'complementada']);
 
+/**
+ * El catálogo activo, o un 409 si no hay ninguno. Es el que se le fija a una
+ * cotización nueva; de ahí en adelante manda el fijado, no el activo.
+ */
+async function catalogoActivo(db: PrismaClient): Promise<{ id: string }> {
+  const activo = await db.priceList.findFirst({
+    where: { activa: true },
+    orderBy: { anio: 'desc' },
+    select: { id: true },
+  });
+  if (!activo) throw new QuoteError(409, 'No hay catálogo activo: pide a un administrador que active uno.');
+  return activo;
+}
+
 /** Calcula el desglose y enriquece las líneas de renta con el nombre del espacio. */
-async function computeAndEnrich(db: PrismaClient, selection: QuoteSelection) {
-  const catalog = await loadCatalog(db);
+async function computeAndEnrich(db: PrismaClient, selection: QuoteSelection, priceListId?: string) {
+  const catalog = await loadCatalog(db, priceListId ? { priceListId } : {});
   const breakdown = computeQuote(catalog, selection);
   const spaces = await db.space.findMany({ where: { id: { in: selection.spaceIds } } });
   const nameById = new Map(spaces.map((s) => [s.id, s.nombre]));
@@ -370,7 +384,10 @@ export async function createQuote(db: PrismaClient, rawInput: unknown, actor: Ac
   // Antes de CUALQUIER escritura (incluida la del cliente): una cotización
   // rechazada no debe dejar un cliente huérfano en la base.
   await assertEspaciosDisponibles(db, input.fecha, input.spaceIds);
-  const { breakdown, enriched } = await computeAndEnrich(db, toSelection(input));
+  // El catálogo se fija AQUÍ y queda casado a la cotización: reeditarla más
+  // adelante recalcula contra este, no contra el que esté activo ese día.
+  const catalogo = await catalogoActivo(db);
+  const { breakdown, enriched } = await computeAndEnrich(db, toSelection(input), catalogo.id);
 
   let clientId = input.clientId;
   if (!clientId && input.client) {
@@ -407,6 +424,7 @@ export async function createQuote(db: PrismaClient, rawInput: unknown, actor: Ac
       publicToken: randomUUID().replace(/-/g, ''),
       vigenciaHasta: vigenciaDesde(new Date()),
       createdById: actor.id,
+      priceListId: catalogo.id,
     },
     include: includeRels,
   });
@@ -443,6 +461,9 @@ export async function duplicateQuote(db: PrismaClient, id: string, actor: Actor)
       publicToken: randomUUID().replace(/-/g, ''),
       vigenciaHasta: vigenciaDesde(new Date()),
       createdById: actor.id,
+      // La copia hereda el catálogo del original: copia el desglose tal cual, así
+      // que tiene que poder recalcularse contra los MISMOS precios.
+      priceListId: src.priceListId,
     },
     include: includeRels,
   });
