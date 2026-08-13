@@ -109,6 +109,7 @@ function CatalogoRow({
             descuento alimentos {formatPctFraccion(pl.foodDiscountRate)} · capilla sábado{' '}
             {formatMXN(pl.capillaSabado)}
           </p>
+          <DjPrecios dj={pl.dj} />
         </div>
         {!pl.activa && !armed && (
           <Button
@@ -163,6 +164,36 @@ function CatalogoRow({
         </div>
       )}
     </li>
+  );
+}
+
+/**
+ * El DJ por hora extra, por tipo de evento. Solo lectura en este tramo: editar
+ * los precios línea por línea es del tramo 2.
+ *
+ * Lo que un tipo de evento NO tiene aquí es información, no un hueco: sin
+ * renglón, ese tipo de evento no ofrece el servicio y la casilla no cobra nada.
+ */
+function DjPrecios({ dj }: { dj: PriceList['dj'] }) {
+  if (dj.length === 0) {
+    return (
+      <p className="mt-1.5 text-xs text-charcoal-soft/80">
+        DJ hora extra: <span className="text-wine">sin precios</span> — ningún tipo de evento lo
+        ofrece en este catálogo.
+      </p>
+    );
+  }
+  return (
+    <div className="mt-1.5">
+      <p className="text-xs font-medium text-charcoal-soft">DJ hora extra (por tipo de evento)</p>
+      <ul className="mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5">
+        {dj.map((d) => (
+          <li key={d.eventTypeId} className="text-xs text-charcoal-soft/80">
+            {d.eventType} <span className="font-medium text-ink/80">{formatMXN(d.price)}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 

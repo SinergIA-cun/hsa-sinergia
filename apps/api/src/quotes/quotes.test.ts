@@ -106,6 +106,7 @@ afterAll(async () => {
   await prisma.foodPackage.deleteMany({ where: { priceListId: { in: createdPriceListIds } } });
   await prisma.addOn.deleteMany({ where: { priceListId: { in: createdPriceListIds } } });
   await prisma.rentalPrice.deleteMany({ where: { priceListId: { in: createdPriceListIds } } });
+  await prisma.djHoraExtraPrice.deleteMany({ where: { priceListId: { in: createdPriceListIds } } });
   await prisma.priceList.deleteMany({ where: { id: { in: createdPriceListIds } } });
   // Se restaura por ID y no por año: dos catálogos pueden compartir año, y dejar
   // activo el equivocado represiaría a las suites que corren después.
@@ -951,12 +952,18 @@ describe('datos fiscales (CFDI 4.0)', () => {
 });
 
 describe('casamiento con el catálogo', () => {
-  /** Catálogo clonado del activo con la renta multiplicada, y activado. */
+  /**
+   * Catálogo clonado del activo con TODOS sus precios multiplicados —renta y DJ
+   * por hora extra—, y activado. El DJ va incluido porque era la última puerta
+   * de atrás: un precio global que activar un catálogo nuevo no movía.
+   */
   async function catalogoCaroYActivo(factor: number, nombre: string) {
     const viejo = await prisma.priceList.findFirstOrThrow({ where: { activa: true } });
     const nuevo = await prisma.priceList.create({
       data: {
-        nombre,
+        // Con sufijo por corrida: `nombre` es único, y una corrida que abortó
+        // antes de limpiar dejaba la siguiente muerta en el primer `create`.
+        nombre: `${nombre}-${SUF}`,
         anio: 2099,
         activa: false,
         ivaRate: viejo.ivaRate,
@@ -979,11 +986,27 @@ describe('casamiento con el catálogo', () => {
         domAJue: r.domAJue * factor,
       })),
     });
+    const dj = await prisma.djHoraExtraPrice.findMany({ where: { priceListId: viejo.id } });
+    await prisma.djHoraExtraPrice.createMany({
+      data: dj.map((d) => ({
+        priceListId: nuevo.id,
+        eventTypeId: d.eventTypeId,
+        price: d.price * factor,
+      })),
+    });
     await prisma.$transaction([
       prisma.priceList.updateMany({ data: { activa: false } }),
       prisma.priceList.update({ where: { id: nuevo.id }, data: { activa: true } }),
     ]);
-    return { nuevo, viejo };
+    /** Borra el catálogo caro (hijos primero: los FK son RESTRICT) y reactiva el viejo. */
+    const restaurar = () =>
+      prisma.$transaction([
+        prisma.rentalPrice.deleteMany({ where: { priceListId: nuevo.id } }),
+        prisma.djHoraExtraPrice.deleteMany({ where: { priceListId: nuevo.id } }),
+        prisma.priceList.delete({ where: { id: nuevo.id } }),
+        prisma.priceList.update({ where: { id: viejo.id }, data: { activa: true } }),
+      ]);
+    return { nuevo, viejo, restaurar };
   }
 
   it('crear una cotización fija el catálogo activo', async () => {
@@ -1009,7 +1032,7 @@ describe('casamiento con el catálogo', () => {
     createdQuoteIds.push(q.id);
     createdClientIds.push(q.clientId);
     const totalOriginal = q.total;
-    const { nuevo, viejo } = await catalogoCaroYActivo(3, 'PRUEBA-TRIPLE');
+    const { viejo, restaurar } = await catalogoCaroYActivo(3, 'PRUEBA-TRIPLE');
 
     try {
       // Se edita SOLO el nombre del cliente: nada que justifique un cambio de precio.
@@ -1022,14 +1045,96 @@ describe('casamiento con el catálogo', () => {
       expect(editada.priceListId).toBe(viejo.id);
       expect(editada.total).toBe(totalOriginal);
     } finally {
+      await restaurar();
+    }
+  });
+
+  // LA prueba que le da sentido a bajar el DJ al catálogo. Antes de esto el
+  // precio del DJ era global: activar un catálogo con el DJ al doble represiaba
+  // toda cotización con la casilla marcada en cuanto alguien la reeditara.
+  it('reeditar NO represia el DJ aunque el catálogo activo lo tenga al doble', async () => {
+    const { eventTypeId, arcosId } = await ids();
+    const q = await createQuote(
+      prisma,
+      {
+        fecha: '2031-07-12',
+        invitados: 200,
+        spaceIds: [arcosId],
+        eventTypeId,
+        horasExtra: 2,
+        usaDjHoraExtra: true,
+        client: { nombre: 'DJ No Me Represies' },
+      },
+      actor,
+    );
+    createdQuoteIds.push(q.id);
+    createdClientIds.push(q.clientId);
+
+    // El DJ de boda son $2,950/hora: la línea tiene que estar, o la prueba no
+    // estaría midiendo nada.
+    expect(djDe(q.breakdown)).toBe(2950 * 2);
+    const totalOriginal = q.total;
+
+    const { nuevo, viejo } = await catalogoCaroYActivo(2, 'PRUEBA-DJ-DOBLE');
+    // El catálogo caro lo barre el `afterAll` y no el `finally`: abajo se crea
+    // una cotización que lo apunta, y el FK es RESTRICT.
+    createdPriceListIds.push(nuevo.id);
+    try {
+      const editada = await updateQuote(
+        prisma,
+        q.id,
+        {
+          fecha: '2031-07-12',
+          invitados: 200,
+          spaceIds: [arcosId],
+          eventTypeId,
+          horasExtra: 2,
+          usaDjHoraExtra: true,
+          addOns: [],
+        },
+        actor,
+      );
+      expect(editada.priceListId).toBe(viejo.id);
+      expect(editada.total).toBe(totalOriginal);
+      expect(djDe(editada.breakdown)).toBe(2950 * 2); // NO 5,900/hora
+
+      // La otra mitad, y la que distingue este diseño del anterior: el precio
+      // del catálogo NUEVO sí manda en lo NUEVO. Con el DJ como precio global
+      // esta cotización cobraría $2,950/hora igual que la vieja, y entonces
+      // "nada se movió" no probaría nada.
+      const recien = await createQuote(
+        prisma,
+        {
+          fecha: '2031-07-19',
+          invitados: 200,
+          spaceIds: [arcosId],
+          eventTypeId,
+          horasExtra: 2,
+          usaDjHoraExtra: true,
+          client: { nombre: 'DJ Al Doble' },
+        },
+        actor,
+      );
+      createdQuoteIds.push(recien.id);
+      createdClientIds.push(recien.clientId);
+      expect(recien.priceListId).toBe(nuevo.id);
+      expect(djDe(recien.breakdown)).toBe(5900 * 2);
+    } finally {
+      // Solo se devuelve la bandera de activo: dejar el caro activo represiaría
+      // a las suites que corren después.
       await prisma.$transaction([
-        prisma.rentalPrice.deleteMany({ where: { priceListId: nuevo.id } }),
-        prisma.priceList.delete({ where: { id: nuevo.id } }),
+        prisma.priceList.updateMany({ data: { activa: false } }),
         prisma.priceList.update({ where: { id: viejo.id }, data: { activa: true } }),
       ]);
     }
   });
 });
+
+/** El monto de la línea del DJ en un desglose ya persistido, o `undefined`. */
+function djDe(breakdown: unknown): number | undefined {
+  const { lines } = breakdown as { lines: { concepto: string; monto: number }[] };
+  return lines.find((l) => l.concepto === 'DJ Hora extra')?.monto;
+}
 
 describe('mover de catálogo', () => {
   /** Clona el catálogo de una cotización y apunta el clon para el `afterAll`. */

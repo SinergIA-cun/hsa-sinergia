@@ -9,12 +9,16 @@ const addOnsCreados: string[] = [];
 // pase lo que pase: un catálogo huérfano de una corrida que abortó rompería el
 // `nombre @unique` de la siguiente.
 const PREFIJO_PRUEBA = 'PRUEBA-';
-beforeAll(async () => {
+/** Los hijos van primero: los FK a PriceList son RESTRICT. */
+async function barrerCatalogosDePrueba() {
+  const where = { priceList: { nombre: { startsWith: PREFIJO_PRUEBA } } };
+  await prisma.djHoraExtraPrice.deleteMany({ where });
   await prisma.priceList.deleteMany({ where: { nombre: { startsWith: PREFIJO_PRUEBA } } });
-});
+}
+beforeAll(barrerCatalogosDePrueba);
 afterAll(async () => {
   await prisma.addOn.deleteMany({ where: { id: { in: addOnsCreados } } });
-  await prisma.priceList.deleteMany({ where: { nombre: { startsWith: PREFIJO_PRUEBA } } });
+  await barrerCatalogosDePrueba();
 });
 
 /** El catálogo activo, que es contra el que corren estas pruebas. */
@@ -205,5 +209,86 @@ describe('loadCatalog por catálogo', () => {
     expect(cat.foodPackages).toHaveLength(0);
     expect(cat.rentalPrices).toHaveLength(0);
     await prisma.priceList.delete({ where: { id: vacio.id } });
+  });
+});
+
+// El DJ por hora extra era un precio en pesos GLOBAL (EventType.djHoraExtra):
+// clonar el catálogo con +8% lo dejaba igual y editarlo represiaba toda
+// cotización que se reeditara. La misma clase de bug que el catálogo versionado
+// vino a matar, colándose por la puerta de atrás.
+describe('DJ hora extra por catálogo', () => {
+  it('el precio sale del catálogo PEDIDO, no de un valor global', async () => {
+    const boda = await prisma.eventType.findUniqueOrThrow({ where: { slug: 'boda' } });
+    const otro = await prisma.priceList.create({
+      data: {
+        nombre: 'PRUEBA-DJ',
+        anio: 2087,
+        djPrices: { create: [{ eventTypeId: boda.id, price: 7777 }] },
+      },
+    });
+    try {
+      const cat = await loadCatalog(prisma, { priceListId: otro.id });
+      expect(cat.djHoraExtraByEventType[boda.id]).toBe(7777);
+
+      // Y el catálogo activo sigue con SU precio: son dos catálogos distintos.
+      const activo = await loadCatalog(prisma);
+      expect(activo.djHoraExtraByEventType[boda.id]).toBe(2950);
+    } finally {
+      await prisma.djHoraExtraPrice.deleteMany({ where: { priceListId: otro.id } });
+      await prisma.priceList.delete({ where: { id: otro.id } });
+    }
+  });
+
+  it('el catálogo seedeado trae los precios del folleto (boda 2,950 · bautizo 2,750)', async () => {
+    const cat = await loadCatalog(prisma);
+    const [boda, bautizo] = await Promise.all([
+      prisma.eventType.findUniqueOrThrow({ where: { slug: 'boda' } }),
+      prisma.eventType.findUniqueOrThrow({ where: { slug: 'bautizo' } }),
+    ]);
+    expect(cat.djHoraExtraByEventType[boda.id]).toBe(2950);
+    expect(cat.djHoraExtraByEventType[bautizo.id]).toBe(2750);
+  });
+
+  it('un tipo de evento SIN renglón no cobra DJ aunque la casilla esté marcada', async () => {
+    // Hoy es el caso de graduación, renta y team building: sin renglón en el
+    // catálogo = no se ofrece el servicio.
+    const cat = await loadCatalog(prisma);
+    const grad = await prisma.eventType.findUniqueOrThrow({ where: { slug: 'graduacion' } });
+    expect(cat.djHoraExtraByEventType[grad.id]).toBeUndefined();
+
+    const arcos = await prisma.space.findFirstOrThrow({ where: { nombre: 'Salón Los Arcos' } });
+    const sel = {
+      fecha: '2027-05-08',
+      invitados: 250,
+      spaceIds: [arcos.id],
+      horasExtra: 2,
+      usaCapilla: false,
+      eventTypeId: grad.id,
+      addOns: [],
+    };
+    const con = computeQuote(cat, { ...sel, usaDjHoraExtra: true });
+    const sin = computeQuote(cat, { ...sel, usaDjHoraExtra: false });
+    expect(con.lines.some((l) => l.concepto === 'DJ Hora extra')).toBe(false);
+    expect(con.total).toBe(sin.total);
+  });
+
+  it('el que SÍ tiene renglón cobra precio × horas extra, en "otros" y sin IVA propio', async () => {
+    const cat = await loadCatalog(prisma);
+    const boda = await prisma.eventType.findUniqueOrThrow({ where: { slug: 'boda' } });
+    const arcos = await prisma.space.findFirstOrThrow({ where: { nombre: 'Salón Los Arcos' } });
+    const r = computeQuote(cat, {
+      fecha: '2027-05-08',
+      invitados: 250,
+      spaceIds: [arcos.id],
+      horasExtra: 3,
+      usaCapilla: false,
+      usaDjHoraExtra: true,
+      eventTypeId: boda.id,
+      addOns: [],
+    });
+    const dj = r.lines.find((l) => l.concepto === 'DJ Hora extra');
+    expect(dj?.monto).toBe(2950 * 3);
+    expect(dj?.grupo).toBe('otros');
+    expect(dj?.ivaIncluido).toBe(false);
   });
 });

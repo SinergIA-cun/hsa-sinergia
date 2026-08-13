@@ -102,6 +102,20 @@ export async function clonarCatalogo(db: PrismaClient, rawInput: unknown) {
       });
     }
 
+    // DJ por hora extra: un renglón por tipo de evento. Los tipos SIN renglón
+    // (no ofrecen el servicio) siguen sin renglón en el clon: darles uno haría
+    // que un bautizo empezara a cobrar DJ solo por clonar el año.
+    const djPrices = await tx.djHoraExtraPrice.findMany({ where: { priceListId: origen.id } });
+    if (djPrices.length > 0) {
+      await tx.djHoraExtraPrice.createMany({
+        data: djPrices.map((d) => ({
+          priceListId: creado.id,
+          eventTypeId: d.eventTypeId,
+          price: conIncremento(d.price, pct),
+        })),
+      });
+    }
+
     // Alimentos: el paquete no vale nada sin sus brackets —ahí está el precio por
     // persona—, así que viajan juntos en el mismo `create` anidado.
     const paquetes = await tx.foodPackage.findMany({
@@ -155,13 +169,24 @@ export async function listarCatalogos(db: PrismaClient) {
     orderBy: [{ anio: 'desc' }, { nombre: 'desc' }],
     include: {
       _count: { select: { quotes: true, rentalPrices: true, addOns: true, foodPackages: true } },
+      // El precio del DJ va con nombre del tipo de evento: la pantalla lo
+      // muestra por renglón, y un cuid no le dice nada a nadie.
+      djPrices: {
+        include: { eventType: { select: { nombre: true } } },
+        orderBy: { eventType: { nombre: 'asc' } },
+      },
     },
   });
-  return items.map(({ _count, ...priceList }) => ({
+  return items.map(({ _count, djPrices, ...priceList }) => ({
     ...priceList,
     cotizaciones: _count.quotes,
     renta: _count.rentalPrices,
     servicios: _count.addOns,
     paquetes: _count.foodPackages,
+    dj: djPrices.map((d) => ({
+      eventTypeId: d.eventTypeId,
+      eventType: d.eventType.nombre,
+      price: d.price,
+    })),
   }));
 }

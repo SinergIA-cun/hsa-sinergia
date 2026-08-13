@@ -101,6 +101,11 @@ export interface PriceList {
   renta: number;
   servicios: number;
   paquetes: number;
+  /**
+   * Precio del DJ por hora extra, por tipo de evento. Un tipo que no lo ofrece
+   * simplemente NO viene en la lista (hoy: graduación, renta y team building).
+   */
+  dj: { eventTypeId: string; eventType: string; price: number }[];
 }
 
 export interface Client {

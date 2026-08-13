@@ -37,7 +37,7 @@ export async function loadCatalog(
     );
   }
 
-  const [rentals, packages, addOns, eventTypes] = await Promise.all([
+  const [rentals, packages, addOns, djPrices, eventTypes] = await Promise.all([
     db.rentalPrice.findMany({ where: { priceListId: priceList.id } }),
     db.foodPackage.findMany({ where: { priceListId: priceList.id }, include: { brackets: true } }),
     // SIN filtrar por `activo`: el catálogo tiene que RESOLVER todos los
@@ -45,13 +45,21 @@ export async function loadCatalog(
     // los referencian por id y el motor lanza si no los encuentra. Quién se
     // sigue OFRECIENDO lo decide la interfaz con la bandera `activo`.
     db.addOn.findMany({ where: { priceListId: priceList.id } }),
-    db.eventType.findMany({ select: { id: true, djHoraExtra: true, rentaPlana: true } }),
+    // El DJ por hora extra sale del CATÁLOGO, no de `EventType`: ahí era un
+    // precio global que clonar no subía y editar represiaba todo lo reeditado.
+    db.djHoraExtraPrice.findMany({ where: { priceListId: priceList.id } }),
+    // `EventType` sigue haciendo falta, pero solo por `rentaPlana`.
+    db.eventType.findMany({ select: { id: true, rentaPlana: true } }),
   ]);
 
+  // Un tipo de evento SIN renglón no ofrece el servicio (hoy: graduación, renta
+  // y team building). El motor ya lo entiende así: si el mapa no lo trae, no
+  // cobra el DJ aunque la casilla venga marcada.
   const djHoraExtraByEventType: Record<string, number> = {};
+  for (const d of djPrices) djHoraExtraByEventType[d.eventTypeId] = d.price;
+
   const flatRentalEventTypeIds: string[] = [];
   for (const et of eventTypes) {
-    if (et.djHoraExtra != null) djHoraExtraByEventType[et.id] = et.djHoraExtra;
     if (et.rentaPlana) flatRentalEventTypeIds.push(et.id);
   }
 

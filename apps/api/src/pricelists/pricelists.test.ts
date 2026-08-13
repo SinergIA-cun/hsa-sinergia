@@ -38,6 +38,7 @@ afterAll(async () => {
   await prisma.foodPackage.deleteMany({ where: { priceListId: { in: creados } } });
   await prisma.addOn.deleteMany({ where: { priceListId: { in: creados } } });
   await prisma.rentalPrice.deleteMany({ where: { priceListId: { in: creados } } });
+  await prisma.djHoraExtraPrice.deleteMany({ where: { priceListId: { in: creados } } });
   await prisma.priceList.deleteMany({ where: { id: { in: creados } } });
   // Se restaura por ID y no por año: dos catálogos pueden compartir año, y dejar
   // activo el equivocado represiaría a las suites que corren después.
@@ -190,6 +191,67 @@ describe('catálogos', () => {
     const bracketsBase = await prisma.foodPackagePrice.count({ where: { package: { priceListId: base.id } } });
     const bracketsClon = await prisma.foodPackagePrice.count({ where: { package: { priceListId: clon.id } } });
     expect(bracketsClon).toBe(bracketsBase);
+  });
+
+  it('clonar sube el precio del DJ con el mismo porcentaje (2,950 +8% = 3,186)', async () => {
+    // El DJ era la última puerta de atrás: un precio global que el clon dejaba
+    // igual mientras la renta subía 8%.
+    const { base, clon } = await clonDelActivo('CLON-DJ', 2087, 8);
+    const boda = await prisma.eventType.findUniqueOrThrow({ where: { slug: 'boda' } });
+
+    const djBase = await prisma.djHoraExtraPrice.findUniqueOrThrow({
+      where: { priceListId_eventTypeId: { priceListId: base.id, eventTypeId: boda.id } },
+    });
+    const djClon = await prisma.djHoraExtraPrice.findUniqueOrThrow({
+      where: { priceListId_eventTypeId: { priceListId: clon.id, eventTypeId: boda.id } },
+    });
+    expect(djBase.price).toBe(2950);
+    expect(djClon.price).toBe(3186); // Math.round(2950 × 1.08)
+
+    // Y viaja el renglón de CADA tipo de evento que lo ofrece, ni uno más.
+    expect(await prisma.djHoraExtraPrice.count({ where: { priceListId: clon.id } })).toBe(
+      await prisma.djHoraExtraPrice.count({ where: { priceListId: base.id } }),
+    );
+  });
+
+  it('el tipo de evento SIN DJ sigue sin DJ en el clon', async () => {
+    // Darle renglón al clonar haría que una graduación empezara a cobrar DJ
+    // nada más por crear el catálogo del año que viene.
+    const { clon } = await clonDelActivo('CLON-DJ-NULO', 2086, 8);
+    const grad = await prisma.eventType.findUniqueOrThrow({ where: { slug: 'graduacion' } });
+    expect(
+      await prisma.djHoraExtraPrice.count({ where: { priceListId: clon.id, eventTypeId: grad.id } }),
+    ).toBe(0);
+  });
+
+  it('el incremento del DJ nunca mete un flotante a la base', async () => {
+    // Prisma NO rechaza un flotante en una columna Int: lo manda a Postgres, que
+    // redondea a la mitad PAR (2.5 → 2), y el precio sale un peso abajo SIN
+    // error. 2950 × 1.073 = 3165.35 → Math.round = 3165.
+    const PCT = 7.3;
+    const { base, clon } = await clonDelActivo('CLON-DJ-FRACCION', 2085, PCT);
+    const factor = 1 + PCT / 100;
+
+    const [djBase, djClon] = await Promise.all([
+      prisma.djHoraExtraPrice.findMany({ where: { priceListId: base.id }, orderBy: { eventTypeId: 'asc' } }),
+      prisma.djHoraExtraPrice.findMany({ where: { priceListId: clon.id }, orderBy: { eventTypeId: 'asc' } }),
+    ]);
+    expect(djClon).toHaveLength(djBase.length);
+    expect(djClon.length).toBeGreaterThan(0);
+    for (const [i, d] of djClon.entries()) {
+      expect(Number.isInteger(d.price)).toBe(true);
+      expect(d.price).toBe(Math.round(djBase[i]!.price * factor));
+    }
+  });
+
+  it('el listado trae el precio del DJ con el nombre del tipo de evento', async () => {
+    const items = await listarCatalogos(prisma);
+    const activoListado = items.find((c) => c.activa);
+    expect(activoListado).toBeDefined();
+    const boda = activoListado!.dj.find((d) => d.eventType === 'Boda');
+    expect(boda?.price).toBe(2950);
+    // Los que no lo ofrecen no aparecen: sin renglón = no hay servicio.
+    expect(activoListado!.dj.some((d) => d.eventType === 'Graduación')).toBe(false);
   });
 
   it('activar uno desactiva los demás', async () => {
