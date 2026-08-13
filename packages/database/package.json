@@ -20,6 +20,8 @@
     "backfill:fase9": "tsx prisma/backfill-fase9.ts",
     "backfill:fase11": "tsx prisma/backfill-fase11.ts",
     "backfill:fase12": "tsx prisma/backfill-fase12.ts",
+    "backfill:fase13": "tsx prisma/backfill-fase13.ts",
+    "backfill:fase14": "tsx prisma/backfill-fase14.ts",
     "studio": "dotenv -e ../../.env -- prisma studio",
     "typecheck": "tsc --noEmit"
   },

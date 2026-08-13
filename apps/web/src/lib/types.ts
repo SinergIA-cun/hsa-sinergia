@@ -68,10 +68,44 @@ export interface User {
   createdAt: string;
 }
 
+// Los parámetros de precio ya no son un singleton global: son los del CATÁLOGO
+// ACTIVO (PriceList). `nombre` va aquí para que la pantalla diga cuál está
+// editando — cambiarlos afecta lo que se cotice de aquí en adelante, nunca lo ya
+// cotizado, porque cada cotización recalcula contra el catálogo que fijó.
 export interface AdminConfig {
+  nombre: string;
   ivaRate: number;
   extraHourRate: number;
   foodDiscountRate: number;
+}
+
+/**
+ * Un catálogo versionado tal como lo lista `GET /api/admin/price-lists`: el
+ * año completo de precios (renta, servicios, alimentos) más sus parámetros.
+ *
+ * Los conteos vienen aplanados desde el `_count` de Prisma. `cotizaciones` es
+ * el dato que dice si un catálogo se puede tocar sin represiar a nadie.
+ */
+export interface PriceList {
+  id: string;
+  nombre: string;
+  anio: number;
+  vigencia: string | null;
+  activa: boolean;
+  createdAt: string;
+  ivaRate: number;
+  extraHourRate: number;
+  foodDiscountRate: number;
+  capillaSabado: number;
+  cotizaciones: number;
+  renta: number;
+  servicios: number;
+  paquetes: number;
+  /**
+   * Precio del DJ por hora extra, por tipo de evento. Un tipo que no lo ofrece
+   * simplemente NO viene en la lista (hoy: graduación, renta y team building).
+   */
+  dj: { eventTypeId: string; eventType: string; price: number }[];
 }
 
 export interface Client {
@@ -106,6 +140,12 @@ export interface Quote {
   client?: Client;
   eventTypeId: string;
   eventType?: { id: string; nombre: string; slug: string };
+  /**
+   * Catálogo al que la cotización está casada. Manda al recalcular: reeditar una
+   * de 2027 usa precios de 2027 aunque el catálogo activo ya sea 2028.
+   */
+  priceListId: string;
+  priceList?: { id: string; nombre: string; anio: number } | null;
   fechaEvento: string;
   invitados: number;
   spaceIds: string[];
@@ -208,7 +248,20 @@ export interface EstadoCuenta {
 
 export interface ActivityEntry {
   id: string;
-  tipo: 'creada' | 'estatus' | 'pago' | 'pagoAnulado' | 'edicion';
+  // Debe seguir a `LogTipo` de `apps/api/src/quotes/activityLog.ts`. La bitácora
+  // se pinta con `descripcion`, así que un valor de más no rompe la pantalla,
+  // pero un tipo desalineado sí engaña a quien filtre por él.
+  tipo:
+    | 'creada'
+    | 'estatus'
+    | 'pago'
+    | 'pagoAnulado'
+    | 'edicion'
+    | 'eliminada'
+    | 'restaurada'
+    | 'factura'
+    | 'fiscal'
+    | 'catalogo';
   descripcion: string;
   createdAt: string;
   actor?: { nombre: string } | null;

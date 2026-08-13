@@ -17,23 +17,26 @@ async function seedCatalog() {
     return;
   }
 
-  // Config global
-  await prisma.pricingConfig.upsert({
-    where: { id: 'default' },
-    update: {},
-    create: { id: 'default', ivaRate: 0.16, extraHourRate: 0.05, foodDiscountRate: 0.05 },
-  });
-
-  // Lista de precios 2027
+  // El catálogo 2027: renta, servicios, alimentos y los parámetros de precio,
+  // que antes vivían en el singleton global PricingConfig.
   const priceList = await prisma.priceList.create({
-    data: { anio: 2027, activa: true },
+    data: {
+      nombre: '2027',
+      anio: 2027,
+      activa: true,
+      ivaRate: 0.16,
+      extraHourRate: 0.05,
+      foodDiscountRate: 0.05,
+      capillaSabado: 5000,
+    },
   });
 
-  // Espacios
+  // Espacios. La Capilla NO es un espacio: es la casilla por evento con tarifa de
+  // sábado (PriceList.capillaSabado). Tenerla como salón rentable hacía que el
+  // contrato imprimiera su cuid en cuanto se daba de baja.
   const arcos = await prisma.space.create({ data: { nombre: 'Salón Los Arcos', capacidadMax: 400 } });
   const campos = await prisma.space.create({ data: { nombre: 'Jardín Los Campos', capacidadMax: 400 } });
   const cupula = await prisma.space.create({ data: { nombre: 'Jardín La Cúpula', capacidadMax: 800 } });
-  const capilla = await prisma.space.create({ data: { nombre: 'La Capilla', capacidadMax: 170 } });
 
   // Renta Los Arcos / Los Campos (misma tabla)
   const arcosCampos = [
@@ -59,20 +62,15 @@ async function seedCatalog() {
     ].map((r) => ({ ...r, priceListId: priceList.id, spaceId: cupula.id })),
   });
 
-  // Renta Capilla (cortesía salvo sábado)
-  await prisma.rentalPrice.create({
-    data: { priceListId: priceList.id, spaceId: capilla.id, min: 1, max: 170, viernes: 0, viernesEspecial: 0, sabado: 5000, domAJue: 0 },
-  });
-
   // Reglas de pago por espacio (sección H del contrato). Fuente única compartida
   // con el backfill para que producción siempre las tenga (idempotente).
   await applyPaymentRules(prisma);
 
-  // Add-ons de ejemplo
+  // Add-ons de ejemplo (del catálogo: clonar el catálogo los clona con él)
   await prisma.addOn.createMany({
     data: [
-      { nombre: 'DJ Hora extra', kind: AddOnKind.porUnidad, price: 2950 },
-      { nombre: 'Mesa de dulces (por persona)', kind: AddOnKind.porPersona, price: 110 },
+      { nombre: 'DJ Hora extra', kind: AddOnKind.porUnidad, price: 2950, priceListId: priceList.id },
+      { nombre: 'Mesa de dulces (por persona)', kind: AddOnKind.porPersona, price: 110, priceListId: priceList.id },
     ],
   });
 

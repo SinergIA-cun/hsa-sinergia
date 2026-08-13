@@ -58,16 +58,33 @@ enum ActivityType {
   restaurada
   factura
   fiscal
+  /// Un admin movió la cotización a otro catálogo (se represió a propósito).
+  catalogo
 }
 
+/// El catálogo completo de un año: renta, servicios, alimentos y parámetros.
+/// Una cotización queda casada a uno y recalcula SIEMPRE contra él, de modo que
+/// cambiar el catálogo de este año nunca represia lo cotizado el año pasado.
 model PriceList {
-  id           String        @id @default(cuid())
-  anio         Int
-  vigencia     DateTime?
-  activa       Boolean       @default(true)
-  tipo         String        @default("dia") // "dia" = renta por tipo de día · "plano" = renta plana (Team Building)
-  createdAt    DateTime      @default(now())
+  id        String    @id @default(cuid())
+  nombre    String    @unique // "2027", "2028"
+  anio      Int
+  vigencia  DateTime?
+  activa    Boolean   @default(false)
+  createdAt DateTime  @default(now())
+
+  // Parámetros de precio. Vivían en el singleton PricingConfig, que era la
+  // última fuente global capaz de represiar TODA cotización al reeditarla.
+  ivaRate          Float @default(0.16)
+  extraHourRate    Float @default(0.05)
+  foodDiscountRate Float @default(0.05)
+  capillaSabado    Int   @default(5000)
+
   rentalPrices RentalPrice[]
+  addOns       AddOn[]
+  foodPackages FoodPackage[]
+  djPrices     DjHoraExtraPrice[]
+  quotes       Quote[]
 }
 
 model Space {
@@ -91,18 +108,46 @@ model RentalPrice {
   viernesEspecial Int
   sabado          Int
   domAJue         Int
+  /// "dia" = renta por tipo de día · "plano" = renta plana (Team Building).
+  /// Antes vivía en PriceList, lo que obligaba a tener DOS listas por año y
+  /// dejaba la plana fuera del filtro `activa`.
+  tipo            String    @default("dia")
 
   @@index([priceListId, spaceId])
+  @@index([priceListId, tipo])
 }
 
 model EventType {
   id           String        @id @default(cuid())
   nombre       String
   slug         String        @unique
-  djHoraExtra  Int?          // precio del DJ por hora extra (por tipo de evento); null = no aplica
   rentaPlana   Boolean       @default(false) // usa la renta plana (Team Building) en vez de la de por-día
   foodPackages FoodPackage[]
+  /// El precio del DJ por hora extra, por catálogo. Vivía aquí como un `Int?`
+  /// global: clonar el catálogo no lo subía y editarlo represiaba lo reeditado.
+  djPrices     DjHoraExtraPrice[]
   quotes       Quote[]
+}
+
+/// Precio de la hora extra de DJ, por catálogo y por tipo de evento.
+///
+/// Vivía en `EventType.djHoraExtra`, que era un precio en pesos GLOBAL: clonar
+/// el catálogo con +8% lo dejaba igual, y editarlo represiaba toda cotización
+/// que se reeditara. La misma clase de bug que mató el catálogo versionado, que
+/// se colaba por la puerta de atrás.
+///
+/// Es por tipo de evento porque el precio real difiere ($2,950 en boda, $2,750
+/// en bautizo) y un tipo SIN renglón simplemente no ofrece el servicio (hoy:
+/// graduación, renta y team building).
+model DjHoraExtraPrice {
+  id          String    @id @default(cuid())
+  priceList   PriceList @relation(fields: [priceListId], references: [id])
+  priceListId String
+  eventType   EventType @relation(fields: [eventTypeId], references: [id])
+  eventTypeId String
+  price       Int
+
+  @@unique([priceListId, eventTypeId])
 }
 
 // Banqueteros (proveedores de alimentos). Se elige uno en la hoja operativa para
@@ -206,6 +251,10 @@ model Quote {
   // JSON flexible para alimentar el documento interno, el correo diario y el ERP futuro.
   operativa     Json?
   deletedAt     DateTime?
+  /// Catálogo con el que se coteó. MANDA al recalcular: reeditar una cotización
+  /// de 2027 usa precios de 2027 aunque el catálogo activo ya sea 2028.
+  priceList     PriceList   @relation(fields: [priceListId], references: [id])
+  priceListId   String
   payments      Payment[]
   activityLog   ActivityLog[]
 
@@ -215,6 +264,7 @@ model Quote {
   @@index([fechaEvento])
   @@index([deletedAt])
   @@index([banqueteroId])
+  @@index([priceListId])
 }
 
 model FoodPackage {
@@ -224,7 +274,11 @@ model FoodPackage {
   nombre      String
   ivaIncluido Boolean            @default(false)
   incluye     String?
+  priceList   PriceList          @relation(fields: [priceListId], references: [id])
+  priceListId String
   brackets    FoodPackagePrice[]
+
+  @@index([priceListId])
 }
 
 model FoodPackagePrice {
@@ -237,20 +291,15 @@ model FoodPackagePrice {
 }
 
 model AddOn {
-  id     String    @id @default(cuid())
-  nombre String
-  kind   AddOnKind
-  price  Int
-  activo Boolean   @default(true)
-}
+  id          String     @id @default(cuid())
+  nombre      String
+  kind        AddOnKind
+  price       Int
+  activo      Boolean   @default(true)
+  priceList   PriceList @relation(fields: [priceListId], references: [id])
+  priceListId String
 
-model PricingConfig {
-  id               String @id @default("default")
-  ivaRate          Float  @default(0.16)
-  extraHourRate    Float  @default(0.05)
-  foodDiscountRate Float  @default(0.05)
-  valetRatio       Float  @default(2.5)
-  capillaSabado    Int    @default(5000) // renta de la capilla en sábado (cortesía el resto)
+  @@index([priceListId])
 }
 
 model SpacePaymentRule {

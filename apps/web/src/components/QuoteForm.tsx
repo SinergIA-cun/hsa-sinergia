@@ -217,16 +217,24 @@ export function QuoteForm({
   // le movería el dinero a una cotización sin que nadie lo decida.
   const addOnsVisibles = catalog.addOns.filter((a) => a.activo || a.id in addOns);
 
+  // `catalog.spaces` trae TAMBIÉN los espacios dados de baja: el catálogo debe
+  // poder NOMBRAR uno que una cotización ya emitida referencia por id, o el
+  // contrato imprime el cuid crudo (fue el bug de La Capilla). Por eso el mapa de
+  // nombres se arma con todos y el selector se arma con `espaciosVisibles`.
   const spaceNameById = new Map(catalog.spaces.map((s) => [s.id, s.nombre]));
   const lineLabel = (line: QuoteLine): string => {
     const nombre = line.spaceId ? spaceNameById.get(line.spaceId) : undefined;
     return nombre ? `Renta ${nombre}` : line.concepto;
   };
 
-  // Disponibilidad de TODOS los espacios en la fecha (global, todo el equipo de
-  // ventas), en una sola llamada: así el selector puede pintarse con colores sin
-  // que haya que hacer clic para descubrir que un salón está ocupado.
-  const todosLosEspacios = catalog.spaces.map((s) => s.id).join(',');
+  // Igual que con los add-ons: solo se OFRECEN los vigentes, más el que esta
+  // cotización ya traiga elegido, para poder quitarlo a propósito.
+  const espaciosVisibles = catalog.spaces.filter((s) => s.activo || spaceIds.includes(s.id));
+
+  // Disponibilidad de los espacios ofrecidos en la fecha (global, todo el equipo
+  // de ventas), en una sola llamada: así el selector puede pintarse con colores
+  // sin que haya que hacer clic para descubrir que un salón está ocupado.
+  const todosLosEspacios = espaciosVisibles.map((s) => s.id).join(',');
   const { data: availability } = useQuery({
     queryKey: ['availability', fecha, todosLosEspacios, excludeQuoteId],
     queryFn: () =>
@@ -393,7 +401,7 @@ export function QuoteForm({
             Hasta {MAX_ESPACIOS} espacios por evento. {fecha ? 'El color indica la disponibilidad.' : 'Elige la fecha para ver disponibilidad.'}
           </p>
           <div className="grid gap-2 sm:grid-cols-2">
-            {catalog.spaces.map((s) => {
+            {espaciosVisibles.map((s) => {
               const active = spaceIds.includes(s.id);
               const av = fecha ? availBySpace.get(s.id) : undefined;
               const ocupado = av?.level === 'bloqueada';

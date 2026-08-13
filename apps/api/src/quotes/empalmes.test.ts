@@ -58,6 +58,8 @@ async function crearCotizacion(opts: {
       publicToken: randomUUID().replace(/-/g, ''),
       createdById: opts.ownerId ?? adminActor.id,
       deletedAt: opts.deletedAt ?? null,
+      // Toda cotización queda casada a un catálogo; aquí basta el activo.
+      priceListId: (await prisma.priceList.findFirstOrThrow({ where: { activa: true } })).id,
     },
   });
   quotes.push(quote.id);

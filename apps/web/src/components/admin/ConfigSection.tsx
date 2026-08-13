@@ -68,6 +68,12 @@ export function ConfigSection() {
         {isLoading && <p className="text-sm text-charcoal-soft">Cargando…</p>}
         {!isLoading && (
           <form onSubmit={onSubmit} className="space-y-4" onChange={() => setTouched(true)}>
+            {/* Estos parámetros son del catálogo activo, no globales: las
+                cotizaciones ya emitidas siguen casadas al suyo y no se mueven. */}
+            <p className="text-xs text-charcoal-soft">
+              Parámetros del catálogo <strong className="text-ink">{config?.nombre ?? '—'}</strong> (el activo). Cambiarlos
+              afecta solo lo que se cotice de aquí en adelante; las cotizaciones ya hechas conservan su catálogo.
+            </p>
             <div className="grid gap-4 sm:grid-cols-3">
               <Field label="IVA (%)">
                 <TextInput type="number" min={0} max={100} step="0.01" value={ivaPct} onChange={(e) => setIvaPct(e.target.value)} />

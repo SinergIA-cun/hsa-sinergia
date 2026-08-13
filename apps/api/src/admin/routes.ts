@@ -59,14 +59,29 @@ const configSchema = z.object({
   foodDiscountRate: z.number().min(0).max(1).optional(),
 });
 
+/**
+ * El catálogo activo. Es el que administran las pantallas de servicios y de
+ * parámetros mientras el editor por catálogo (tramo 2) no exista.
+ */
+function catalogoActivo(app: FastifyInstance) {
+  return app.prisma.priceList.findFirst({ where: { activa: true }, orderBy: { anio: 'desc' } });
+}
+
 export async function adminRoutes(app: FastifyInstance): Promise<void> {
+  // Los servicios ahora pertenecen a un catálogo; esta pantalla administra los
+  // del activo. Ver la nota de `/admin/config`.
   app.get('/admin/addons', { preHandler: requireAdmin }, async () => ({
-    addOns: await app.prisma.addOn.findMany({ orderBy: { nombre: 'asc' } }),
+    addOns: await app.prisma.addOn.findMany({
+      where: { priceList: { activa: true } },
+      orderBy: { nombre: 'asc' },
+    }),
   }));
 
   app.post('/admin/addons', { preHandler: requireAdmin }, async (req, reply) => {
     const data = addonCreateSchema.parse(req.body);
-    const addOn = await app.prisma.addOn.create({ data });
+    const activo = await catalogoActivo(app);
+    if (!activo) return reply.code(409).send({ error: 'No hay catálogo activo' });
+    const addOn = await app.prisma.addOn.create({ data: { ...data, priceListId: activo.id } });
     return reply.code(201).send({ addOn });
   });
 
@@ -95,13 +110,22 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
     }
   });
 
-  app.get('/admin/config', { preHandler: requireAdmin }, async () => ({
-    config: await app.prisma.pricingConfig.findUnique({ where: { id: 'default' } }),
-  }));
+  // Los parámetros de precio vivían en el singleton PricingConfig, que murió con
+  // el catálogo versionado. Esta pantalla ahora lee y escribe los del CATÁLOGO
+  // ACTIVO: cambiarlos afecta lo que se cotice de aquí en adelante y nunca lo ya
+  // cotizado, porque cada cotización recalcula contra el catálogo que fijó.
+  // Editar los parámetros de un catálogo NO activo es del tramo 2.
+  app.get('/admin/config', { preHandler: requireAdmin }, async (_req, reply) => {
+    const config = await catalogoActivo(app);
+    if (!config) return reply.code(409).send({ error: 'No hay catálogo activo' });
+    return { config };
+  });
 
-  app.patch('/admin/config', { preHandler: requireAdmin }, async (req) => {
+  app.patch('/admin/config', { preHandler: requireAdmin }, async (req, reply) => {
     const data = configSchema.parse(req.body);
-    const config = await app.prisma.pricingConfig.update({ where: { id: 'default' }, data });
+    const activo = await catalogoActivo(app);
+    if (!activo) return reply.code(409).send({ error: 'No hay catálogo activo' });
+    const config = await app.prisma.priceList.update({ where: { id: activo.id }, data });
     return { config };
   });
 

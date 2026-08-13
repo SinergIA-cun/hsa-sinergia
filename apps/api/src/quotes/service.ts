@@ -79,15 +79,37 @@ export const statusSchema = z.object({ status: z.enum(QUOTE_STATUSES) });
 /** Los seis campos del cliente que congela el candado de facturación. */
 const CAMPOS_FISCALES = ['rfc', 'razonSocial', 'regimenFiscal', 'cpFiscal', 'usoCfdi', 'correoFacturacion'] as const;
 
-const includeRels = { client: true, eventType: true, createdBy: { select: { id: true, nombre: true } } };
+// El catálogo viaja con la cotización porque es el dato que explica por qué dos
+// cotizaciones de fechas parecidas tienen precios distintos. Sin él, la interfaz
+// solo puede enseñar un cuid, que no le dice nada a nadie.
+const includeRels = {
+  client: true,
+  eventType: true,
+  createdBy: { select: { id: true, nombre: true } },
+  priceList: { select: { id: true, nombre: true, anio: true } },
+};
 
 // Se permite editar el desglose incluso con compromiso de pago (formalizada/complementada);
 // las ediciones en esos estatus quedan registradas en la bitácora de actividad.
 const EDITABLE_STATUSES = new Set(['borrador', 'enviada', 'aceptada', 'formalizada', 'complementada']);
 
+/**
+ * El catálogo activo, o un 409 si no hay ninguno. Es el que se le fija a una
+ * cotización nueva; de ahí en adelante manda el fijado, no el activo.
+ */
+async function catalogoActivo(db: PrismaClient): Promise<{ id: string }> {
+  const activo = await db.priceList.findFirst({
+    where: { activa: true },
+    orderBy: { anio: 'desc' },
+    select: { id: true },
+  });
+  if (!activo) throw new QuoteError(409, 'No hay catálogo activo: pide a un administrador que active uno.');
+  return activo;
+}
+
 /** Calcula el desglose y enriquece las líneas de renta con el nombre del espacio. */
-async function computeAndEnrich(db: PrismaClient, selection: QuoteSelection) {
-  const catalog = await loadCatalog(db);
+async function computeAndEnrich(db: PrismaClient, selection: QuoteSelection, priceListId?: string) {
+  const catalog = await loadCatalog(db, priceListId ? { priceListId } : {});
   const breakdown = computeQuote(catalog, selection);
   const spaces = await db.space.findMany({ where: { id: { in: selection.spaceIds } } });
   const nameById = new Map(spaces.map((s) => [s.id, s.nombre]));
@@ -370,7 +392,10 @@ export async function createQuote(db: PrismaClient, rawInput: unknown, actor: Ac
   // Antes de CUALQUIER escritura (incluida la del cliente): una cotización
   // rechazada no debe dejar un cliente huérfano en la base.
   await assertEspaciosDisponibles(db, input.fecha, input.spaceIds);
-  const { breakdown, enriched } = await computeAndEnrich(db, toSelection(input));
+  // El catálogo se fija AQUÍ y queda casado a la cotización: reeditarla más
+  // adelante recalcula contra este, no contra el que esté activo ese día.
+  const catalogo = await catalogoActivo(db);
+  const { breakdown, enriched } = await computeAndEnrich(db, toSelection(input), catalogo.id);
 
   let clientId = input.clientId;
   if (!clientId && input.client) {
@@ -407,6 +432,7 @@ export async function createQuote(db: PrismaClient, rawInput: unknown, actor: Ac
       publicToken: randomUUID().replace(/-/g, ''),
       vigenciaHasta: vigenciaDesde(new Date()),
       createdById: actor.id,
+      priceListId: catalogo.id,
     },
     include: includeRels,
   });
@@ -443,6 +469,9 @@ export async function duplicateQuote(db: PrismaClient, id: string, actor: Actor)
       publicToken: randomUUID().replace(/-/g, ''),
       vigenciaHasta: vigenciaDesde(new Date()),
       createdById: actor.id,
+      // La copia hereda el catálogo del original: copia el desglose tal cual, así
+      // que tiene que poder recalcularse contra los MISMOS precios.
+      priceListId: src.priceListId,
     },
     include: includeRels,
   });
@@ -481,7 +510,14 @@ export async function updateQuote(db: PrismaClient, id: string, rawInput: unknow
   const input = updateQuoteSchema.parse(rawInput);
   // Se excluye a sí misma: editar sin mover fecha ni espacio no se auto-bloquea.
   await assertEspaciosDisponibles(db, input.fecha, input.spaceIds, id);
-  const { breakdown, enriched } = await computeAndEnrich(db, toSelection(input));
+  // Con el catálogo que la cotización FIJÓ al crearse, nunca con el activo:
+  // reeditar una cotización de 2027 debe usar precios de 2027 aunque el catálogo
+  // vigente ya sea 2028. Sin esto, cambiarle el nombre al cliente la represia.
+  const { breakdown, enriched } = await computeAndEnrich(
+    db,
+    toSelection(input),
+    existing.priceListId,
+  );
 
   let bitacoraFiscal: { campos: string[]; desbloqueoDeAdmin: boolean } | null = null;
   if (input.client) {
@@ -645,6 +681,169 @@ export async function moveQuoteDate(db: PrismaClient, id: string, fecha: string,
   });
 
   return actualizada;
+}
+
+export const moverCatalogoSchema = z.object({ priceListId: z.string().min(1) });
+
+/** Lo que la cotización guarda como selección de alimentos y servicios. */
+type SeleccionCatalogo = { foodPackageId: string | null; addOns: { addOnId: string; cantidad: number }[] };
+
+/**
+ * Traduce el paquete y los servicios elegidos a los registros EQUIVALENTES del
+ * catálogo destino.
+ *
+ * Clonar un catálogo crea filas nuevas con ids nuevos: el paquete "SUPREME" de
+ * 2028 no es el mismo registro que el "SUPREME" de 2027. Mover la cotización sin
+ * retraducir la dejaría irrecalculable —el motor lanza `Paquete de alimentos …
+ * no existe`—, que es exactamente la clase de bug que este plan vino a matar.
+ *
+ * El casamiento es por nombre, que es lo que el clon conserva; el paquete lleva
+ * además su tipo de evento porque el mismo nombre ("3 Tiempos") se repite entre
+ * tipos. Si el destino no trae el equivalente, se aborta con 409 y se dice cuál
+ * falta: mover borrando conceptos cobrados sería peor que no mover.
+ */
+async function traducirSeleccion(
+  db: PrismaClient,
+  quote: { foodPackageId: string | null; addOns: unknown; eventTypeId: string },
+  destinoId: string,
+): Promise<SeleccionCatalogo> {
+  const addOns = (quote.addOns as unknown as { addOnId: string; cantidad: number }[] | null) ?? [];
+
+  let foodPackageId: string | null = null;
+  if (quote.foodPackageId) {
+    const actual = await db.foodPackage.findUnique({ where: { id: quote.foodPackageId } });
+    if (!actual) throw new QuoteError(409, 'El paquete de alimentos de la cotización ya no existe.');
+    const equivalente = await db.foodPackage.findFirst({
+      where: { priceListId: destinoId, nombre: actual.nombre, eventTypeId: actual.eventTypeId },
+    });
+    if (!equivalente) {
+      throw new QuoteError(409, `El catálogo destino no tiene el paquete "${actual.nombre}".`);
+    }
+    foodPackageId = equivalente.id;
+  }
+
+  if (addOns.length === 0) return { foodPackageId, addOns: [] };
+
+  const actuales = await db.addOn.findMany({ where: { id: { in: addOns.map((a) => a.addOnId) } } });
+  const nombrePorId = new Map(actuales.map((a) => [a.id, a.nombre]));
+  const destino = await db.addOn.findMany({ where: { priceListId: destinoId } });
+  const idPorNombre = new Map(destino.map((a) => [a.nombre, a.id]));
+
+  const traducidos = addOns.map((a) => {
+    const nombre = nombrePorId.get(a.addOnId);
+    if (!nombre) throw new QuoteError(409, 'Un servicio de la cotización ya no existe.');
+    const id = idPorNombre.get(nombre);
+    if (!id) throw new QuoteError(409, `El catálogo destino no tiene el servicio "${nombre}".`);
+    return { addOnId: id, cantidad: a.cantidad };
+  });
+
+  return { foodPackageId, addOns: traducidos };
+}
+
+/**
+ * Todo lo que hace falta para mover una cotización de catálogo, SIN escribir
+ * nada: validaciones, traducción de la selección y el recálculo con el catálogo
+ * destino.
+ *
+ * Existe separado para que la vista previa y el movimiento real corran
+ * exactamente el mismo código. Si la previa calculara por su cuenta —o peor, en
+ * el navegador—, el número que alguien aprueba y el que se guarda podrían
+ * diferir, y es dinero.
+ */
+async function prepararMovimiento(db: PrismaClient, id: string, priceListId: string, actor: Actor) {
+  if (actor.role !== 'admin') {
+    throw new QuoteError(403, 'Solo un admin puede mover una cotización de catálogo.');
+  }
+  const existing = await db.quote.findFirst({ where: { id, ...ownershipWhere(actor) } });
+  if (!existing) throw new QuoteError(404, 'Cotización no encontrada');
+  assertNotTrashed(existing);
+
+  const destino = await db.priceList.findUnique({ where: { id: priceListId } });
+  if (!destino) throw new QuoteError(404, `El catálogo ${priceListId} no existe`);
+  const origen = await db.priceList.findUnique({
+    where: { id: existing.priceListId },
+    select: { nombre: true },
+  });
+
+  const seleccion = await traducirSeleccion(db, existing, destino.id);
+  const { breakdown, enriched } = await computeAndEnrich(
+    db,
+    toSelection({
+      fecha: existing.fechaEvento.toISOString().slice(0, 10),
+      invitados: existing.invitados,
+      spaceIds: existing.spaceIds,
+      horasExtra: existing.horasExtra,
+      usaCapilla: existing.usaCapilla,
+      usaDjHoraExtra: existing.usaDjHoraExtra,
+      eventTypeId: existing.eventTypeId,
+      foodPackageId: seleccion.foodPackageId ?? undefined,
+      addOns: seleccion.addOns,
+    }),
+    destino.id,
+  );
+
+  return {
+    existing,
+    destino,
+    origen,
+    seleccion,
+    breakdown,
+    enriched,
+    antes: existing.total,
+    despues: Math.round(breakdown.total),
+  };
+}
+
+/**
+ * Vista previa del movimiento: el mismo cálculo que `moverCatalogo`, sin tocar
+ * la cotización ni la bitácora.
+ *
+ * La interfaz la usa para enseñar el antes y el después ANTES de confirmar.
+ * Falla igual que el movimiento real (403, 404, 409 si el catálogo destino no
+ * trae un paquete o servicio equivalente), y ese es el punto: quien va a mover
+ * se entera del problema mientras todavía puede cancelar.
+ */
+export async function simularCatalogo(db: PrismaClient, id: string, priceListId: string, actor: Actor) {
+  const { antes, despues } = await prepararMovimiento(db, id, priceListId, actor);
+  return { antes, despues };
+}
+
+/**
+ * Mueve una cotización a otro catálogo y la represia A PROPÓSITO.
+ *
+ * Es la única puerta que rompe el casamiento hecho al crear, y por eso es de
+ * admin y deja rastro: el caso real es el cliente que apartó para 2027 y corre su
+ * evento a 2029, donde los precios ya son otros. Devuelve el antes y el después
+ * para que quien confirme vea con cuánto se va a quedar el cliente.
+ */
+export async function moverCatalogo(db: PrismaClient, id: string, priceListId: string, actor: Actor) {
+  const { existing, destino, origen, seleccion, breakdown, enriched, antes, despues } =
+    await prepararMovimiento(db, id, priceListId, actor);
+
+  const quote = await db.quote.update({
+    where: { id },
+    data: {
+      priceListId: destino.id,
+      // El paquete y los servicios se guardan RETRADUCIDOS: si se dejaran los
+      // ids viejos, el siguiente guardado del formulario reventaría.
+      foodPackageId: seleccion.foodPackageId,
+      addOns: seleccion.addOns as unknown as Prisma.InputJsonValue,
+      breakdown: enriched as unknown as Prisma.InputJsonValue,
+      total: despues,
+      rentaTotal: Math.round(breakdown.rentaTotal),
+    },
+    include: includeRels,
+  });
+
+  await logActivity(db, {
+    quoteId: id,
+    tipo: 'catalogo',
+    descripcion: `Catálogo: ${origen?.nombre ?? existing.priceListId} → ${destino.nombre} · total ${antes} → ${despues}`,
+    meta: { de: existing.priceListId, a: destino.id, totalAntes: antes, totalDespues: despues },
+    actorId: actor.id,
+  });
+
+  return { quote, antes, despues };
 }
 
 export async function updateStatus(

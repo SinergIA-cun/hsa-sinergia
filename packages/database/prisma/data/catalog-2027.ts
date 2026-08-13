@@ -21,7 +21,8 @@ export interface EventTypeDef {
   nombre: string;
   slug: string;
   packages: PackageDef[]; // vacío = solo renta del espacio
-  djHoraExtra?: number; // precio del DJ por hora extra; ausente = no aplica
+  /** Precio del DJ por hora extra en el catálogo 2027; ausente = no se ofrece. */
+  djHoraExtra?: number;
   rentaPlana?: boolean; // usa la renta plana (Team Building) en vez de la de por-día
 }
 
@@ -89,25 +90,48 @@ export const EVENT_TYPES_2027: EventTypeDef[] = [
 
 /**
  * Aplica el catálogo 2027 de tipos de evento + alimentos de forma idempotente.
- * Setea el precio del DJ por hora extra por tipo de evento y desactiva el add-on
- * global de DJ (migrado a toggle). NO toca espacios, rentas ni reglas de pago.
+ * Cuelga del catálogo activo el precio del DJ por hora extra de cada tipo de
+ * evento y desactiva el add-on global de DJ (migrado a toggle). NO toca
+ * espacios, rentas ni reglas de pago.
  */
 export async function applyCatalog2027(prisma: PrismaClient): Promise<void> {
+  // Los paquetes de alimentos y el precio del DJ pertenecen a un catálogo
+  // (PriceList). Este seed es el del catálogo 2027, así que apunta al activo: si
+  // no hay ninguno, no hay a dónde colgarlos y es mejor gritar que colgarlos del
+  // catálogo equivocado.
+  const catalogo = await prisma.priceList.findFirst({ where: { activa: true }, orderBy: { anio: 'desc' } });
+  if (!catalogo) throw new Error('No hay catálogo (PriceList) activo al que colgar los paquetes de alimentos.');
+
   for (const et of EVENT_TYPES_2027) {
     const type = await prisma.eventType.upsert({
       where: { slug: et.slug },
-      update: { nombre: et.nombre, djHoraExtra: et.djHoraExtra ?? null, rentaPlana: et.rentaPlana ?? false },
-      create: { nombre: et.nombre, slug: et.slug, djHoraExtra: et.djHoraExtra ?? null, rentaPlana: et.rentaPlana ?? false },
+      update: { nombre: et.nombre, rentaPlana: et.rentaPlana ?? false },
+      create: { nombre: et.nombre, slug: et.slug, rentaPlana: et.rentaPlana ?? false },
     });
+
+    // El DJ por hora extra vive en el catálogo, por tipo de evento. Un tipo SIN
+    // precio no lleva renglón: sin renglón = no se ofrece el servicio.
+    //
+    // Se CREA si falta y NUNCA se pisa el precio que ya está. Este archivo lo
+    // corren los backfills fase6/fase7 en CADA arranque del contenedor, y
+    // siempre contra el catálogo ACTIVO: si sobrescribiera, el día que se active
+    // el catálogo 2028 el siguiente reinicio le regresaría el DJ a $2,950
+    // mientras la renta se queda con su +8%. Eso es represiar en silencio.
+    if (et.djHoraExtra != null) {
+      await prisma.djHoraExtraPrice.createMany({
+        data: [{ priceListId: catalogo.id, eventTypeId: type.id, price: et.djHoraExtra }],
+        skipDuplicates: true,
+      });
+    }
 
     for (const pkg of et.packages) {
       const existing = await prisma.foodPackage.findFirst({
-        where: { eventTypeId: type.id, nombre: pkg.nombre },
+        where: { eventTypeId: type.id, nombre: pkg.nombre, priceListId: catalogo.id },
       });
       const paquete =
         existing ??
         (await prisma.foodPackage.create({
-          data: { eventTypeId: type.id, nombre: pkg.nombre, ivaIncluido: false },
+          data: { eventTypeId: type.id, nombre: pkg.nombre, ivaIncluido: false, priceListId: catalogo.id },
         }));
       // Reemplaza los precios (preserva el id del paquete para no romper cotizaciones existentes).
       await prisma.foodPackagePrice.deleteMany({ where: { packageId: paquete.id } });
@@ -123,18 +147,16 @@ export async function applyCatalog2027(prisma: PrismaClient): Promise<void> {
   }
 
   // El DJ dejó de ser un add-on global: ahora es un toggle "DJ Hora extra" con
-  // precio por tipo de evento (EventType.djHoraExtra). Se desactiva el add-on
-  // viejo (cualquiera de sus nombres) para que no aparezca ni se cobre doble.
+  // precio por catálogo y tipo de evento (DjHoraExtraPrice). Se desactiva el
+  // add-on viejo (cualquiera de sus nombres) para que no aparezca ni se cobre
+  // doble. NO se borra: el catálogo tiene que seguir resolviéndolo si alguna
+  // cotización vieja lo referencia por id.
   await prisma.addOn.updateMany({
     where: { nombre: { in: ['DJ (por hora)', 'DJ Hora extra', 'DJ'] } },
     data: { activo: false },
   });
 
-  // La Capilla deja de ser un espacio cotizable: ahora es una cortesía por-evento
-  // (toggle "usaCapilla", $5,000 en sábado). Se desactiva para que no aparezca en
-  // el selector de espacios, pero se conserva la fila por historial.
-  await prisma.space.updateMany({
-    where: { nombre: 'La Capilla' },
-    data: { activo: false },
-  });
+  // La Capilla ya no es espacio ni fila desactivada: el backfill fase13 borró el
+  // espacio vestigial. Es la casilla por evento (toggle "usaCapilla") con la
+  // tarifa de sábado en PriceList.capillaSabado.
 }
