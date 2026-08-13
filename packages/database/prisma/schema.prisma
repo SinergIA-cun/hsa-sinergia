@@ -85,6 +85,29 @@ model PriceList {
   foodPackages FoodPackage[]
   djPrices     DjHoraExtraPrice[]
   quotes       Quote[]
+  auditoria    PriceListAudit[]
+}
+
+/// Bitácora de cambios AL CONTENIDO de un catálogo. Separada de `ActivityLog`
+/// porque esa exige `quoteId` y un cambio de catálogo no pertenece a ninguna
+/// cotización — pertenece a todas las que cuelgan de él.
+model PriceListAudit {
+  id          String    @id @default(cuid())
+  priceList   PriceList @relation(fields: [priceListId], references: [id])
+  priceListId String
+  /// "renta" | "servicio" | "paquete" | "dj" | "parametros"
+  tipo        String
+  descripcion String
+  meta        Json?
+  actor       User?     @relation("PriceListAuditActor", fields: [actorId], references: [id])
+  actorId     String?
+  /// Cuántas cotizaciones estaban casadas a este catálogo AL MOMENTO del cambio.
+  /// Se guarda el número entonces, no se recalcula después: es la medida real de
+  /// lo que quien editó puso en riesgo, y cambiaría si se leyera hoy.
+  cotizacionesEnRiesgo Int      @default(0)
+  createdAt            DateTime @default(now())
+
+  @@index([priceListId, createdAt])
 }
 
 model Space {
@@ -365,4 +388,5 @@ model User {
   paymentsRegistrados Payment[]     @relation("PaymentRegistradoBy")
   paymentsAnulados    Payment[]     @relation("PaymentAnuladoBy")
   actividades         ActivityLog[] @relation("ActivityActor")
+  priceListAudits     PriceListAudit[] @relation("PriceListAuditActor")
 }
