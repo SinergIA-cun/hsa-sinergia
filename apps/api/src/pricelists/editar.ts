@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { PrismaClient } from '@hsa/database';
+import type { Prisma, PrismaClient } from '@hsa/database';
 import { QuoteError, type Actor } from '../quotes/service.js';
 import { registrarCambioCatalogo } from './audit.js';
 
@@ -17,6 +17,12 @@ const precio = z.number().int().nonnegative();
  * `int()`. Es la última red antes de Postgres, que trunca en silencio.
  */
 const aPesos = (n: number): number => Math.round(n);
+
+/** Existe el catálogo, o 404. Se hace dentro de la transacción del cambio. */
+async function assertCatalogo(tx: Prisma.TransactionClient, priceListId: string): Promise<void> {
+  const existe = await tx.priceList.findUnique({ where: { id: priceListId }, select: { id: true } });
+  if (!existe) throw new QuoteError(404, `El catálogo ${priceListId} no existe`);
+}
 
 /** Los cuatro precios de un renglón. NO se toca `min`/`max`: ver `editarRentas`. */
 const rentaCambioSchema = z.object({
@@ -60,8 +66,7 @@ export async function editarRentas(
   if (repetidos) throw new QuoteError(400, 'Un mismo renglón de renta viene dos veces');
 
   return db.$transaction(async (tx) => {
-    const existe = await tx.priceList.findUnique({ where: { id: priceListId }, select: { id: true } });
-    if (!existe) throw new QuoteError(404, `El catálogo ${priceListId} no existe`);
+    await assertCatalogo(tx, priceListId);
 
     const actuales = await tx.rentalPrice.findMany({
       where: { id: { in: cambios.map((c) => c.id) } },
@@ -113,5 +118,164 @@ export async function editarRentas(
     );
 
     return { actualizados: renglones.length, renglones };
+  });
+}
+
+// --- Servicios (add-ons) ---
+//
+// A diferencia de la renta, aquí SÍ se agrega y se quita: es el caso del
+// banquetero que cambia, o del servicio que se deja de ofrecer.
+
+const KINDS = ['fijo', 'porPersona', 'porUnidad'] as const;
+
+export const servicioCreateSchema = z.object({
+  nombre: z.string().min(1).max(80),
+  kind: z.enum(KINDS),
+  price: precio,
+  activo: z.boolean().default(true),
+});
+
+export const servicioUpdateSchema = z
+  .object({
+    nombre: z.string().min(1).max(80).optional(),
+    kind: z.enum(KINDS).optional(),
+    price: precio.optional(),
+    activo: z.boolean().optional(),
+  })
+  .refine((o) => Object.values(o).some((v) => v !== undefined), {
+    message: 'No hay nada que cambiar',
+  });
+
+/**
+ * El servicio existe y es DE ESTE catálogo, o 400. Sin esta guarda, el id de un
+ * servicio de 2027 se editaría desde la pantalla de 2028.
+ */
+async function servicioDelCatalogo(
+  tx: Prisma.TransactionClient,
+  priceListId: string,
+  addOnId: string,
+) {
+  const addOn = await tx.addOn.findUnique({ where: { id: addOnId } });
+  if (!addOn || addOn.priceListId !== priceListId) {
+    throw new QuoteError(400, `El servicio ${addOnId} no pertenece a este catálogo`);
+  }
+  return addOn;
+}
+
+export async function crearServicio(
+  db: PrismaClient,
+  priceListId: string,
+  rawInput: unknown,
+  actor: Actor | null,
+) {
+  const input = servicioCreateSchema.parse(rawInput);
+  return db.$transaction(async (tx) => {
+    await assertCatalogo(tx, priceListId);
+    const addOn = await tx.addOn.create({
+      data: { ...input, price: aPesos(input.price), priceListId },
+    });
+    await registrarCambioCatalogo(
+      tx,
+      {
+        priceListId,
+        tipo: 'servicio',
+        descripcion: `Servicio "${addOn.nombre}" agregado (${addOn.price} · ${addOn.kind})`,
+        meta: { accion: 'alta', addOnId: addOn.id, despues: { nombre: addOn.nombre, kind: addOn.kind, price: addOn.price, activo: addOn.activo } },
+      },
+      actor,
+    );
+    return addOn;
+  });
+}
+
+/**
+ * Edita nombre, precio, tipo de cobro o la bandera `activo`.
+ *
+ * Desactivar NO lo saca del catálogo: lo saca del SELECTOR. El catálogo tiene que
+ * seguir resolviéndolo, porque las cotizaciones que ya lo traen lo referencian
+ * por id y el motor lanza si no lo encuentra. Es la lección del valet: darlo de
+ * baja dejó cotizaciones irrecalculables.
+ */
+export async function editarServicio(
+  db: PrismaClient,
+  priceListId: string,
+  addOnId: string,
+  rawInput: unknown,
+  actor: Actor | null,
+) {
+  const input = servicioUpdateSchema.parse(rawInput);
+  return db.$transaction(async (tx) => {
+    await assertCatalogo(tx, priceListId);
+    const antes = await servicioDelCatalogo(tx, priceListId, addOnId);
+    const addOn = await tx.addOn.update({
+      where: { id: addOnId },
+      data: { ...input, ...(input.price === undefined ? {} : { price: aPesos(input.price) }) },
+    });
+    await registrarCambioCatalogo(
+      tx,
+      {
+        priceListId,
+        tipo: 'servicio',
+        descripcion: `Servicio "${antes.nombre}" editado: ${Object.keys(input).join(', ')}`,
+        meta: {
+          accion: 'edicion',
+          addOnId,
+          antes: { nombre: antes.nombre, kind: antes.kind, price: antes.price, activo: antes.activo },
+          despues: { nombre: addOn.nombre, kind: addOn.kind, price: addOn.price, activo: addOn.activo },
+        },
+      },
+      actor,
+    );
+    return addOn;
+  });
+}
+
+/**
+ * Borra un servicio del catálogo, solo si NINGUNA cotización de ese catálogo lo
+ * referencia.
+ *
+ * Se cuentan también las cotizaciones en la papelera: una cotización borrada se
+ * puede restaurar, y restaurarla con un add-on que ya no existe la deja
+ * irrecalculable. Para eso está `activo: false`, que es la salida correcta.
+ */
+export async function borrarServicio(
+  db: PrismaClient,
+  priceListId: string,
+  addOnId: string,
+  actor: Actor | null,
+) {
+  return db.$transaction(async (tx) => {
+    await assertCatalogo(tx, priceListId);
+    const addOn = await servicioDelCatalogo(tx, priceListId, addOnId);
+
+    // `addOns` es JSON, no una relación: el uso se cuenta con un contains de jsonb.
+    const rows = await tx.$queryRaw<{ count: number }[]>`
+      SELECT COUNT(*)::int AS count FROM "Quote"
+      WHERE "priceListId" = ${priceListId}
+        AND "addOns" @> ${JSON.stringify([{ addOnId }])}::jsonb`;
+    const n = rows[0]?.count ?? 0;
+    if (n > 0) {
+      throw new QuoteError(
+        409,
+        `No se puede borrar: en uso por ${n} cotización(es) de este catálogo. Desactívalo en vez de borrarlo.`,
+      );
+    }
+
+    await tx.addOn.delete({ where: { id: addOnId } });
+    await registrarCambioCatalogo(
+      tx,
+      {
+        priceListId,
+        tipo: 'servicio',
+        descripcion: `Servicio "${addOn.nombre}" eliminado`,
+        meta: {
+          accion: 'baja',
+          addOnId,
+          antes: { nombre: addOn.nombre, kind: addOn.kind, price: addOn.price, activo: addOn.activo },
+        },
+      },
+      actor,
+    );
+    return { borrado: addOnId };
   });
 }

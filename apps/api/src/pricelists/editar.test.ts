@@ -6,8 +6,9 @@ import { buildServer } from '../server.js';
 import { loadConfig } from '../config.js';
 import { hashPassword } from '../auth/password.js';
 import { createQuote, type Actor } from '../quotes/service.js';
+import { loadCatalog } from '../catalog/loader.js';
 import { activarCatalogo, clonarCatalogo } from './service.js';
-import { editarRentas } from './editar.js';
+import { borrarServicio, crearServicio, editarRentas, editarServicio } from './editar.js';
 import { borrarCatalogoDePrueba } from './testSupport.js';
 
 let app: FastifyInstance;
@@ -280,5 +281,138 @@ describe('editar precios de renta', () => {
     });
     expect(ok.statusCode).toBe(200);
     expect((await prisma.rentalPrice.findUniqueOrThrow({ where: { id: r.id } })).sabado).toBe(1);
+  });
+});
+
+describe('servicios del catálogo', () => {
+  it('agrega un servicio al catálogo, no a los demás', async () => {
+    const cat = await catalogoDePrueba('SERV-ALTA', 2072);
+    const antesOtro = await prisma.addOn.count({ where: { priceListId: activoOriginalId } });
+
+    const s = await crearServicio(
+      prisma,
+      cat.id,
+      { nombre: 'Pirotecnia fría', kind: 'fijo', price: 12000 },
+      actor,
+    );
+    expect(s.priceListId).toBe(cat.id);
+    expect(s.activo).toBe(true);
+    expect(await prisma.addOn.count({ where: { priceListId: cat.id, nombre: 'Pirotecnia fría' } })).toBe(1);
+    // El catálogo de producción no se enteró.
+    expect(await prisma.addOn.count({ where: { priceListId: activoOriginalId } })).toBe(antesOtro);
+    expect(
+      await prisma.priceListAudit.count({ where: { priceListId: cat.id, tipo: 'servicio' } }),
+    ).toBe(1);
+  });
+
+  it('edita nombre, precio y tipo de cobro', async () => {
+    const cat = await catalogoDePrueba('SERV-EDITA', 2071);
+    const s = await crearServicio(prisma, cat.id, { nombre: 'Mesa de dulces', kind: 'fijo', price: 5000 }, actor);
+
+    const editado = await editarServicio(
+      prisma,
+      cat.id,
+      s.id,
+      { nombre: 'Mesa de postres', kind: 'porPersona', price: 90 },
+      actor,
+    );
+    expect(editado.nombre).toBe('Mesa de postres');
+    expect(editado.kind).toBe('porPersona');
+    expect(editado.price).toBe(90);
+  });
+
+  it('un servicio de otro catálogo no se puede editar ni borrar desde aquí', async () => {
+    const cat = await catalogoDePrueba('SERV-AJENO', 2070);
+    const ajeno = await prisma.addOn.findFirstOrThrow({ where: { priceListId: activoOriginalId } });
+
+    await expect(
+      editarServicio(prisma, cat.id, ajeno.id, { price: 1 }, actor),
+    ).rejects.toMatchObject({ status: 400 });
+    await expect(borrarServicio(prisma, cat.id, ajeno.id, actor)).rejects.toMatchObject({ status: 400 });
+    expect((await prisma.addOn.findUniqueOrThrow({ where: { id: ajeno.id } })).price).toBe(ajeno.price);
+  });
+
+  it('desactivar lo saca del selector pero el catálogo lo sigue resolviendo', async () => {
+    // Es la lección del PR #2: `activo: false` NO puede desaparecer del catálogo,
+    // o las cotizaciones que lo traen quedan irrecalculables.
+    const cat = await catalogoDePrueba('SERV-BAJA', 2069);
+    const s = await crearServicio(prisma, cat.id, { nombre: 'Valet de prueba', kind: 'porUnidad', price: 60 }, actor);
+
+    await editarServicio(prisma, cat.id, s.id, { activo: false }, actor);
+
+    const catalogo = await loadCatalog(prisma, { priceListId: cat.id });
+    const resuelto = catalogo.addOns.find((a) => a.id === s.id);
+    expect(resuelto).toBeDefined();
+    expect(resuelto!.activo).toBe(false);
+    expect(resuelto!.price).toBe(60);
+  });
+
+  it('borrar un servicio EN USO responde 409 y no lo borra', async () => {
+    const cat = await catalogoDePrueba('SERV-EN-USO', 2068);
+    const s = await crearServicio(prisma, cat.id, { nombre: 'Servicio usado', kind: 'fijo', price: 800 }, actor);
+    const q = await cotizacionEn(cat.id, '2032-04-03');
+    await prisma.quote.update({
+      where: { id: q.id },
+      data: { addOns: [{ addOnId: s.id, cantidad: 1 }] },
+    });
+
+    await expect(borrarServicio(prisma, cat.id, s.id, actor)).rejects.toMatchObject({ status: 409 });
+    expect(await prisma.addOn.findUnique({ where: { id: s.id } })).not.toBeNull();
+  });
+
+  it('borrar un servicio sin uso sí lo borra', async () => {
+    const cat = await catalogoDePrueba('SERV-BORRABLE', 2067);
+    const s = await crearServicio(prisma, cat.id, { nombre: 'Servicio sin uso', kind: 'fijo', price: 300 }, actor);
+
+    await borrarServicio(prisma, cat.id, s.id, actor);
+    expect(await prisma.addOn.findUnique({ where: { id: s.id } })).toBeNull();
+    // El rastro del borrado queda aunque el servicio ya no exista.
+    expect(
+      await prisma.priceListAudit.count({ where: { priceListId: cat.id, tipo: 'servicio' } }),
+    ).toBe(2); // el alta y la baja
+  });
+
+  it('rechaza precio negativo o no entero', async () => {
+    const cat = await catalogoDePrueba('SERV-PRECIO', 2066);
+    await expect(
+      crearServicio(prisma, cat.id, { nombre: 'Negativo', kind: 'fijo', price: -1 }, actor),
+    ).rejects.toThrow();
+    await expect(
+      crearServicio(prisma, cat.id, { nombre: 'Fraccionado', kind: 'fijo', price: 99.5 }, actor),
+    ).rejects.toThrow();
+    expect(await prisma.addOn.count({ where: { priceListId: cat.id, nombre: 'Negativo' } })).toBe(0);
+  });
+
+  it('solo admin', async () => {
+    const cat = await catalogoDePrueba('SERV-403', 2065);
+    const ventas = await ventasCookies();
+    const payload = { nombre: 'Servicio de ventas', kind: 'fijo', price: 100 };
+
+    const post = await app.inject({
+      method: 'POST',
+      url: `/api/admin/price-lists/${cat.id}/servicios`,
+      cookies: ventas,
+      payload,
+    });
+    expect(post.statusCode).toBe(403);
+    expect(await prisma.addOn.count({ where: { priceListId: cat.id, nombre: payload.nombre } })).toBe(0);
+
+    const creado = await app.inject({
+      method: 'POST',
+      url: `/api/admin/price-lists/${cat.id}/servicios`,
+      cookies: await adminCookies(),
+      payload,
+    });
+    expect(creado.statusCode).toBe(201);
+    const addOnId = creado.json().addOn.id as string;
+
+    for (const [method, url] of [
+      ['PATCH', `/api/admin/price-lists/${cat.id}/servicios/${addOnId}`],
+      ['DELETE', `/api/admin/price-lists/${cat.id}/servicios/${addOnId}`],
+    ] as const) {
+      const res = await app.inject({ method, url, cookies: ventas, payload: { price: 1 } });
+      expect(res.statusCode).toBe(403);
+    }
+    expect(await prisma.addOn.findUnique({ where: { id: addOnId } })).not.toBeNull();
   });
 });
