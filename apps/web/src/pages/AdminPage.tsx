@@ -2,7 +2,6 @@ import { ArrowDivider } from '../components/ui.tsx';
 import { UsersSection } from '../components/admin/UsersSection.tsx';
 import { BanqueterosSection } from '../components/admin/BanqueterosSection.tsx';
 import { PersonalSection } from '../components/admin/PersonalSection.tsx';
-import { AddonsSection } from '../components/admin/AddonsSection.tsx';
 import { CatalogosSection } from '../components/admin/CatalogosSection.tsx';
 
 export function AdminPage() {
@@ -15,10 +14,10 @@ export function AdminPage() {
       <UsersSection />
       <BanqueterosSection />
       <PersonalSection />
-      <AddonsSection />
-      {/* Los parámetros (IVA, hora extra, descuento, capilla) se editan DENTRO
-          del catálogo, no en una sección aparte: la vieja "Configuración"
-          escribía sobre el activo y era un segundo camino al mismo dato. */}
+      {/* Todo lo que es del CATÁLOGO se edita dentro del catálogo: parámetros
+          (IVA, hora extra, descuento, capilla), servicios, alimentos, renta y DJ.
+          Las secciones viejas "Configuración" y "Extras" escribían sobre el
+          catálogo activo y eran un segundo camino al mismo dato; se retiraron. */}
       <CatalogosSection />
     </div>
   );

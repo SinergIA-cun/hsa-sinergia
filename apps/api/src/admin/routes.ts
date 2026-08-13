@@ -33,19 +33,6 @@ const cuadrillaUpdateSchema = z.object({
   empleadoIds: z.array(z.string()).optional(),
 });
 
-const addonCreateSchema = z.object({
-  nombre: z.string().min(1),
-  kind: z.enum(['fijo', 'porPersona', 'porUnidad']),
-  price: z.number().int().nonnegative(),
-});
-
-const addonUpdateSchema = z.object({
-  nombre: z.string().min(1).optional(),
-  kind: z.enum(['fijo', 'porPersona', 'porUnidad']).optional(),
-  price: z.number().int().nonnegative().optional(),
-  activo: z.boolean().optional(),
-});
-
 /** Mensaje 409 estándar cuando un registro está referenciado y no se puede borrar. */
 function enUso(reply: import('fastify').FastifyReply, entidad: string, n: number): void {
   reply.code(409).send({
@@ -54,61 +41,22 @@ function enUso(reply: import('fastify').FastifyReply, entidad: string, n: number
 }
 
 /**
- * El catálogo activo. Es el que administra la pantalla de servicios.
+ * Administración que NO es del catálogo: banqueteros, personal y cuadrillas.
  *
- * Los PARÁMETROS ya no se editan aquí: `/admin/config` los escribía sobre el
- * catálogo activo y era un segundo camino al mismo dato, la clase de duplicidad
- * que el Plan E vino a eliminar. Se retiró; ahora se editan con
- * `PATCH /admin/price-lists/:id/parametros`, sobre el catálogo que se elija.
+ * Lo que vivía aquí y ya no:
+ *
+ * - `/admin/config` editaba los parámetros del catálogo ACTIVO: un segundo
+ *   camino al mismo dato. Se retiró; van por `PATCH /admin/price-lists/:id/parametros`.
+ * - `/admin/addons` administraba los servicios del catálogo ACTIVO, y era peor
+ *   que un simple duplicado por dos cosas concretas: **no escribía nada en
+ *   `PriceListAudit`** —un cambio de precio hecho desde ahí no dejaba rastro en
+ *   la bitácora del catálogo— y su `PATCH`/`DELETE` operaban por id **sin
+ *   comprobar a qué catálogo pertenece el servicio**, así que desde la pantalla
+ *   del activo se podía editar o borrar un servicio de 2028. Se retiró; van por
+ *   `POST/PATCH/DELETE /admin/price-lists/:id/servicios`, que sí valida la
+ *   pertenencia y sí deja bitácora.
  */
-function catalogoActivo(app: FastifyInstance) {
-  return app.prisma.priceList.findFirst({ where: { activa: true }, orderBy: { anio: 'desc' } });
-}
-
 export async function adminRoutes(app: FastifyInstance): Promise<void> {
-  // Los servicios ahora pertenecen a un catálogo; esta pantalla administra los
-  // del ACTIVO. Editar los de cualquier otro catálogo va por
-  // `/admin/price-lists/:id/servicios`.
-  app.get('/admin/addons', { preHandler: requireAdmin }, async () => ({
-    addOns: await app.prisma.addOn.findMany({
-      where: { priceList: { activa: true } },
-      orderBy: { nombre: 'asc' },
-    }),
-  }));
-
-  app.post('/admin/addons', { preHandler: requireAdmin }, async (req, reply) => {
-    const data = addonCreateSchema.parse(req.body);
-    const activo = await catalogoActivo(app);
-    if (!activo) return reply.code(409).send({ error: 'No hay catálogo activo' });
-    const addOn = await app.prisma.addOn.create({ data: { ...data, priceListId: activo.id } });
-    return reply.code(201).send({ addOn });
-  });
-
-  app.patch<{ Params: { id: string } }>('/admin/addons/:id', { preHandler: requireAdmin }, async (req, reply) => {
-    const data = addonUpdateSchema.parse(req.body);
-    try {
-      const addOn = await app.prisma.addOn.update({ where: { id: req.params.id }, data });
-      return { addOn };
-    } catch {
-      return reply.code(404).send({ error: 'Add-on no encontrado' });
-    }
-  });
-
-  // Borra un extra sólo si ningún contrato lo referencia en su JSON de add-ons.
-  app.delete<{ Params: { id: string } }>('/admin/addons/:id', { preHandler: requireAdmin }, async (req, reply) => {
-    const { id } = req.params;
-    const rows = await app.prisma.$queryRaw<{ count: number }[]>`
-      SELECT COUNT(*)::int AS count FROM "Quote" WHERE "addOns" @> ${JSON.stringify([{ addOnId: id }])}::jsonb`;
-    const n = rows[0]?.count ?? 0;
-    if (n > 0) return enUso(reply, n === 1 ? 'contrato' : 'contratos', n);
-    try {
-      await app.prisma.addOn.delete({ where: { id } });
-      return reply.code(204).send();
-    } catch {
-      return reply.code(404).send({ error: 'Add-on no encontrado' });
-    }
-  });
-
   // --- Banqueteros ---
   // Lista para el dropdown de la hoja operativa (cualquier usuario autenticado).
   app.get('/banqueteros', { preHandler: requireAuth }, async () => ({

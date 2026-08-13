@@ -15,6 +15,7 @@ import {
   editarServicio,
 } from './editar.js';
 import { impactoDeCatalogo } from './impacto.js';
+import { contenidoDeCatalogo } from './contenido.js';
 import { listarBitacoraCatalogo } from './audit.js';
 
 /**
@@ -59,6 +60,18 @@ export async function priceListRoutes(app: FastifyInstance): Promise<void> {
   // dueño: eligió la flexibilidad sobre el blindaje sabiendo el costo. Lo que le
   // toca a la API es que la elección sea informada (el impacto) y auditable (la
   // bitácora), no que sea segura por bloqueo.
+
+  /**
+   * Todo lo editable de un catálogo, con ids. `GET /catalog?priceListId=…` no
+   * sirve para el editor: devuelve el `Catalog` del motor, que aplana la renta
+   * sin el id de `RentalPrice` y sin la columna `tipo`.
+   */
+  app.get<{ Params: { id: string } }>(
+    '/admin/price-lists/:id/contenido',
+    { preHandler: requireAdmin },
+    async (req, reply) =>
+      conErrores(reply, async () => ({ contenido: await contenidoDeCatalogo(app.prisma, req.params.id) })),
+  );
 
   /** Cuántas cotizaciones puede represiar editar este catálogo, por estatus. */
   app.get<{ Params: { id: string } }>(
