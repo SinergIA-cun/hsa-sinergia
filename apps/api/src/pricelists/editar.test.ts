@@ -799,3 +799,54 @@ describe('DJ y parámetros del catálogo', () => {
     expect((await prisma.priceList.findUniqueOrThrow({ where: { id: cat.id } })).ivaRate).toBeCloseTo(0.5);
   });
 });
+
+// El plan describe el aviso de impacto y la bitácora visible (Task 6) pero no
+// dice de dónde saca los datos la interfaz. Estos dos endpoints son ese origen.
+describe('impacto y bitácora por HTTP', () => {
+  it('el admin lee el impacto y la bitácora; ventas no', async () => {
+    const cat = await catalogoDePrueba('HTTP-IMPACTO', 2045);
+    await cotizacionEn(cat.id, '2032-07-03');
+    const r = await primerRenglon(cat.id);
+    await editarRentas(
+      prisma,
+      cat.id,
+      { cambios: [{ id: r.id, viernes: 7, viernesEspecial: 7, sabado: 7, domAJue: 7 }] },
+      actor,
+    );
+
+    const admin = await adminCookies();
+    const imp = await app.inject({ method: 'GET', url: `/api/admin/price-lists/${cat.id}/impacto`, cookies: admin });
+    expect(imp.statusCode).toBe(200);
+    expect(imp.json().impacto.total).toBe(1);
+    expect(imp.json().impacto.nombre).toContain('HTTP-IMPACTO');
+
+    const bit = await app.inject({ method: 'GET', url: `/api/admin/price-lists/${cat.id}/bitacora`, cookies: admin });
+    expect(bit.statusCode).toBe(200);
+    expect(bit.json().bitacora[0].tipo).toBe('renta');
+    // Con el nombre de quien lo hizo: un cuid no le dice nada a nadie.
+    expect(bit.json().bitacora[0].actor.nombre).toBeTruthy();
+    expect(bit.json().bitacora[0].cotizacionesEnRiesgo).toBe(1);
+
+    const ventas = await ventasCookies();
+    for (const sufijo of ['impacto', 'bitacora']) {
+      const res = await app.inject({
+        method: 'GET',
+        url: `/api/admin/price-lists/${cat.id}/${sufijo}`,
+        cookies: ventas,
+      });
+      expect(res.statusCode).toBe(403);
+    }
+  });
+
+  it('un catálogo inexistente da 404 en los dos', async () => {
+    const admin = await adminCookies();
+    for (const sufijo of ['impacto', 'bitacora']) {
+      const res = await app.inject({
+        method: 'GET',
+        url: `/api/admin/price-lists/no-existe/${sufijo}`,
+        cookies: admin,
+      });
+      expect(res.statusCode).toBe(404);
+    }
+  });
+});
