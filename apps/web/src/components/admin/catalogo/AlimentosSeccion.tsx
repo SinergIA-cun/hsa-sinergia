@@ -125,11 +125,22 @@ function PaqueteEditor({
   const { correr, pendiente, error, ok, limpiar } = useGuardar('No se pudo guardar el paquete.');
 
   const numeros = aBrackets(brackets);
-  const cambiado =
-    nombre.trim() !== paquete.nombre ||
-    eventTypeId !== paquete.eventTypeId ||
-    ivaIncluido !== paquete.ivaIncluido ||
-    JSON.stringify(numeros) !== JSON.stringify(paquete.brackets);
+  /**
+   * Solo lo que cambió.
+   *
+   * Mandar los cuatro campos siempre deja una bitácora que dice `editado:
+   * nombre, eventTypeId, ivaIncluido, brackets` aunque se haya movido un solo
+   * precio, y ese renglón no sirve para reconstruir nada — que es justo lo que la
+   * bitácora existe para poder hacer.
+   */
+  const patch: PaquetePatch = {};
+  if (nombre.trim() !== paquete.nombre) patch.nombre = nombre.trim();
+  if (eventTypeId !== paquete.eventTypeId) patch.eventTypeId = eventTypeId;
+  if (ivaIncluido !== paquete.ivaIncluido) patch.ivaIncluido = ivaIncluido;
+  if (numeros && JSON.stringify(numeros) !== JSON.stringify(paquete.brackets)) {
+    patch.brackets = numeros;
+  }
+  const cambiado = Object.keys(patch).length > 0 || (!numeros && brackets.length > 0);
 
   function descartar() {
     setNombre(paquete.nombre);
@@ -152,10 +163,7 @@ function PaqueteEditor({
       return;
     }
     setInvalido('');
-    await correr(
-      () => onEditar({ nombre: nombre.trim(), eventTypeId, ivaIncluido, brackets: numeros }),
-      'Paquete guardado.',
-    );
+    await correr(() => onEditar(patch), 'Paquete guardado.');
   }
 
   return (
