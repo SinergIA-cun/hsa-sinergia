@@ -14,16 +14,14 @@ export function CatalogosSection() {
   const priceLists = data?.priceLists ?? [];
 
   /**
-   * Activar o clonar cambia cuál es el catálogo activo, y de ahí cuelgan el
-   * cotizador (`catalog`) y los parámetros que edita Configuración
-   * (`admin-config`, que muestra el nombre del activo). Sin invalidar las tres,
-   * la pantalla sigue mostrando los precios del catálogo anterior.
+   * Activar o clonar cambia cuál es el catálogo activo, y de ahí cuelga el
+   * cotizador (`catalog`). Sin invalidar las dos, la pantalla sigue mostrando
+   * los precios del catálogo anterior.
    */
   async function invalidate() {
     await Promise.all([
       qc.invalidateQueries({ queryKey: PRICE_LISTS_KEY }),
       qc.invalidateQueries({ queryKey: ['catalog'] }),
-      qc.invalidateQueries({ queryKey: ['admin-config'] }),
     ]);
   }
 

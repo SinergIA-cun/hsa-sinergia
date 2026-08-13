@@ -53,15 +53,13 @@ function enUso(reply: import('fastify').FastifyReply, entidad: string, n: number
   });
 }
 
-const configSchema = z.object({
-  ivaRate: z.number().min(0).max(1).optional(),
-  extraHourRate: z.number().min(0).max(1).optional(),
-  foodDiscountRate: z.number().min(0).max(1).optional(),
-});
-
 /**
- * El catálogo activo. Es el que administran las pantallas de servicios y de
- * parámetros mientras el editor por catálogo (tramo 2) no exista.
+ * El catálogo activo. Es el que administra la pantalla de servicios.
+ *
+ * Los PARÁMETROS ya no se editan aquí: `/admin/config` los escribía sobre el
+ * catálogo activo y era un segundo camino al mismo dato, la clase de duplicidad
+ * que el Plan E vino a eliminar. Se retiró; ahora se editan con
+ * `PATCH /admin/price-lists/:id/parametros`, sobre el catálogo que se elija.
  */
 function catalogoActivo(app: FastifyInstance) {
   return app.prisma.priceList.findFirst({ where: { activa: true }, orderBy: { anio: 'desc' } });
@@ -69,7 +67,8 @@ function catalogoActivo(app: FastifyInstance) {
 
 export async function adminRoutes(app: FastifyInstance): Promise<void> {
   // Los servicios ahora pertenecen a un catálogo; esta pantalla administra los
-  // del activo. Ver la nota de `/admin/config`.
+  // del ACTIVO. Editar los de cualquier otro catálogo va por
+  // `/admin/price-lists/:id/servicios`.
   app.get('/admin/addons', { preHandler: requireAdmin }, async () => ({
     addOns: await app.prisma.addOn.findMany({
       where: { priceList: { activa: true } },
@@ -108,25 +107,6 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
     } catch {
       return reply.code(404).send({ error: 'Add-on no encontrado' });
     }
-  });
-
-  // Los parámetros de precio vivían en el singleton PricingConfig, que murió con
-  // el catálogo versionado. Esta pantalla ahora lee y escribe los del CATÁLOGO
-  // ACTIVO: cambiarlos afecta lo que se cotice de aquí en adelante y nunca lo ya
-  // cotizado, porque cada cotización recalcula contra el catálogo que fijó.
-  // Editar los parámetros de un catálogo NO activo es del tramo 2.
-  app.get('/admin/config', { preHandler: requireAdmin }, async (_req, reply) => {
-    const config = await catalogoActivo(app);
-    if (!config) return reply.code(409).send({ error: 'No hay catálogo activo' });
-    return { config };
-  });
-
-  app.patch('/admin/config', { preHandler: requireAdmin }, async (req, reply) => {
-    const data = configSchema.parse(req.body);
-    const activo = await catalogoActivo(app);
-    if (!activo) return reply.code(409).send({ error: 'No hay catálogo activo' });
-    const config = await app.prisma.priceList.update({ where: { id: activo.id }, data });
-    return { config };
   });
 
   // --- Banqueteros ---

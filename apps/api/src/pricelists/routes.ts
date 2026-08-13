@@ -8,6 +8,8 @@ import {
   borrarServicio,
   crearPaquete,
   crearServicio,
+  editarDj,
+  editarParametros,
   editarPaquete,
   editarRentas,
   editarServicio,
@@ -153,5 +155,26 @@ export async function priceListRoutes(app: FastifyInstance): Promise<void> {
       conErrores(reply, () =>
         borrarPaquete(app.prisma, req.params.id, req.params.packageId, req.user as Actor),
       ),
+  );
+
+  // --- DJ por hora extra y parámetros ---
+  //
+  // Los parámetros se editan SOLO aquí. `/admin/config` los editaba también, del
+  // catálogo activo, y era un segundo camino al mismo dato: justo la duplicidad
+  // que el Plan E vino a eliminar. Se retiró con este tramo.
+  app.patch<{ Params: { id: string } }>(
+    '/admin/price-lists/:id/dj',
+    { preHandler: requireAdmin },
+    async (req, reply) =>
+      conErrores(reply, () => editarDj(app.prisma, req.params.id, req.body, req.user as Actor)),
+  );
+
+  app.patch<{ Params: { id: string } }>(
+    '/admin/price-lists/:id/parametros',
+    { preHandler: requireAdmin },
+    async (req, reply) =>
+      conErrores(reply, async () => ({
+        priceList: await editarParametros(app.prisma, req.params.id, req.body, req.user as Actor),
+      })),
   );
 }

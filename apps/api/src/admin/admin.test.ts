@@ -170,7 +170,7 @@ describe('borrado de usuarios', () => {
   });
 });
 
-describe('admin config', () => {
+describe('catálogo del cotizador', () => {
   it('GET /catalog ya no expone config del valet', async () => {
     const res = await app.inject({
       method: 'GET',
@@ -208,8 +208,15 @@ describe('admin config', () => {
     expect(body.addOns.some((a) => a.activo)).toBe(true);
   });
 
-  it('GET /admin/config sin auth => 401', async () => {
-    const res = await app.inject({ method: 'GET', url: '/api/admin/config' });
-    expect(res.statusCode).toBe(401);
+  // `/admin/config` editaba los parámetros DEL CATÁLOGO ACTIVO: un segundo camino
+  // al mismo dato, y la clase de duplicidad que el Plan E vino a eliminar. Se
+  // retiró; los parámetros se editan por catálogo en
+  // `PATCH /admin/price-lists/:id/parametros`. Este test es el candado de que no
+  // vuelva a aparecer.
+  it('/admin/config ya no existe (los parámetros son del catálogo)', async () => {
+    for (const method of ['GET', 'PATCH'] as const) {
+      const res = await app.inject({ method, url: '/api/admin/config', cookies: cookie() });
+      expect(res.statusCode).toBe(404);
+    }
   });
 });

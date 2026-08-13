@@ -13,6 +13,8 @@ import {
   borrarServicio,
   crearPaquete,
   crearServicio,
+  editarDj,
+  editarParametros,
   editarPaquete,
   editarRentas,
   editarServicio,
@@ -608,5 +610,192 @@ describe('paquetes de alimentos del catálogo', () => {
       expect(res.statusCode).toBe(403);
     }
     expect(await prisma.foodPackage.findUnique({ where: { id: packageId } })).not.toBeNull();
+  });
+});
+
+describe('DJ y parámetros del catálogo', () => {
+  async function bodaId() {
+    return (await prisma.eventType.findFirstOrThrow({ where: { slug: 'boda' } })).id;
+  }
+
+  it('edita el precio del DJ de un tipo de evento', async () => {
+    const cat = await catalogoDePrueba('DJ-EDITA', 2055);
+    const boda = await bodaId();
+
+    await editarDj(prisma, cat.id, { precios: [{ eventTypeId: boda, price: 4321 }] }, actor);
+
+    const fila = await prisma.djHoraExtraPrice.findUniqueOrThrow({
+      where: { priceListId_eventTypeId: { priceListId: cat.id, eventTypeId: boda } },
+    });
+    expect(fila.price).toBe(4321);
+    // Y el catálogo de producción no se movió: 2,950 sigue siendo 2,950.
+    const original = await prisma.djHoraExtraPrice.findUniqueOrThrow({
+      where: { priceListId_eventTypeId: { priceListId: activoOriginalId, eventTypeId: boda } },
+    });
+    expect(original.price).toBe(2950);
+    expect(await prisma.priceListAudit.count({ where: { priceListId: cat.id, tipo: 'dj' } })).toBe(1);
+  });
+
+  it('da de alta el renglón de un tipo de evento que no lo ofrecía', async () => {
+    const cat = await catalogoDePrueba('DJ-ALTA', 2054);
+    const grad = (await prisma.eventType.findFirstOrThrow({ where: { slug: 'graduacion' } })).id;
+    expect(
+      await prisma.djHoraExtraPrice.count({ where: { priceListId: cat.id, eventTypeId: grad } }),
+    ).toBe(0);
+
+    await editarDj(prisma, cat.id, { precios: [{ eventTypeId: grad, price: 1500 }] }, actor);
+    expect(
+      (await prisma.djHoraExtraPrice.findUniqueOrThrow({
+        where: { priceListId_eventTypeId: { priceListId: cat.id, eventTypeId: grad } },
+      })).price,
+    ).toBe(1500);
+  });
+
+  it('quitar el renglón del DJ deja de cobrarlo en ese tipo de evento', async () => {
+    // Es cómo se apaga el servicio: sin renglón, no se ofrece.
+    const cat = await catalogoDePrueba('DJ-QUITA', 2053);
+    const boda = await bodaId();
+    const arcos = await prisma.space.findFirstOrThrow({ where: { nombre: 'Salón Los Arcos' } });
+
+    const cotizarConDj = (fecha: string) =>
+      conCatalogoActivo(cat.id, async () => {
+        const q = await createQuote(
+          prisma,
+          {
+            fecha,
+            invitados: 250,
+            spaceIds: [arcos.id],
+            eventTypeId: boda,
+            horasExtra: 2,
+            usaDjHoraExtra: true,
+            client: { nombre: `Cliente DJ ${randomUUID().slice(0, 6)}` },
+          },
+          actor,
+        );
+        createdQuoteIds.push(q.id);
+        createdClientIds.push(q.clientId);
+        return q;
+      });
+
+    const conRenglon = await cotizarConDj('2032-06-05');
+    expect(JSON.stringify(conRenglon.breakdown)).toContain('DJ Hora extra');
+
+    await editarDj(prisma, cat.id, { precios: [{ eventTypeId: boda, price: null }] }, actor);
+    expect(
+      await prisma.djHoraExtraPrice.count({ where: { priceListId: cat.id, eventTypeId: boda } }),
+    ).toBe(0);
+    const catalogo = await loadCatalog(prisma, { priceListId: cat.id });
+    expect(catalogo.djHoraExtraByEventType[boda]).toBeUndefined();
+
+    const sinRenglon = await cotizarConDj('2032-06-12');
+    expect(JSON.stringify(sinRenglon.breakdown)).not.toContain('DJ Hora extra');
+    expect(sinRenglon.total).toBeLessThan(conRenglon.total);
+  });
+
+  it('rechaza un precio de DJ negativo o no entero, y un tipo de evento inexistente', async () => {
+    const cat = await catalogoDePrueba('DJ-MAL', 2052);
+    const boda = await bodaId();
+    await expect(
+      editarDj(prisma, cat.id, { precios: [{ eventTypeId: boda, price: -1 }] }, actor),
+    ).rejects.toThrow();
+    await expect(
+      editarDj(prisma, cat.id, { precios: [{ eventTypeId: boda, price: 2950.5 }] }, actor),
+    ).rejects.toThrow();
+    await expect(
+      editarDj(prisma, cat.id, { precios: [{ eventTypeId: 'no-existe', price: 100 }] }, actor),
+    ).rejects.toMatchObject({ status: 400 });
+  });
+
+  it('edita IVA, hora extra, descuento de alimentos y capilla en sábado', async () => {
+    const cat = await catalogoDePrueba('PARAM-EDITA', 2051);
+    const actualizado = await editarParametros(
+      prisma,
+      cat.id,
+      { ivaRate: 0.08, extraHourRate: 0.07, foodDiscountRate: 0.03, capillaSabado: 7500 },
+      actor,
+    );
+    expect(actualizado.ivaRate).toBeCloseTo(0.08);
+    expect(actualizado.extraHourRate).toBeCloseTo(0.07);
+    expect(actualizado.foodDiscountRate).toBeCloseTo(0.03);
+    expect(actualizado.capillaSabado).toBe(7500);
+    expect(
+      await prisma.priceListAudit.count({ where: { priceListId: cat.id, tipo: 'parametros' } }),
+    ).toBe(1);
+  });
+
+  it('rechaza tasas fuera de 0..1', async () => {
+    // Un IVA de 16 en vez de 0.16 multiplica todo por 100.
+    const cat = await catalogoDePrueba('PARAM-TASAS', 2050);
+    const antes = await prisma.priceList.findUniqueOrThrow({ where: { id: cat.id } });
+    for (const data of [{ ivaRate: 16 }, { ivaRate: -0.1 }, { extraHourRate: 1.5 }, { foodDiscountRate: 2 }]) {
+      await expect(editarParametros(prisma, cat.id, data, actor)).rejects.toThrow();
+    }
+    // La capilla es un PRECIO en pesos, no una tasa: entero y no negativo.
+    await expect(editarParametros(prisma, cat.id, { capillaSabado: -1 }, actor)).rejects.toThrow();
+    await expect(editarParametros(prisma, cat.id, { capillaSabado: 5000.5 }, actor)).rejects.toThrow();
+
+    const despues = await prisma.priceList.findUniqueOrThrow({ where: { id: cat.id } });
+    expect(despues.ivaRate).toBe(antes.ivaRate);
+    expect(despues.capillaSabado).toBe(antes.capillaSabado);
+  });
+
+  it('los parámetros son del catálogo, no globales', async () => {
+    const a = await catalogoDePrueba('PARAM-A', 2049);
+    const b = await catalogoDePrueba('PARAM-B', 2048);
+    const bAntes = await prisma.priceList.findUniqueOrThrow({ where: { id: b.id } });
+
+    await editarParametros(prisma, a.id, { ivaRate: 0.11, capillaSabado: 1111 }, actor);
+
+    const bDespues = await prisma.priceList.findUniqueOrThrow({ where: { id: b.id } });
+    expect(bDespues.ivaRate).toBe(bAntes.ivaRate);
+    expect(bDespues.capillaSabado).toBe(bAntes.capillaSabado);
+    // Ni el activo de producción.
+    const activo = await prisma.priceList.findUniqueOrThrow({ where: { id: activoOriginalId } });
+    expect(activo.ivaRate).toBeCloseTo(0.16);
+  });
+
+  it('un catálogo inexistente da 404 en DJ y en parámetros', async () => {
+    await expect(
+      editarDj(prisma, 'no-existe', { precios: [{ eventTypeId: await bodaId(), price: 1 }] }, actor),
+    ).rejects.toMatchObject({ status: 404 });
+    await expect(
+      editarParametros(prisma, 'no-existe', { ivaRate: 0.16 }, actor),
+    ).rejects.toMatchObject({ status: 404 });
+  });
+
+  it('solo admin', async () => {
+    const cat = await catalogoDePrueba('DJ-PARAM-403', 2047);
+    const boda = await bodaId();
+    const ventas = await ventasCookies();
+
+    const dj = await app.inject({
+      method: 'PATCH',
+      url: `/api/admin/price-lists/${cat.id}/dj`,
+      cookies: ventas,
+      payload: { precios: [{ eventTypeId: boda, price: 1 }] },
+    });
+    expect(dj.statusCode).toBe(403);
+
+    const param = await app.inject({
+      method: 'PATCH',
+      url: `/api/admin/price-lists/${cat.id}/parametros`,
+      cookies: ventas,
+      payload: { ivaRate: 0.5 },
+    });
+    expect(param.statusCode).toBe(403);
+    expect((await prisma.priceList.findUniqueOrThrow({ where: { id: cat.id } })).ivaRate).toBeCloseTo(0.16);
+
+    const admin = await adminCookies();
+    expect(
+      (
+        await app.inject({
+          method: 'PATCH',
+          url: `/api/admin/price-lists/${cat.id}/parametros`,
+          cookies: admin,
+          payload: { ivaRate: 0.5 },
+        })
+      ).statusCode,
+    ).toBe(200);
+    expect((await prisma.priceList.findUniqueOrThrow({ where: { id: cat.id } })).ivaRate).toBeCloseTo(0.5);
   });
 });

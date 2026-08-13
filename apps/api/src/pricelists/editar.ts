@@ -514,3 +514,147 @@ export async function borrarPaquete(
     return { borrado: packageId };
   });
 }
+
+// --- DJ por hora extra ---
+//
+// Un renglón por tipo de evento, porque el precio real difiere ($2,950 en boda,
+// $2,750 en bautizo) y un tipo SIN renglón simplemente no ofrece el servicio.
+
+export const editarDjSchema = z.object({
+  precios: z
+    .array(
+      z.object({
+        eventTypeId: z.string().min(1),
+        /** `null` QUITA el renglón: así se apaga el servicio en ese tipo de evento. */
+        price: precio.nullable(),
+      }),
+    )
+    .min(1),
+});
+
+/**
+ * Fija o quita el precio del DJ por hora extra, por tipo de evento.
+ *
+ * `price: null` borra el renglón, y eso es exactamente cómo se apaga el servicio:
+ * el motor no cobra el DJ de un tipo de evento que no tiene renglón, aunque la
+ * casilla venga marcada. No hay una bandera "activo" aparte que pueda desalinearse.
+ */
+export async function editarDj(
+  db: PrismaClient,
+  priceListId: string,
+  rawInput: unknown,
+  actor: Actor | null,
+) {
+  const { precios } = editarDjSchema.parse(rawInput);
+  if (precios.length !== new Set(precios.map((p) => p.eventTypeId)).size) {
+    throw new QuoteError(400, 'Un mismo tipo de evento viene dos veces');
+  }
+
+  return db.$transaction(async (tx) => {
+    await assertCatalogo(tx, priceListId);
+    for (const p of precios) await assertEventType(tx, p.eventTypeId);
+
+    const antesFilas = await tx.djHoraExtraPrice.findMany({ where: { priceListId } });
+    const antes: Record<string, number> = {};
+    for (const f of antesFilas) antes[f.eventTypeId] = f.price;
+
+    const cambios = [];
+    for (const p of precios) {
+      if (p.price === null) {
+        await tx.djHoraExtraPrice.deleteMany({ where: { priceListId, eventTypeId: p.eventTypeId } });
+      } else {
+        await tx.djHoraExtraPrice.upsert({
+          where: { priceListId_eventTypeId: { priceListId, eventTypeId: p.eventTypeId } },
+          create: { priceListId, eventTypeId: p.eventTypeId, price: aPesos(p.price) },
+          update: { price: aPesos(p.price) },
+        });
+      }
+      cambios.push({
+        eventTypeId: p.eventTypeId,
+        antes: antes[p.eventTypeId] ?? null,
+        despues: p.price === null ? null : aPesos(p.price),
+      });
+    }
+
+    const quitados = cambios.filter((c) => c.despues === null).length;
+    await registrarCambioCatalogo(
+      tx,
+      {
+        priceListId,
+        tipo: 'dj',
+        descripcion:
+          `DJ hora extra: ${cambios.length - quitados} precio(s) fijados` +
+          (quitados > 0 ? `, ${quitados} renglón(es) retirados` : ''),
+        meta: { cambios },
+      },
+      actor,
+    );
+    return { cambios };
+  });
+}
+
+// --- Parámetros del catálogo ---
+
+/**
+ * Una tasa, no un precio: `0.16`, no `16`. El tope de 1 es la guarda que importa
+ * — un IVA capturado como 16 multiplica toda la cotización por cien.
+ */
+const tasa = z.number().min(0).max(1);
+
+export const editarParametrosSchema = z
+  .object({
+    ivaRate: tasa.optional(),
+    extraHourRate: tasa.optional(),
+    foodDiscountRate: tasa.optional(),
+    /** La capilla en sábado sí es un PRECIO en pesos: entero, como todos. */
+    capillaSabado: precio.optional(),
+  })
+  .refine((o) => Object.values(o).some((v) => v !== undefined), {
+    message: 'No hay nada que cambiar',
+  });
+
+/**
+ * Edita el IVA, la tasa de hora extra, el descuento por alimentos y la capilla en
+ * sábado, DE UN CATÁLOGO.
+ *
+ * Son del catálogo y no globales: el singleton `PricingConfig` que los guardaba
+ * era la última fuente capaz de represiar TODA cotización con solo reeditarla, y
+ * murió con el catálogo versionado. Editar los de 2028 no toca los de 2027.
+ */
+export async function editarParametros(
+  db: PrismaClient,
+  priceListId: string,
+  rawInput: unknown,
+  actor: Actor | null,
+) {
+  const input = editarParametrosSchema.parse(rawInput);
+
+  return db.$transaction(async (tx) => {
+    const antes = await tx.priceList.findUnique({ where: { id: priceListId } });
+    if (!antes) throw new QuoteError(404, `El catálogo ${priceListId} no existe`);
+
+    const priceList = await tx.priceList.update({
+      where: { id: priceListId },
+      data: {
+        ...input,
+        ...(input.capillaSabado === undefined ? {} : { capillaSabado: aPesos(input.capillaSabado) }),
+      },
+    });
+
+    const campos = Object.keys(input) as (keyof typeof input)[];
+    await registrarCambioCatalogo(
+      tx,
+      {
+        priceListId,
+        tipo: 'parametros',
+        descripcion: `Parámetros editados: ${campos.join(', ')}`,
+        meta: {
+          antes: Object.fromEntries(campos.map((k) => [k, antes[k]])),
+          despues: Object.fromEntries(campos.map((k) => [k, priceList[k]])),
+        },
+      },
+      actor,
+    );
+    return priceList;
+  });
+}

@@ -4,7 +4,6 @@ import { BanqueterosSection } from '../components/admin/BanqueterosSection.tsx';
 import { PersonalSection } from '../components/admin/PersonalSection.tsx';
 import { AddonsSection } from '../components/admin/AddonsSection.tsx';
 import { CatalogosSection } from '../components/admin/CatalogosSection.tsx';
-import { ConfigSection } from '../components/admin/ConfigSection.tsx';
 
 export function AdminPage() {
   return (
@@ -17,10 +16,10 @@ export function AdminPage() {
       <BanqueterosSection />
       <PersonalSection />
       <AddonsSection />
-      {/* Catálogos va antes de Configuración: Configuración edita los parámetros
-          DEL catálogo activo, así que primero hay que saber cuál es. */}
+      {/* Los parámetros (IVA, hora extra, descuento, capilla) se editan DENTRO
+          del catálogo, no en una sección aparte: la vieja "Configuración"
+          escribía sobre el activo y era un segundo camino al mismo dato. */}
       <CatalogosSection />
-      <ConfigSection />
     </div>
   );
 }

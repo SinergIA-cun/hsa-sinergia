@@ -72,13 +72,6 @@ export interface User {
 // ACTIVO (PriceList). `nombre` va aquí para que la pantalla diga cuál está
 // editando — cambiarlos afecta lo que se cotice de aquí en adelante, nunca lo ya
 // cotizado, porque cada cotización recalcula contra el catálogo que fijó.
-export interface AdminConfig {
-  nombre: string;
-  ivaRate: number;
-  extraHourRate: number;
-  foodDiscountRate: number;
-}
-
 /**
  * Un catálogo versionado tal como lo lista `GET /api/admin/price-lists`: el
  * año completo de precios (renta, servicios, alimentos) más sus parámetros.
