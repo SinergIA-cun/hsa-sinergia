@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import type { Prisma, PrismaClient } from '@hsa/database';
+import { validarBrackets } from '@hsa/shared';
 import { QuoteError, type Actor } from '../quotes/service.js';
 import { registrarCambioCatalogo } from './audit.js';
 
@@ -277,5 +278,239 @@ export async function borrarServicio(
       actor,
     );
     return { borrado: addOnId };
+  });
+}
+
+// --- Paquetes de alimentos ---
+//
+// Como los servicios, se agregan y se quitan: es el caso del banquetero que
+// cambia. Lo que no se puede es dejarlos sin precio para algún número de
+// invitados, y de eso se encarga `validarBrackets`.
+
+const bracketSchema = z.object({
+  min: z.number().int().min(1),
+  /** `null` = sin tope. Solo el ÚLTIMO rango puede quedar abierto. */
+  max: z.number().int().min(1).nullable(),
+  pricePerPerson: precio,
+});
+
+export const paqueteCreateSchema = z.object({
+  nombre: z.string().min(1).max(80),
+  eventTypeId: z.string().min(1),
+  ivaIncluido: z.boolean().default(false),
+  incluye: z.string().max(2000).nullable().optional(),
+  brackets: z.array(bracketSchema).min(1, 'Un paquete necesita al menos un rango con precio'),
+});
+
+export const paqueteUpdateSchema = z
+  .object({
+    nombre: z.string().min(1).max(80).optional(),
+    eventTypeId: z.string().min(1).optional(),
+    ivaIncluido: z.boolean().optional(),
+    incluye: z.string().max(2000).nullable().optional(),
+    /** Si viene, es el juego COMPLETO de rangos y reemplaza al anterior. */
+    brackets: z.array(bracketSchema).min(1).optional(),
+  })
+  .refine((o) => Object.values(o).some((v) => v !== undefined), {
+    message: 'No hay nada que cambiar',
+  });
+
+type BracketInput = z.infer<typeof bracketSchema>;
+
+/** Los rangos cubren a todo el mundo sin traslape ni hueco, o 400. */
+function assertBrackets(brackets: readonly BracketInput[]): void {
+  const problemas = validarBrackets(brackets);
+  if (problemas.length > 0) throw new QuoteError(400, problemas.join('; '));
+}
+
+/** El tipo de evento existe, o 400. Un paquete es SIEMPRE de un tipo de evento. */
+async function assertEventType(tx: Prisma.TransactionClient, eventTypeId: string): Promise<void> {
+  const et = await tx.eventType.findUnique({ where: { id: eventTypeId }, select: { id: true } });
+  if (!et) throw new QuoteError(400, `El tipo de evento ${eventTypeId} no existe`);
+}
+
+/** El paquete existe y es DE ESTE catálogo, o 400. */
+async function paqueteDelCatalogo(
+  tx: Prisma.TransactionClient,
+  priceListId: string,
+  packageId: string,
+) {
+  const paquete = await tx.foodPackage.findUnique({
+    where: { id: packageId },
+    include: { brackets: true },
+  });
+  if (!paquete || paquete.priceListId !== priceListId) {
+    throw new QuoteError(400, `El paquete ${packageId} no pertenece a este catálogo`);
+  }
+  return paquete;
+}
+
+const conPesos = (bs: readonly BracketInput[]) =>
+  bs.map((b) => ({ min: b.min, max: b.max, pricePerPerson: aPesos(b.pricePerPerson) }));
+
+/**
+ * Crea un paquete con sus rangos de precio.
+ *
+ * El paquete y sus brackets nacen juntos, en la misma transacción: un paquete sin
+ * brackets es un paquete SIN PRECIO, y el motor lanza "no tiene rango para N
+ * invitados" la primera vez que alguien lo elija.
+ */
+export async function crearPaquete(
+  db: PrismaClient,
+  priceListId: string,
+  rawInput: unknown,
+  actor: Actor | null,
+) {
+  const input = paqueteCreateSchema.parse(rawInput);
+  assertBrackets(input.brackets);
+
+  return db.$transaction(async (tx) => {
+    await assertCatalogo(tx, priceListId);
+    await assertEventType(tx, input.eventTypeId);
+
+    const paquete = await tx.foodPackage.create({
+      data: {
+        priceListId,
+        eventTypeId: input.eventTypeId,
+        nombre: input.nombre,
+        ivaIncluido: input.ivaIncluido,
+        incluye: input.incluye ?? null,
+        brackets: { create: conPesos(input.brackets) },
+      },
+      include: { brackets: true },
+    });
+
+    await registrarCambioCatalogo(
+      tx,
+      {
+        priceListId,
+        tipo: 'paquete',
+        descripcion: `Paquete "${paquete.nombre}" agregado con ${paquete.brackets.length} rango(s)`,
+        meta: {
+          accion: 'alta',
+          packageId: paquete.id,
+          despues: { nombre: paquete.nombre, eventTypeId: paquete.eventTypeId, brackets: conPesos(input.brackets) },
+        },
+      },
+      actor,
+    );
+    return paquete;
+  });
+}
+
+/**
+ * Edita los datos del paquete y, si vienen, reemplaza el juego COMPLETO de rangos.
+ *
+ * Reemplazo entero y no bracket por bracket: la validación es sobre el juego
+ * completo —el hueco solo se ve mirando a los vecinos— y editar uno solo dejaría
+ * pasar un juego roto un renglón a la vez. Los brackets no los referencia nadie
+ * por id (las cotizaciones apuntan al paquete), así que reemplazarlos es seguro.
+ */
+export async function editarPaquete(
+  db: PrismaClient,
+  priceListId: string,
+  packageId: string,
+  rawInput: unknown,
+  actor: Actor | null,
+) {
+  const input = paqueteUpdateSchema.parse(rawInput);
+  if (input.brackets) assertBrackets(input.brackets);
+
+  return db.$transaction(async (tx) => {
+    await assertCatalogo(tx, priceListId);
+    const antes = await paqueteDelCatalogo(tx, priceListId, packageId);
+    if (input.eventTypeId) await assertEventType(tx, input.eventTypeId);
+
+    if (input.brackets) {
+      await tx.foodPackagePrice.deleteMany({ where: { packageId } });
+      await tx.foodPackagePrice.createMany({
+        data: conPesos(input.brackets).map((b) => ({ ...b, packageId })),
+      });
+    }
+    const paquete = await tx.foodPackage.update({
+      where: { id: packageId },
+      data: {
+        nombre: input.nombre,
+        eventTypeId: input.eventTypeId,
+        ivaIncluido: input.ivaIncluido,
+        ...(input.incluye === undefined ? {} : { incluye: input.incluye }),
+      },
+      include: { brackets: true },
+    });
+
+    await registrarCambioCatalogo(
+      tx,
+      {
+        priceListId,
+        tipo: 'paquete',
+        descripcion: `Paquete "${antes.nombre}" editado: ${Object.keys(input).join(', ')}`,
+        meta: {
+          accion: 'edicion',
+          packageId,
+          antes: {
+            nombre: antes.nombre,
+            eventTypeId: antes.eventTypeId,
+            ivaIncluido: antes.ivaIncluido,
+            brackets: antes.brackets.map((b) => ({ min: b.min, max: b.max, pricePerPerson: b.pricePerPerson })),
+          },
+          despues: {
+            nombre: paquete.nombre,
+            eventTypeId: paquete.eventTypeId,
+            ivaIncluido: paquete.ivaIncluido,
+            brackets: paquete.brackets.map((b) => ({ min: b.min, max: b.max, pricePerPerson: b.pricePerPerson })),
+          },
+        },
+      },
+      actor,
+    );
+    return paquete;
+  });
+}
+
+/**
+ * Borra un paquete, solo si ninguna cotización de este catálogo lo trae elegido.
+ *
+ * Cuenta también la papelera: restaurar una cotización cuyo paquete ya no existe
+ * la deja irrecalculable, que es el mismo agujero del valet.
+ */
+export async function borrarPaquete(
+  db: PrismaClient,
+  priceListId: string,
+  packageId: string,
+  actor: Actor | null,
+) {
+  return db.$transaction(async (tx) => {
+    await assertCatalogo(tx, priceListId);
+    const paquete = await paqueteDelCatalogo(tx, priceListId, packageId);
+
+    const n = await tx.quote.count({ where: { priceListId, foodPackageId: packageId } });
+    if (n > 0) {
+      throw new QuoteError(
+        409,
+        `No se puede borrar: en uso por ${n} cotización(es) de este catálogo.`,
+      );
+    }
+
+    await tx.foodPackagePrice.deleteMany({ where: { packageId } });
+    await tx.foodPackage.delete({ where: { id: packageId } });
+    await registrarCambioCatalogo(
+      tx,
+      {
+        priceListId,
+        tipo: 'paquete',
+        descripcion: `Paquete "${paquete.nombre}" eliminado`,
+        meta: {
+          accion: 'baja',
+          packageId,
+          antes: {
+            nombre: paquete.nombre,
+            eventTypeId: paquete.eventTypeId,
+            brackets: paquete.brackets.map((b) => ({ min: b.min, max: b.max, pricePerPerson: b.pricePerPerson })),
+          },
+        },
+      },
+      actor,
+    );
+    return { borrado: packageId };
   });
 }

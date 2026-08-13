@@ -8,7 +8,15 @@ import { hashPassword } from '../auth/password.js';
 import { createQuote, type Actor } from '../quotes/service.js';
 import { loadCatalog } from '../catalog/loader.js';
 import { activarCatalogo, clonarCatalogo } from './service.js';
-import { borrarServicio, crearServicio, editarRentas, editarServicio } from './editar.js';
+import {
+  borrarPaquete,
+  borrarServicio,
+  crearPaquete,
+  crearServicio,
+  editarPaquete,
+  editarRentas,
+  editarServicio,
+} from './editar.js';
 import { borrarCatalogoDePrueba } from './testSupport.js';
 
 let app: FastifyInstance;
@@ -414,5 +422,191 @@ describe('servicios del catálogo', () => {
       expect(res.statusCode).toBe(403);
     }
     expect(await prisma.addOn.findUnique({ where: { id: addOnId } })).not.toBeNull();
+  });
+});
+
+describe('paquetes de alimentos del catálogo', () => {
+  const brackets3 = [
+    { min: 1, max: 100, pricePerPerson: 400 },
+    { min: 101, max: 200, pricePerPerson: 380 },
+    { min: 201, max: null, pricePerPerson: 350 },
+  ];
+
+  async function bodaId() {
+    return (await prisma.eventType.findFirstOrThrow({ where: { slug: 'boda' } })).id;
+  }
+
+  it('crea un paquete con sus brackets', async () => {
+    const cat = await catalogoDePrueba('PAQ-ALTA', 2064);
+    const p = await crearPaquete(
+      prisma,
+      cat.id,
+      { nombre: 'Menú de prueba', eventTypeId: await bodaId(), brackets: brackets3 },
+      actor,
+    );
+    expect(p.priceListId).toBe(cat.id);
+    expect(p.brackets).toHaveLength(3);
+    expect(p.brackets.map((b) => b.pricePerPerson).sort((a, b) => a - b)).toEqual([350, 380, 400]);
+    expect(
+      await prisma.priceListAudit.count({ where: { priceListId: cat.id, tipo: 'paquete' } }),
+    ).toBe(1);
+  });
+
+  it('un paquete sin brackets no se puede crear', async () => {
+    // 400: un paquete sin precio hace que el motor lance
+    // "no tiene rango para N invitados" al primer uso.
+    const cat = await catalogoDePrueba('PAQ-SIN-BRACKETS', 2063);
+    await expect(
+      crearPaquete(prisma, cat.id, { nombre: 'Vacío', eventTypeId: await bodaId(), brackets: [] }, actor),
+    ).rejects.toThrow();
+    expect(await prisma.foodPackage.count({ where: { priceListId: cat.id, nombre: 'Vacío' } })).toBe(0);
+  });
+
+  it('los brackets no se traslapan ni dejan hueco', async () => {
+    const cat = await catalogoDePrueba('PAQ-BRACKETS', 2062);
+    const eventTypeId = await bodaId();
+
+    const traslape = [
+      { min: 50, max: 100, pricePerPerson: 400 },
+      { min: 90, max: 200, pricePerPerson: 380 },
+    ];
+    const hueco = [
+      { min: 50, max: 100, pricePerPerson: 400 },
+      { min: 150, max: 200, pricePerPerson: 380 },
+    ];
+    for (const brackets of [traslape, hueco]) {
+      await expect(
+        crearPaquete(prisma, cat.id, { nombre: `Malo ${brackets[1]!.min}`, eventTypeId, brackets }, actor),
+      ).rejects.toMatchObject({ status: 400 });
+    }
+    expect(await prisma.foodPackage.count({ where: { priceListId: cat.id, nombre: { startsWith: 'Malo' } } })).toBe(0);
+  });
+
+  it('edita el precio por persona de un bracket', async () => {
+    const cat = await catalogoDePrueba('PAQ-EDITA', 2061);
+    const p = await crearPaquete(
+      prisma,
+      cat.id,
+      { nombre: 'Menú editable', eventTypeId: await bodaId(), brackets: brackets3 },
+      actor,
+    );
+
+    const nuevos = brackets3.map((b) => (b.min === 101 ? { ...b, pricePerPerson: 999 } : b));
+    const editado = await editarPaquete(prisma, cat.id, p.id, { brackets: nuevos }, actor);
+    const bracket = editado.brackets.find((b) => b.min === 101);
+    expect(bracket?.pricePerPerson).toBe(999);
+    // Y el juego completo sigue siendo válido: tres rangos, ni uno perdido.
+    expect(editado.brackets).toHaveLength(3);
+
+    // Un juego inválido no reemplaza nada.
+    await expect(
+      editarPaquete(prisma, cat.id, p.id, { brackets: [{ min: 1, max: 50, pricePerPerson: 1 }, { min: 100, max: null, pricePerPerson: 2 }] }, actor),
+    ).rejects.toMatchObject({ status: 400 });
+    expect(await prisma.foodPackagePrice.count({ where: { packageId: p.id } })).toBe(3);
+  });
+
+  it('rechaza un precio por persona negativo o no entero', async () => {
+    const cat = await catalogoDePrueba('PAQ-PRECIO', 2060);
+    const eventTypeId = await bodaId();
+    for (const pricePerPerson of [-1, 400.5]) {
+      await expect(
+        crearPaquete(
+          prisma,
+          cat.id,
+          { nombre: `Precio ${pricePerPerson}`, eventTypeId, brackets: [{ min: 1, max: null, pricePerPerson }] },
+          actor,
+        ),
+      ).rejects.toThrow();
+    }
+  });
+
+  it('borrar un paquete EN USO responde 409', async () => {
+    const cat = await catalogoDePrueba('PAQ-EN-USO', 2059);
+    const p = await crearPaquete(
+      prisma,
+      cat.id,
+      { nombre: 'Menú en uso', eventTypeId: await bodaId(), brackets: brackets3 },
+      actor,
+    );
+    const q = await cotizacionEn(cat.id, '2032-05-08');
+    await prisma.quote.update({ where: { id: q.id }, data: { foodPackageId: p.id } });
+
+    await expect(borrarPaquete(prisma, cat.id, p.id, actor)).rejects.toMatchObject({ status: 409 });
+    expect(await prisma.foodPackage.findUnique({ where: { id: p.id } })).not.toBeNull();
+
+    // Sin uso sí se borra, con sus brackets.
+    await prisma.quote.update({ where: { id: q.id }, data: { foodPackageId: null } });
+    await borrarPaquete(prisma, cat.id, p.id, actor);
+    expect(await prisma.foodPackage.findUnique({ where: { id: p.id } })).toBeNull();
+    expect(await prisma.foodPackagePrice.count({ where: { packageId: p.id } })).toBe(0);
+  });
+
+  it('respeta el eventTypeId: un paquete es de un tipo de evento', async () => {
+    const cat = await catalogoDePrueba('PAQ-EVENTO', 2058);
+    const boda = await bodaId();
+    const bautizo = (await prisma.eventType.findFirstOrThrow({ where: { slug: { not: 'boda' } } })).id;
+
+    const p = await crearPaquete(
+      prisma,
+      cat.id,
+      { nombre: 'Menú de un tipo', eventTypeId: boda, brackets: brackets3 },
+      actor,
+    );
+    expect(p.eventTypeId).toBe(boda);
+
+    const catalogo = await loadCatalog(prisma, { priceListId: cat.id });
+    const resuelto = catalogo.foodPackages.find((f) => f.id === p.id);
+    expect(resuelto?.eventTypeId).toBe(boda);
+    expect(resuelto?.eventTypeId).not.toBe(bautizo);
+
+    // Y se puede mover a otro tipo de evento; un tipo inexistente es 400.
+    const movido = await editarPaquete(prisma, cat.id, p.id, { eventTypeId: bautizo }, actor);
+    expect(movido.eventTypeId).toBe(bautizo);
+    await expect(
+      editarPaquete(prisma, cat.id, p.id, { eventTypeId: 'no-existe' }, actor),
+    ).rejects.toMatchObject({ status: 400 });
+  });
+
+  it('un paquete de otro catálogo no se toca desde aquí', async () => {
+    const cat = await catalogoDePrueba('PAQ-AJENO', 2057);
+    const ajeno = await prisma.foodPackage.findFirstOrThrow({ where: { priceListId: activoOriginalId } });
+    await expect(
+      editarPaquete(prisma, cat.id, ajeno.id, { nombre: 'Pirata' }, actor),
+    ).rejects.toMatchObject({ status: 400 });
+    await expect(borrarPaquete(prisma, cat.id, ajeno.id, actor)).rejects.toMatchObject({ status: 400 });
+    expect((await prisma.foodPackage.findUniqueOrThrow({ where: { id: ajeno.id } })).nombre).toBe(ajeno.nombre);
+  });
+
+  it('solo admin', async () => {
+    const cat = await catalogoDePrueba('PAQ-403', 2056);
+    const ventas = await ventasCookies();
+    const payload = { nombre: 'Menú de ventas', eventTypeId: await bodaId(), brackets: brackets3 };
+
+    const post = await app.inject({
+      method: 'POST',
+      url: `/api/admin/price-lists/${cat.id}/paquetes`,
+      cookies: ventas,
+      payload,
+    });
+    expect(post.statusCode).toBe(403);
+    expect(await prisma.foodPackage.count({ where: { priceListId: cat.id, nombre: payload.nombre } })).toBe(0);
+
+    const creado = await app.inject({
+      method: 'POST',
+      url: `/api/admin/price-lists/${cat.id}/paquetes`,
+      cookies: await adminCookies(),
+      payload,
+    });
+    expect(creado.statusCode).toBe(201);
+    const packageId = creado.json().paquete.id as string;
+
+    for (const [method, url] of [
+      ['PATCH', `/api/admin/price-lists/${cat.id}/paquetes/${packageId}`],
+      ['DELETE', `/api/admin/price-lists/${cat.id}/paquetes/${packageId}`],
+    ] as const) {
+      const res = await app.inject({ method, url, cookies: ventas, payload: { nombre: 'x' } });
+      expect(res.statusCode).toBe(403);
+    }
+    expect(await prisma.foodPackage.findUnique({ where: { id: packageId } })).not.toBeNull();
   });
 });

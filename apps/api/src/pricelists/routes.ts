@@ -3,7 +3,15 @@ import { requireAdmin } from '../auth/plugin.js';
 import { QuoteError } from '../quotes/service.js';
 import type { Actor } from '../quotes/service.js';
 import { activarCatalogo, clonarCatalogo, listarCatalogos } from './service.js';
-import { borrarServicio, crearServicio, editarRentas, editarServicio } from './editar.js';
+import {
+  borrarPaquete,
+  borrarServicio,
+  crearPaquete,
+  crearServicio,
+  editarPaquete,
+  editarRentas,
+  editarServicio,
+} from './editar.js';
 import { impactoDeCatalogo } from './impacto.js';
 import { listarBitacoraCatalogo } from './audit.js';
 
@@ -109,6 +117,41 @@ export async function priceListRoutes(app: FastifyInstance): Promise<void> {
     async (req, reply) =>
       conErrores(reply, () =>
         borrarServicio(app.prisma, req.params.id, req.params.addOnId, req.user as Actor),
+      ),
+  );
+
+  // --- Paquetes de alimentos ---
+  app.post<{ Params: { id: string } }>(
+    '/admin/price-lists/:id/paquetes',
+    { preHandler: requireAdmin },
+    async (req, reply) =>
+      conErrores(reply, async () => {
+        const paquete = await crearPaquete(app.prisma, req.params.id, req.body, req.user as Actor);
+        return reply.code(201).send({ paquete });
+      }),
+  );
+
+  app.patch<{ Params: { id: string; packageId: string } }>(
+    '/admin/price-lists/:id/paquetes/:packageId',
+    { preHandler: requireAdmin },
+    async (req, reply) =>
+      conErrores(reply, async () => ({
+        paquete: await editarPaquete(
+          app.prisma,
+          req.params.id,
+          req.params.packageId,
+          req.body,
+          req.user as Actor,
+        ),
+      })),
+  );
+
+  app.delete<{ Params: { id: string; packageId: string } }>(
+    '/admin/price-lists/:id/paquetes/:packageId',
+    { preHandler: requireAdmin },
+    async (req, reply) =>
+      conErrores(reply, () =>
+        borrarPaquete(app.prisma, req.params.id, req.params.packageId, req.user as Actor),
       ),
   );
 }
