@@ -6,6 +6,7 @@ import { buildServer } from '../server.js';
 import { loadConfig } from '../config.js';
 import { hashPassword } from '../auth/password.js';
 import { clonarCatalogo, activarCatalogo, listarCatalogos } from './service.js';
+import { contenidoDeCatalogo } from './contenido.js';
 
 let app: FastifyInstance;
 let ventasId: string;
@@ -325,6 +326,68 @@ describe('catálogos HTTP', () => {
     expect(res.json().priceList.activa).toBe(false);
   });
 
+  it('el contenido es del catálogo PEDIDO, con los ids que el editor necesita', async () => {
+    const cookies = await adminCookie();
+    const { base, clon } = await clonDelActivo('CONTENIDO', 2084, 10);
+
+    const res = await app.inject({ method: 'GET', url: `/api/admin/price-lists/${clon.id}/contenido`, cookies });
+    expect(res.statusCode).toBe(200);
+    const c = res.json().contenido as {
+      priceList: { id: string; nombre: string; ivaRate: number };
+      renta: { id: string; espacio: string; tipo: string; sabado: number; spaceId: string; min: number }[];
+      servicios: { id: string; activo: boolean }[];
+      paquetes: { id: string; brackets: { min: number; pricePerPerson: number }[] }[];
+      dj: { eventTypeId: string; price: number }[];
+      eventTypes: { id: string; nombre: string }[];
+    };
+
+    expect(c.priceList.id).toBe(clon.id);
+    // Los renglones traen su `id` de `RentalPrice` —sin él no hay PATCH posible—
+    // y el NOMBRE del espacio, porque un cuid no le dice nada a quien edita.
+    expect(c.renta.length).toBeGreaterThan(0);
+    expect(c.renta.every((r) => typeof r.id === 'string' && r.id.length > 0)).toBe(true);
+    expect(c.renta.every((r) => typeof r.espacio === 'string' && r.espacio.length > 0)).toBe(true);
+    // Y el `tipo`: la renta plana (Team Building) vive en el mismo catálogo.
+    expect(c.renta.some((r) => r.tipo === 'plano')).toBe(true);
+    expect(c.renta.some((r) => r.tipo === 'dia')).toBe(true);
+
+    // Es del clon (+10%), no del activo: leer el activo por descuido es
+    // exactamente cómo se edita el catálogo equivocado.
+    const rb = await prisma.rentalPrice.findFirstOrThrow({ where: { priceListId: base.id }, orderBy: { id: 'asc' } });
+    const rc = c.renta.find((r) => r.spaceId === rb.spaceId && r.min === rb.min && r.tipo === rb.tipo);
+    expect(rc?.sabado).toBe(Math.round(rb.sabado * 1.1));
+
+    expect(c.paquetes.length).toBeGreaterThan(0);
+    expect(c.paquetes.every((p) => p.brackets.length > 0)).toBe(true);
+    expect(c.dj.length).toBeGreaterThan(0);
+    expect(c.eventTypes.length).toBeGreaterThan(0);
+  });
+
+  it('el contenido trae también los servicios dados de baja', async () => {
+    // El editor tiene que poder REACTIVAR lo que desactivó. Si el endpoint
+    // esconde los `activo: false`, la baja es un camino de una sola vía.
+    const cookies = await adminCookie();
+    const { clon } = await clonDelActivo('CONTENIDO-BAJA', 2083);
+    const baja = await prisma.addOn.create({
+      data: { nombre: 'ZZZ Servicio de baja', kind: 'fijo', price: 100, activo: false, priceListId: clon.id },
+    });
+
+    const res = await app.inject({ method: 'GET', url: `/api/admin/price-lists/${clon.id}/contenido`, cookies });
+    const servicios = res.json().contenido.servicios as { id: string; activo: boolean }[];
+    expect(servicios.find((s) => s.id === baja.id)?.activo).toBe(false);
+    expect(servicios.some((s) => s.activo)).toBe(true);
+  });
+
+  it('el contenido de un catálogo inexistente da 404', async () => {
+    await expect(contenidoDeCatalogo(prisma, 'no-existe')).rejects.toMatchObject({ status: 404 });
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/admin/price-lists/no-existe/contenido',
+      cookies: await adminCookie(),
+    });
+    expect(res.statusCode).toBe(404);
+  });
+
   it('solo admin puede clonar o activar', async () => {
     const cookies = await ventasCookie();
     const base = await activo();
@@ -347,6 +410,9 @@ describe('catálogos HTTP', () => {
 
     // El vendedor tampoco se enteró de que existen.
     expect((await app.inject({ method: 'GET', url: '/api/admin/price-lists', cookies })).statusCode).toBe(403);
+    expect(
+      (await app.inject({ method: 'GET', url: `/api/admin/price-lists/${base.id}/contenido`, cookies })).statusCode,
+    ).toBe(403);
     expect(await prisma.priceList.count({ where: { nombre: `CLON-VENTAS-${SUF}` } })).toBe(0);
   });
 });

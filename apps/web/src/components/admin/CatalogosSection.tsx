@@ -1,29 +1,34 @@
 import { useState, type FormEvent } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { Copy, Check } from 'lucide-react';
+import { Copy, Check, Pencil } from 'lucide-react';
 import { api } from '../../lib/api.ts';
 import { PRICE_LISTS_KEY, usePriceLists } from '../../lib/catalogos.ts';
 import { formatMXN, formatPctFraccion } from '../../lib/money.ts';
 import { Button, Card, Field, TextInput, SelectInput } from '../ui.tsx';
 import type { PriceList } from '../../lib/types.ts';
 import { apiErrorMessage } from './shared.tsx';
+import { CatalogoEditor } from './catalogo/CatalogoEditor.tsx';
 
 export function CatalogosSection() {
   const qc = useQueryClient();
   const { data, isLoading } = usePriceLists();
   const priceLists = data?.priceLists ?? [];
+  /**
+   * Qué catálogo se está editando, o `null` para el listado. El editor ocupa la
+   * sección completa en vez de abrirse en un modal: son cinco superficies con
+   * tablas, y un modal las deja sin espacio.
+   */
+  const [editandoId, setEditandoId] = useState<string | null>(null);
 
   /**
-   * Activar o clonar cambia cuál es el catálogo activo, y de ahí cuelgan el
-   * cotizador (`catalog`) y los parámetros que edita Configuración
-   * (`admin-config`, que muestra el nombre del activo). Sin invalidar las tres,
-   * la pantalla sigue mostrando los precios del catálogo anterior.
+   * Activar o clonar cambia cuál es el catálogo activo, y de ahí cuelga el
+   * cotizador (`catalog`). Sin invalidar las dos, la pantalla sigue mostrando
+   * los precios del catálogo anterior.
    */
   async function invalidate() {
     await Promise.all([
       qc.invalidateQueries({ queryKey: PRICE_LISTS_KEY }),
       qc.invalidateQueries({ queryKey: ['catalog'] }),
-      qc.invalidateQueries({ queryKey: ['admin-config'] }),
     ]);
   }
 
@@ -40,28 +45,37 @@ export function CatalogosSection() {
         Por eso crear el catálogo del año que viene —o activarlo— nunca cambia el precio de lo ya
         cotizado.
       </p>
-      <div className="grid gap-6 lg:grid-cols-[1.4fr_1fr]">
-        <Card className="p-6">
-          {isLoading && <p className="text-sm text-charcoal-soft">Cargando…</p>}
-          {!isLoading && priceLists.length === 0 && (
-            <p className="text-sm text-charcoal-soft">Todavía no hay catálogos.</p>
-          )}
-          {!isLoading && priceLists.length > 0 && (
-            <ul className="divide-y divide-cream-300">
-              {priceLists.map((pl) => (
-                <CatalogoRow
-                  key={pl.id}
-                  priceList={pl}
-                  onActivar={() => activar.mutateAsync(pl.id)}
-                  busy={activar.isPending}
-                />
-              ))}
-            </ul>
-          )}
-        </Card>
+      {editandoId ? (
+        <CatalogoEditor
+          priceListId={editandoId}
+          onCerrar={() => setEditandoId(null)}
+          onCambiarCatalogo={setEditandoId}
+        />
+      ) : (
+        <div className="grid gap-6 lg:grid-cols-[1.4fr_1fr]">
+          <Card className="p-6">
+            {isLoading && <p className="text-sm text-charcoal-soft">Cargando…</p>}
+            {!isLoading && priceLists.length === 0 && (
+              <p className="text-sm text-charcoal-soft">Todavía no hay catálogos.</p>
+            )}
+            {!isLoading && priceLists.length > 0 && (
+              <ul className="divide-y divide-cream-300">
+                {priceLists.map((pl) => (
+                  <CatalogoRow
+                    key={pl.id}
+                    priceList={pl}
+                    onActivar={() => activar.mutateAsync(pl.id)}
+                    onEditar={() => setEditandoId(pl.id)}
+                    busy={activar.isPending}
+                  />
+                ))}
+              </ul>
+            )}
+          </Card>
 
-        <NuevoCatalogoCard priceLists={priceLists} onCreated={invalidate} />
-      </div>
+          <NuevoCatalogoCard priceLists={priceLists} onCreated={invalidate} />
+        </div>
+      )}
     </section>
   );
 }
@@ -69,10 +83,12 @@ export function CatalogosSection() {
 function CatalogoRow({
   priceList: pl,
   onActivar,
+  onEditar,
   busy,
 }: {
   priceList: PriceList;
   onActivar: () => Promise<unknown>;
+  onEditar: () => void;
   busy: boolean;
 }) {
   const [armed, setArmed] = useState(false);
@@ -111,17 +127,25 @@ function CatalogoRow({
           </p>
           <DjPrecios dj={pl.dj} />
         </div>
-        {!pl.activa && !armed && (
-          <Button
-            type="button"
-            variant="outline"
-            className="px-2.5 py-1.5 text-xs"
-            disabled={busy}
-            onClick={() => setArmed(true)}
-          >
-            <Check size={13} /> Activar
+        <div className="flex items-center gap-1">
+          {/* Editar el contenido: precios de renta, servicios, alimentos, DJ y
+              parámetros. Se puede sobre cualquier catálogo, incluido el activo y
+              uno en uso; el editor avisa del impacto antes. */}
+          <Button type="button" variant="outline" className="px-2.5 py-1.5 text-xs" onClick={onEditar}>
+            <Pencil size={13} /> Editar
           </Button>
-        )}
+          {!pl.activa && !armed && (
+            <Button
+              type="button"
+              variant="ghost"
+              className="px-2.5 py-1.5 text-xs"
+              disabled={busy}
+              onClick={() => setArmed(true)}
+            >
+              <Check size={13} /> Activar
+            </Button>
+          )}
+        </div>
       </div>
 
       {armed && (

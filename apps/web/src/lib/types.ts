@@ -72,13 +72,6 @@ export interface User {
 // ACTIVO (PriceList). `nombre` va aquí para que la pantalla diga cuál está
 // editando — cambiarlos afecta lo que se cotice de aquí en adelante, nunca lo ya
 // cotizado, porque cada cotización recalcula contra el catálogo que fijó.
-export interface AdminConfig {
-  nombre: string;
-  ivaRate: number;
-  extraHourRate: number;
-  foodDiscountRate: number;
-}
-
 /**
  * Un catálogo versionado tal como lo lista `GET /api/admin/price-lists`: el
  * año completo de precios (renta, servicios, alimentos) más sus parámetros.
@@ -106,6 +99,86 @@ export interface PriceList {
    * simplemente NO viene en la lista (hoy: graduación, renta y team building).
    */
   dj: { eventTypeId: string; eventType: string; price: number }[];
+}
+
+/**
+ * Un renglón de la matriz de renta, tal como lo devuelve
+ * `GET /api/admin/price-lists/:id/contenido`.
+ *
+ * `id` es el de `RentalPrice` y es lo único con lo que se puede hacer
+ * `PATCH …/rentas`. `min`/`max` van de solo lectura: los rangos de invitados no
+ * se agregan ni se quitan —un hueco hace que el motor lance "no tiene rango de
+ * renta para N invitados" meses después—, solo se editan los cuatro precios.
+ */
+export interface RentaRenglon {
+  id: string;
+  spaceId: string;
+  espacio: string;
+  /** `dia` = renta por tipo de día · `plano` = renta plana (Team Building). */
+  tipo: string;
+  min: number;
+  max: number | null;
+  viernes: number;
+  viernesEspecial: number;
+  sabado: number;
+  domAJue: number;
+}
+
+export interface PaqueteCatalogo {
+  id: string;
+  nombre: string;
+  eventTypeId: string;
+  ivaIncluido: boolean;
+  incluye: string | null;
+  brackets: FoodPackageBracket[];
+}
+
+/** Todo lo editable de un catálogo, con ids. Solo admin. */
+export interface CatalogoContenido {
+  priceList: {
+    id: string;
+    nombre: string;
+    anio: number;
+    activa: boolean;
+    ivaRate: number;
+    extraHourRate: number;
+    foodDiscountRate: number;
+    capillaSabado: number;
+  };
+  renta: RentaRenglon[];
+  servicios: AddOn[];
+  paquetes: PaqueteCatalogo[];
+  /** Un renglón por tipo de evento que SÍ ofrece DJ por hora extra. */
+  dj: { eventTypeId: string; price: number }[];
+  eventTypes: { id: string; nombre: string; slug: string }[];
+}
+
+/**
+ * Cuántas cotizaciones puede represiar editar un catálogo, por estatus.
+ *
+ * No es una advertencia de que algo vaya a cambiar solo: los totales guardados
+ * quedan congelados. Mide el riesgo de que alguien REEDITE una de ellas después,
+ * que es cuando se recalcula contra el catálogo.
+ */
+export interface ImpactoCatalogo {
+  priceListId: string;
+  nombre: string;
+  total: number;
+  /** `formalizada` + `complementada` + `liquidada`: las que ya tienen dinero encima. */
+  comprometidas: number;
+  porEstatus: Partial<Record<QuoteStatus, number>>;
+}
+
+/** Un renglón de la bitácora del catálogo. */
+export interface CambioCatalogo {
+  id: string;
+  tipo: 'renta' | 'servicio' | 'paquete' | 'dj' | 'parametros';
+  descripcion: string;
+  /** Cuántas cotizaciones había casadas al catálogo AL MOMENTO del cambio. */
+  cotizacionesEnRiesgo: number;
+  createdAt: string;
+  actor?: { id: string; nombre: string } | null;
+  meta?: { impacto?: { total: number; comprometidas: number } } | null;
 }
 
 export interface Client {
