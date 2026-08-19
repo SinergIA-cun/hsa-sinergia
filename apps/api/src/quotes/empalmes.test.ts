@@ -24,7 +24,7 @@ const clients: string[] = [];
 // resultados. Aun así cada aserción filtra por los ids creados en su propio test.
 const ANIO = 2033;
 
-type EstadoCotizacion = 'borrador' | 'enviada' | 'aceptada' | 'formalizada' | 'complementada' | 'liquidada' | 'vencida';
+type EstadoCotizacion = 'borrador' | 'formalizada' | 'complementada' | 'liquidada';
 
 /**
  * Cotización creada directo en la base, sin pasar por `createQuote`.
@@ -191,18 +191,28 @@ describe('cotizacionesDesplazadas', () => {
     expect(r).toHaveLength(0);
   });
 
-  it('las vencidas no cuentan', async () => {
+  /**
+   * Punto 8: antes este caso lo cubría `vencida` (una cotización pasada de
+   * vigencia dejaba de avisar sola). Al retirarse el estatus, un borrador viejo
+   * SÍ sigue desplazado — es la consecuencia que aceptó el dueño, y aquí queda
+   * fijada para que nadie la reintroduzca como "mejora".
+   */
+  it('un borrador pasado de vigencia SIGUE contando como desplazado', async () => {
     const bloqueante = await crearCotizacion({ fecha: `${ANIO}-03-25`, spaceIds: [cupulaId], status: 'formalizada' });
-    const vencida = await crearCotizacion({ fecha: `${ANIO}-03-25`, spaceIds: [cupulaId], status: 'vencida' });
-    const r = soloDeEsteTest(await cotizacionesDesplazadas(prisma, adminActor), [bloqueante.id, vencida.id]);
-    expect(r).toHaveLength(0);
+    const vieja = await crearCotizacion({ fecha: `${ANIO}-03-25`, spaceIds: [cupulaId], status: 'borrador' });
+    await prisma.quote.update({
+      where: { id: vieja.id },
+      data: { vigenciaHasta: new Date('2020-01-01T00:00:00.000Z') },
+    });
+    const r = soloDeEsteTest(await cotizacionesDesplazadas(prisma, adminActor), [bloqueante.id, vieja.id]);
+    expect(r.map((x) => x.id)).toEqual([vieja.id]);
   });
 
   it('una complementada y una liquidada también desplazan', async () => {
     const comp = await crearCotizacion({ fecha: `${ANIO}-04-04`, spaceIds: [cupulaId], status: 'complementada' });
-    const viva1 = await crearCotizacion({ fecha: `${ANIO}-04-04`, spaceIds: [cupulaId], status: 'enviada' });
+    const viva1 = await crearCotizacion({ fecha: `${ANIO}-04-04`, spaceIds: [cupulaId], status: 'borrador' });
     const liq = await crearCotizacion({ fecha: `${ANIO}-04-11`, spaceIds: [arcosId], status: 'liquidada' });
-    const viva2 = await crearCotizacion({ fecha: `${ANIO}-04-11`, spaceIds: [arcosId], status: 'aceptada' });
+    const viva2 = await crearCotizacion({ fecha: `${ANIO}-04-11`, spaceIds: [arcosId], status: 'borrador' });
 
     const r = soloDeEsteTest(await cotizacionesDesplazadas(prisma, adminActor), [
       comp.id, viva1.id, liq.id, viva2.id,
@@ -229,7 +239,7 @@ describe('GET /api/quotes/desplazadas', () => {
       status: 'formalizada',
       nombre: 'Apartó Arcos',
     });
-    const desplazada = await crearCotizacion({ fecha: `${ANIO}-05-14`, spaceIds: [arcosId], status: 'enviada' });
+    const desplazada = await crearCotizacion({ fecha: `${ANIO}-05-14`, spaceIds: [arcosId], status: 'borrador' });
 
     const res = await app.inject({
       method: 'GET',

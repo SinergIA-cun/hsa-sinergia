@@ -1,5 +1,5 @@
 import type { PrismaClient } from '@hsa/database';
-import { ownershipWhere, loadEstadoCuentaBulk, expireStaleQuotes, type Actor } from '../quotes/service.js';
+import { ownershipWhere, loadEstadoCuentaBulk, type Actor } from '../quotes/service.js';
 
 // Estatus de evento real (ya reservado) — para fichas, próxima semana y alertas.
 const EVENTOS = ['formalizada', 'complementada', 'liquidada'] as const;
@@ -122,8 +122,12 @@ function noVacio(v: unknown): boolean {
 
 // Campos mínimos para considerar la hoja operativa "lista" para operar el evento.
 const REQUERIDOS_HOJA: { label: string; get: (q: QuoteRow) => unknown }[] = [
-  { label: 'Festejado', get: (q) => hoja(q).nombreFestejado },
-  { label: 'Banquetero', get: (q) => hoja(q).banquetero },
+  // El festejado y el banquetero ahora se pueden capturar al COTIZAR (columnas del
+  // evento); la hoja operativa sigue valiendo como respaldo de los eventos
+  // anteriores a esos campos. Si no se mirara la columna, un evento capturado en el
+  // formulario aparecería como "falta Festejado" y la ficha semanal saldría vacía.
+  { label: 'Festejado', get: (q) => q.festejado ?? hoja(q).nombreFestejado },
+  { label: 'Banquetero', get: (q) => q.banquetero?.nombre ?? hoja(q).banquetero },
   { label: 'Personal HSA', get: (q) => hoja(q).personalHsa },
   { label: 'Hora inicio', get: (q) => q.horaInicio },
   { label: 'Hora término', get: (q) => q.horaTermino },
@@ -143,6 +147,8 @@ interface QuoteRow {
   horaTermino: string | null;
   horarioCivil: string | null;
   operativa: unknown;
+  festejado: string | null;
+  banquetero: { nombre: string } | null;
   client: { nombre: string } | null;
   eventType: { nombre: string } | null;
 }
@@ -159,11 +165,11 @@ function str(v: unknown): string | null {
 function toHojaFicha(q: QuoteRow): HojaFicha {
   const h = hoja(q);
   return {
-    nombreFestejado: str(h.nombreFestejado),
+    nombreFestejado: str(q.festejado ?? h.nombreFestejado),
     relacionCliente: str(h.relacionCliente),
     horaMisa: str(h.horaMisa),
     fotografia: h.fotografia === true,
-    banquetero: str(h.banquetero),
+    banquetero: str(q.banquetero?.nombre ?? h.banquetero),
     banqueteroPaqHsa: h.banqueteroPaqHsa === true,
     estrado: str(h.estrado),
     pista: str(h.pista),
@@ -195,12 +201,14 @@ export async function getDashboard(
   actor: Actor,
   now: Date = new Date(),
 ): Promise<DashboardData> {
-  await expireStaleQuotes(db, now);
-
   const [quotes, spaces] = await Promise.all([
     db.quote.findMany({
       where: { ...ownershipWhere(actor), deletedAt: null },
-      include: { client: { select: { nombre: true } }, eventType: { select: { nombre: true } } },
+      include: {
+        client: { select: { nombre: true } },
+        eventType: { select: { nombre: true } },
+        banquetero: { select: { nombre: true } },
+      },
     }),
     db.space.findMany({ select: { id: true, nombre: true } }),
   ]);

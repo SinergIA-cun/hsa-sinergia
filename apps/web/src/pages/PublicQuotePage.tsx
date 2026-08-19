@@ -103,6 +103,14 @@ export function PublicQuotePage() {
               <Users size={16} className="text-gold-200" /> {quote.invitados} invitados
             </span>
           </div>
+
+          {/* El código de evento: la referencia que el cliente cita en un correo
+              o una transferencia. Es el mismo que sale en el contrato y el recibo. */}
+          {quote.codigo && (
+            <p className="mt-5 text-xs uppercase tracking-[0.2em] text-gold-200">
+              Evento <span className="font-semibold text-cream">{quote.codigo}</span>
+            </p>
+          )}
         </div>
       </header>
 

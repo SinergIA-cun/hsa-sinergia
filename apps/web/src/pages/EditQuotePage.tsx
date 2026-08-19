@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowLeft,
   BookMarked,
+  Hash,
   ExternalLink,
   Printer,
   FileText,
@@ -58,7 +59,20 @@ function toInitial(q: Quote): Partial<QuoteFormInitial> {
     esCortesia: q.esCortesia ?? false,
     usaDjHoraExtra: q.usaDjHoraExtra ?? false,
     addOns: Object.fromEntries((q.addOns ?? []).map((a) => [a.addOnId, a.cantidad])),
+    // Los extras y el descuento se devuelven al formulario porque guardar manda
+    // la lista COMPLETA: si no viajaran de vuelta, reeditar cualquier otra cosa
+    // del evento los borraría en silencio y el total bajaría solo.
+    extras: q.extras ?? [],
+    descuentoPct: q.descuentoPct ?? null,
+    descuentoMotivo: q.descuentoMotivo ?? '',
     requiereFactura: q.requiereFactura ?? false,
+    // El banquetero y el festejado viajan de vuelta por la misma razón que los
+    // extras: guardar manda los tres campos, así que si no regresaran, reeditar
+    // cualquier otra cosa del evento los borraría en silencio.
+    banqueteroId: q.banqueteroId ?? '',
+    banqueteroNombre: q.banquetero?.nombre ?? '',
+    festejado: q.festejado ?? '',
+    festejadoTelefono: q.festejadoTelefono ?? '',
     fiscales: {
       rfc: q.client?.rfc,
       razonSocial: q.client?.razonSocial,
@@ -240,6 +254,13 @@ export function EditQuotePage() {
           {/* A qué catálogo pertenece: es el dato que explica por qué dos
               cotizaciones de fechas parecidas tienen precios distintos. */}
           <p className="mt-1.5 flex flex-wrap items-center gap-2 text-xs text-charcoal-soft">
+            {/* El código de evento: la identidad del evento, la que se copia al
+                recibo, al contrato y a los correos. Se congela al formalizar. */}
+            {quote.codigo && (
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-ink px-2.5 py-0.5 font-mono text-[0.7rem] font-semibold tracking-tight text-cream">
+                <Hash size={12} /> {quote.codigo}
+              </span>
+            )}
             <span className="inline-flex items-center gap-1.5 rounded-full bg-cream-200 px-2.5 py-0.5 font-semibold uppercase tracking-wide text-ink-500">
               <BookMarked size={12} /> Catálogo {quote.priceList?.nombre ?? '—'}
             </span>
@@ -331,6 +352,7 @@ export function EditQuotePage() {
           />
           <PagosPanel
             quoteId={quote.id}
+            publicToken={quote.publicToken}
             isAdmin={isAdmin}
             estadoCuenta={estadoCuenta}
             payments={payments}
@@ -365,6 +387,7 @@ export function EditQuotePage() {
       {!editable && (
         <PagosPanel
           quoteId={quote.id}
+          publicToken={quote.publicToken}
           isAdmin={isAdmin}
           estadoCuenta={estadoCuenta}
           payments={payments}

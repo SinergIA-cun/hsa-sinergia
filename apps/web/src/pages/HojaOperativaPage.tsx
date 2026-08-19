@@ -31,7 +31,10 @@ export function HojaOperativaPage() {
       .map((l) => l.concepto.replace('Renta ', ''))
       .join(' y ') || '—';
   const costoHoraExtra = Math.round(quote.rentaTotal * 0.05);
-  const evento = `${quote.eventType?.nombre ?? 'Evento'}${hoja.nombreFestejado ? ` · ${hoja.nombreFestejado}` : ''}`;
+  // El festejado se captura al COTIZAR (columna del evento) y la hoja operativa
+  // sigue siendo el respaldo de los eventos anteriores a ese campo.
+  const nombreFestejado = quote.festejado || hoja.nombreFestejado || '';
+  const evento = `${quote.eventType?.nombre ?? 'Evento'}${nombreFestejado ? ` · ${nombreFestejado}` : ''}`;
   const cliente = `${quote.client?.nombre ?? 'Cliente'}${hoja.relacionCliente ? ` — ${hoja.relacionCliente}` : ''}`;
 
   return (
@@ -71,7 +74,15 @@ export function HojaOperativaPage() {
             <tr><th>Fecha</th><td>{formatEventDate(quote.fechaEvento, 'long')}</td></tr>
             <tr><th>No. invitados</th><td>{quote.invitados}</td></tr>
             <tr><th>Evento</th><td>{evento}</td></tr>
-            <tr><th>Cliente</th><td>{cliente}</td></tr>
+            {/* El CLIENTE es quien firma y a quien se factura; con banquetero es
+                él. El festejado es el cliente final y va aquí, no en el contrato. */}
+            <tr><th>Cliente</th><td>{cliente}{quote.banquetero ? ' · banquetero' : ''}</td></tr>
+            {(quote.festejado || quote.festejadoTelefono) && (
+              <tr>
+                <th>Festejado</th>
+                <td>{dash(quote.festejado)}{quote.festejadoTelefono ? ` · ${quote.festejadoTelefono}` : ''}</td>
+              </tr>
+            )}
             <tr><th>Lugar</th><td>{espacio} · Capilla: {si(quote.usaCapilla ?? hoja.capilla)}{quote.usaCapilla && quote.capillaHorario ? ` (${quote.capillaHorario})` : ''}</td></tr>
           </tbody>
         </table>

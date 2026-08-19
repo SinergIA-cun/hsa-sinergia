@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { prisma } from '@hsa/database';
 import { createQuote, updateStatus, type Actor } from '../quotes/service.js';
-import { getAvailability } from './service.js';
+import { getAvailability, getAgenda } from './service.js';
 
 let actor: Actor;
 let arcosId: string;
@@ -77,5 +77,67 @@ describe('getAvailability', () => {
     expect(info.capillaEventos[0]!.horario).toBe('13:00');
     // Excluyendo la propia, no se lista a sí misma (para editar sin ruido).
     expect((await getAvailability(prisma, FECHA_CAP, [arcosId], q.id)).capillaEventos).toHaveLength(0);
+  });
+
+  /**
+   * Punto 8: se fue `vencida`, y con ella el filtro `status: { not: 'vencida' }`
+   * que era lo único que limpiaba los colores y la agenda. La consecuencia la
+   * aceptó el dueño: un borrador viejo sigue pintando su fecha. Esto lo fija —
+   * si alguien "arregla" la agenda escondiendo borradores viejos, aquí truena.
+   */
+  it('un borrador pasado de vigencia sigue pintando su fecha en los colores', async () => {
+    const FECHA_VIEJA = '2029-05-20';
+    const q = await createQuote(
+      prisma,
+      { fecha: FECHA_VIEJA, invitados: 200, spaceIds: [arcosId], eventTypeId, client: { nombre: 'Vigencia Pasada' } },
+      actor,
+    );
+    created.push(q.id);
+    createdClients.push(q.clientId);
+    await prisma.quote.update({
+      where: { id: q.id },
+      data: { vigenciaHasta: new Date('2020-01-01T00:00:00.000Z') },
+    });
+
+    const dispo = await getAvailability(prisma, FECHA_VIEJA, [arcosId]);
+    expect(dispo.spaces[0]!.level).toBe('cotizaciones');
+    expect(dispo.spaces[0]!.counts.cotizaciones).toBe(1);
+  });
+});
+
+describe('getAgenda sin el filtro de vencida', () => {
+  it('devuelve el borrador viejo, y sigue devolviendo lo formalizado', async () => {
+    const FECHA_AG = '2029-06-09';
+    const borrador = await createQuote(
+      prisma,
+      { fecha: FECHA_AG, invitados: 200, spaceIds: [arcosId], eventTypeId, client: { nombre: 'Agenda Borrador' } },
+      actor,
+    );
+    created.push(borrador.id);
+    createdClients.push(borrador.clientId);
+    await prisma.quote.update({
+      where: { id: borrador.id },
+      data: { vigenciaHasta: new Date('2020-01-01T00:00:00.000Z') },
+    });
+
+    const { events } = await getAgenda(prisma, FECHA_AG, FECHA_AG);
+    const mio = events.find((e) => e.quoteId === borrador.id);
+    expect(mio).toBeDefined();
+    expect(mio!.status).toBe('borrador');
+  });
+
+  it('la papelera sí se sigue excluyendo de la agenda', async () => {
+    const FECHA_PAP = '2029-06-10';
+    const q = await createQuote(
+      prisma,
+      { fecha: FECHA_PAP, invitados: 200, spaceIds: [arcosId], eventTypeId, client: { nombre: 'Agenda Papelera' } },
+      actor,
+    );
+    created.push(q.id);
+    createdClients.push(q.clientId);
+    await prisma.quote.update({ where: { id: q.id }, data: { deletedAt: new Date() } });
+
+    const { events } = await getAgenda(prisma, FECHA_PAP, FECHA_PAP);
+    expect(events.some((e) => e.quoteId === q.id)).toBe(false);
   });
 });

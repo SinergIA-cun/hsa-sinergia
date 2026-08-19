@@ -5,6 +5,7 @@ import {
   registerPayment,
   anularPayment,
   anularSchema,
+  editarConcepto,
   desbloquearFactura,
   marcarFacturado,
   marcarFacturadoSchema,
@@ -66,6 +67,23 @@ export async function paymentRoutes(app: FastifyInstance): Promise<void> {
       } catch (e) {
         if (e instanceof QuoteError) return reply.code(e.status).send({ error: e.message });
         throw e;
+      }
+    },
+  );
+
+  // Corregir a mano el concepto de un pago. Lo puede hacer VENTAS sobre lo suyo:
+  // es un error de captura, no un movimiento de dinero. La regla del finiquito se
+  // reaplica después de la corrección, así que la respuesta trae el concepto con
+  // el que el pago quedó — que puede no ser el que se pidió.
+  app.patch<{ Params: { id: string; paymentId: string } }>(
+    '/quotes/:id/payments/:paymentId/concepto',
+    { preHandler: requireAuth },
+    async (req, reply) => {
+      try {
+        return await editarConcepto(app.prisma, req.params.id, req.params.paymentId, req.body, req.user as Actor);
+      } catch (e) {
+        if (e instanceof QuoteError) return reply.code(e.status).send({ error: e.message });
+        throw e; // ZodError → 400 vía el handler global
       }
     },
   );

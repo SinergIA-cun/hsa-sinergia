@@ -9,7 +9,6 @@ import { clonarCatalogo } from '../pricelists/service.js';
 import {
   createQuote,
   duplicateQuote,
-  expireStaleQuotes,
   getByToken,
   loadEstadoCuenta,
   moverCatalogo,
@@ -17,10 +16,15 @@ import {
   restoreQuote,
   simularCatalogo,
   listTrash,
+  contarPapeleraSinVer,
+  marcarPapeleraVista,
   listQuotes,
   moveQuoteDate,
   updateQuote,
+  updateOperativa,
   updateStatus,
+  getOperativaDelDia,
+  QUOTE_STATUSES,
   type Actor,
 } from './service.js';
 
@@ -193,36 +197,6 @@ describe('quotes service', () => {
     expect(dup.publicToken).not.toBe(q.publicToken);
     const log = await prisma.activityLog.findMany({ where: { quoteId: dup.id } });
     expect(log.some((l) => /duplicada de/.test(l.descripcion))).toBe(true);
-  });
-
-  it('expireStaleQuotes vence pipeline pasado de vigencia, pero no toca las reservadas', async () => {
-    const { eventTypeId, arcosId } = await ids();
-    const pipeline = await createQuote(
-      prisma,
-      { fecha: '2027-08-01', invitados: 200, spaceIds: [arcosId], eventTypeId, client: { nombre: 'Vence Pipeline' } },
-      actor,
-    );
-    createdQuoteIds.push(pipeline.id);
-    createdClientIds.push(pipeline.clientId);
-    await prisma.quote.update({ where: { id: pipeline.id }, data: { vigenciaHasta: new Date('2020-01-01T00:00:00.000Z') } });
-
-    const reservada = await createQuote(
-      prisma,
-      { fecha: '2027-08-02', invitados: 200, spaceIds: [arcosId], eventTypeId, client: { nombre: 'No Vence Reservada' } },
-      actor,
-    );
-    createdQuoteIds.push(reservada.id);
-    createdClientIds.push(reservada.clientId);
-    await updateStatus(prisma, reservada.id, 'formalizada', actor);
-    await prisma.quote.update({ where: { id: reservada.id }, data: { vigenciaHasta: new Date('2020-01-01T00:00:00.000Z') } });
-
-    const vencidas = await expireStaleQuotes(prisma);
-    expect(vencidas).toBeGreaterThanOrEqual(1);
-
-    const p = await prisma.quote.findUnique({ where: { id: pipeline.id } });
-    const r = await prisma.quote.findUnique({ where: { id: reservada.id } });
-    expect(p?.status).toBe('vencida');
-    expect(r?.status).toBe('formalizada'); // reserva intacta
   });
 
   it('el complemento tiene fecha de vencimiento después de formalizar (bitácora nueva)', async () => {
@@ -737,6 +711,98 @@ describe('papelera (soft-delete)', () => {
     await prisma.payment.deleteMany({ where: { quoteId: q.id } });
     await softDeleteQuote(prisma, q.id, actor);
     await expect(updateStatus(prisma, q.id, 'formalizada', actor)).rejects.toThrow(/papelera/);
+  });
+});
+
+describe('contador de papelera (sin ver)', () => {
+  /** Espera un instante: el sello de "visto" y el `deletedAt` se comparan con `>`,
+   *  y dos escrituras en el MISMO milisegundo harían pasar por "ya visto" algo
+   *  que se eliminó después. En la vida real median segundos; aquí, 10 ms. */
+  const tic = () => new Promise((r) => setTimeout(r, 10));
+
+  /** Un borrador de la vendedora, ya en la papelera. */
+  async function borradorEnPapelera(nombre: string, fecha: string, quien: Actor) {
+    const { eventTypeId, arcosId } = await ids();
+    const q = await createQuote(
+      prisma,
+      { fecha, invitados: 150, spaceIds: [arcosId], eventTypeId, client: { nombre } },
+      quien,
+    );
+    createdQuoteIds.push(q.id);
+    createdClientIds.push(q.clientId);
+    await softDeleteQuote(prisma, q.id, quien);
+    return q;
+  }
+
+  it('sin sello previo, todo lo que está en papelera cuenta', async () => {
+    const vendedora: Actor = { id: ventasId, role: 'ventas' };
+    // La vendedora nace sin sello: su papelera entera está "sin ver".
+    await borradorEnPapelera('Contador Sin Sello 1', '2031-02-08', vendedora);
+    await borradorEnPapelera('Contador Sin Sello 2', '2031-02-15', vendedora);
+    expect(await contarPapeleraSinVer(prisma, vendedora)).toBe(2);
+  });
+
+  it('marcar visto pone el contador en cero', async () => {
+    const vendedora: Actor = { id: ventasId, role: 'ventas' };
+    await marcarPapeleraVista(prisma, vendedora);
+    expect(await contarPapeleraSinVer(prisma, vendedora)).toBe(0);
+  });
+
+  it('una cotización eliminada DESPUÉS de marcar visto vuelve a contar', async () => {
+    const vendedora: Actor = { id: ventasId, role: 'ventas' };
+    await marcarPapeleraVista(prisma, vendedora);
+    expect(await contarPapeleraSinVer(prisma, vendedora)).toBe(0);
+    await tic();
+    await borradorEnPapelera('Contador Después del Sello', '2031-03-01', vendedora);
+    expect(await contarPapeleraSinVer(prisma, vendedora)).toBe(1);
+  });
+
+  it('restaurar una cotización la saca del contador', async () => {
+    const vendedora: Actor = { id: ventasId, role: 'ventas' };
+    await marcarPapeleraVista(prisma, vendedora);
+    await tic();
+    const q = await borradorEnPapelera('Contador Restaurada', '2031-03-08', vendedora);
+    expect(await contarPapeleraSinVer(prisma, vendedora)).toBe(1);
+    await restoreQuote(prisma, q.id, vendedora);
+    expect(await contarPapeleraSinVer(prisma, vendedora)).toBe(0);
+  });
+
+  it('las rutas responden: GET cuenta, POST marca visto y deja el contador en cero', async () => {
+    const auth = await authCookies(); // el admin de authCookies ES `actor`
+    await marcarPapeleraVista(prisma, actor);
+    await tic();
+    await borradorEnPapelera('Contador Por Ruta', '2031-05-03', actor);
+
+    const antes = await app.inject({ method: 'GET', url: '/api/quotes/trash/sin-ver', cookies: auth });
+    expect(antes.statusCode).toBe(200);
+    expect(antes.json().count).toBe(1);
+
+    const visto = await app.inject({ method: 'POST', url: '/api/quotes/trash/visto', cookies: auth });
+    expect(visto.statusCode).toBe(200);
+    expect(visto.json().ok).toBe(true);
+
+    const despues = await app.inject({ method: 'GET', url: '/api/quotes/trash/sin-ver', cookies: auth });
+    expect(despues.json().count).toBe(0);
+  });
+
+  it('una vendedora no cuenta las de otra; el admin las cuenta todas', async () => {
+    const vendedora: Actor = { id: ventasId, role: 'ventas' };
+    // Se cuenta por DELTA: la papelera del admin es global y otras suites dejan
+    // basura ahí. Lo que se fija es cuánto MUEVE cada eliminación, no el absoluto.
+    await marcarPapeleraVista(prisma, vendedora);
+    await marcarPapeleraVista(prisma, actor);
+    await tic();
+    const adminAntes = await contarPapeleraSinVer(prisma, actor);
+
+    // Una del admin: la vendedora no la ve, el admin sí.
+    await borradorEnPapelera('Contador Del Admin', '2031-04-05', actor);
+    expect(await contarPapeleraSinVer(prisma, vendedora)).toBe(0);
+    expect(await contarPapeleraSinVer(prisma, actor)).toBe(adminAntes + 1);
+
+    // Una de la vendedora: la ve ella, y el admin también (ve todo).
+    await borradorEnPapelera('Contador De La Vendedora', '2031-04-12', vendedora);
+    expect(await contarPapeleraSinVer(prisma, vendedora)).toBe(1);
+    expect(await contarPapeleraSinVer(prisma, actor)).toBe(adminAntes + 2);
   });
 });
 
@@ -1338,5 +1404,937 @@ describe('mover de catálogo', () => {
     expect(res.json().antes).toBe(q.total);
     expect(res.json().despues).toBeGreaterThan(q.total);
     expect(res.json().quote.priceListId).toBe(caro.id);
+  });
+});
+
+/** Una línea completa de un desglose ya persistido, buscada por concepto exacto. */
+function lineaDe(breakdown: unknown, concepto: string) {
+  const { lines } = breakdown as {
+    lines: { concepto: string; detalle?: string; monto: number; ivaIncluido: boolean; grupo?: string }[];
+  };
+  return lines.find((l) => l.concepto === concepto);
+}
+
+// ---------------------------------------------------------------------------
+// Servicio suelto del evento (punto 2 del Plan G). No es un add-on del catálogo:
+// vive en LA cotización. Lo que estas pruebas fijan es que el dinero cae donde
+// debe —en `otros`, nunca en la renta— y que sobrevive a editar, duplicar y
+// mover de catálogo.
+// ---------------------------------------------------------------------------
+describe('servicios sueltos del evento (extras)', () => {
+  const extraMenu = { nombre: 'Cambio de menú', kind: 'porPersona' as const, monto: 200, cantidad: 1 };
+
+  it('se guardan, salen en el desglose y suman al total con IVA incluido', async () => {
+    const { eventTypeId, arcosId } = await ids();
+    const q = await createQuote(
+      prisma,
+      {
+        fecha: '2032-02-14',
+        invitados: 250,
+        spaceIds: [arcosId],
+        eventTypeId,
+        extras: [extraMenu],
+        client: { nombre: 'Extra Menú' },
+      },
+      actor,
+    );
+    createdQuoteIds.push(q.id);
+    createdClientIds.push(q.clientId);
+
+    const guardados = await prisma.quoteExtra.findMany({ where: { quoteId: q.id } });
+    expect(guardados).toHaveLength(1);
+    expect(guardados[0]!.monto).toBe(200);
+    expect(guardados[0]!.kind).toBe('porPersona');
+
+    const linea = lineaDe(q.breakdown, 'Cambio de menú');
+    expect(linea?.monto).toBe(200 * 250);
+    expect(linea?.grupo).toBe('otros');
+    expect(linea?.ivaIncluido).toBe(true);
+  });
+
+  // LA prueba del punto: un extra NO puede mover el plan de pagos. Si entrara a
+  // la renta cambiaría la base del complemento de todo evento que use un extra.
+  it('no entra a la base del complemento: el plan de pagos no se mueve', async () => {
+    const { eventTypeId, arcosId } = await ids();
+    const base = { fecha: '2032-03-13', invitados: 250, spaceIds: [arcosId], eventTypeId };
+
+    const sin = await createQuote(prisma, { ...base, client: { nombre: 'Sin extra' } }, actor);
+    createdQuoteIds.push(sin.id);
+    createdClientIds.push(sin.clientId);
+    const con = await createQuote(
+      prisma,
+      { ...base, fecha: '2032-03-20', extras: [extraMenu], client: { nombre: 'Con extra' } },
+      actor,
+    );
+    createdQuoteIds.push(con.id);
+    createdClientIds.push(con.clientId);
+
+    // La renta no se movió; el total sí, exactamente por el monto del extra.
+    expect(con.rentaTotal).toBe(sin.rentaTotal);
+    expect(con.total).toBe(sin.total + 200 * 250);
+
+    const ecSin = await loadEstadoCuenta(prisma, sin);
+    const ecCon = await loadEstadoCuenta(prisma, con);
+    // El estado de cuenta se mide SOLO sobre la renta: mismo total y mismo plan.
+    expect(ecCon.estadoCuenta.total).toBe(ecSin.estadoCuenta.total);
+    const hito = (ec: typeof ecSin, key: string) =>
+      ec.estadoCuenta.plan?.find((m) => m.key === key)?.objetivo;
+    expect(hito(ecCon, 'apartar')).toBe(hito(ecSin, 'apartar'));
+    expect(hito(ecCon, 'complemento')).toBe(hito(ecSin, 'complemento'));
+    expect(hito(ecCon, 'finiquito')).toBe(hito(ecSin, 'finiquito'));
+  });
+
+  it('al reeditar sobreviven: se reemplazan por los que manda el formulario', async () => {
+    const { eventTypeId, arcosId } = await ids();
+    const q = await createQuote(
+      prisma,
+      { fecha: '2032-04-10', invitados: 250, spaceIds: [arcosId], eventTypeId, extras: [extraMenu], client: { nombre: 'Extra Editable' } },
+      actor,
+    );
+    createdQuoteIds.push(q.id);
+    createdClientIds.push(q.clientId);
+
+    const editada = await updateQuote(
+      prisma,
+      q.id,
+      {
+        fecha: '2032-04-10',
+        invitados: 250,
+        spaceIds: [arcosId],
+        eventTypeId,
+        extras: [{ ...extraMenu, monto: 300 }, { nombre: 'Grúa', kind: 'fijo', monto: 7500, cantidad: 1 }],
+      },
+      actor,
+    );
+    const guardados = await prisma.quoteExtra.findMany({ where: { quoteId: q.id }, orderBy: { monto: 'asc' } });
+    expect(guardados.map((e) => e.monto)).toEqual([300, 7500]); // no quedaron duplicados del anterior
+    expect(lineaDe(editada.breakdown, 'Cambio de menú')?.monto).toBe(300 * 250);
+    expect(lineaDe(editada.breakdown, 'Grúa')?.monto).toBe(7500);
+  });
+
+  it('duplicar la cotización copia los extras', async () => {
+    const { eventTypeId, arcosId } = await ids();
+    const q = await createQuote(
+      prisma,
+      { fecha: '2032-05-08', invitados: 250, spaceIds: [arcosId], eventTypeId, extras: [extraMenu], client: { nombre: 'Extra Duplicable' } },
+      actor,
+    );
+    createdQuoteIds.push(q.id);
+    createdClientIds.push(q.clientId);
+
+    const copia = await duplicateQuote(prisma, q.id, actor);
+    createdQuoteIds.push(copia.id);
+    const copiados = await prisma.quoteExtra.findMany({ where: { quoteId: copia.id } });
+    expect(copiados).toHaveLength(1);
+    expect(copiados[0]!.nombre).toBe('Cambio de menú');
+    expect(copia.total).toBe(q.total);
+  });
+
+  it('un monto con decimales se rechaza (Postgres truncaría el flotante sin avisar)', async () => {
+    const { eventTypeId, arcosId } = await ids();
+    await expect(
+      createQuote(
+        prisma,
+        {
+          fecha: '2032-06-12',
+          invitados: 250,
+          spaceIds: [arcosId],
+          eventTypeId,
+          extras: [{ ...extraMenu, monto: 200.5 }],
+          client: { nombre: 'Extra Roto' },
+        },
+        actor,
+      ),
+    ).rejects.toThrow();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Descuento de cortesía (punto 7 del Plan G). `esCortesia` NUNCA había afectado
+// el precio; esto se lo da. Pega SOLO sobre la renta.
+// ---------------------------------------------------------------------------
+describe('descuento de cortesía', () => {
+  it('se guarda con su motivo y deja la renta en cero al 100%', async () => {
+    const { eventTypeId, arcosId } = await ids();
+    const q = await createQuote(
+      prisma,
+      {
+        fecha: '2032-07-10',
+        invitados: 250,
+        spaceIds: [arcosId],
+        eventTypeId,
+        esCortesia: true,
+        descuentoPct: 100,
+        descuentoMotivo: 'Boda de la hija del dueño',
+        client: { nombre: 'Cortesía Total' },
+      },
+      actor,
+    );
+    createdQuoteIds.push(q.id);
+    createdClientIds.push(q.clientId);
+
+    expect(q.descuentoPct).toBe(100);
+    expect(q.descuentoMotivo).toBe('Boda de la hija del dueño');
+    expect(q.rentaTotal).toBe(0);
+    expect(q.total).toBe(0);
+    const linea = lineaDe(q.breakdown, 'Descuento de cortesía (100% renta)');
+    expect(linea?.grupo).toBe('renta');
+    expect(linea?.detalle).toBe('Boda de la hija del dueño');
+  });
+
+  it('un descuento sin motivo se rechaza: sin explicación no es auditable', async () => {
+    const { eventTypeId, arcosId } = await ids();
+    await expect(
+      createQuote(
+        prisma,
+        {
+          fecha: '2032-08-14',
+          invitados: 250,
+          spaceIds: [arcosId],
+          eventTypeId,
+          descuentoPct: 50,
+          client: { nombre: 'Sin Motivo' },
+        },
+        actor,
+      ),
+    ).rejects.toThrow(/motivo/i);
+  });
+
+  it('un porcentaje fuera de 0..100 se rechaza', async () => {
+    const { eventTypeId, arcosId } = await ids();
+    await expect(
+      createQuote(
+        prisma,
+        {
+          fecha: '2032-09-11',
+          invitados: 250,
+          spaceIds: [arcosId],
+          eventTypeId,
+          descuentoPct: 120,
+          descuentoMotivo: 'Más que gratis',
+          client: { nombre: 'Ciento Veinte' },
+        },
+        actor,
+      ),
+    ).rejects.toThrow();
+  });
+
+  // `esCortesia` se sigue guardando solo (marca el evento en verde en la agenda);
+  // el precio lo mueve el porcentaje, no la casilla. Marcar cortesía sin capturar
+  // porcentaje NO cambia el dinero, que es como se comportaba hasta hoy.
+  it('esCortesia sin porcentaje sigue sin afectar el precio', async () => {
+    const { eventTypeId, arcosId } = await ids();
+    const q = await createQuote(
+      prisma,
+      { fecha: '2032-10-09', invitados: 250, spaceIds: [arcosId], eventTypeId, esCortesia: true, client: { nombre: 'Cortesía Sin Descuento' } },
+      actor,
+    );
+    createdQuoteIds.push(q.id);
+    createdClientIds.push(q.clientId);
+    expect(q.esCortesia).toBe(true);
+    expect(q.descuentoPct).toBeNull();
+    const cortesia = (q.breakdown as { lines: { concepto: string }[] }).lines.filter((l) =>
+      l.concepto.startsWith('Descuento de cortesía'),
+    );
+    expect(cortesia).toHaveLength(0);
+    // Los 108,500 de folleto, intactos.
+    expect(q.rentaTotal).toBe(108500);
+  });
+
+  it('el descuento baja la base del complemento: es renta que ya no se va a cobrar', async () => {
+    const { eventTypeId, arcosId } = await ids();
+    const base = { invitados: 250, spaceIds: [arcosId], eventTypeId };
+    const sin = await createQuote(prisma, { ...base, fecha: '2032-11-13', client: { nombre: 'Renta Completa' } }, actor);
+    createdQuoteIds.push(sin.id);
+    createdClientIds.push(sin.clientId);
+    const con = await createQuote(
+      prisma,
+      { ...base, fecha: '2032-11-20', descuentoPct: 50, descuentoMotivo: 'Media cortesía', client: { nombre: 'Media Renta' } },
+      actor,
+    );
+    createdQuoteIds.push(con.id);
+    createdClientIds.push(con.clientId);
+
+    expect(con.rentaTotal).toBe(Math.round(sin.rentaTotal / 2));
+    const ec = await loadEstadoCuenta(prisma, con);
+    expect(ec.estadoCuenta.total).toBe(con.rentaTotal);
+  });
+
+  it('quitar el descuento al reeditar devuelve la renta completa', async () => {
+    const { eventTypeId, arcosId } = await ids();
+    const q = await createQuote(
+      prisma,
+      {
+        fecha: '2032-12-11',
+        invitados: 250,
+        spaceIds: [arcosId],
+        eventTypeId,
+        descuentoPct: 100,
+        descuentoMotivo: 'Cortesía que se cancela',
+        client: { nombre: 'Cortesía Revocable' },
+      },
+      actor,
+    );
+    createdQuoteIds.push(q.id);
+    createdClientIds.push(q.clientId);
+    expect(q.rentaTotal).toBe(0);
+
+    const editada = await updateQuote(
+      prisma,
+      q.id,
+      { fecha: '2032-12-11', invitados: 250, spaceIds: [arcosId], eventTypeId },
+      actor,
+    );
+    expect(editada.descuentoPct).toBeNull();
+    expect(editada.descuentoMotivo).toBeNull();
+    expect(editada.rentaTotal).toBe(108500);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// El contrato imprime los renglones del GRUPO `renta` y, como pie, el total de
+// renta del DESGLOSE. Este test fija la aritmética de esa tabla: la suma de los
+// renglones tiene que ser exactamente el total impreso.
+//
+// Es la red del arreglo de `ContratoPage`: antes filtraba por texto del concepto
+// ('Renta ' y 'Horas extra'), así que la Capilla no se imprimía nunca y todo
+// sábado con capilla sacaba una tabla que sumaba $5,000 menos que su total, en un
+// documento que se firma. Si alguien vuelve a filtrar por texto —o si el motor
+// gana un renglón de renta— este test no lo ve, pero sí ve que el desglose y su
+// total sigan cuadrando, que es la invariante de la que depende la tabla.
+// ---------------------------------------------------------------------------
+describe('el contrato cuadra: renglones de renta contra su total', () => {
+  it('capilla + horas extra + descuento: los renglones suman el total del desglose', async () => {
+    const { eventTypeId, arcosId } = await ids();
+    const paquete = await prisma.foodPackage.findFirstOrThrow({
+      where: { nombre: 'SUPREME', eventTypeId, priceList: { activa: true } },
+    });
+    const q = await createQuote(
+      prisma,
+      {
+        fecha: '2033-01-08', // sábado: la capilla se cobra
+        invitados: 250,
+        spaceIds: [arcosId],
+        eventTypeId,
+        horasExtra: 2,
+        usaCapilla: true,
+        foodPackageId: paquete.id,
+        descuentoPct: 50,
+        descuentoMotivo: 'Boda de la sobrina',
+        client: { nombre: 'Contrato Que Cuadra' },
+      },
+      actor,
+    );
+    createdQuoteIds.push(q.id);
+    createdClientIds.push(q.clientId);
+
+    const breakdown = q.breakdown as unknown as {
+      lines: { concepto: string; monto: number; grupo?: string }[];
+      rentaTotal: number;
+    };
+    const renta = breakdown.lines.filter((l) => l.grupo === 'renta');
+
+    // Los cinco renglones, con su número, en el orden en que se imprimen.
+    expect(renta.map((l) => [l.concepto, l.monto])).toEqual([
+      ['Renta Salón Los Arcos', 108500],
+      ['Descuento de cortesía (50% renta)', -54250],
+      ['Horas extra', 5425],
+      ['Capilla', 5000],
+      ['Descuento por alimentos (5% renta)', -2712.5],
+    ]);
+
+    // 108,500 − 54,250 + 5,425 + 5,000 − 2,712.50 = 61,962.50
+    const suma = renta.reduce((s, l) => s + l.monto, 0);
+    expect(suma).toBe(61962.5);
+    expect(breakdown.rentaTotal).toBe(61962.5);
+
+    // Y por esto el pie del contrato imprime el total del DESGLOSE y no la
+    // columna: la columna es entera y aquí redondea medio peso hacia arriba.
+    expect(q.rentaTotal).toBe(61963);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Arrastrar en la agenda NO puede perder dinero.
+//
+// `moveQuoteDate` reconstruye la selección para recalcular con la fecha nueva, y
+// durante un tiempo la reconstruyó A MANO campo por campo: los extras y el
+// descuento de cortesía no estaban en esa lista, así que arrastrar un evento le
+// borraba el descuento y los servicios sueltos y lo represiaba solo. El dueño
+// arrastra a diario, o sea que pasaba a diario sin que nadie lo notara.
+//
+// Estas pruebas fijan el resultado por comparación: arrastrar tiene que dejar la
+// cotización EXACTAMENTE como si se hubiera capturado en la fecha destino.
+// ---------------------------------------------------------------------------
+describe('arrastrar en la agenda no pierde el descuento ni los extras', () => {
+  const extraMenu = { nombre: 'Cambio de menú', kind: 'porPersona' as const, monto: 200, cantidad: 1 };
+
+  it('el arrastre conserva el descuento de cortesía y los servicios sueltos', async () => {
+    const { eventTypeId, arcosId } = await ids();
+    const q = await createQuote(
+      prisma,
+      {
+        fecha: '2035-03-10',
+        invitados: 250,
+        spaceIds: [arcosId],
+        eventTypeId,
+        extras: [extraMenu],
+        descuentoPct: 50,
+        descuentoMotivo: 'Cortesía que el arrastre no debe borrar',
+        client: { nombre: 'Arrastre Con Descuento' },
+      },
+      actor,
+    );
+    createdQuoteIds.push(q.id);
+    createdClientIds.push(q.clientId);
+
+    // La misma cotización capturada DIRECTO en la fecha destino: es la referencia
+    // de cuánto debe costar el evento ahí. Dos borradores el mismo día no se
+    // estorban (solo los estatus que apartan bloquean el espacio).
+    const referencia = await createQuote(
+      prisma,
+      {
+        fecha: '2035-03-17',
+        invitados: 250,
+        spaceIds: [arcosId],
+        eventTypeId,
+        extras: [extraMenu],
+        descuentoPct: 50,
+        descuentoMotivo: 'Cortesía que el arrastre no debe borrar',
+        client: { nombre: 'Arrastre Referencia' },
+      },
+      actor,
+    );
+    createdQuoteIds.push(referencia.id);
+    createdClientIds.push(referencia.clientId);
+
+    const movida = await moveQuoteDate(prisma, q.id, '2035-03-17', actor);
+
+    // El descuento sobrevive, con su motivo.
+    expect(movida.descuentoPct).toBe(50);
+    expect(movida.descuentoMotivo).toBe('Cortesía que el arrastre no debe borrar');
+    // Y el servicio suelto sigue ahí, uno solo (ni borrado ni duplicado).
+    const extras = await prisma.quoteExtra.findMany({ where: { quoteId: q.id } });
+    expect(extras).toHaveLength(1);
+    expect(extras[0]!.nombre).toBe('Cambio de menú');
+    expect(movida.extras).toHaveLength(1);
+
+    // Los renglones y los totales son los de la cotización capturada directo.
+    expect(lineaDe(movida.breakdown, 'Cambio de menú')?.monto).toBe(200 * 250);
+    expect(lineaDe(movida.breakdown, 'Descuento de cortesía (50% renta)')?.monto).toBe(
+      lineaDe(referencia.breakdown, 'Descuento de cortesía (50% renta)')?.monto,
+    );
+    expect(movida.rentaTotal).toBe(referencia.rentaTotal);
+    expect(movida.total).toBe(referencia.total);
+  });
+
+  it('mover de catálogo tampoco los pierde (el otro camino de recálculo)', async () => {
+    const { eventTypeId, arcosId } = await ids();
+    const q = await createQuote(
+      prisma,
+      {
+        fecha: '2035-04-14',
+        invitados: 250,
+        spaceIds: [arcosId],
+        eventTypeId,
+        extras: [extraMenu],
+        descuentoPct: 50,
+        descuentoMotivo: 'Cortesía que el catálogo no debe borrar',
+        client: { nombre: 'Catálogo Con Descuento' },
+      },
+      actor,
+    );
+    createdQuoteIds.push(q.id);
+    createdClientIds.push(q.clientId);
+
+    // Un catálogo clonado sin incremento: los precios son los mismos, así que el
+    // movimiento no debe cambiar NADA. Si el recálculo perdiera el descuento o el
+    // extra, el total se movería igual.
+    const destino = await clonarCatalogo(prisma, {
+      nombre: `ESPEJO-${SUF}`,
+      anio: 2095,
+      clonarDe: q.priceListId,
+      incrementoPct: 0,
+    });
+    createdPriceListIds.push(destino.id);
+
+    const { quote: movida, antes, despues } = await moverCatalogo(prisma, q.id, destino.id, actor);
+    expect(despues).toBe(antes);
+    expect(movida.descuentoPct).toBe(50);
+    expect(movida.extras).toHaveLength(1);
+    expect(lineaDe(movida.breakdown, 'Cambio de menú')?.monto).toBe(200 * 250);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Código de evento (punto 5 del Plan G): `17ENE-CBOLADO-CUPULA`. La función pura
+// y su formato están fijados en `packages/shared/src/codigoEvento.test.ts`; aquí
+// se prueba lo que necesita la base: unicidad, generación y CONGELADO.
+// ---------------------------------------------------------------------------
+describe('código de evento', () => {
+  it('createQuote lo genera con el formato pedido por el dueño', async () => {
+    const { eventTypeId, cupulaId } = await ids();
+    const q = await createQuote(
+      prisma,
+      {
+        fecha: '2034-01-17',
+        invitados: 250,
+        spaceIds: [cupulaId],
+        eventTypeId,
+        client: { nombre: 'Carlos Bolado' },
+      },
+      actor,
+    );
+    createdQuoteIds.push(q.id);
+    createdClientIds.push(q.clientId);
+    expect(q.codigo).toBe('17ENE-CBOLADO-CUPULA');
+  });
+
+  it('dos eventos del mismo cliente, misma fecha y mismo salón: sufijo, y el guardado no truena', async () => {
+    const { eventTypeId, cupulaId } = await ids();
+    const base = { fecha: '2034-02-20', invitados: 250, spaceIds: [cupulaId], eventTypeId };
+    const uno = await createQuote(prisma, { ...base, client: { nombre: 'Colisión Exacta' } }, actor);
+    createdQuoteIds.push(uno.id);
+    createdClientIds.push(uno.clientId);
+    // El MISMO cliente, la MISMA fecha y el MISMO salón: raro, pero posible.
+    const dos = await createQuote(prisma, { ...base, clientId: uno.clientId }, actor);
+    createdQuoteIds.push(dos.id);
+    const tres = await createQuote(prisma, { ...base, clientId: uno.clientId }, actor);
+    createdQuoteIds.push(tres.id);
+
+    expect(uno.codigo).toBe('20FEB-CEXACTA-CUPULA');
+    expect(dos.codigo).toBe('20FEB-CEXACTA-CUPULA-2');
+    expect(tres.codigo).toBe('20FEB-CEXACTA-CUPULA-3');
+  });
+
+  it('el código se CONGELA al formalizar: cambiar la fecha ya no lo mueve', async () => {
+    const { eventTypeId, cupulaId } = await ids();
+    const q = await createQuote(
+      prisma,
+      {
+        fecha: '2034-03-14',
+        invitados: 250,
+        spaceIds: [cupulaId],
+        eventTypeId,
+        client: { nombre: 'Frida Congelada' },
+      },
+      actor,
+    );
+    createdQuoteIds.push(q.id);
+    createdClientIds.push(q.clientId);
+    expect(q.codigo).toBe('14MAR-FCONGELADA-CUPULA');
+
+    // En borrador todavía se regenera: el código sigue a la fecha.
+    const movida = await updateQuote(
+      prisma,
+      q.id,
+      { fecha: '2034-03-21', invitados: 250, spaceIds: [cupulaId], eventTypeId },
+      actor,
+    );
+    expect(movida.codigo).toBe('21MAR-FCONGELADA-CUPULA');
+
+    // Con compromiso de pago queda fijo: ya está impreso en recibos y contratos.
+    await updateStatus(prisma, q.id, 'formalizada', actor);
+    const editada = await updateQuote(
+      prisma,
+      q.id,
+      { fecha: '2034-04-11', invitados: 250, spaceIds: [cupulaId], eventTypeId },
+      actor,
+    );
+    expect(editada.fechaEvento.toISOString().slice(0, 10)).toBe('2034-04-11');
+    expect(editada.codigo).toBe('21MAR-FCONGELADA-CUPULA');
+
+    // Y tampoco lo mueve el arrastre en la agenda, que es el otro camino a la fecha.
+    const arrastrada = await moveQuoteDate(prisma, q.id, '2034-05-09', actor);
+    expect(arrastrada.fechaEvento.toISOString().slice(0, 10)).toBe('2034-05-09');
+    expect(arrastrada.codigo).toBe('21MAR-FCONGELADA-CUPULA');
+  });
+
+  it('en borrador, cambiar el cliente o el espacio también mueve el código', async () => {
+    const { eventTypeId, cupulaId, arcosId } = await ids();
+    const q = await createQuote(
+      prisma,
+      {
+        fecha: '2034-06-13',
+        invitados: 250,
+        spaceIds: [cupulaId],
+        eventTypeId,
+        client: { nombre: 'Ana Movible' },
+      },
+      actor,
+    );
+    createdQuoteIds.push(q.id);
+    createdClientIds.push(q.clientId);
+    expect(q.codigo).toBe('13JUN-AMOVIBLE-CUPULA');
+
+    const otroEspacio = await updateQuote(
+      prisma,
+      q.id,
+      { fecha: '2034-06-13', invitados: 250, spaceIds: [arcosId], eventTypeId },
+      actor,
+    );
+    expect(otroEspacio.codigo).toBe('13JUN-AMOVIBLE-ARCOS');
+
+    const otroNombre = await updateQuote(
+      prisma,
+      q.id,
+      {
+        fecha: '2034-06-13',
+        invitados: 250,
+        spaceIds: [arcosId],
+        eventTypeId,
+        client: { nombre: 'Ana Recapturada' },
+      },
+      actor,
+    );
+    expect(otroNombre.codigo).toBe('13JUN-ARECAPTURADA-ARCOS');
+  });
+
+  it('el duplicado nace con su propio código, no con el del original', async () => {
+    const { eventTypeId, cupulaId } = await ids();
+    const q = await createQuote(
+      prisma,
+      {
+        fecha: '2034-07-11',
+        invitados: 250,
+        spaceIds: [cupulaId],
+        eventTypeId,
+        client: { nombre: 'Diego Duplicado' },
+      },
+      actor,
+    );
+    createdQuoteIds.push(q.id);
+    createdClientIds.push(q.clientId);
+    const dup = await duplicateQuote(prisma, q.id, actor);
+    createdQuoteIds.push(dup.id);
+
+    expect(q.codigo).toBe('11JUL-DDUPLICADO-CUPULA');
+    expect(dup.codigo).toBe('11JUL-DDUPLICADO-CUPULA-2');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Desplegable Banquetero / Cliente (punto 3 del Plan G).
+//
+// Con banquetero, ÉL es el cliente de la hacienda: firma él y se le factura a él
+// (decisión del dueño en el diseño de banqueteros). El festejado es el cliente
+// FINAL y es dato OPERATIVO: sale en la hoja operativa y NO en el contrato.
+//
+// Este plan hace solo la parte del formulario y el campo `festejado`. La cuenta
+// corriente, los apartados sin precio y el estado de cuenta compartible son el
+// plan de banqueteros, aparte.
+// ---------------------------------------------------------------------------
+describe('banquetero / cliente y festejado', () => {
+  let banqueteroId: string;
+
+  beforeAll(async () => {
+    const b = await prisma.banquetero.create({
+      data: { nombre: `Banquetero Plan G ${SUF}`, telefono: '9981234567' },
+    });
+    banqueteroId = b.id;
+  });
+
+  afterAll(async () => {
+    // Las cotizaciones de este bloque se borran en el afterAll global, que corre
+    // DESPUÉS: el banquetero no se puede borrar aquí sin romper su FK, así que se
+    // desliga primero.
+    await prisma.quote.updateMany({ where: { banqueteroId }, data: { banqueteroId: null } });
+    await prisma.banquetero.delete({ where: { id: banqueteroId } });
+  });
+
+  it('con banquetero, el cliente de la cotización es el banquetero y el festejado se guarda aparte', async () => {
+    const { eventTypeId, cupulaId } = await ids();
+    const q = await createQuote(
+      prisma,
+      {
+        fecha: '2035-06-16',
+        invitados: 250,
+        spaceIds: [cupulaId],
+        eventTypeId,
+        banqueteroId,
+        festejado: 'Alondra Muñoz',
+        festejadoTelefono: '9987654321',
+        // El cliente que firma: el banquetero (el formulario llena estos datos
+        // desde su ficha y los deja de solo lectura).
+        client: { nombre: `Banquetero Plan G ${SUF}`, telefono: '9981234567' },
+      },
+      actor,
+    );
+    createdQuoteIds.push(q.id);
+    createdClientIds.push(q.clientId);
+
+    expect(q.banqueteroId).toBe(banqueteroId);
+    expect(q.banquetero?.nombre).toBe(`Banquetero Plan G ${SUF}`);
+    // El contrato y la factura leen al CLIENTE, y el cliente es el banquetero.
+    expect(q.client.nombre).toBe(`Banquetero Plan G ${SUF}`);
+    // El festejado va aparte: no es la contraparte del contrato.
+    expect(q.festejado).toBe('Alondra Muñoz');
+    expect(q.festejadoTelefono).toBe('9987654321');
+    // Y el desglose no cambia por tener banquetero: no toca el precio. Se compara
+    // contra el MISMO evento sin banquetero (dos borradores no se estorban).
+    const sinBanquetero = await createQuote(
+      prisma,
+      {
+        fecha: '2035-06-16',
+        invitados: 250,
+        spaceIds: [cupulaId],
+        eventTypeId,
+        client: { nombre: 'Sin Banquetero Referencia' },
+      },
+      actor,
+    );
+    createdQuoteIds.push(sinBanquetero.id);
+    createdClientIds.push(sinBanquetero.clientId);
+    expect(q.total).toBe(sinBanquetero.total);
+    expect(q.rentaTotal).toBe(sinBanquetero.rentaTotal);
+  });
+
+  it('el festejado sale en la hoja operativa del día, y el contrato sigue leyendo al cliente', async () => {
+    const { eventTypeId, camposId } = await ids();
+    const q = await createQuote(
+      prisma,
+      {
+        fecha: '2035-07-14',
+        invitados: 200,
+        spaceIds: [camposId],
+        eventTypeId,
+        banqueteroId,
+        festejado: 'Generación 2035',
+        client: { nombre: `Banquetero Hoja ${SUF}` },
+      },
+      actor,
+    );
+    createdQuoteIds.push(q.id);
+    createdClientIds.push(q.clientId);
+    // La hoja operativa solo trae eventos que ya apartan la fecha.
+    await updateStatus(prisma, q.id, 'formalizada', actor);
+
+    const dia = await getOperativaDelDia(prisma, '2035-07-14');
+    const evento = dia.eventos.find((e) => e.quoteId === q.id);
+    expect(evento).toBeDefined();
+    expect(evento!.festejado).toBe('Generación 2035');
+    expect(evento!.banquetero).toBe(`Banquetero Plan G ${SUF}`);
+    // El cliente del evento —el que firma y al que se factura— es el banquetero.
+    expect(evento!.cliente).toBe(`Banquetero Hoja ${SUF}`);
+  });
+
+  it('el festejado de la hoja operativa vieja sigue saliendo si la columna está vacía', async () => {
+    const { eventTypeId, arcosId } = await ids();
+    const q = await createQuote(
+      prisma,
+      { fecha: '2035-08-11', invitados: 250, spaceIds: [arcosId], eventTypeId, client: { nombre: 'Festejado Legado' } },
+      actor,
+    );
+    createdQuoteIds.push(q.id);
+    createdClientIds.push(q.clientId);
+    await updateStatus(prisma, q.id, 'formalizada', actor);
+    await updateOperativa(prisma, q.id, { hoja: { nombreFestejado: 'Sofía (hoja vieja)' } }, actor);
+
+    const dia = await getOperativaDelDia(prisma, '2035-08-11');
+    expect(dia.eventos.find((e) => e.quoteId === q.id)?.festejado).toBe('Sofía (hoja vieja)');
+  });
+
+  it('reeditar conserva el banquetero y el festejado, y cambiar a cliente directo los limpia', async () => {
+    const { eventTypeId, arcosId } = await ids();
+    const q = await createQuote(
+      prisma,
+      {
+        fecha: '2035-09-08',
+        invitados: 250,
+        spaceIds: [arcosId],
+        eventTypeId,
+        banqueteroId,
+        festejado: 'Regina',
+        client: { nombre: `Banquetero Editable ${SUF}` },
+      },
+      actor,
+    );
+    createdQuoteIds.push(q.id);
+    createdClientIds.push(q.clientId);
+
+    const base = { fecha: '2035-09-08', invitados: 250, spaceIds: [arcosId], eventTypeId };
+
+    // El formulario reenvía los tres campos: se conservan.
+    const igual = await updateQuote(
+      prisma,
+      q.id,
+      { ...base, banqueteroId, festejado: 'Regina', festejadoTelefono: null },
+      actor,
+    );
+    expect(igual.banqueteroId).toBe(banqueteroId);
+    expect(igual.festejado).toBe('Regina');
+
+    // Cambiar el desplegable a "Cliente" manda null en los tres y los limpia.
+    const directo = await updateQuote(
+      prisma,
+      q.id,
+      { ...base, banqueteroId: null, festejado: null, festejadoTelefono: null },
+      actor,
+    );
+    expect(directo.banqueteroId).toBeNull();
+    expect(directo.festejado).toBeNull();
+  });
+
+  // El bug que el armador único previene: arrastrar la fecha reescribe la
+  // cotización completa, así que sin el banquetero y el festejado en la selección
+  // guardada, el arrastre los borraría igual que borraba el descuento.
+  it('arrastrar la fecha NO borra el banquetero ni el festejado', async () => {
+    const { eventTypeId, cupulaId } = await ids();
+    const q = await createQuote(
+      prisma,
+      {
+        fecha: '2035-10-11',
+        invitados: 250,
+        spaceIds: [cupulaId],
+        eventTypeId,
+        banqueteroId,
+        festejado: 'Ximena',
+        festejadoTelefono: '9990001122',
+        client: { nombre: `Banquetero Arrastre ${SUF}` },
+      },
+      actor,
+    );
+    createdQuoteIds.push(q.id);
+    createdClientIds.push(q.clientId);
+
+    const movida = await moveQuoteDate(prisma, q.id, '2035-10-18', actor);
+    expect(movida.fechaEvento.toISOString().slice(0, 10)).toBe('2035-10-18');
+    expect(movida.banqueteroId).toBe(banqueteroId);
+    expect(movida.festejado).toBe('Ximena');
+    expect(movida.festejadoTelefono).toBe('9990001122');
+  });
+
+  it('duplicar la cotización se lleva el banquetero y el festejado', async () => {
+    const { eventTypeId, arcosId } = await ids();
+    const q = await createQuote(
+      prisma,
+      {
+        fecha: '2035-11-08',
+        invitados: 250,
+        spaceIds: [arcosId],
+        eventTypeId,
+        banqueteroId,
+        festejado: 'Camila',
+        client: { nombre: `Banquetero Duplicable ${SUF}` },
+      },
+      actor,
+    );
+    createdQuoteIds.push(q.id);
+    createdClientIds.push(q.clientId);
+
+    const copia = await duplicateQuote(prisma, q.id, actor);
+    createdQuoteIds.push(copia.id);
+    expect(copia.banqueteroId).toBe(banqueteroId);
+    expect(copia.festejado).toBe('Camila');
+  });
+
+  it('un banquetero que no existe se rechaza con 400 y no deja cotización a medias', async () => {
+    const { eventTypeId, arcosId } = await ids();
+    const antes = await prisma.quote.count();
+    await expect(
+      createQuote(
+        prisma,
+        {
+          fecha: '2035-12-13',
+          invitados: 250,
+          spaceIds: [arcosId],
+          eventTypeId,
+          banqueteroId: 'banquetero-que-no-existe',
+          client: { nombre: 'Banquetero Fantasma' },
+        },
+        actor,
+      ),
+    ).rejects.toThrow(/banquetero/i);
+    expect(await prisma.quote.count()).toBe(antes);
+  });
+
+  it('sin banquetero todo queda como hoy: los tres campos en null', async () => {
+    const { eventTypeId, arcosId } = await ids();
+    const q = await createQuote(
+      prisma,
+      { fecha: '2036-01-10', invitados: 250, spaceIds: [arcosId], eventTypeId, client: { nombre: 'Cliente Directo' } },
+      actor,
+    );
+    createdQuoteIds.push(q.id);
+    createdClientIds.push(q.clientId);
+    expect(q.banqueteroId).toBeNull();
+    expect(q.festejado).toBeNull();
+    expect(q.festejadoTelefono).toBeNull();
+  });
+});
+
+/**
+ * Punto 8: se retiran `enviada`, `aceptada` y `vencida`. Quedan cuatro estatus.
+ *
+ * Y con `vencida` se fue el vencimiento automático completo (decisión del dueño,
+ * con la consecuencia aceptada: nada limpia la agenda sola). Estos tests fijan
+ * las dos mitades — que los tres valores ya no existen, y que un borrador viejo
+ * se queda en borrador.
+ */
+describe('estatus retirados (punto 8)', () => {
+  it('el enum de la base tiene exactamente los cuatro estatus vivos', async () => {
+    // Postgres no puede quitar un valor de un enum, así que la migración creó un
+    // tipo nuevo y movió la columna. Esto comprueba que el tipo VIEJO ya no es el
+    // que usa la columna: si el swap no corrió, aquí siguen apareciendo siete.
+    const filas = await prisma.$queryRaw<{ valor: string }[]>`
+      SELECT e.enumlabel AS valor
+        FROM pg_enum e
+        JOIN pg_type t ON t.oid = e.enumtypid
+       WHERE t.typname = 'QuoteStatus'
+       ORDER BY e.enumsortorder
+    `;
+    expect(filas.map((f) => f.valor)).toEqual(['borrador', 'formalizada', 'complementada', 'liquidada']);
+  });
+
+  it('QUOTE_STATUSES ya no ofrece los tres retirados', () => {
+    expect(QUOTE_STATUSES).toEqual(['borrador', 'formalizada', 'complementada', 'liquidada']);
+  });
+
+  it('PATCH /status con un estatus retirado responde 400 y no toca la cotización', async () => {
+    const { eventTypeId, arcosId } = await ids();
+    const q = await createQuote(
+      prisma,
+      { fecha: '2036-02-14', invitados: 250, spaceIds: [arcosId], eventTypeId, client: { nombre: 'Estatus Retirado' } },
+      actor,
+    );
+    createdQuoteIds.push(q.id);
+    createdClientIds.push(q.clientId);
+    const auth = await authCookies();
+
+    for (const status of ['enviada', 'aceptada', 'vencida']) {
+      const res = await app.inject({
+        method: 'PATCH',
+        url: `/api/quotes/${q.id}/status`,
+        cookies: auth,
+        payload: { status },
+      });
+      expect(res.statusCode, status).toBe(400);
+    }
+
+    const sinTocar = await prisma.quote.findUnique({ where: { id: q.id } });
+    expect(sinTocar?.status).toBe('borrador');
+  });
+
+  it('un borrador pasado de vigencia NO se vence al listar: el vencimiento automático se eliminó', async () => {
+    const { eventTypeId, arcosId } = await ids();
+    const q = await createQuote(
+      prisma,
+      { fecha: '2036-03-21', invitados: 200, spaceIds: [arcosId], eventTypeId, client: { nombre: 'Borrador Viejo' } },
+      actor,
+    );
+    createdQuoteIds.push(q.id);
+    createdClientIds.push(q.clientId);
+    await prisma.quote.update({
+      where: { id: q.id },
+      data: { vigenciaHasta: new Date('2020-01-01T00:00:00.000Z') },
+    });
+
+    await listQuotes(prisma, actor);
+
+    const despues = await prisma.quote.findUnique({ where: { id: q.id } });
+    expect(despues?.status).toBe('borrador');
+    // Y no queda bitácora de vencimiento: la función que la escribía ya no existe.
+    const log = await prisma.activityLog.findMany({ where: { quoteId: q.id } });
+    expect(log.some((l) => /venc/i.test(l.descripcion))).toBe(false);
   });
 });

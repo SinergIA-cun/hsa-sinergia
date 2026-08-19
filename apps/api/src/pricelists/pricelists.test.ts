@@ -150,9 +150,10 @@ describe('catálogos', () => {
   });
 
   it('el incremento nunca mete flotantes a la base', async () => {
-    // Los precios son enteros de pesos. Un flotante que llegue a Postgres se
-    // redondea a la mitad PAR (2.5 → 2), que no es lo que hace `Math.round`, así
-    // que el catálogo nuevo quedaría un peso abajo en cada renglón impar.
+    // Los precios son enteros de pesos. Un flotante no llega a Postgres: el query
+    // engine de Prisma lo TRUNCA antes de mandarlo (5.5 → 5), que no es lo que hace
+    // `Math.round`, así que el catálogo nuevo quedaría un peso abajo en cada
+    // renglón con fracción.
     const PCT = 7.3;
     const { base, clon } = await clonDelActivo('CLON-FRACCION', 2091, PCT);
     const factor = 1 + PCT / 100;
@@ -225,10 +226,46 @@ describe('catálogos', () => {
     ).toBe(0);
   });
 
+  /**
+   * Qué hace de verdad un flotante en una columna `Int`. Existía un comentario en
+   * este mismo repo que decía que **Postgres** lo redondeaba a la mitad PAR
+   * (2.5 → 2, 3.5 → 4); era falso por el camino que importa. El query engine de
+   * Prisma lo TRUNCA antes de mandarlo, así que Postgres nunca ve el flotante.
+   *
+   * Los dos casos que distinguen: 5.5 y 3.5. Truncar da 5 y 3; la mitad par daría
+   * 6 y 4. Este test es el que evita que el comentario vuelva a mentir.
+   */
+  it('Prisma TRUNCA un flotante en una columna Int (no lo redondea a la mitad par)', async () => {
+    const { clon } = await clonDelActivo('CLON-TRUNCA', 2079);
+    const espacio = await prisma.space.findFirstOrThrow();
+    const r = await prisma.rentalPrice.create({
+      data: {
+        priceListId: clon.id,
+        spaceId: espacio.id,
+        min: 0,
+        max: 10,
+        // Deliberadamente flotantes: es el escenario que el `Math.round` de
+        // `service.ts` y el `int()` de `editar.ts` existen para impedir.
+        viernes: 5.5,
+        viernesEspecial: 3.5,
+        sabado: 2.5,
+        domAJue: 1234.5,
+      },
+    });
+    expect([r.viernes, r.viernesEspecial, r.sabado, r.domAJue]).toEqual([5, 3, 2, 1234]);
+
+    // Y para dejar constancia de con qué se confundía: el cast de Postgres, cuando
+    // SÍ le toca hacerlo, redondea a la mitad par. Ese camino no ocurre vía Prisma.
+    const [pg] = await prisma.$queryRaw<{ a: number; b: number }[]>`
+      SELECT (5.5::float8)::int AS a, (3.5::float8)::int AS b
+    `;
+    expect([pg!.a, pg!.b]).toEqual([6, 4]);
+  });
+
   it('el incremento del DJ nunca mete un flotante a la base', async () => {
-    // Prisma NO rechaza un flotante en una columna Int: lo manda a Postgres, que
-    // redondea a la mitad PAR (2.5 → 2), y el precio sale un peso abajo SIN
-    // error. 2950 × 1.073 = 3165.35 → Math.round = 3165.
+    // Prisma NO rechaza un flotante en una columna Int: lo TRUNCA (5.5 → 5) y lo
+    // manda ya entero, así que el precio sale un peso abajo SIN error.
+    // 2950 × 1.073 = 3165.35 → Math.round = 3165.
     const PCT = 7.3;
     const { base, clon } = await clonDelActivo('CLON-DJ-FRACCION', 2085, PCT);
     const factor = 1 + PCT / 100;

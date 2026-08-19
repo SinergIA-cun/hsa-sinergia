@@ -101,6 +101,11 @@ export function ReciboPage() {
             <div className="recibo-row"><span>N.º de referencia</span><span>{quote.client.numeroReferencia}</span></div>
           )}
           <div className="recibo-row"><span>Evento</span><span>{quote.eventType?.nombre} · {formatEventDate(quote.fechaEvento)}</span></div>
+          {/* El código de evento: es lo que se copia para referirse al evento en
+              un correo o una transferencia, así que tiene que salir en el recibo. */}
+          {quote.codigo && (
+            <div className="recibo-row"><span>Código de evento</span><span>{quote.codigo}</span></div>
+          )}
         </div>
 
         {pago.tieneComprobante && (

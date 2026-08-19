@@ -1,14 +1,14 @@
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { computeQuote, type DatosFiscales, type QuoteBreakdown, type QuoteLine } from '@hsa/shared';
-import { Sparkles, AlertTriangle, CheckCircle2, Ban, UserCheck, X } from 'lucide-react';
+import { Sparkles, AlertTriangle, CheckCircle2, Ban, UserCheck, X, Plus, Trash2 } from 'lucide-react';
 import { api } from '../lib/api.ts';
 import { formatMXN } from '../lib/money.ts';
 import { Button, Card, Field, TextInput, SelectInput } from './ui.tsx';
 import { ClienteSearch, type ClienteLite } from './ClienteSearch.tsx';
 import { FacturacionSection } from './FacturacionSection.tsx';
 import { BreakdownGrouped } from './BreakdownGrouped.tsx';
-import type { Catalog, Availability, SpaceAvailability } from '../lib/types.ts';
+import type { Catalog, Availability, SpaceAvailability, QuoteExtraInput } from '../lib/types.ts';
 
 const MAX_ESPACIOS = 3; // Hay graduaciones que juntan salones; el tope es 3.
 
@@ -50,8 +50,21 @@ export interface QuoteFormInitial {
   esCortesia: boolean;
   usaDjHoraExtra: boolean;
   addOns: Record<string, number>;
+  extras: QuoteExtraInput[];
+  descuentoPct: number | null;
+  descuentoMotivo: string;
   requiereFactura: boolean;
   fiscales: DatosFiscales;
+  /** El banquetero que compró el evento (`''` = cliente directo). */
+  banqueteroId: string;
+  /**
+   * Su nombre. Hace falta porque `/api/banqueteros` solo devuelve los ACTIVOS: sin
+   * él, reeditar un evento cuyo banquetero se dio de baja dejaría el desplegable en
+   * blanco y al guardar lo desligaría sin que nadie lo pidiera.
+   */
+  banqueteroNombre: string;
+  festejado: string;
+  festejadoTelefono: string;
 }
 
 export interface QuotePayload {
@@ -65,12 +78,26 @@ export interface QuotePayload {
   usaDjHoraExtra: boolean;
   foodPackageId?: string;
   addOns: { addOnId: string; cantidad: number }[];
+  /** Servicios sueltos de este evento. Se manda la lista COMPLETA: el servidor
+   *  reemplaza en bloque, igual que con los add-ons. */
+  extras: QuoteExtraInput[];
+  /** Descuento de cortesía sobre la renta. Se omite si no hay descuento. */
+  descuentoPct?: number;
+  descuentoMotivo?: string;
   eventTypeId: string;
   requiereFactura: boolean;
   /** Los datos fiscales viajan dentro del cliente: son suyos, no del evento. */
   client: { nombre: string; telefono?: string; correo?: string } & DatosFiscales;
   /** Si se reutiliza un cliente existente, su id (el backend lo prioriza sobre `client`). */
   clientId?: string;
+  /**
+   * Los tres campos del desplegable "¿Para quién es este evento?". Viajan SIEMPRE,
+   * en `null` cuando es cliente directo: omitirlos dejaría el banquetero anterior
+   * pegado a la cotización, y cambiar de banquetero a cliente no surtiría efecto.
+   */
+  banqueteroId: string | null;
+  festejado: string | null;
+  festejadoTelefono: string | null;
 }
 
 interface Props {
@@ -113,6 +140,30 @@ export function QuoteForm({
   const [requiereFactura, setRequiereFactura] = useState(initial?.requiereFactura ?? false);
   const [fiscales, setFiscales] = useState<DatosFiscales>(initial?.fiscales ?? {});
 
+  // ¿Para quién es este evento? Con banquetero, ÉL es el cliente de la hacienda:
+  // firma él y se le factura a él (decisión del dueño). El festejado es el cliente
+  // FINAL y es dato operativo: va en la hoja operativa y NO en el contrato.
+  const [banqueteroId, setBanqueteroId] = useState(initial?.banqueteroId ?? '');
+  const [festejado, setFestejado] = useState(initial?.festejado ?? '');
+  const [festejadoTelefono, setFestejadoTelefono] = useState(initial?.festejadoTelefono ?? '');
+  const esDeBanquetero = banqueteroId !== '';
+
+  const { data: banqData } = useQuery({
+    queryKey: ['banqueteros'],
+    queryFn: () => api.get<{ banqueteros: { id: string; nombre: string; telefono: string | null }[] }>('/api/banqueteros'),
+  });
+  /**
+   * Los banqueteros del desplegable: los activos, más el de ESTA cotización si ya
+   * se dio de baja. Sin ese añadido el desplegable saldría en blanco y guardar
+   * desligaría al banquetero en silencio.
+   */
+  const banqueteros = useMemo(() => {
+    const activos = banqData?.banqueteros ?? [];
+    const suyo = initial?.banqueteroId;
+    if (!suyo || activos.some((b) => b.id === suyo)) return activos;
+    return [{ id: suyo, nombre: `${initial?.banqueteroNombre ?? 'Banquetero'} (inactivo)`, telefono: null }, ...activos];
+  }, [banqData, initial?.banqueteroId, initial?.banqueteroNombre]);
+
   function pickCliente(c: ClienteLite) {
     setNombre(c.nombre);
     setTelefono(c.telefono ?? '');
@@ -140,6 +191,30 @@ export function QuoteForm({
     // con él, o acabaríamos guardando el RFC del anterior en el nuevo.
     setFiscales({});
   }
+  /**
+   * Cambia el desplegable "¿Para quién es este evento?".
+   *
+   * Con banquetero, sus datos LLENAN los del cliente: es él quien firma y a quien
+   * se factura, así que el cliente de la cotización tiene que ser él, no el
+   * festejado. Volver a "Cliente" no borra lo capturado —puede ser el mismo dato
+   * que ya estaba— pero sí suelta el festejado, que solo aplica a la reventa.
+   */
+  function elegirBanquetero(id: string) {
+    setBanqueteroId(id);
+    if (id === '') {
+      setFestejado('');
+      setFestejadoTelefono('');
+      return;
+    }
+    const b = banqueteros.find((x) => x.id === id);
+    if (!b) return;
+    setNombre(b.nombre);
+    setTelefono(b.telefono ?? '');
+    // Es otro cliente: se desvincula del que estuviera elegido para no guardarle
+    // los datos fiscales del anterior.
+    desvincular();
+  }
+
   const [eventTypeId, setEventTypeId] = useState(initial?.eventTypeId ?? '');
   const [fecha, setFecha] = useState(initial?.fecha ?? '');
   const [invitados, setInvitados] = useState(initial?.invitados ?? 150);
@@ -151,12 +226,35 @@ export function QuoteForm({
   const [esCortesia, setEsCortesia] = useState(initial?.esCortesia ?? false);
   const [usaDjHoraExtra, setUsaDjHoraExtra] = useState(initial?.usaDjHoraExtra ?? false);
   const [addOns, setAddOns] = useState<Record<string, number>>(initial?.addOns ?? {});
+  const [extras, setExtras] = useState<QuoteExtraInput[]>(initial?.extras ?? []);
+  // El descuento se captura en por ciento; vacío = sin descuento.
+  const [descuentoPct, setDescuentoPct] = useState<string>(
+    initial?.descuentoPct != null ? String(initial.descuentoPct) : '',
+  );
+  const [descuentoMotivo, setDescuentoMotivo] = useState(initial?.descuentoMotivo ?? '');
   const [busy, setBusy] = useState(false);
 
   const eventType = catalog.eventTypes.find((e) => e.id === eventTypeId);
   const foodPackages = eventType?.foodPackages ?? [];
   // Precio del DJ por hora extra según el tipo de evento (undefined = no aplica).
   const djPrecio = eventTypeId ? catalog.engine.djHoraExtraByEventType[eventTypeId] : undefined;
+
+  /**
+   * El descuento capturado, ya validado, o `undefined` si no hay. Solo cuenta con
+   * la casilla de cortesía marcada: un descuento escondido detrás de una casilla
+   * apagada movería dinero sin que se vea en la pantalla.
+   */
+  const pctValido = useMemo(() => {
+    if (!esCortesia || descuentoPct.trim() === '') return undefined;
+    const n = Number(descuentoPct);
+    if (!Number.isFinite(n) || n <= 0 || n > 100) return undefined;
+    return n;
+  }, [esCortesia, descuentoPct]);
+  /** Los extras válidos (con nombre y monto): un renglón a medias no se cobra. */
+  const extrasValidos = useMemo(
+    () => extras.filter((e) => e.nombre.trim() !== '' && Number.isInteger(e.monto) && e.monto > 0),
+    [extras],
+  );
 
   const selection = useMemo(
     () => ({
@@ -169,8 +267,11 @@ export function QuoteForm({
       eventTypeId: eventTypeId || undefined,
       foodPackageId: foodPackageId || undefined,
       addOns: Object.entries(addOns).map(([addOnId, cantidad]) => ({ addOnId, cantidad })),
+      extras: extrasValidos,
+      descuentoPct: pctValido,
+      descuentoMotivo: descuentoMotivo.trim() || undefined,
     }),
-    [fecha, invitados, spaceIds, horasExtra, usaCapilla, usaDjHoraExtra, eventTypeId, foodPackageId, addOns],
+    [fecha, invitados, spaceIds, horasExtra, usaCapilla, usaDjHoraExtra, eventTypeId, foodPackageId, addOns, extrasValidos, pctValido, descuentoMotivo],
   );
 
   const { breakdown, calcError } = useMemo(() => {
@@ -256,9 +357,12 @@ export function QuoteForm({
   // La capilla la pueden usar varios eventos el mismo día: solo se informa quién más.
   const capillaEventos = availability?.capillaEventos ?? [];
 
+  // El motivo es obligatorio cuando hay descuento: un descuento de cientos de
+  // miles sin explicación es un problema de auditoría, no un campo opcional.
+  const faltaMotivo = pctValido != null && descuentoMotivo.trim() === '';
   const canSave = Boolean(
     nombre && eventTypeId && fecha && spaceIds.length >= 1 && spaceIds.length <= MAX_ESPACIOS &&
-    breakdown && !calcError && !blocked,
+    breakdown && !calcError && !blocked && !faltaMotivo,
   );
 
   // Hasta 3 espacios por evento (hay graduaciones que juntan salones).
@@ -268,6 +372,11 @@ export function QuoteForm({
       if (prev.length >= MAX_ESPACIOS) return prev;
       return [...prev, id];
     });
+  }
+
+  /** Cambia un campo de un renglón de servicio suelto, sin mutar el arreglo. */
+  function actualizarExtra(i: number, patch: Partial<QuoteExtraInput>) {
+    setExtras((prev) => prev.map((e, j) => (j === i ? { ...e, ...patch } : e)));
   }
 
   function toggleAddOn(id: string) {
@@ -293,6 +402,9 @@ export function QuoteForm({
         usaDjHoraExtra,
         foodPackageId: foodPackageId || undefined,
         addOns: Object.entries(addOns).map(([addOnId, cantidad]) => ({ addOnId, cantidad })),
+        extras: extrasValidos,
+        descuentoPct: pctValido,
+        descuentoMotivo: pctValido != null ? descuentoMotivo.trim() : undefined,
         eventTypeId,
         requiereFactura,
         client: {
@@ -302,6 +414,11 @@ export function QuoteForm({
           ...fiscalesParaGuardar(fiscales),
         },
         clientId: pickedClientId,
+        // Los tres viajan siempre: en null limpian, que es cómo se pasa de
+        // banquetero a cliente directo.
+        banqueteroId: banqueteroId || null,
+        festejado: esDeBanquetero ? vacioANull(festejado) : null,
+        festejadoTelefono: esDeBanquetero ? vacioANull(festejadoTelefono) : null,
       });
     } finally {
       setBusy(false);
@@ -314,6 +431,27 @@ export function QuoteForm({
       <div className="space-y-6">
         <Card className="space-y-4 p-6">
           <h2 className="font-display text-xl text-ink">Cliente</h2>
+
+          {/* ¿Para quién es este evento? Con banquetero, ÉL es el cliente de la
+              hacienda: firma él y se le factura a él. El festejado (el cliente
+              final) es dato operativo y no entra al contrato. */}
+          <Field label="¿Para quién es este evento?">
+            <SelectInput value={banqueteroId} onChange={(e) => elegirBanquetero(e.target.value)}>
+              <option value="">Cliente</option>
+              {banqueteros.map((b) => (
+                <option key={b.id} value={b.id}>Banquetero · {b.nombre}</option>
+              ))}
+            </SelectInput>
+          </Field>
+
+          {esDeBanquetero && (
+            <p className="rounded-lg bg-cream-200/70 px-3 py-2 text-sm text-ink">
+              El banquetero es el cliente de la hacienda: <strong>firma él y se le factura a él</strong>.
+              Sus datos quedan de solo lectura; para corregirlos, edítalo en{' '}
+              <a href="/admin" className="underline">Administración · Banqueteros</a>.
+              {enableClientSearch && ' Si ya tiene ficha de cliente, búscala aquí abajo para no duplicarla.'}
+            </p>
+          )}
 
           {enableClientSearch && !pickedClientId && <ClienteSearch onPick={pickCliente} />}
 
@@ -329,9 +467,10 @@ export function QuoteForm({
             </div>
           )}
 
-          <Field label="Nombre">
+          <Field label={esDeBanquetero ? 'Nombre (del banquetero)' : 'Nombre'}>
             <TextInput
               value={nombre}
+              readOnly={esDeBanquetero}
               onChange={(e) => {
                 setNombre(e.target.value);
                 desvincular();
@@ -343,6 +482,7 @@ export function QuoteForm({
             <Field label="Teléfono">
               <TextInput
                 value={telefono}
+                readOnly={esDeBanquetero}
                 onChange={(e) => {
                   setTelefono(e.target.value);
                   desvincular();
@@ -362,6 +502,35 @@ export function QuoteForm({
               />
             </Field>
           </div>
+
+          {/* El festejado: el cliente FINAL de la reventa. Solo aparece con
+              banquetero, porque es ahí donde "quién compró" y "quién festeja"
+              dejan de ser la misma persona. */}
+          {esDeBanquetero && (
+            <div className="space-y-4 rounded-lg border border-cream-200 p-4">
+              <h3 className="font-display text-base text-ink">Festejado (cliente final)</h3>
+              <p className="text-sm text-charcoal-soft">
+                Dato operativo: se imprime en la hoja operativa del evento y{' '}
+                <strong>no</strong> en el contrato. La hacienda no se mete en la reventa.
+              </p>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Field label="Nombre del festejado">
+                  <TextInput
+                    value={festejado}
+                    onChange={(e) => setFestejado(e.target.value)}
+                    placeholder="ej. Alondra Muñoz"
+                  />
+                </Field>
+                <Field label="Teléfono del festejado">
+                  <TextInput
+                    value={festejadoTelefono}
+                    onChange={(e) => setFestejadoTelefono(e.target.value)}
+                    placeholder="Opcional"
+                  />
+                </Field>
+              </div>
+            </div>
+          )}
         </Card>
 
         <Card className="space-y-4 p-6">
@@ -513,16 +682,68 @@ export function QuoteForm({
             <input
               type="checkbox"
               checked={esCortesia}
-              onChange={(e) => setEsCortesia(e.target.checked)}
+              onChange={(e) => {
+                setEsCortesia(e.target.checked);
+                // Apagar la casilla limpia el descuento: si se quedara guardado,
+                // el precio traería un descuento que la pantalla ya no muestra.
+                if (!e.target.checked) {
+                  setDescuentoPct('');
+                  setDescuentoMotivo('');
+                }
+              }}
               className="mt-0.5 h-4 w-4 accent-emerald-600"
             />
             <span className="flex-1">
               <span className="font-medium text-ink">Cortesía familiar</span>
               <span className="block text-xs text-charcoal-soft">
-                Marca el evento en verde en la agenda. No afecta el precio.
+                Marca el evento en verde en la agenda y permite descontar la renta.
               </span>
             </span>
           </label>
+
+          {/* Descuento de cortesía: CAMBIA EL PRECIO de la renta. Las horas extra
+              y el 5% por alimentos salen del precio ya descontado; la capilla no
+              se descuenta. Con 100% la renta queda en cero (más la capilla). */}
+          {esCortesia && (
+            <div className="space-y-3 rounded-lg border border-emerald-600/40 bg-emerald-600/5 px-4 py-3">
+              <p className="text-xs text-charcoal-soft">
+                El descuento cambia el <span className="font-medium text-ink">precio de la renta del salón</span>: las
+                horas extra y el 5% por alimentos se calculan sobre el precio ya descontado. La capilla, los alimentos
+                y los servicios se cobran completos.
+              </p>
+              <div className="grid gap-3 sm:grid-cols-[8rem_1fr]">
+                <Field label="Descuento (%)">
+                  <TextInput
+                    type="number"
+                    min={0}
+                    max={100}
+                    step={1}
+                    value={descuentoPct}
+                    onChange={(e) => setDescuentoPct(e.target.value)}
+                    placeholder="0"
+                  />
+                </Field>
+                <Field label="Motivo del descuento">
+                  <TextInput
+                    value={descuentoMotivo}
+                    onChange={(e) => setDescuentoMotivo(e.target.value)}
+                    placeholder="Ej.: boda de la hija del dueño"
+                  />
+                </Field>
+              </div>
+              {faltaMotivo && (
+                <p className="inline-flex items-center gap-1.5 text-xs font-medium text-wine">
+                  <AlertTriangle size={13} /> El motivo es obligatorio: un descuento sin explicación no se puede
+                  auditar.
+                </p>
+              )}
+              {descuentoPct.trim() !== '' && pctValido == null && !faltaMotivo && (
+                <p className="inline-flex items-center gap-1.5 text-xs font-medium text-wine">
+                  <AlertTriangle size={13} /> El descuento debe ser un porcentaje entre 1 y 100.
+                </p>
+              )}
+            </div>
+          )}
         </Card>
 
         <Card className="space-y-3 p-6">
@@ -625,6 +846,78 @@ export function QuoteForm({
                 </div>
               );
             })}
+          </div>
+
+          {/* Servicios sueltos de ESTE evento (fuera del catálogo). El ejemplo real
+              del dueño: el proveedor de comida cobra $200 más por persona por
+              cambio de menú, solo para este evento. */}
+          <div className="space-y-2 border-t border-cream-300 pt-4">
+            <div className="flex flex-wrap items-baseline justify-between gap-2">
+              <span className="text-sm font-medium text-ink">Servicios de este evento</span>
+              <span className="text-xs text-charcoal-soft">
+                No son del catálogo: valen <span className="font-medium">solo para este evento</span>. El monto{' '}
+                <span className="font-medium">ya incluye IVA</span>.
+              </span>
+            </div>
+
+            {extras.map((e, i) => (
+              <div key={i} className="grid gap-2 rounded-lg border border-ink/10 px-3 py-2.5 sm:grid-cols-[1fr_9rem_7rem_6rem_auto]">
+                <TextInput
+                  value={e.nombre}
+                  onChange={(ev) => actualizarExtra(i, { nombre: ev.target.value })}
+                  placeholder="Ej.: cambio de menú"
+                  aria-label="Nombre del servicio"
+                />
+                <SelectInput
+                  value={e.kind}
+                  onChange={(ev) => actualizarExtra(i, { kind: ev.target.value as QuoteExtraInput['kind'] })}
+                  aria-label="Tipo de cobro"
+                >
+                  <option value="fijo">Monto fijo</option>
+                  <option value="porPersona">Por persona</option>
+                  <option value="porUnidad">Por unidad</option>
+                </SelectInput>
+                <TextInput
+                  type="number"
+                  min={0}
+                  step={1}
+                  value={e.monto === 0 ? '' : String(e.monto)}
+                  onChange={(ev) => actualizarExtra(i, { monto: Math.trunc(Number(ev.target.value) || 0) })}
+                  placeholder="Monto"
+                  aria-label="Monto con IVA incluido"
+                />
+                {e.kind === 'porUnidad' ? (
+                  <TextInput
+                    type="number"
+                    min={1}
+                    step={1}
+                    value={String(e.cantidad)}
+                    onChange={(ev) => actualizarExtra(i, { cantidad: Math.max(1, Math.trunc(Number(ev.target.value) || 1)) })}
+                    aria-label="Cantidad"
+                  />
+                ) : (
+                  <span className="self-center text-xs text-charcoal-soft">
+                    {e.kind === 'porPersona' ? `× ${invitados} invitados` : 'monto único'}
+                  </span>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setExtras((prev) => prev.filter((_, j) => j !== i))}
+                  aria-label={`Quitar el servicio ${e.nombre || 'sin nombre'}`}
+                  className="self-center justify-self-end rounded-md p-1.5 text-charcoal-soft transition-colors hover:bg-wine/10 hover:text-wine"
+                >
+                  <Trash2 size={15} />
+                </button>
+              </div>
+            ))}
+
+            <button
+              type="button"
+              onClick={() => setExtras((prev) => [...prev, { nombre: '', kind: 'porPersona', monto: 0, cantidad: 1 }])}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-dashed border-ink/25 px-3 py-2 text-sm text-charcoal-soft transition-colors hover:border-gold hover:text-ink"
+            >
+              <Plus size={15} /> Agregar servicio de este evento
+            </button>
           </div>
         </Card>
 

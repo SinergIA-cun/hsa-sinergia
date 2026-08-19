@@ -58,6 +58,7 @@ describe('loadCatalog', () => {
       usaDjHoraExtra: false,
       eventTypeId: tb!.id,
       addOns: [],
+      extras: [],
     };
     const sab = computeQuote(catalog, { ...sel, fecha: '2027-05-08' });
     const jue = computeQuote(catalog, { ...sel, fecha: '2027-05-06' });
@@ -76,6 +77,7 @@ describe('loadCatalog', () => {
       usaCapilla: false,
       usaDjHoraExtra: false,
       addOns: [],
+      extras: [],
     });
     expect(r.rentaTotal).toBe(108500);
   });
@@ -97,6 +99,7 @@ describe('loadCatalog', () => {
       usaDjHoraExtra: false,
       foodPackageId: pkg!.id,
       addOns: [],
+      extras: [],
     });
     const alimento = r.lines.find((l) => l.concepto.startsWith('Alimentos'));
     expect(alimento?.monto).toBe(989 * 250); // bracket 201–300 de XV
@@ -136,6 +139,7 @@ describe('loadCatalog', () => {
       usaCapilla: false,
       usaDjHoraExtra: false,
       addOns: [{ addOnId: inactivo.id, cantidad: 4 }],
+      extras: [],
     });
     // Se sigue cobrando: el precio de una cotización emitida no se mueve solo.
     expect(r.lines.find((l) => l.concepto === 'ZZZ Valet de prueba')?.monto).toBe(400);
@@ -153,6 +157,7 @@ describe('loadCatalog', () => {
         usaCapilla: false,
         usaDjHoraExtra: false,
         addOns: [{ addOnId: 'basura-que-nunca-existio', cantidad: 1 }],
+        extras: [],
       }),
     ).toThrow(/no existe/);
   });
@@ -265,6 +270,7 @@ describe('DJ hora extra por catálogo', () => {
       usaCapilla: false,
       eventTypeId: grad.id,
       addOns: [],
+      extras: [],
     };
     const con = computeQuote(cat, { ...sel, usaDjHoraExtra: true });
     const sin = computeQuote(cat, { ...sel, usaDjHoraExtra: false });
@@ -285,6 +291,7 @@ describe('DJ hora extra por catálogo', () => {
       usaDjHoraExtra: true,
       eventTypeId: boda.id,
       addOns: [],
+      extras: [],
     });
     const dj = r.lines.find((l) => l.concepto === 'DJ Hora extra');
     expect(dj?.monto).toBe(2950 * 3);

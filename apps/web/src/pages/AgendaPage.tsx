@@ -220,6 +220,12 @@ export function AgendaPage() {
             eventTypeId: detalle.quote.eventTypeId,
             foodPackageId: detalle.quote.foodPackageId ?? undefined,
             addOns: detalle.quote.addOns ?? [],
+            // Los extras y el descuento de cortesía no dependen de la fecha, pero
+            // sí del total: sin ellos la previa del arrastre enseñaría un número
+            // distinto al que el servidor va a guardar.
+            extras: detalle.quote.extras ?? [],
+            descuentoPct: detalle.quote.descuentoPct ?? undefined,
+            descuentoMotivo: detalle.quote.descuentoMotivo ?? undefined,
           }).total,
         );
       } catch {
@@ -309,7 +315,7 @@ export function AgendaPage() {
                         <ChipArrastrable
                           key={e.quoteId}
                           id={e.quoteId}
-                          movible={e.status !== 'liquidada' && e.status !== 'vencida'}
+                          movible={e.status !== 'liquidada'}
                           onClick={() => abrir(e.quoteId)}
                           title={`${espacio || e.eventoNombre} · ${e.cliente} · ${e.eventoNombre} · ${
                             e.esCortesia ? 'Cortesía familiar' : STATUS_LABEL[e.status]

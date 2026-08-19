@@ -12,7 +12,7 @@ import { useAuth } from '../auth/auth.tsx';
 import type { Quote, QuoteStatus, Catalog } from '../lib/types.ts';
 
 const SECTIONS: { title: string; statuses: QuoteStatus[]; defaultOpen: boolean }[] = [
-  { title: 'Contratos', statuses: ['borrador', 'enviada', 'aceptada', 'vencida'], defaultOpen: true },
+  { title: 'Contratos', statuses: ['borrador'], defaultOpen: true },
   { title: 'Eventos Formalizados', statuses: ['formalizada'], defaultOpen: true },
   { title: 'Complemento cubierto', statuses: ['complementada'], defaultOpen: false },
   { title: 'Eventos Liquidados', statuses: ['liquidada'], defaultOpen: false },
@@ -27,6 +27,9 @@ function QuoteRow({ q, showSeller }: { q: Quote; showSeller: boolean }) {
     if (!window.confirm('¿Enviar este contrato a la papelera? Podrás restaurarlo dentro de 30 días.')) return;
     await api.del(`/api/quotes/${q.id}`);
     await qc.invalidateQueries({ queryKey: ['quotes'] });
+    // La insignia de la papelera acaba de cambiar: si no se invalida, el número
+    // se queda viejo hasta la siguiente recarga completa.
+    await qc.invalidateQueries({ queryKey: ['trash-sin-ver'] });
   }
 
   return (
@@ -36,6 +39,11 @@ function QuoteRow({ q, showSeller }: { q: Quote; showSeller: boolean }) {
       <div className="min-w-[11rem] flex-1" onClick={() => navigate(`/cotizaciones/${q.id}`)}>
         <p className="font-display text-xl text-ink">{q.client?.nombre ?? 'Cliente'}</p>
         <p className="text-xs uppercase tracking-wide text-gold">{q.eventType?.nombre ?? 'Evento'}</p>
+        {/* El código de evento en la lista: es por donde la gente busca "el
+            evento del 17 de enero" sin abrir uno por uno. */}
+        {q.codigo && (
+          <p className="mt-0.5 font-mono text-[0.7rem] tracking-tight text-charcoal-soft">{q.codigo}</p>
+        )}
         {showSeller && q.createdBy && (
           <p className="mt-0.5 inline-flex items-center gap-1 text-xs text-charcoal-soft">
             <UserCircle size={12} /> {q.createdBy.nombre}

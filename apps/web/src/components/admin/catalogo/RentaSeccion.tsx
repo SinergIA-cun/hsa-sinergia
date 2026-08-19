@@ -32,7 +32,7 @@ const deRenglon = (r: RentaRenglon): Record<Campo, string> => ({
   domAJue: String(r.domAJue),
 });
 
-/** Un precio válido: entero de pesos, no negativo. Postgres TRUNCA los flotantes. */
+/** Un precio válido: entero de pesos, no negativo. Prisma TRUNCA los flotantes. */
 function aPrecio(v: string): number | null {
   const n = Number(v);
   if (v.trim() === '' || Number.isNaN(n) || !Number.isInteger(n) || n < 0) return null;

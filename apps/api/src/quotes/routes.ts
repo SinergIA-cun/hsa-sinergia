@@ -19,6 +19,8 @@ import {
   softDeleteQuote,
   restoreQuote,
   listTrash,
+  contarPapeleraSinVer,
+  marcarPapeleraVista,
   statusSchema,
   QuoteError,
   type Actor,
@@ -42,6 +44,18 @@ export async function quoteRoutes(app: FastifyInstance): Promise<void> {
   // Papelera: ruta estática ANTES de /quotes/:id (find-my-way prioriza estáticas de todos modos).
   app.get('/quotes/trash', { preHandler: requireAuth }, async (req) => {
     return { quotes: await listTrash(app.prisma, req.user as Actor) };
+  });
+
+  // Contador de la insignia roja: cuántas hay en papelera que ESTE usuario no ha
+  // visto. Estáticas y antes de /quotes/:id, igual que la papelera.
+  app.get('/quotes/trash/sin-ver', { preHandler: requireAuth }, async (req) => {
+    return { count: await contarPapeleraSinVer(app.prisma, req.user as Actor) };
+  });
+
+  // Abrir la papelera marca lo visto: de ahí en adelante el contador arranca en cero.
+  app.post('/quotes/trash/visto', { preHandler: requireAuth }, async (req) => {
+    const vistoAt = await marcarPapeleraVista(app.prisma, req.user as Actor);
+    return { ok: true, vistoAt: vistoAt.toISOString() };
   });
 
   // Empalmes: cotizaciones vivas cuya fecha y espacio ya fueron apartados por otra.

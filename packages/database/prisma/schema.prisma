@@ -25,14 +25,17 @@ enum UserRole {
   admin
 }
 
+/// Los cuatro estatus que el negocio usa de verdad.
+///
+/// Se retiraron `enviada`, `aceptada` y `vencida` (punto 8, 13-ago-2026): nadie
+/// los movía a mano, y `vencida` era además el ÚNICO mecanismo automático que
+/// limpiaba la agenda. Al quitarlo, un borrador viejo sigue pintando su fecha
+/// hasta que alguien lo manda a la papelera — consecuencia aceptada por el dueño.
 enum QuoteStatus {
   borrador
-  enviada
-  aceptada
   formalizada
   complementada
   liquidada
-  vencida
 }
 
 enum PaymentMethod {
@@ -255,15 +258,55 @@ model Quote {
   total         Int
   rentaTotal    Int
   status        QuoteStatus @default(borrador)
+  /// Código de evento (`17ENE-CBOLADO-CUPULA`): día, mes, inicial + apellido del
+  /// cliente y el espacio abreviado. Es la identidad legible del evento, la que
+  /// se copia en recibos y contratos.
+  ///
+  /// Único: si el código base ya existe se le pone sufijo (`-2`, `-3`). Dos
+  /// eventos del mismo cliente, misma fecha y mismo salón son raros pero
+  /// posibles, y no pueden romper el guardado.
+  ///
+  /// Se regenera mientras la cotización es borrador (cambiar fecha, cliente o
+  /// espacio lo cambia) y **se congela en cuanto el estatus aparta la fecha**:
+  /// a partir de ahí ya está impreso en cosas.
+  ///
+  /// Nullable: las cotizaciones anteriores nacen sin él y las llena el backfill.
+  codigo        String?     @unique
   publicToken   String      @unique
   vigenciaHasta DateTime?
   usaCapilla    Boolean     @default(false) // cortesía; $5,000 en sábado. Varios eventos pueden usarla el mismo día.
   capillaHorario String?    // horario de la capilla para este evento (varios eventos comparten el día).
   esCortesia    Boolean     @default(false) // cortesía familiar: se marca verde en la agenda.
+  /// Descuento de cortesía, en por ciento (0..100). Pega SOLO sobre la renta, y
+  /// lo hace CAMBIANDO SU PRECIO: las horas extra y el descuento del 5% por
+  /// alimentos se calculan sobre el precio ya descontado. La capilla nunca se
+  /// descuenta. Alimentos y servicios se cobran completos. Con 100% la renta queda
+  /// en cero (más la capilla, si la hay). `null` = sin descuento, que es como se
+  /// comportó `esCortesia` desde siempre (se guardaba, pero el motor nunca la leyó).
+  descuentoPct    Float?
+  /// Motivo del descuento. Es OBLIGATORIO cuando hay descuento —lo exige el
+  /// esquema de crear/editar—, pero la columna es nullable porque la enorme
+  /// mayoría de las cotizaciones no lleva descuento.
+  descuentoMotivo String?
   usaDjHoraExtra Boolean    @default(false) // DJ por hora extra (precio según tipo de evento).
   requiereFactura Boolean   @default(false) // este cliente pidió factura para ESTE evento.
   banquetero    Banquetero? @relation(fields: [banqueteroId], references: [id])
-  banqueteroId  String?     // proveedor de alimentos (para ventas por banquetero).
+  /// El banquetero de este evento. Con banquetero, ÉL es el cliente de la
+  /// hacienda: firma él y se le factura a él (decisión del dueño en el diseño de
+  /// banqueteros). El festejado de abajo es el cliente final, y es dato operativo.
+  banqueteroId  String?
+  /// Nombre del festejado (el cliente FINAL cuando el evento lo compra un
+  /// banquetero, y de paso el homenajeado de cualquier evento).
+  ///
+  /// Es dato OPERATIVO: va en la hoja operativa y **no** en el contrato — el
+  /// contrato y la factura leen al cliente, que es quien firma. La hacienda no se
+  /// mete en la reventa.
+  ///
+  /// Convive con `operativa.hoja.nombreFestejado`, que es donde se capturaba
+  /// antes al llenar la hoja: esta columna es la que se captura al COTIZAR y manda
+  /// sobre la de la hoja, que queda como respaldo de los eventos anteriores.
+  festejado         String?
+  festejadoTelefono String?
   createdBy     User?       @relation("QuoteCreatedBy", fields: [createdById], references: [id])
   createdById   String?
   createdAt     DateTime    @default(now())
@@ -280,6 +323,7 @@ model Quote {
   priceListId   String
   payments      Payment[]
   activityLog   ActivityLog[]
+  extras        QuoteExtra[]
 
   @@index([clientId])
   @@index([status])
@@ -288,6 +332,31 @@ model Quote {
   @@index([deletedAt])
   @@index([banqueteroId])
   @@index([priceListId])
+}
+
+/// Servicio suelto de UN evento, fuera del catálogo. Ej.: el proveedor de comida
+/// cobra $200 más por persona por cambio de menú, solo para este evento.
+///
+/// NO es un add-on del catálogo, y es importante que no lo sea: por eso guarda el
+/// nombre y el monto COPIADOS y no un id. Así no sufre el problema de "resolver vs
+/// ofrecer" que costó dos bugs (el valet y La Capilla) — vive en la cotización, no
+/// en un catálogo que puede cambiar bajo sus pies.
+///
+/// El monto SIEMPRE trae IVA incluido (decisión del dueño): lo teclado es lo final.
+/// Va al grupo `otros` del desglose, así que NO entra a la base del complemento
+/// ni a la del descuento de cortesía.
+model QuoteExtra {
+  id       String    @id @default(cuid())
+  /// Cascade: la cotización es la dueña del renglón y no tiene sentido sin ella.
+  /// Sin esto, borrar una cotización (o limpiar la base de pruebas) truena por FK.
+  quote    Quote     @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  quoteId  String
+  nombre   String
+  kind     AddOnKind // fijo | porPersona | porUnidad
+  monto    Int
+  cantidad Int       @default(1) // solo se usa en porUnidad
+
+  @@index([quoteId])
 }
 
 model FoodPackage {
@@ -340,7 +409,22 @@ model Payment {
   quoteId              String
   monto                Int
   metodo               PaymentMethod
+  /// Concepto EFECTIVO del pago: el que se DEDUCE de dónde deja el acumulado
+  /// contra los hitos del plan (`packages/shared/src/pagos/concepto.ts`). No es
+  /// lo que se teclea: se recalcula al registrar, al anular y al corregirlo a
+  /// mano, porque anular un pago cambia el acumulado y con él el concepto de los
+  /// pagos POSTERIORES.
   concepto             PaymentConcept
+  /// El concepto que alguien capturó o corrigió A MANO, para poder discrepar de
+  /// la deducción. `null` = nadie discrepó.
+  ///
+  /// Se guarda aparte de `concepto` a propósito: así la reclasificación en
+  /// cadena puede reescribir el efectivo sin borrar la corrección de nadie, y la
+  /// interfaz puede enseñar los dos y explicar la diferencia.
+  ///
+  /// La regla del finiquito gana SIEMPRE sobre esto (decisión del dueño): la
+  /// etiqueta de finiquito la manda el saldo, no la captura.
+  conceptoManual       PaymentConcept?
   fecha                DateTime
   referencia           String?
   folio                Int            @unique @default(dbgenerated("nextval('recibo_folio_seq')"))
@@ -384,6 +468,13 @@ model User {
   role                UserRole      @default(ventas)
   activo              Boolean       @default(true)
   createdAt           DateTime      @default(now())
+  /// Última vez que ESTE usuario abrió la papelera. El contador rojo son las
+  /// cotizaciones que él puede ver con `deletedAt` posterior a este sello.
+  /// Va en el usuario y no en la cotización a propósito: "sin ver" es una
+  /// propiedad de quien mira, no de la cotización — dos personas pueden tener
+  /// pendiente de ver la misma, y una la ve sin que la otra deje de verla.
+  /// `null` = nunca la ha abierto: toda su papelera cuenta.
+  papeleraVistaAt     DateTime?
   quotesCreated       Quote[]       @relation("QuoteCreatedBy")
   paymentsRegistrados Payment[]     @relation("PaymentRegistradoBy")
   paymentsAnulados    Payment[]     @relation("PaymentAnuladoBy")

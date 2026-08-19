@@ -1,5 +1,26 @@
 import { z } from 'zod';
 
+/**
+ * Servicio suelto de UN evento, fuera del catálogo. Ej.: el proveedor de comida
+ * cobra $200 más por persona por cambio de menú, solo para este evento.
+ *
+ * NO es un add-on del catálogo, y es importante que no lo sea: vive en la
+ * cotización, así que no puede cambiar de precio bajo sus pies cuando alguien
+ * edita el catálogo. Por eso lleva el nombre y el monto copiados, no un id.
+ *
+ * El monto SIEMPRE trae IVA incluido (decisión del dueño): lo teclado es lo final.
+ */
+export const quoteExtraSchema = z.object({
+  nombre: z.string().min(1).max(120),
+  kind: z.enum(['fijo', 'porPersona', 'porUnidad']),
+  /** Entero: Prisma trunca los flotantes en columnas `Int` sin avisar (5.5 → 5). */
+  monto: z.number().int().nonnegative(),
+  /** Solo se usa en `porUnidad`; `fijo` y `porPersona` la ignoran. */
+  cantidad: z.number().int().positive().default(1),
+});
+
+export type QuoteExtra = z.infer<typeof quoteExtraSchema>;
+
 export const quoteSelectionSchema = z.object({
   fecha: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   invitados: z.number().int().positive(),
@@ -28,7 +49,33 @@ export const quoteSelectionSchema = z.object({
     .refine((arr) => new Set(arr.map((a) => a.addOnId)).size === arr.length, {
       message: 'addOnId no debe repetirse',
     }),
+  /** Servicios sueltos de ESTE evento (ver `quoteExtraSchema`). */
+  extras: z.array(quoteExtraSchema).default([]),
+  /**
+   * Descuento de cortesía, en por ciento (0..100). Pega SOLO sobre la renta:
+   * CAMBIA EL PRECIO de la renta, y lo que se deriva de ese precio —las horas
+   * extra y el descuento del 5% por alimentos— se calcula sobre el precio ya
+   * descontado. La capilla NO se descuenta nunca. Alimentos y servicios se cobran
+   * completos. Con 100% la renta queda en cero (más la capilla si la hay).
+   */
+  descuentoPct: z.number().min(0).max(100).optional(),
+  /** Motivo del descuento. Obligatorio si hay descuento: sin él no es auditable. */
+  descuentoMotivo: z.string().min(1).max(300).optional(),
 });
+
+/**
+ * "Si hay descuento, tiene que haber motivo": un descuento de cientos de miles
+ * sin explicación es un problema de auditoría, no un campo opcional.
+ *
+ * Va como refinamiento suelto y NO pegado a `quoteSelectionSchema` porque la API
+ * lo extiende con `.extend()`, y `.refine()` devuelve un ZodEffects que ya no
+ * tiene ese método. Los esquemas de crear/editar lo aplican al final.
+ */
+export const motivoObligatorio = {
+  check: (d: { descuentoPct?: number | null; descuentoMotivo?: string | null }): boolean =>
+    !(d.descuentoPct != null && d.descuentoPct > 0) || Boolean(d.descuentoMotivo?.trim()),
+  opts: { message: 'Un descuento de cortesía requiere motivo', path: ['descuentoMotivo'] },
+};
 
 /** Tipo derivado del esquema (salida post-parse): fuente única de verdad. */
 export type QuoteSelection = z.infer<typeof quoteSelectionSchema>;

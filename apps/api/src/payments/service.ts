@@ -1,20 +1,30 @@
 import { z } from 'zod';
 import type { PrismaClient } from '@hsa/database';
-import { estadoFacturaPago, hoyCivilMexico } from '@hsa/shared';
+import { estadoFacturaPago, hoyCivilMexico, paymentConceptSchema } from '@hsa/shared';
 import { QuoteError, ownershipWhere, loadEstadoCuenta, assertNotTrashed, type Actor } from '../quotes/service.js';
 import { logActivity } from '../quotes/activityLog.js';
 import { esUpgrade, type PaymentStatus } from '../quotes/estadoCuenta.js';
+import { reclasificarConceptos } from './conceptos.js';
 import type { ComprobanteStorage } from './storage.js';
 
 export const registerPaymentSchema = z.object({
   monto: z.number().int().positive(),
   metodo: z.enum(['efectivo', 'transferencia', 'tarjeta']),
-  concepto: z.enum(['anticipo', 'complemento', 'aCuenta', 'finiquito']),
+  /**
+   * Lo que se capturó. Ya NO decide el concepto del pago: ese se deduce de dónde
+   * deja el acumulado contra los hitos del plan. Sigue sirviendo de respaldo para
+   * las cotizaciones SIN plan de pagos (los espacios cuyos montos no están
+   * definidos), donde no hay hitos que cruzar y no hay nada que deducir.
+   */
+  concepto: paymentConceptSchema.default('aCuenta'),
   fecha: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   referencia: z.string().optional(),
 });
 
 export const anularSchema = z.object({ motivo: z.string().min(3) });
+
+/** Corrección a mano del concepto de un pago (para discrepar de la deducción). */
+export const conceptoSchema = z.object({ concepto: paymentConceptSchema });
 
 async function findOwnedQuote(db: PrismaClient, id: string, actor: Actor) {
   const quote = await db.quote.findFirst({ where: { id, ...ownershipWhere(actor) } });
@@ -56,13 +66,28 @@ export async function registerPayment(
     },
   });
 
+  // El concepto se DEDUCE del saldo, no de lo capturado: registrar el pago mueve
+  // el acumulado, así que se reclasifica antes de anotar la bitácora — el rastro
+  // tiene que decir el concepto con el que el pago quedó, no el que se tecleó.
+  const reclasificado = await reclasificarConceptos(db, quote, {
+    actorId: actor.id,
+    salvo: payment.id,
+  });
+  let estadoCuenta = reclasificado.estadoCuenta;
+  const conceptoEfectivo =
+    reclasificado.cambios.find((c) => c.paymentId === payment.id)?.a ?? input.concepto;
+
   await logActivity(db, {
     quoteId, tipo: 'pago',
-    descripcion: `Pago ${input.concepto} $${input.monto} (${input.metodo})`,
-    meta: { paymentId: payment.id, monto: input.monto, concepto: input.concepto }, actorId: actor.id,
+    descripcion: `Pago ${conceptoEfectivo} $${input.monto} (${input.metodo})`,
+    meta: {
+      paymentId: payment.id, monto: input.monto, concepto: conceptoEfectivo,
+      // Lo tecleado se guarda solo cuando la deducción no le hizo caso: es el
+      // rastro de que el número, no la captura, decidió el concepto.
+      ...(conceptoEfectivo === input.concepto ? {} : { conceptoCapturado: input.concepto }),
+    },
+    actorId: actor.id,
   });
-
-  let { estadoCuenta } = await loadEstadoCuenta(db, quote);
 
   // Auto-avance de estatus: si el acumulado cruza un hito, el estatus sube solo
   // (nunca baja). No requiere confirmación manual.
@@ -79,7 +104,9 @@ export async function registerPayment(
     ({ estadoCuenta } = await loadEstadoCuenta(db, { ...quote, status: nuevoEstatus }));
   }
 
-  return { payment, estadoCuenta, nuevoEstatus };
+  // El pago se devuelve con el concepto EFECTIVO, no con el tecleado: quien lo
+  // imprima (el panel, el recibo) no debe ver el que la deducción descartó.
+  return { payment: { ...payment, concepto: conceptoEfectivo }, estadoCuenta, nuevoEstatus };
 }
 
 export async function anularPayment(
@@ -105,8 +132,59 @@ export async function anularPayment(
     meta: { paymentId, motivo }, actorId: actor.id,
   });
 
-  const { estadoCuenta } = await loadEstadoCuenta(db, quote);
-  return { estadoCuenta };
+  // Anular baja el acumulado, así que los pagos POSTERIORES pueden dejar de ser
+  // lo que eran: el que cerraba la cuenta ya no la cierra. Se reclasifican todos
+  // y la cadena queda en la bitácora.
+  const { estadoCuenta, cambios } = await reclasificarConceptos(db, quote, { actorId: actor.id });
+  return { estadoCuenta, cambios };
+}
+
+/**
+ * Corrige a mano el concepto de un pago.
+ *
+ * Lo puede hacer **ventas sobre lo suyo**: es un error de captura, no un
+ * movimiento de dinero (a diferencia de anular, que sí es de admin).
+ *
+ * La corrección se guarda en `conceptoManual` y el concepto efectivo se vuelve a
+ * deducir: **la regla del finiquito gana siempre**, en los dos sentidos. Si el
+ * pago cierra la cuenta queda como finiquito aunque se pida otra cosa, y marcarlo
+ * "finiquito" a mano no lo convierte en uno si no la cierra. Por eso la respuesta
+ * trae el concepto con el que quedó, que puede no ser el que se pidió.
+ */
+export async function editarConcepto(
+  db: PrismaClient,
+  quoteId: string,
+  paymentId: string,
+  rawInput: unknown,
+  actor: Actor,
+) {
+  const quote = await findOwnedQuote(db, quoteId, actor);
+  const input = conceptoSchema.parse(rawInput);
+  const pago = await db.payment.findFirst({ where: { id: paymentId, quoteId } });
+  if (!pago) throw new QuoteError(404, 'Pago no encontrado');
+  // Un pago anulado es evidencia de auditoría: se conserva con la etiqueta con la
+  // que quedó y no se reetiqueta.
+  if (pago.anuladoAt) throw new QuoteError(409, 'El pago está anulado: su concepto ya no se corrige.');
+
+  await db.payment.update({ where: { id: paymentId }, data: { conceptoManual: input.concepto } });
+
+  const { estadoCuenta, payments, cambios } = await reclasificarConceptos(db, quote, {
+    actorId: actor.id,
+    salvo: paymentId,
+  });
+  const efectivo = payments.find((p) => p.id === paymentId)?.concepto ?? pago.concepto;
+
+  await logActivity(db, {
+    quoteId,
+    tipo: 'edicion',
+    descripcion:
+      `Concepto del pago folio ${pago.folio}: ${pago.concepto} → ${efectivo}` +
+      (efectivo === input.concepto ? '' : ` (se pidió ${input.concepto}; manda el saldo)`),
+    meta: { paymentId, folio: pago.folio, de: pago.concepto, a: efectivo, pedido: input.concepto },
+    actorId: actor.id,
+  });
+
+  return { concepto: efectivo, pedido: input.concepto, estadoCuenta, cambios };
 }
 
 /**

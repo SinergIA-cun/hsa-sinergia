@@ -2,12 +2,15 @@ import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import type { PrismaClient, Prisma } from '@hsa/database';
 import {
+  codigoEvento,
   computeQuote,
   quoteSelectionSchema,
   estadoFacturaPago,
   datosFiscalesEditables,
   hoyCivilMexico,
+  motivoObligatorio,
   prorratearRenta,
+  type QuoteExtra,
   type QuoteSelection,
 } from '@hsa/shared';
 import { loadCatalog } from '../catalog/loader.js';
@@ -20,15 +23,12 @@ export interface Actor {
   role: 'ventas' | 'admin';
 }
 
-export const QUOTE_STATUSES = [
-  'borrador',
-  'enviada',
-  'aceptada',
-  'formalizada',
-  'complementada',
-  'liquidada',
-  'vencida',
-] as const;
+/**
+ * Los cuatro estatus vivos. `enviada`, `aceptada` y `vencida` se retiraron el
+ * 13-ago-2026 (punto 8): nadie los movía a mano y `vencida` era además el único
+ * mecanismo automático que limpiaba la agenda. Con él se fue `expireStaleQuotes`.
+ */
+export const QUOTE_STATUSES = ['borrador', 'formalizada', 'complementada', 'liquidada'] as const;
 
 const clientSchema = z.object({
   nombre: z.string().min(1),
@@ -50,6 +50,22 @@ const clientSchema = z.object({
   correoFacturacion: z.string().max(200).nullish(),
 });
 
+/**
+ * Los tres campos del desplegable "¿Para quién es este evento?".
+ *
+ * Con banquetero, ÉL es el cliente de la hacienda: firma él y se le factura a él
+ * (decisión del dueño). El festejado es el cliente FINAL y es dato operativo: va
+ * en la hoja operativa y **no** en el contrato.
+ *
+ * `nullish` y no `optional`: null es como se limpian —cambiar de banquetero a
+ * cliente directo tiene que poder borrar los tres.
+ */
+const paraQuienSchema = {
+  banqueteroId: z.string().nullish(),
+  festejado: z.string().max(120).nullish(),
+  festejadoTelefono: z.string().max(40).nullish(),
+};
+
 export const createQuoteSchema = quoteSelectionSchema
   .extend({
     eventTypeId: z.string(),
@@ -59,10 +75,14 @@ export const createQuoteSchema = quoteSelectionSchema
     capillaHorario: z.string().max(20).nullable().optional(),
     clientId: z.string().optional(),
     client: clientSchema.optional(),
+    ...paraQuienSchema,
   })
   .refine((d) => Boolean(d.clientId ?? d.client), {
     message: 'Se requiere clientId o datos de client',
-  });
+  })
+  // El motivo del descuento es obligatorio si hay descuento. Va aquí y no en
+  // `quoteSelectionSchema` porque `.refine()` devuelve un ZodEffects sin `.extend()`.
+  .refine(motivoObligatorio.check, motivoObligatorio.opts);
 
 export const updateQuoteSchema = quoteSelectionSchema
   .extend({
@@ -72,7 +92,9 @@ export const updateQuoteSchema = quoteSelectionSchema
     requiereFactura: z.boolean().default(false),
     capillaHorario: z.string().max(20).nullable().optional(),
     client: clientSchema.optional(),
-  });
+    ...paraQuienSchema,
+  })
+  .refine(motivoObligatorio.check, motivoObligatorio.opts);
 
 export const statusSchema = z.object({ status: z.enum(QUOTE_STATUSES) });
 
@@ -87,11 +109,115 @@ const includeRels = {
   eventType: true,
   createdBy: { select: { id: true, nombre: true } },
   priceList: { select: { id: true, nombre: true, anio: true } },
+  // El banquetero por nombre: el formulario tiene que poder reabrir la cotización
+  // en modo "Banquetero" y enseñar de quién se trata sin otra consulta.
+  banquetero: { select: { id: true, nombre: true, telefono: true } },
+  // Los servicios sueltos del evento: no viven en el catálogo, así que la única
+  // forma de recuperarlos para reeditar (y para recalcular) es leerlos de aquí.
+  extras: { select: { nombre: true, kind: true, monto: true, cantidad: true } },
 };
 
 // Se permite editar el desglose incluso con compromiso de pago (formalizada/complementada);
 // las ediciones en esos estatus quedan registradas en la bitácora de actividad.
-const EDITABLE_STATUSES = new Set(['borrador', 'enviada', 'aceptada', 'formalizada', 'complementada']);
+const EDITABLE_STATUSES = new Set(['borrador', 'formalizada', 'complementada']);
+
+// --- Código de evento ---------------------------------------------------------
+
+/**
+ * Estatus que ya APARTAN la fecha (hay compromiso de pago). Son los mismos que
+ * bloquean el espacio en `availability/service.ts`, y son la frontera del
+ * congelado: mientras la cotización no aparta, su código sigue a la fecha, al
+ * cliente y al espacio; en cuanto aparta, queda fijo — a partir de ahí el código
+ * ya está impreso en recibos y contratos, y regenerarlo cambiaría un
+ * identificador que alguien ya copió.
+ */
+const STATUSES_QUE_APARTAN = new Set(['formalizada', 'complementada', 'liquidada']);
+
+/** Un choque del índice único de `Quote.codigo` (y no de cualquier otro campo). */
+function esColisionDeCodigo(e: unknown): boolean {
+  if (typeof e !== 'object' || e === null) return false;
+  const err = e as { code?: unknown; meta?: { target?: unknown } };
+  if (err.code !== 'P2002') return false;
+  const target = err.meta?.target;
+  const texto = Array.isArray(target) ? target.join(',') : String(target ?? '');
+  return texto.includes('codigo');
+}
+
+/**
+ * El código libre a partir del base: `base`, o `base-2`, `base-3`… Dos eventos
+ * del mismo cliente, la misma fecha y el mismo salón son raros pero posibles, y
+ * no pueden romper el guardado.
+ */
+async function codigoLibre(db: PrismaClient, base: string, excludeQuoteId?: string): Promise<string> {
+  const usados = await db.quote.findMany({
+    where: {
+      // El `-` del prefijo evita que `…-CUPULA` se coma a `…-CUPULANORTE`.
+      OR: [{ codigo: base }, { codigo: { startsWith: `${base}-` } }],
+      ...(excludeQuoteId ? { id: { not: excludeQuoteId } } : {}),
+    },
+    select: { codigo: true },
+  });
+  const tomados = new Set(usados.map((q) => q.codigo));
+  if (!tomados.has(base)) return base;
+  for (let n = 2; n <= 999; n++) {
+    const candidato = `${base}-${n}`;
+    if (!tomados.has(candidato)) return candidato;
+  }
+  throw new QuoteError(409, `No hay sufijo libre para el código de evento ${base}`);
+}
+
+/**
+ * El código de evento de una cotización, ya resuelto contra la base.
+ *
+ * Los nombres de los espacios se leen EN EL ORDEN de `spaceIds`: `findMany` no
+ * garantiza orden, y de eso depende cuál espacio manda en el código.
+ */
+async function generarCodigo(
+  db: PrismaClient,
+  datos: { fecha: string; cliente: string; spaceIds: string[] },
+  excludeQuoteId?: string,
+): Promise<string> {
+  const spaces = await db.space.findMany({
+    where: { id: { in: datos.spaceIds } },
+    select: { id: true, nombre: true },
+  });
+  const nombreById = new Map(spaces.map((sp) => [sp.id, sp.nombre]));
+  const espacios = datos.spaceIds.map((id) => nombreById.get(id) ?? '');
+  const base = codigoEvento({ fechaISO: datos.fecha, cliente: datos.cliente, espacios });
+  return codigoLibre(db, base, excludeQuoteId);
+}
+
+/**
+ * Escribe la cotización con su código, reintentando si otra sesión se quedó con
+ * el mismo entre el cálculo y la escritura. `codigoLibre` resuelve las colisiones
+ * conocidas; esto cubre la carrera, que el índice único convertiría en un 500.
+ */
+async function conCodigoUnico<T>(
+  db: PrismaClient,
+  datos: { fecha: string; cliente: string; spaceIds: string[] },
+  escribir: (codigo: string) => Promise<T>,
+  excludeQuoteId?: string,
+): Promise<T> {
+  for (let intento = 0; ; intento++) {
+    const codigo = await generarCodigo(db, datos, excludeQuoteId);
+    try {
+      return await escribir(codigo);
+    } catch (e) {
+      if (intento >= 3 || !esColisionDeCodigo(e)) throw e;
+    }
+  }
+}
+
+/**
+ * Valida el banquetero elegido en el formulario. Un id que no existe se rechaza
+ * con 400 y no con un error de FK de Postgres: el mensaje de Prisma no le dice
+ * nada a nadie y la cotización quedaría a medias.
+ */
+async function assertBanquetero(db: PrismaClient, banqueteroId: string | null | undefined): Promise<void> {
+  if (!banqueteroId) return;
+  const existe = await db.banquetero.findUnique({ where: { id: banqueteroId }, select: { id: true } });
+  if (!existe) throw new QuoteError(400, 'El banquetero elegido no existe.');
+}
 
 /**
  * El catálogo activo, o un 409 si no hay ninguno. Es el que se le fija a una
@@ -136,6 +262,9 @@ function toSelection(input: {
   eventTypeId?: string;
   foodPackageId?: string;
   addOns: { addOnId: string; cantidad: number }[];
+  extras?: QuoteExtra[];
+  descuentoPct?: number | null;
+  descuentoMotivo?: string | null;
 }): QuoteSelection {
   return {
     fecha: input.fecha,
@@ -147,6 +276,116 @@ function toSelection(input: {
     eventTypeId: input.eventTypeId,
     foodPackageId: input.foodPackageId,
     addOns: input.addOns,
+    extras: input.extras ?? [],
+    descuentoPct: input.descuentoPct ?? undefined,
+    descuentoMotivo: input.descuentoMotivo ?? undefined,
+  };
+}
+
+// --- Reconstruir la selección de una cotización guardada ----------------------
+//
+// Tres caminos recalculan el desglose SIN que nadie vuelva a capturar el
+// formulario: arrastrar la fecha en la agenda, mover de catálogo y la vista
+// previa de ese movimiento. Los tres tienen que reconstruir la selección desde
+// lo guardado, y armarla a mano campo por campo ya costó tres bugs de dinero en
+// esta rama: cada campo nuevo del motor (los extras, el descuento de cortesía)
+// se olvidaba en uno de los sitios y el recálculo lo borraba en silencio.
+//
+// Por eso hay UN solo armador. Y lo que lo hace a prueba de olvidos es el tipo:
+// `SeleccionGuardadaInput` exige `extras`, `descuentoPct` y `descuentoMotivo`, y
+// una cotización leída sin `include: SELECCION_INCLUDE` no los tiene, así que
+// olvidarlos no compila en vez de perder dinero.
+
+/**
+ * Lo que hay que `include` al leer una cotización que se va a recalcular.
+ *
+ * Los extras no son columnas: si no se piden, `existing.extras` no existe y
+ * `seleccionGuardada` no acepta el objeto. Ese es el candado.
+ */
+export const SELECCION_INCLUDE = {
+  extras: { select: { nombre: true, kind: true, monto: true, cantidad: true } },
+} as const;
+
+/** Una cotización guardada, con TODO lo que el motor necesita para recalcular. */
+interface SeleccionGuardadaInput {
+  fechaEvento: Date;
+  invitados: number;
+  spaceIds: string[];
+  horasExtra: number;
+  usaCapilla: boolean;
+  capillaHorario: string | null;
+  esCortesia: boolean;
+  usaDjHoraExtra: boolean;
+  requiereFactura: boolean;
+  eventTypeId: string;
+  foodPackageId: string | null;
+  horasEvento: number | null;
+  addOns: Prisma.JsonValue;
+  extras: QuoteExtra[];
+  descuentoPct: number | null;
+  descuentoMotivo: string | null;
+  // No entran al precio, pero SÍ al guardado: `updateQuote` los reescribe, así que
+  // dejarlos fuera de aquí haría que arrastrar la fecha borrara al banquetero y al
+  // festejado — el mismo bug que este armador existe para prevenir.
+  banqueteroId: string | null;
+  festejado: string | null;
+  festejadoTelefono: string | null;
+}
+
+/** La entrada de `updateQuoteSchema` equivalente a lo que la cotización TIENE hoy. */
+export interface SeleccionGuardada {
+  fecha: string;
+  invitados: number;
+  spaceIds: string[];
+  horasExtra: number;
+  usaCapilla: boolean;
+  capillaHorario: string | null;
+  esCortesia: boolean;
+  usaDjHoraExtra: boolean;
+  requiereFactura: boolean;
+  eventTypeId: string;
+  foodPackageId: string | undefined;
+  horasEvento: number | null;
+  addOns: { addOnId: string; cantidad: number }[];
+  extras: QuoteExtra[];
+  // `undefined` y no `null`: los esquemas de crear/editar declaran estos dos
+  // `.optional()` (no `.nullish()`), y "sin descuento" se expresa omitiéndolos.
+  // Mandar `null` los hace fallar la validación.
+  descuentoPct: number | undefined;
+  descuentoMotivo: string | undefined;
+  banqueteroId: string | null;
+  festejado: string | null;
+  festejadoTelefono: string | null;
+}
+
+/**
+ * Reconstruye la selección completa de una cotización guardada, tal como la
+ * mandaría el formulario si alguien la abriera y le diera guardar sin cambiar
+ * nada. Quien recalcula parte de aquí y solo sobrescribe lo que de verdad cambia
+ * (la fecha al arrastrar; el paquete y los servicios retraducidos al mover de
+ * catálogo).
+ */
+export function seleccionGuardada(q: SeleccionGuardadaInput): SeleccionGuardada {
+  return {
+    fecha: q.fechaEvento.toISOString().slice(0, 10),
+    invitados: q.invitados,
+    spaceIds: q.spaceIds,
+    horasExtra: q.horasExtra,
+    usaCapilla: q.usaCapilla,
+    capillaHorario: q.capillaHorario,
+    esCortesia: q.esCortesia,
+    usaDjHoraExtra: q.usaDjHoraExtra,
+    requiereFactura: q.requiereFactura,
+    eventTypeId: q.eventTypeId,
+    foodPackageId: q.foodPackageId ?? undefined,
+    horasEvento: q.horasEvento,
+    addOns: (q.addOns as unknown as { addOnId: string; cantidad: number }[] | null) ?? [],
+    extras: q.extras,
+    descuentoPct: q.descuentoPct ?? undefined,
+    descuentoMotivo: q.descuentoMotivo ?? undefined,
+    banqueteroId: q.banqueteroId,
+    festejado: q.festejado,
+    festejadoTelefono: q.festejadoTelefono,
   };
 }
 
@@ -392,6 +631,7 @@ export async function createQuote(db: PrismaClient, rawInput: unknown, actor: Ac
   // Antes de CUALQUIER escritura (incluida la del cliente): una cotización
   // rechazada no debe dejar un cliente huérfano en la base.
   await assertEspaciosDisponibles(db, input.fecha, input.spaceIds);
+  await assertBanquetero(db, input.banqueteroId);
   // El catálogo se fija AQUÍ y queda casado a la cotización: reeditarla más
   // adelante recalcula contra este, no contra el que esté activo ese día.
   const catalogo = await catalogoActivo(db);
@@ -410,32 +650,54 @@ export async function createQuote(db: PrismaClient, rawInput: unknown, actor: Ac
     await db.client.update({ where: { id: clientId }, data: input.client });
   }
 
-  const created = await db.quote.create({
-    data: {
-      clientId: clientId!,
-      eventTypeId: input.eventTypeId,
-      fechaEvento: new Date(`${input.fecha}T00:00:00.000Z`),
-      horasEvento: input.horasEvento ?? null,
-      invitados: input.invitados,
-      spaceIds: input.spaceIds,
-      horasExtra: input.horasExtra,
-      usaCapilla: input.usaCapilla ?? false,
-      capillaHorario: input.capillaHorario ?? null,
-      esCortesia: input.esCortesia ?? false,
-      requiereFactura: input.requiereFactura,
-      usaDjHoraExtra: input.usaDjHoraExtra ?? false,
-      foodPackageId: input.foodPackageId ?? null,
-      addOns: input.addOns as unknown as Prisma.InputJsonValue,
-      breakdown: enriched as unknown as Prisma.InputJsonValue,
-      total: Math.round(breakdown.total),
-      rentaTotal: Math.round(breakdown.rentaTotal),
-      publicToken: randomUUID().replace(/-/g, ''),
-      vigenciaHasta: vigenciaDesde(new Date()),
-      createdById: actor.id,
-      priceListId: catalogo.id,
-    },
-    include: includeRels,
-  });
+  // El nombre con el que se arma el código: el capturado si vino en la petición,
+  // y si no el del cliente que se reutilizó.
+  const nombreCliente =
+    input.client?.nombre ??
+    (await db.client.findUnique({ where: { id: clientId! }, select: { nombre: true } }))?.nombre ??
+    '';
+
+  const created = await conCodigoUnico(
+    db,
+    { fecha: input.fecha, cliente: nombreCliente, spaceIds: input.spaceIds },
+    (codigo) =>
+      db.quote.create({
+        data: {
+          codigo,
+          clientId: clientId!,
+          eventTypeId: input.eventTypeId,
+          fechaEvento: new Date(`${input.fecha}T00:00:00.000Z`),
+          horasEvento: input.horasEvento ?? null,
+          invitados: input.invitados,
+          spaceIds: input.spaceIds,
+          horasExtra: input.horasExtra,
+          usaCapilla: input.usaCapilla ?? false,
+          capillaHorario: input.capillaHorario ?? null,
+          esCortesia: input.esCortesia ?? false,
+          requiereFactura: input.requiereFactura,
+          usaDjHoraExtra: input.usaDjHoraExtra ?? false,
+          foodPackageId: input.foodPackageId ?? null,
+          addOns: input.addOns as unknown as Prisma.InputJsonValue,
+          // Los extras se copian tal cual: nombre y monto, no un id de catálogo.
+          extras: { create: input.extras },
+          descuentoPct: input.descuentoPct ?? null,
+          descuentoMotivo: input.descuentoMotivo ?? null,
+          // Con banquetero, él es el cliente de la hacienda; el festejado es dato
+          // operativo y no entra al contrato.
+          banqueteroId: input.banqueteroId ?? null,
+          festejado: input.festejado ?? null,
+          festejadoTelefono: input.festejadoTelefono ?? null,
+          breakdown: enriched as unknown as Prisma.InputJsonValue,
+          total: Math.round(breakdown.total),
+          rentaTotal: Math.round(breakdown.rentaTotal),
+          publicToken: randomUUID().replace(/-/g, ''),
+          vigenciaHasta: vigenciaDesde(new Date()),
+          createdById: actor.id,
+          priceListId: catalogo.id,
+        },
+        include: includeRels,
+      }),
+  );
   await logActivity(db, { quoteId: created.id, tipo: 'creada', descripcion: 'Cotización creada', actorId: actor.id });
   return created;
 }
@@ -446,35 +708,63 @@ export async function createQuote(db: PrismaClient, rawInput: unknown, actor: Ac
  * Copia el desglose tal cual; al reeditar y guardar se recalcula con precios vigentes.
  */
 export async function duplicateQuote(db: PrismaClient, id: string, actor: Actor) {
-  const src = await db.quote.findFirst({ where: { id, ...ownershipWhere(actor) } });
+  const src = await db.quote.findFirst({
+    where: { id, ...ownershipWhere(actor) },
+    // Los extras se copian con el desglose: si no viajaran, la copia mostraría un
+    // total que incluye un servicio que la cotización nueva ya no tiene, y al
+    // reeditarla el monto se caería sin que nadie lo decidiera.
+    include: { ...SELECCION_INCLUDE, client: { select: { nombre: true } } },
+  });
   if (!src) throw new QuoteError(404, 'Cotización no encontrada');
 
-  const created = await db.quote.create({
-    data: {
-      clientId: src.clientId,
-      eventTypeId: src.eventTypeId,
-      fechaEvento: src.fechaEvento,
-      horasEvento: src.horasEvento,
-      invitados: src.invitados,
+  // La copia NO hereda el código: es otro evento. Con el mismo cliente, fecha y
+  // salón que el original, su base choca y le toca sufijo — que es justamente el
+  // camino por el que la colisión aparece en la vida real.
+  const created = await conCodigoUnico(
+    db,
+    {
+      fecha: src.fechaEvento.toISOString().slice(0, 10),
+      cliente: src.client?.nombre ?? '',
       spaceIds: src.spaceIds,
-      horasExtra: src.horasExtra,
-      usaCapilla: src.usaCapilla,
-      capillaHorario: src.capillaHorario,
-      usaDjHoraExtra: src.usaDjHoraExtra,
-      foodPackageId: src.foodPackageId,
-      addOns: src.addOns as unknown as Prisma.InputJsonValue,
-      breakdown: src.breakdown as unknown as Prisma.InputJsonValue,
-      total: src.total,
-      rentaTotal: src.rentaTotal,
-      publicToken: randomUUID().replace(/-/g, ''),
-      vigenciaHasta: vigenciaDesde(new Date()),
-      createdById: actor.id,
-      // La copia hereda el catálogo del original: copia el desglose tal cual, así
-      // que tiene que poder recalcularse contra los MISMOS precios.
-      priceListId: src.priceListId,
     },
-    include: includeRels,
-  });
+    (codigo) =>
+      db.quote.create({
+        data: {
+          codigo,
+          clientId: src.clientId,
+          eventTypeId: src.eventTypeId,
+          fechaEvento: src.fechaEvento,
+          horasEvento: src.horasEvento,
+          invitados: src.invitados,
+          spaceIds: src.spaceIds,
+          horasExtra: src.horasExtra,
+          usaCapilla: src.usaCapilla,
+          capillaHorario: src.capillaHorario,
+          usaDjHoraExtra: src.usaDjHoraExtra,
+          foodPackageId: src.foodPackageId,
+          addOns: src.addOns as unknown as Prisma.InputJsonValue,
+          extras: { create: src.extras },
+          descuentoPct: src.descuentoPct,
+          descuentoMotivo: src.descuentoMotivo,
+          // La copia es OTRO evento del mismo comprador: el banquetero y el
+          // festejado viajan con ella (justo el caso del banquetero que compra
+          // tres fechas y las duplica para no recapturar).
+          banqueteroId: src.banqueteroId,
+          festejado: src.festejado,
+          festejadoTelefono: src.festejadoTelefono,
+          breakdown: src.breakdown as unknown as Prisma.InputJsonValue,
+          total: src.total,
+          rentaTotal: src.rentaTotal,
+          publicToken: randomUUID().replace(/-/g, ''),
+          vigenciaHasta: vigenciaDesde(new Date()),
+          createdById: actor.id,
+          // La copia hereda el catálogo del original: copia el desglose tal cual,
+          // así que tiene que poder recalcularse contra los MISMOS precios.
+          priceListId: src.priceListId,
+        },
+        include: includeRels,
+      }),
+  );
   await logActivity(db, {
     quoteId: created.id,
     tipo: 'creada',
@@ -510,6 +800,7 @@ export async function updateQuote(db: PrismaClient, id: string, rawInput: unknow
   const input = updateQuoteSchema.parse(rawInput);
   // Se excluye a sí misma: editar sin mover fecha ni espacio no se auto-bloquea.
   await assertEspaciosDisponibles(db, input.fecha, input.spaceIds, id);
+  await assertBanquetero(db, input.banqueteroId);
   // Con el catálogo que la cotización FIJÓ al crearse, nunca con el activo:
   // reeditar una cotización de 2027 debe usar precios de 2027 aunque el catálogo
   // vigente ya sea 2028. Sin esto, cambiarle el nombre al cliente la represia.
@@ -558,28 +849,63 @@ export async function updateQuote(db: PrismaClient, id: string, rawInput: unknow
     await db.client.update({ where: { id: existing.clientId }, data: input.client });
   }
 
-  const updated = await db.quote.update({
-    where: { id },
-    data: {
-      eventTypeId: input.eventTypeId,
-      fechaEvento: new Date(`${input.fecha}T00:00:00.000Z`),
-      horasEvento: input.horasEvento ?? null,
-      invitados: input.invitados,
-      spaceIds: input.spaceIds,
-      horasExtra: input.horasExtra,
-      usaCapilla: input.usaCapilla ?? false,
-      capillaHorario: input.capillaHorario ?? null,
-      esCortesia: input.esCortesia ?? false,
-      requiereFactura: input.requiereFactura,
-      usaDjHoraExtra: input.usaDjHoraExtra ?? false,
-      foodPackageId: input.foodPackageId ?? null,
-      addOns: input.addOns as unknown as Prisma.InputJsonValue,
-      breakdown: enriched as unknown as Prisma.InputJsonValue,
-      total: Math.round(breakdown.total),
-      rentaTotal: Math.round(breakdown.rentaTotal),
-    },
-    include: includeRels,
-  });
+  // El código se regenera mientras la cotización NO aparte la fecha: en borrador
+  // sigue a la fecha, al cliente y al espacio. Con compromiso de pago queda
+  // congelado —`codigo: undefined` deja la columna intacta—, porque a partir de
+  // ahí ya está impreso en recibos y contratos. Y si por lo que sea la columna
+  // viene vacía (cotización anterior al campo que se formalizó sin backfill), se
+  // genera aunque ya aparte: un evento sin código no tiene identidad que romper.
+  const debeRegenerar = !STATUSES_QUE_APARTAN.has(existing.status) || existing.codigo == null;
+  const nombreCliente = debeRegenerar
+    ? input.client?.nombre ??
+      (await db.client.findUnique({ where: { id: existing.clientId }, select: { nombre: true } }))?.nombre ??
+      ''
+    : '';
+
+  const escribir = (codigo: string | undefined) =>
+    db.quote.update({
+      where: { id },
+      data: {
+        codigo,
+        eventTypeId: input.eventTypeId,
+        fechaEvento: new Date(`${input.fecha}T00:00:00.000Z`),
+        horasEvento: input.horasEvento ?? null,
+        invitados: input.invitados,
+        spaceIds: input.spaceIds,
+        horasExtra: input.horasExtra,
+        usaCapilla: input.usaCapilla ?? false,
+        capillaHorario: input.capillaHorario ?? null,
+        esCortesia: input.esCortesia ?? false,
+        requiereFactura: input.requiereFactura,
+        usaDjHoraExtra: input.usaDjHoraExtra ?? false,
+        foodPackageId: input.foodPackageId ?? null,
+        addOns: input.addOns as unknown as Prisma.InputJsonValue,
+        // Se reemplazan en bloque, igual que los add-ons: el formulario manda la
+        // lista completa, así que borrar y recrear es lo que refleja lo capturado.
+        extras: { deleteMany: {}, create: input.extras },
+        descuentoPct: input.descuentoPct ?? null,
+        descuentoMotivo: input.descuentoMotivo ?? null,
+        banqueteroId: input.banqueteroId ?? null,
+        festejado: input.festejado ?? null,
+        festejadoTelefono: input.festejadoTelefono ?? null,
+        breakdown: enriched as unknown as Prisma.InputJsonValue,
+        total: Math.round(breakdown.total),
+        rentaTotal: Math.round(breakdown.rentaTotal),
+      },
+      include: includeRels,
+    });
+
+  const updated = debeRegenerar
+    ? await conCodigoUnico(
+        db,
+        { fecha: input.fecha, cliente: nombreCliente, spaceIds: input.spaceIds },
+        escribir,
+        // Se excluye a sí misma: si el código base no cambió, la cotización se
+        // quedaría chocando consigo misma y se auto-bumpearía a `-2` en cada
+        // guardado, cambiando el identificador sin que nadie lo pidiera.
+        id,
+      )
+    : await escribir(undefined);
 
   // Todo cambio de datos fiscales se registra, esté o no congelado el candado:
   // el RFC con el que se timbra es información que hay que poder auditar hacia
@@ -638,10 +964,17 @@ export async function updateQuote(db: PrismaClient, id: string, rawInput: unknow
  * NO se escribe la fecha a secas — se reconstruye la selección actual con la
  * fecha nueva y se delega en `updateQuote`, que recalcula el desglose, valida
  * que el espacio esté libre en el destino y respeta ownership y estatus
- * editables (liquidada y vencida quedan fuera por ese camino).
+ * editables (liquidada queda fuera por ese camino).
+ *
+ * La selección la arma `seleccionGuardada`, no este código: armarla a mano dejaba
+ * fuera los extras y el descuento de cortesía, y el arrastre —que el dueño usa a
+ * diario— borraba el descuento y represiaba el evento solo.
  */
 export async function moveQuoteDate(db: PrismaClient, id: string, fecha: string, actor: Actor) {
-  const existing = await db.quote.findFirst({ where: { id, ...ownershipWhere(actor) } });
+  const existing = await db.quote.findFirst({
+    where: { id, ...ownershipWhere(actor) },
+    include: SELECCION_INCLUDE,
+  });
   if (!existing) throw new QuoteError(404, 'Cotización no encontrada');
   assertNotTrashed(existing);
   if (!EDITABLE_STATUSES.has(existing.status)) {
@@ -649,26 +982,13 @@ export async function moveQuoteDate(db: PrismaClient, id: string, fecha: string,
   }
 
   const fechaAntes = existing.fechaEvento.toISOString().slice(0, 10);
-  const addOns = (existing.addOns as unknown as { addOnId: string; cantidad: number }[]) ?? [];
 
   const actualizada = await updateQuote(
     db,
     id,
-    {
-      fecha,
-      invitados: existing.invitados,
-      spaceIds: existing.spaceIds,
-      horasExtra: existing.horasExtra,
-      usaCapilla: existing.usaCapilla,
-      capillaHorario: existing.capillaHorario,
-      esCortesia: existing.esCortesia,
-      usaDjHoraExtra: existing.usaDjHoraExtra,
-      requiereFactura: existing.requiereFactura,
-      eventTypeId: existing.eventTypeId,
-      foodPackageId: existing.foodPackageId ?? undefined,
-      horasEvento: existing.horasEvento,
-      addOns,
-    },
+    // Lo único que cambia es la fecha; todo lo demás se recalcula con lo que la
+    // cotización ya tenía.
+    { ...seleccionGuardada(existing), fecha },
     actor,
   );
 
@@ -754,7 +1074,13 @@ async function prepararMovimiento(db: PrismaClient, id: string, priceListId: str
   if (actor.role !== 'admin') {
     throw new QuoteError(403, 'Solo un admin puede mover una cotización de catálogo.');
   }
-  const existing = await db.quote.findFirst({ where: { id, ...ownershipWhere(actor) } });
+  const existing = await db.quote.findFirst({
+    where: { id, ...ownershipWhere(actor) },
+    // Los extras y el descuento de cortesía NO viven en el catálogo, así que
+    // mover de catálogo no debe tocarlos. Sin leerlos aquí, el recálculo los
+    // dejaría fuera y el movimiento le borraría dinero a la cotización.
+    include: SELECCION_INCLUDE,
+  });
   if (!existing) throw new QuoteError(404, 'Cotización no encontrada');
   assertNotTrashed(existing);
 
@@ -769,13 +1095,9 @@ async function prepararMovimiento(db: PrismaClient, id: string, priceListId: str
   const { breakdown, enriched } = await computeAndEnrich(
     db,
     toSelection({
-      fecha: existing.fechaEvento.toISOString().slice(0, 10),
-      invitados: existing.invitados,
-      spaceIds: existing.spaceIds,
-      horasExtra: existing.horasExtra,
-      usaCapilla: existing.usaCapilla,
-      usaDjHoraExtra: existing.usaDjHoraExtra,
-      eventTypeId: existing.eventTypeId,
+      ...seleccionGuardada(existing),
+      // Lo único que cambia son el paquete y los servicios, RETRADUCIDOS a los
+      // registros equivalentes del catálogo destino.
       foodPackageId: seleccion.foodPackageId ?? undefined,
       addOns: seleccion.addOns,
     }),
@@ -966,7 +1288,12 @@ export async function getOperativaDelDia(db: PrismaClient, fechaISO: string) {
       deletedAt: null,
       status: { in: ['formalizada', 'complementada', 'liquidada'] },
     },
-    include: { client: true, eventType: true, createdBy: { select: { nombre: true } } },
+    include: {
+      client: true,
+      eventType: true,
+      createdBy: { select: { nombre: true } },
+      banquetero: { select: { nombre: true } },
+    },
     orderBy: { horaInicio: 'asc' },
   });
 
@@ -983,6 +1310,13 @@ export async function getOperativaDelDia(db: PrismaClient, fechaISO: string) {
       tipoEvento: q.eventType?.nombre ?? 'Evento',
       lugar: q.spaceIds.map((id) => spaceName.get(id) ?? id).join(', '),
       cliente: q.client?.nombre ?? 'Cliente',
+      // El festejado es dato OPERATIVO: sale aquí (hoja operativa, correo diario,
+      // ERP) y nunca en el contrato, que lee al cliente porque es quien firma.
+      // La columna manda sobre `hoja.nombreFestejado`, que es donde se capturaba
+      // antes y queda como respaldo de los eventos anteriores.
+      festejado: q.festejado ?? ((q.operativa as { nombreFestejado?: string } | null)?.nombreFestejado ?? null),
+      festejadoTelefono: q.festejadoTelefono,
+      banquetero: q.banquetero?.nombre ?? null,
       status: q.status,
       total: q.total,
       rentaTotal: q.rentaTotal,
@@ -996,57 +1330,20 @@ export async function getOperativaDelDia(db: PrismaClient, fechaISO: string) {
   };
 }
 
-// --- Vigencia / vencimiento automático ---------------------------------------
+// --- Vigencia -----------------------------------------------------------------
 
-// Los precios de una cotización valen 30 días (política del negocio, ver página
-// pública). Pasada la vigencia sin convertirse en reserva, la cotización vence.
+// Los precios de una cotización valen 30 días (política del negocio, impresa en
+// la página pública). `vigenciaHasta` se guarda y se muestra, pero NO degrada
+// nada: el vencimiento automático se eliminó junto con el estatus `vencida`
+// (punto 8, decisión del dueño). La consecuencia la aceptó explícitamente —
+// nada limpia la agenda sola, y un borrador viejo sigue pintando su fecha hasta
+// que alguien lo mande a la papelera.
 export const VIGENCIA_DIAS = 30;
-// Estatus "en pipeline": ofertas aún no reservadas. Solo estas vencen; un evento
-// ya apartado/formalizado/liquidado nunca se degrada automáticamente.
-const PIPELINE_STATUSES = ['borrador', 'enviada', 'aceptada'] as const;
 
 export function vigenciaDesde(creacion: Date): Date {
   const d = new Date(creacion);
   d.setUTCDate(d.getUTCDate() + VIGENCIA_DIAS);
   return d;
-}
-
-/**
- * Marca como "vencida" toda cotización en pipeline cuya vigencia ya pasó
- * (por `vigenciaHasta`, o `createdAt + 30 días` para las previas al campo).
- * Un solo sentido: no revive sola — se revive duplicándola. Best-effort.
- * Devuelve cuántas venció (útil para pruebas).
- */
-export async function expireStaleQuotes(db: PrismaClient, now: Date = new Date()): Promise<number> {
-  try {
-    const hace30 = new Date(now);
-    hace30.setUTCDate(hace30.getUTCDate() - VIGENCIA_DIAS);
-    const stale = await db.quote.findMany({
-      where: {
-        status: { in: [...PIPELINE_STATUSES] },
-        deletedAt: null,
-        OR: [
-          { vigenciaHasta: { lt: now } },
-          { vigenciaHasta: null, createdAt: { lt: hace30 } },
-        ],
-      },
-      select: { id: true, status: true },
-    });
-    if (stale.length === 0) return 0;
-    await db.quote.updateMany({ where: { id: { in: stale.map((s) => s.id) } }, data: { status: 'vencida' } });
-    for (const s of stale) {
-      await logActivity(db, {
-        quoteId: s.id,
-        tipo: 'estatus',
-        descripcion: `Estatus: ${s.status} → vencida (vencimiento automático por vigencia)`,
-        meta: { de: s.status, a: 'vencida', motivo: 'vigencia' },
-        actorId: null,
-      });
-    }
-    return stale.length;
-  } catch {
-    return 0; // no bloquea la operación principal
-  }
 }
 
 // --- Papelera (soft-delete) ---------------------------------------------------
@@ -1112,7 +1409,7 @@ export async function restoreQuote(db: PrismaClient, id: string, actor: Actor) {
   return restored;
 }
 
-/** Cotizaciones en papelera (no expiradas). Purga las vencidas de paso. */
+/** Cotizaciones en papelera (no purgadas). Purga las que ya pasaron los 30 días. */
 export async function listTrash(db: PrismaClient, actor: Actor) {
   await purgeExpiredTrash(db);
   return db.quote.findMany({
@@ -1122,9 +1419,42 @@ export async function listTrash(db: PrismaClient, actor: Actor) {
   });
 }
 
+/**
+ * Cuántas cotizaciones en papelera no ha visto ESTE usuario.
+ *
+ * El sello (`User.papeleraVistaAt`) es por usuario y el conteo respeta
+ * `ownershipWhere`: una vendedora nunca cuenta lo que otra eliminó, y el admin
+ * cuenta todo. Sin sello (nunca abrió la papelera) cuenta su papelera completa.
+ *
+ * No purga: es un contador que la interfaz pide seguido, y la purga de los 30
+ * días ya corre en `listQuotes` y `listTrash`.
+ */
+export async function contarPapeleraSinVer(db: PrismaClient, actor: Actor): Promise<number> {
+  const user = await db.user.findUnique({
+    where: { id: actor.id },
+    select: { papeleraVistaAt: true },
+  });
+  const sello = user?.papeleraVistaAt ?? null;
+  return db.quote.count({
+    where: {
+      ...ownershipWhere(actor),
+      // `gt` sobre el sello, no `not: null` a secas: lo ya visto no vuelve a
+      // contar. Restaurar una cotización la saca del conteo por sí solo, porque
+      // le pone `deletedAt` en null.
+      deletedAt: sello ? { gt: sello } : { not: null },
+    },
+  });
+}
+
+/** Marca la papelera como vista AHORA para este usuario (pone el contador en cero). */
+export async function marcarPapeleraVista(db: PrismaClient, actor: Actor): Promise<Date> {
+  const vistoAt = new Date();
+  await db.user.update({ where: { id: actor.id }, data: { papeleraVistaAt: vistoAt } });
+  return vistoAt;
+}
+
 export async function listQuotes(db: PrismaClient, actor: Actor) {
   void purgeExpiredTrash(db);
-  await expireStaleQuotes(db); // vencimiento automático por vigencia antes de listar
   const quotes = await db.quote.findMany({
     where: { ...ownershipWhere(actor), deletedAt: null },
     orderBy: { createdAt: 'desc' },

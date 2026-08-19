@@ -183,7 +183,7 @@ describe('editar precios de renta', () => {
     await expect(
       editarRentas(prisma, cat.id, { cambios: [{ ...base, sabado: -1 }] }, actor),
     ).rejects.toThrow();
-    // Postgres TRUNCA los flotantes en columnas Int sin avisar: 1234.5 → 1234.
+    // Prisma TRUNCA los flotantes en columnas Int sin avisar: 1234.5 → 1234.
     await expect(
       editarRentas(prisma, cat.id, { cambios: [{ ...base, sabado: 1234.5 }] }, actor),
     ).rejects.toThrow();

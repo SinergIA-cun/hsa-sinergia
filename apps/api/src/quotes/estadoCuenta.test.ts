@@ -12,7 +12,7 @@ const soloArcos = [{ spaceId: 'arcos', rule: ARCOS, rentaBase: 100000 }];
 const base = {
   total: 100000,
   fechaEvento: new Date('2027-05-08T00:00:00.000Z'),
-  status: 'aceptada' as const,
+  status: 'borrador' as const,
   now: new Date('2027-01-01T00:00:00.000Z'),
 };
 

@@ -196,16 +196,24 @@ export interface Client {
   correoFacturacion?: string | null;
 }
 
-export const QUOTE_STATUSES = [
-  'borrador',
-  'enviada',
-  'aceptada',
-  'formalizada',
-  'complementada',
-  'liquidada',
-  'vencida',
-] as const;
+/**
+ * Los cuatro estatus vivos. `enviada`, `aceptada` y `vencida` se retiraron el
+ * 13-ago-2026 (punto 8). Debe seguir a `QUOTE_STATUSES` de la API.
+ */
+export const QUOTE_STATUSES = ['borrador', 'formalizada', 'complementada', 'liquidada'] as const;
 export type QuoteStatus = (typeof QUOTE_STATUSES)[number];
+
+/**
+ * Servicio suelto de UN evento, fuera del catálogo. Ej.: el proveedor de comida
+ * cobra $200 más por persona por cambio de menú, solo para este evento. El monto
+ * SIEMPRE trae IVA incluido: lo teclado es lo final.
+ */
+export interface QuoteExtraInput {
+  nombre: string;
+  kind: 'fijo' | 'porPersona' | 'porUnidad';
+  monto: number;
+  cantidad: number;
+}
 
 export interface Quote {
   id: string;
@@ -228,7 +236,13 @@ export interface Quote {
   esCortesia?: boolean;
   usaDjHoraExtra?: boolean;
   requiereFactura?: boolean;
+  /** El banquetero que compró el evento. Con banquetero, ÉL es el cliente de la
+   *  hacienda: firma él y se le factura a él. */
   banqueteroId?: string | null;
+  banquetero?: { id: string; nombre: string; telefono: string | null } | null;
+  /** El cliente FINAL. Dato operativo: va en la hoja operativa, NO en el contrato. */
+  festejado?: string | null;
+  festejadoTelefono?: string | null;
   horasEvento?: number | null;
   horarioCivil?: string | null;
   horaInicio?: string | null;
@@ -236,10 +250,19 @@ export interface Quote {
   operativa?: HojaOperativa | null;
   foodPackageId: string | null;
   addOns?: { addOnId: string; cantidad: number }[];
+  /** Servicios sueltos de ESTE evento, fuera del catálogo (monto con IVA incluido). */
+  extras?: QuoteExtraInput[];
+  /** Descuento de cortesía, en % sobre la renta. `null` = sin descuento. */
+  descuentoPct?: number | null;
+  descuentoMotivo?: string | null;
   breakdown: QuoteBreakdown;
   total: number;
   rentaTotal: number;
   status: QuoteStatus;
+  /** Código de evento (`17ENE-CBOLADO-CUPULA`). Es la identidad legible del
+   *  evento: se congela al formalizar y se imprime donde alguien la va a copiar.
+   *  `null` solo en cotizaciones que el backfill todavía no alcanzó. */
+  codigo?: string | null;
   publicToken: string;
   createdAt: string;
   deletedAt?: string | null;
@@ -247,12 +270,21 @@ export interface Quote {
   desfase?: boolean;
 }
 
+export type PaymentConcept = 'anticipo' | 'complemento' | 'aCuenta' | 'finiquito';
+
 export interface Payment {
   id: string;
   folio: number;
   monto: number;
   metodo: 'efectivo' | 'transferencia' | 'tarjeta';
-  concepto: 'anticipo' | 'complemento' | 'aCuenta' | 'finiquito';
+  /**
+   * El concepto EFECTIVO: se deduce de dónde deja el acumulado contra los hitos
+   * del plan, no de lo que se teclea. Se reclasifica cuando cambia el acumulado
+   * (registrar o anular un pago mueve a los posteriores).
+   */
+  concepto: PaymentConcept;
+  /** Lo que alguien capturó a mano para discrepar. `null` = nadie discrepó. */
+  conceptoManual?: PaymentConcept | null;
   fecha: string;
   referencia: string | null;
   comprobanteKey: string | null;
