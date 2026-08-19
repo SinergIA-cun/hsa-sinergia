@@ -391,7 +391,22 @@ model Payment {
   quoteId              String
   monto                Int
   metodo               PaymentMethod
+  /// Concepto EFECTIVO del pago: el que se DEDUCE de dónde deja el acumulado
+  /// contra los hitos del plan (`packages/shared/src/pagos/concepto.ts`). No es
+  /// lo que se teclea: se recalcula al registrar, al anular y al corregirlo a
+  /// mano, porque anular un pago cambia el acumulado y con él el concepto de los
+  /// pagos POSTERIORES.
   concepto             PaymentConcept
+  /// El concepto que alguien capturó o corrigió A MANO, para poder discrepar de
+  /// la deducción. `null` = nadie discrepó.
+  ///
+  /// Se guarda aparte de `concepto` a propósito: así la reclasificación en
+  /// cadena puede reescribir el efectivo sin borrar la corrección de nadie, y la
+  /// interfaz puede enseñar los dos y explicar la diferencia.
+  ///
+  /// La regla del finiquito gana SIEMPRE sobre esto (decisión del dueño): la
+  /// etiqueta de finiquito la manda el saldo, no la captura.
+  conceptoManual       PaymentConcept?
   fecha                DateTime
   referencia           String?
   folio                Int            @unique @default(dbgenerated("nextval('recibo_folio_seq')"))

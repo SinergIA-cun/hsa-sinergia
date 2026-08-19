@@ -1,0 +1,14 @@
+-- Concepto del pago corregido A MANO, para poder discrepar de la deducción.
+-- `Payment.concepto` pasa a ser el concepto EFECTIVO (deducido del acumulado
+-- contra los hitos del plan); esta columna guarda lo que alguien capturó, de modo
+-- que la reclasificación en cadena pueda reescribir el efectivo sin borrar la
+-- corrección de nadie.
+--
+-- Nullable y sin backfill a propósito: `null` significa "nadie discrepó", que es
+-- la situación de todos los pagos existentes.
+--
+-- NOTA para quien regenere este diff: `prisma migrate diff` reintroduce en CADA
+-- corrida un bloque `DROP SEQUENCE "client_ref_seq"` / `DROP SEQUENCE
+-- "recibo_folio_seq"` (no entiende los `dbgenerated(nextval(...))`). Se borró a
+-- mano. Romper `recibo_folio_seq` mata el folio de los recibos.
+ALTER TABLE "Payment" ADD COLUMN "conceptoManual" "PaymentConcept";

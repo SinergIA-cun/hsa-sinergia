@@ -6,7 +6,22 @@ import { formatMXN } from '../lib/money.ts';
 import { formatEventDate, formatTimestamp } from '../lib/date.ts';
 import { Button, Card, TextInput, SelectInput, Field } from './ui.tsx';
 import { STATUS_LABEL } from '../lib/status.ts';
-import type { EstadoCuenta, Payment, ActivityEntry, QuoteStatus } from '../lib/types.ts';
+import type { EstadoCuenta, Payment, PaymentConcept, ActivityEntry, QuoteStatus } from '../lib/types.ts';
+
+/** Los cuatro conceptos, con la etiqueta que ve la vendedora. */
+const CONCEPTOS: { value: PaymentConcept; label: string }[] = [
+  { value: 'anticipo', label: 'Anticipo' },
+  { value: 'complemento', label: 'Complemento' },
+  { value: 'aCuenta', label: 'A cuenta' },
+  { value: 'finiquito', label: 'Finiquito' },
+];
+
+const CONCEPTO_LABEL: Record<PaymentConcept, string> = {
+  anticipo: 'Anticipo',
+  complemento: 'Complemento',
+  aCuenta: 'A cuenta',
+  finiquito: 'Finiquito',
+};
 
 interface Props {
   quoteId: string;
@@ -107,6 +122,16 @@ export function PagosPanel({ quoteId, publicToken, isAdmin, estadoCuenta, paymen
     await refresh();
   }
 
+  // Corregir el concepto de un pago. Lo puede hacer ventas sobre lo suyo: es un
+  // error de captura, no un movimiento de dinero. El servidor reaplica la regla
+  // del finiquito, así que el concepto que quede puede no ser el que se pidió —
+  // por eso siempre se recarga en vez de pintar lo elegido.
+  const corregirConcepto = useMutation({
+    mutationFn: ({ paymentId, concepto }: { paymentId: string; concepto: string }) =>
+      api.patch(`/api/quotes/${quoteId}/payments/${paymentId}/concepto`, { concepto }),
+    onSuccess: refresh,
+  });
+
   return (
     <div className="mt-8 grid gap-6">
       {/* Estado de cuenta */}
@@ -155,9 +180,19 @@ export function PagosPanel({ quoteId, publicToken, isAdmin, estadoCuenta, paymen
               <option value="transferencia">Transferencia</option><option value="efectivo">Efectivo</option><option value="tarjeta">Tarjeta</option>
             </SelectInput>
           </Field>
-          <Field label="Concepto">
+          {/* El concepto se DEDUCE del saldo: comparando el pagado acumulado con
+              los hitos del plan sale solo si es anticipo, complemento, a cuenta o
+              finiquito. Lo que se elige aquí solo se usa en los eventos SIN plan
+              de pagos (los espacios cuyos montos no están definidos). Si hace
+              falta discrepar, el concepto se corrige en el renglón del pago. */}
+          <Field
+            label="Concepto"
+            hint="Se deduce del saldo. Solo se usa tal cual si el evento no tiene plan de pagos."
+          >
             <SelectInput value={concepto} onChange={(e) => setConcepto(e.target.value)}>
-              <option value="anticipo">Anticipo</option><option value="complemento">Complemento</option><option value="aCuenta">A cuenta</option><option value="finiquito">Finiquito</option>
+              {CONCEPTOS.map((c) => (
+                <option key={c.value} value={c.value}>{c.label}</option>
+              ))}
             </SelectInput>
           </Field>
           <Field label="Referencia (opcional)"><TextInput value={referencia} onChange={(e) => setReferencia(e.target.value)} /></Field>
@@ -186,8 +221,29 @@ export function PagosPanel({ quoteId, publicToken, isAdmin, estadoCuenta, paymen
           <ul className="divide-y divide-cream-200">
             {payments.map((p) => (
               <li key={p.id} className={`flex flex-wrap items-center justify-between gap-x-4 gap-y-1 py-2.5 text-sm ${p.anuladoAt ? 'opacity-50 line-through' : ''}`}>
-                <span>
-                  <span className="text-charcoal-soft/70">#{p.folio}</span> · {formatEventDate(p.fecha)} · {p.concepto} · {p.metodo}
+                <span className="flex flex-wrap items-center gap-x-1.5 gap-y-1">
+                  <span className="text-charcoal-soft/70">#{p.folio}</span> · {formatEventDate(p.fecha)} ·{' '}
+                  {/* El concepto es editable en el renglón: corregirlo es un error
+                      de captura, no un movimiento de dinero. En los pagos anulados
+                      no se toca (son evidencia y el servidor lo rechaza). */}
+                  {readOnly || p.anuladoAt ? (
+                    <span>{CONCEPTO_LABEL[p.concepto]}</span>
+                  ) : (
+                    <label className="inline-flex items-center">
+                      <span className="sr-only">Concepto del pago #{p.folio}</span>
+                      <select
+                        value={p.concepto}
+                        onChange={(e) => corregirConcepto.mutate({ paymentId: p.id, concepto: e.target.value })}
+                        disabled={corregirConcepto.isPending}
+                        className="rounded border border-ink/15 bg-transparent px-1 py-0.5 text-sm text-ink disabled:opacity-50"
+                      >
+                        {CONCEPTOS.map((c) => (
+                          <option key={c.value} value={c.value}>{c.label}</option>
+                        ))}
+                      </select>
+                    </label>
+                  )}
+                  · {p.metodo}
                   {p.referencia && ` · ${p.referencia}`}
                 </span>
                 <span className="flex items-center gap-3">
@@ -239,6 +295,19 @@ export function PagosPanel({ quoteId, publicToken, isAdmin, estadoCuenta, paymen
                   )}
                   {isAdmin && !readOnly && !p.anuladoAt && <button onClick={() => anular(p.id)} className="text-xs text-wine hover:underline">Anular</button>}
                 </span>
+                {/* Si el deducido difiere del capturado, se muestra el deducido
+                    (arriba, en el selector) y se dice por qué. Es el caso que el
+                    dueño pidió: "debe moverse a finiquito solo, si ya fue el pago
+                    que finiquitó, sin importar cómo pusieron el campo." */}
+                {p.conceptoManual && p.conceptoManual !== p.concepto && !p.anuladoAt && (
+                  <p className="w-full text-xs text-charcoal-soft">
+                    Se capturó <strong>{CONCEPTO_LABEL[p.conceptoManual]}</strong>, pero el saldo dice{' '}
+                    <strong>{CONCEPTO_LABEL[p.concepto]}</strong>
+                    {p.concepto === 'finiquito'
+                      ? ': este pago es el que finiquitó la renta.'
+                      : ': este pago no finiquita la renta, así que no puede ir como finiquito.'}
+                  </p>
+                )}
                 {p.facturable === false && !p.anuladoAt && !p.facturadoAt && (
                   <div className="flex w-full flex-wrap items-center gap-2 text-xs text-charcoal-soft">
                     <span className="inline-flex items-center gap-1">

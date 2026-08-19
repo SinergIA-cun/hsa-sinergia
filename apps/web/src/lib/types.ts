@@ -268,12 +268,21 @@ export interface Quote {
   desfase?: boolean;
 }
 
+export type PaymentConcept = 'anticipo' | 'complemento' | 'aCuenta' | 'finiquito';
+
 export interface Payment {
   id: string;
   folio: number;
   monto: number;
   metodo: 'efectivo' | 'transferencia' | 'tarjeta';
-  concepto: 'anticipo' | 'complemento' | 'aCuenta' | 'finiquito';
+  /**
+   * El concepto EFECTIVO: se deduce de dónde deja el acumulado contra los hitos
+   * del plan, no de lo que se teclea. Se reclasifica cuando cambia el acumulado
+   * (registrar o anular un pago mueve a los posteriores).
+   */
+  concepto: PaymentConcept;
+  /** Lo que alguien capturó a mano para discrepar. `null` = nadie discrepó. */
+  conceptoManual?: PaymentConcept | null;
   fecha: string;
   referencia: string | null;
   comprobanteKey: string | null;

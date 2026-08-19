@@ -4,7 +4,7 @@ import { prisma } from '@hsa/database';
 import { buildServer } from '../server.js';
 import { loadConfig } from '../config.js';
 import { createQuote, getByToken, getQuote, loadEstadoCuenta, reconcileStatuses, softDeleteQuote, updateQuote, type Actor } from '../quotes/service.js';
-import { registerPayment, anularPayment, desbloquearFactura, loadComprobanteInterno, loadComprobantePublico } from './service.js';
+import { registerPayment, anularPayment, desbloquearFactura, editarConcepto, loadComprobanteInterno, loadComprobantePublico } from './service.js';
 import { ServerStorage } from './storage.js';
 import { hashPassword } from '../auth/password.js';
 import { tmpdir } from 'node:os';
@@ -605,5 +605,233 @@ describe('datos fiscales con una factura emitida', () => {
     const logs = await prisma.activityLog.findMany({ where: { quoteId, tipo: 'fiscal' } });
     expect(logs).toHaveLength(1);
     expect(logs[0]!.descripcion).not.toMatch(/desbloqueo/i);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Concepto de pago deducido y corregible (punto 6 del Plan G).
+//
+// El concepto NO se teclea: se deduce comparando el pagado acumulado contra los
+// hitos del plan. La deducción pura está fijada en
+// `packages/shared/src/pagos/concepto.test.ts`; aquí se prueba lo que necesita la
+// base: que se persista, que ventas lo pueda corregir, y —lo que se olvida— que
+// anular un pago RECLASIFIQUE los posteriores.
+//
+// Arcos, 250 pax, sábado: renta 108,500 · anticipo 20,000 · complemento 10% de la
+// renta ⇒ objetivo acumulado del complemento 30,850 · finiquito 108,500.
+// ---------------------------------------------------------------------------
+const ARCOS = { anticipo: 20000, complemento: 10850, resto: 77650 };
+
+/** El concepto que quedó GUARDADO en el pago (no el que se capturó). */
+async function conceptoDe(paymentId: string) {
+  return (await prisma.payment.findUniqueOrThrow({ where: { id: paymentId } })).concepto;
+}
+
+describe('concepto de pago deducido', () => {
+  it('la secuencia se deduce sola, ignorando lo capturado', async () => {
+    const q = await nuevaQuote();
+    // Los tres se capturan MAL a propósito: la deducción no les hace caso.
+    const { payment: p1 } = await registerPayment(prisma, storage, q.id,
+      { monto: ARCOS.anticipo, metodo: 'transferencia', concepto: 'aCuenta', fecha: '2027-01-10' }, actor);
+    const { payment: p2 } = await registerPayment(prisma, storage, q.id,
+      { monto: ARCOS.complemento, metodo: 'transferencia', concepto: 'aCuenta', fecha: '2027-02-10' }, actor);
+    const { payment: p3 } = await registerPayment(prisma, storage, q.id,
+      { monto: ARCOS.resto, metodo: 'transferencia', concepto: 'aCuenta', fecha: '2027-03-10' }, actor);
+
+    expect(await conceptoDe(p1.id)).toBe('anticipo');
+    expect(await conceptoDe(p2.id)).toBe('complemento');
+    expect(await conceptoDe(p3.id)).toBe('finiquito');
+    // Y el pago que devuelve el registro ya trae el concepto efectivo.
+    expect(p3.concepto).toBe('finiquito');
+  });
+
+  it('el pago que cierra la cuenta es finiquito sin importar cómo pusieron el campo', async () => {
+    const q = await nuevaQuote();
+    const { payment } = await registerPayment(prisma, storage, q.id,
+      { monto: 150000, metodo: 'transferencia', concepto: 'anticipo', fecha: '2027-01-10' }, actor);
+    expect(await conceptoDe(payment.id)).toBe('finiquito');
+    // La bitácora del pago dice el concepto con el que quedó, no el tecleado.
+    const log = await prisma.activityLog.findFirstOrThrow({
+      where: { quoteId: q.id, tipo: 'pago' }, orderBy: { createdAt: 'desc' },
+    });
+    expect(log.descripcion).toContain('finiquito');
+  });
+
+  it('un abono intermedio queda a cuenta', async () => {
+    const q = await nuevaQuote();
+    await registerPayment(prisma, storage, q.id,
+      { monto: ARCOS.anticipo, metodo: 'transferencia', concepto: 'anticipo', fecha: '2027-01-10' }, actor);
+    const { payment } = await registerPayment(prisma, storage, q.id,
+      { monto: 3000, metodo: 'efectivo', concepto: 'complemento', fecha: '2027-01-20' }, actor);
+    expect(await conceptoDe(payment.id)).toBe('aCuenta');
+  });
+
+  // LA prueba del punto: anular mueve el acumulado, así que los conceptos de los
+  // pagos POSTERIORES cambian. Es lo que se olvida y lo que nadie nota.
+  it('anular el pago de en medio hace que el tercero deje de ser finiquito', async () => {
+    const q = await nuevaQuote();
+    const { payment: p1 } = await registerPayment(prisma, storage, q.id,
+      { monto: ARCOS.anticipo, metodo: 'transferencia', concepto: 'anticipo', fecha: '2027-01-10' }, actor);
+    const { payment: p2 } = await registerPayment(prisma, storage, q.id,
+      { monto: ARCOS.complemento, metodo: 'transferencia', concepto: 'complemento', fecha: '2027-02-10' }, actor);
+    const { payment: p3 } = await registerPayment(prisma, storage, q.id,
+      { monto: ARCOS.resto, metodo: 'transferencia', concepto: 'finiquito', fecha: '2027-03-10' }, actor);
+    expect(await conceptoDe(p3.id)).toBe('finiquito');
+
+    const { cambios } = await anularPayment(prisma, q.id, p2.id, 'depósito devuelto', actor);
+
+    // 20,000 + 77,650 = 97,650: ya NO cierra la cuenta de 108,500, así que deja
+    // de ser finiquito. Y como ahora es él el que cruza el objetivo del
+    // complemento (30,850), se convierte en el complemento.
+    expect(await conceptoDe(p3.id)).toBe('complemento');
+    // El anticipo no se mueve (nada cambió antes de él) y el anulado conserva su
+    // etiqueta: es evidencia de auditoría, no se reescribe.
+    expect(await conceptoDe(p1.id)).toBe('anticipo');
+    expect(await conceptoDe(p2.id)).toBe('complemento');
+    expect(cambios).toEqual([
+      { paymentId: p3.id, folio: p3.folio, de: 'finiquito', a: 'complemento' },
+    ]);
+
+    // Y la reclasificación en cadena queda en la bitácora. Se CUENTAN registros:
+    // `logActivity` se traga sus errores, así que sin esto un fallo de escritura
+    // pasaría en silencio.
+    const logs = await prisma.activityLog.findMany({
+      where: { quoteId: q.id, tipo: 'edicion', descripcion: { contains: 'Conceptos reclasificados' } },
+    });
+    expect(logs).toHaveLength(1);
+    expect(logs[0]!.descripcion).toContain('finiquito → complemento');
+  });
+
+  it('volver a pagar lo anulado devuelve el finiquito al último pago', async () => {
+    const q = await nuevaQuote();
+    await registerPayment(prisma, storage, q.id,
+      { monto: ARCOS.anticipo, metodo: 'transferencia', concepto: 'anticipo', fecha: '2027-01-10' }, actor);
+    const { payment: p2 } = await registerPayment(prisma, storage, q.id,
+      { monto: ARCOS.complemento, metodo: 'transferencia', concepto: 'complemento', fecha: '2027-02-10' }, actor);
+    const { payment: p3 } = await registerPayment(prisma, storage, q.id,
+      { monto: ARCOS.resto, metodo: 'transferencia', concepto: 'finiquito', fecha: '2027-03-10' }, actor);
+    await anularPayment(prisma, q.id, p2.id, 'se rebotó', actor);
+    expect(await conceptoDe(p3.id)).toBe('complemento');
+
+    // El reemplazo del que se anuló, con fecha POSTERIOR al tercero.
+    const { payment: p4 } = await registerPayment(prisma, storage, q.id,
+      { monto: ARCOS.complemento, metodo: 'efectivo', concepto: 'aCuenta', fecha: '2027-04-10' }, actor);
+    // 20,000 + 77,650 + 10,850 = 108,500: el último es el que cierra la cuenta.
+    expect(await conceptoDe(p3.id)).toBe('complemento');
+    expect(await conceptoDe(p4.id)).toBe('finiquito');
+  });
+
+  it('sin plan de pagos se respeta lo capturado y no se inventa nada', async () => {
+    // Los Balcones no tiene SpacePaymentRule ⇒ el plan queda pendiente.
+    const balconesId = (await prisma.space.findFirstOrThrow({ where: { nombre: 'Salón Los Balcones' } })).id;
+    const q = await createQuote(prisma, {
+      fecha: siguienteSabado(), invitados: 40, spaceIds: [arcosId, balconesId], eventTypeId,
+      client: { nombre: 'Pago Sin Plan' },
+    }, actor);
+    quotes.push(q.id); clients.push(q.clientId);
+
+    const { payment } = await registerPayment(prisma, storage, q.id,
+      { monto: 500000, metodo: 'transferencia', concepto: 'aCuenta', fecha: '2027-01-10' }, actor);
+    // Medio millón cerraría cualquier cuenta, pero sin hitos no hay nada que cerrar.
+    expect(await conceptoDe(payment.id)).toBe('aCuenta');
+  });
+});
+
+describe('corregir el concepto a mano', () => {
+  it('ventas lo corrige sobre lo suyo y queda en bitácora', async () => {
+    const ventas = { id: ventasId, role: 'ventas' as const };
+    const q = await createQuote(prisma, {
+      fecha: siguienteSabado(), invitados: 250, spaceIds: [arcosId], eventTypeId,
+      client: { nombre: 'Pago De Ventas' },
+    }, ventas);
+    quotes.push(q.id); clients.push(q.clientId);
+
+    const { payment } = await registerPayment(prisma, storage, q.id,
+      { monto: ARCOS.anticipo, metodo: 'transferencia', concepto: 'anticipo', fecha: '2027-01-10' }, ventas);
+    expect(await conceptoDe(payment.id)).toBe('anticipo');
+
+    const r = await editarConcepto(prisma, q.id, payment.id, { concepto: 'aCuenta' }, ventas);
+    expect(r.concepto).toBe('aCuenta');
+    expect(await conceptoDe(payment.id)).toBe('aCuenta');
+
+    const logs = await prisma.activityLog.findMany({
+      where: { quoteId: q.id, tipo: 'edicion', descripcion: { contains: 'Concepto del pago' } },
+    });
+    expect(logs).toHaveLength(1);
+    expect(logs[0]!.descripcion).toContain('anticipo → aCuenta');
+  });
+
+  it('marcarlo "finiquito" a mano no lo hace finiquito si no cierra la cuenta', async () => {
+    const q = await nuevaQuote();
+    const { payment } = await registerPayment(prisma, storage, q.id,
+      { monto: ARCOS.anticipo, metodo: 'transferencia', concepto: 'anticipo', fecha: '2027-01-10' }, actor);
+
+    const r = await editarConcepto(prisma, q.id, payment.id, { concepto: 'finiquito' }, actor);
+    // La regla del finiquito gana SIEMPRE sobre lo capturado, en los dos sentidos.
+    expect(r.pedido).toBe('finiquito');
+    expect(r.concepto).toBe('anticipo');
+    expect(await conceptoDe(payment.id)).toBe('anticipo');
+    const log = await prisma.activityLog.findFirstOrThrow({
+      where: { quoteId: q.id, tipo: 'edicion', descripcion: { contains: 'Concepto del pago' } },
+    });
+    expect(log.descripcion).toMatch(/manda el saldo/i);
+  });
+
+  it('la corrección sobrevive a la reclasificación en cadena', async () => {
+    const q = await nuevaQuote();
+    const { payment: p1 } = await registerPayment(prisma, storage, q.id,
+      { monto: ARCOS.anticipo, metodo: 'transferencia', concepto: 'anticipo', fecha: '2027-01-10' }, actor);
+    await editarConcepto(prisma, q.id, p1.id, { concepto: 'aCuenta' }, actor);
+
+    // Un pago posterior reclasifica todo; la corrección del primero no se borra.
+    const { payment: p2 } = await registerPayment(prisma, storage, q.id,
+      { monto: ARCOS.complemento, metodo: 'transferencia', concepto: 'aCuenta', fecha: '2027-02-10' }, actor);
+    expect(await conceptoDe(p1.id)).toBe('aCuenta');
+    expect(await conceptoDe(p2.id)).toBe('complemento');
+  });
+
+  it('el concepto de un pago anulado no se corrige (es evidencia)', async () => {
+    const { quoteId, paymentId } = await crearPagoAnulado();
+    await expect(
+      editarConcepto(prisma, quoteId, paymentId, { concepto: 'aCuenta' }, actor),
+    ).rejects.toThrow(/anulado/i);
+  });
+
+  it('un concepto inválido se rechaza', async () => {
+    const q = await nuevaQuote();
+    const { payment } = await registerPayment(prisma, storage, q.id,
+      { monto: ARCOS.anticipo, metodo: 'transferencia', concepto: 'anticipo', fecha: '2027-01-10' }, actor);
+    await expect(
+      editarConcepto(prisma, q.id, payment.id, { concepto: 'regalo' }, actor),
+    ).rejects.toThrow();
+  });
+
+  it('por HTTP: PATCH .../concepto lo corrige y devuelve el efectivo', async () => {
+    const q = await nuevaQuote();
+    const { payment } = await registerPayment(prisma, storage, q.id,
+      { monto: ARCOS.anticipo, metodo: 'transferencia', concepto: 'anticipo', fecha: '2027-01-10' }, actor);
+
+    const res = await app.inject({
+      method: 'PATCH',
+      url: `/api/quotes/${q.id}/payments/${payment.id}/concepto`,
+      cookies: await adminAuthCookie(),
+      payload: { concepto: 'aCuenta' },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().concepto).toBe('aCuenta');
+  });
+
+  it('por HTTP: una cotización de otra vendedora da 404', async () => {
+    const q = await nuevaQuote(); // creada por el admin
+    const { payment } = await registerPayment(prisma, storage, q.id,
+      { monto: ARCOS.anticipo, metodo: 'transferencia', concepto: 'anticipo', fecha: '2027-01-10' }, actor);
+
+    const res = await app.inject({
+      method: 'PATCH',
+      url: `/api/quotes/${q.id}/payments/${payment.id}/concepto`,
+      cookies: await ventasAuthCookie(),
+      payload: { concepto: 'aCuenta' },
+    });
+    expect(res.statusCode).toBe(404);
   });
 });
