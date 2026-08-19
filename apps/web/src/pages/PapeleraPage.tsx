@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { RotateCcw, Trash2, Eye } from 'lucide-react';
@@ -23,10 +24,27 @@ export function PapeleraPage() {
   });
   const quotes = data?.quotes ?? [];
 
+  // Entrar a la papelera es haberla visto: se sella y se invalida el contador de
+  // la insignia. Una sola vez por montaje, y si falla no se le dice nada al
+  // usuario: el costo de no sellar es una insignia de más, no un dato perdido.
+  useEffect(() => {
+    let cancelado = false;
+    void api
+      .post('/api/quotes/trash/visto')
+      .then(() => {
+        if (!cancelado) void qc.invalidateQueries({ queryKey: ['trash-sin-ver'] });
+      })
+      .catch(() => {});
+    return () => {
+      cancelado = true;
+    };
+  }, [qc]);
+
   async function restaurar(id: string) {
     await api.post(`/api/quotes/${id}/restore`);
     await qc.invalidateQueries({ queryKey: ['trash'] });
     await qc.invalidateQueries({ queryKey: ['quotes'] });
+    await qc.invalidateQueries({ queryKey: ['trash-sin-ver'] });
   }
 
   return (

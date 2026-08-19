@@ -1164,6 +1164,40 @@ export async function listTrash(db: PrismaClient, actor: Actor) {
   });
 }
 
+/**
+ * Cuántas cotizaciones en papelera no ha visto ESTE usuario.
+ *
+ * El sello (`User.papeleraVistaAt`) es por usuario y el conteo respeta
+ * `ownershipWhere`: una vendedora nunca cuenta lo que otra eliminó, y el admin
+ * cuenta todo. Sin sello (nunca abrió la papelera) cuenta su papelera completa.
+ *
+ * No purga: es un contador que la interfaz pide seguido, y la purga de los 30
+ * días ya corre en `listQuotes` y `listTrash`.
+ */
+export async function contarPapeleraSinVer(db: PrismaClient, actor: Actor): Promise<number> {
+  const user = await db.user.findUnique({
+    where: { id: actor.id },
+    select: { papeleraVistaAt: true },
+  });
+  const sello = user?.papeleraVistaAt ?? null;
+  return db.quote.count({
+    where: {
+      ...ownershipWhere(actor),
+      // `gt` sobre el sello, no `not: null` a secas: lo ya visto no vuelve a
+      // contar. Restaurar una cotización la saca del conteo por sí solo, porque
+      // le pone `deletedAt` en null.
+      deletedAt: sello ? { gt: sello } : { not: null },
+    },
+  });
+}
+
+/** Marca la papelera como vista AHORA para este usuario (pone el contador en cero). */
+export async function marcarPapeleraVista(db: PrismaClient, actor: Actor): Promise<Date> {
+  const vistoAt = new Date();
+  await db.user.update({ where: { id: actor.id }, data: { papeleraVistaAt: vistoAt } });
+  return vistoAt;
+}
+
 export async function listQuotes(db: PrismaClient, actor: Actor) {
   void purgeExpiredTrash(db);
   await expireStaleQuotes(db); // vencimiento automático por vigencia antes de listar

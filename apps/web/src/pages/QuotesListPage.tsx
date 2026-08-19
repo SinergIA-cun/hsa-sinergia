@@ -27,6 +27,9 @@ function QuoteRow({ q, showSeller }: { q: Quote; showSeller: boolean }) {
     if (!window.confirm('¿Enviar este contrato a la papelera? Podrás restaurarlo dentro de 30 días.')) return;
     await api.del(`/api/quotes/${q.id}`);
     await qc.invalidateQueries({ queryKey: ['quotes'] });
+    // La insignia de la papelera acaba de cambiar: si no se invalida, el número
+    // se queda viejo hasta la siguiente recarga completa.
+    await qc.invalidateQueries({ queryKey: ['trash-sin-ver'] });
   }
 
   return (

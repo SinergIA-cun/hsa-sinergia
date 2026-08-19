@@ -421,6 +421,13 @@ model User {
   role                UserRole      @default(ventas)
   activo              Boolean       @default(true)
   createdAt           DateTime      @default(now())
+  /// Última vez que ESTE usuario abrió la papelera. El contador rojo son las
+  /// cotizaciones que él puede ver con `deletedAt` posterior a este sello.
+  /// Va en el usuario y no en la cotización a propósito: "sin ver" es una
+  /// propiedad de quien mira, no de la cotización — dos personas pueden tener
+  /// pendiente de ver la misma, y una la ve sin que la otra deje de verla.
+  /// `null` = nunca la ha abierto: toda su papelera cuenta.
+  papeleraVistaAt     DateTime?
   quotesCreated       Quote[]       @relation("QuoteCreatedBy")
   paymentsRegistrados Payment[]     @relation("PaymentRegistradoBy")
   paymentsAnulados    Payment[]     @relation("PaymentAnuladoBy")

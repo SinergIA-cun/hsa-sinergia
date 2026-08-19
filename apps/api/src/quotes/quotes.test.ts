@@ -17,6 +17,8 @@ import {
   restoreQuote,
   simularCatalogo,
   listTrash,
+  contarPapeleraSinVer,
+  marcarPapeleraVista,
   listQuotes,
   moveQuoteDate,
   updateQuote,
@@ -737,6 +739,98 @@ describe('papelera (soft-delete)', () => {
     await prisma.payment.deleteMany({ where: { quoteId: q.id } });
     await softDeleteQuote(prisma, q.id, actor);
     await expect(updateStatus(prisma, q.id, 'formalizada', actor)).rejects.toThrow(/papelera/);
+  });
+});
+
+describe('contador de papelera (sin ver)', () => {
+  /** Espera un instante: el sello de "visto" y el `deletedAt` se comparan con `>`,
+   *  y dos escrituras en el MISMO milisegundo harían pasar por "ya visto" algo
+   *  que se eliminó después. En la vida real median segundos; aquí, 10 ms. */
+  const tic = () => new Promise((r) => setTimeout(r, 10));
+
+  /** Un borrador de la vendedora, ya en la papelera. */
+  async function borradorEnPapelera(nombre: string, fecha: string, quien: Actor) {
+    const { eventTypeId, arcosId } = await ids();
+    const q = await createQuote(
+      prisma,
+      { fecha, invitados: 150, spaceIds: [arcosId], eventTypeId, client: { nombre } },
+      quien,
+    );
+    createdQuoteIds.push(q.id);
+    createdClientIds.push(q.clientId);
+    await softDeleteQuote(prisma, q.id, quien);
+    return q;
+  }
+
+  it('sin sello previo, todo lo que está en papelera cuenta', async () => {
+    const vendedora: Actor = { id: ventasId, role: 'ventas' };
+    // La vendedora nace sin sello: su papelera entera está "sin ver".
+    await borradorEnPapelera('Contador Sin Sello 1', '2031-02-08', vendedora);
+    await borradorEnPapelera('Contador Sin Sello 2', '2031-02-15', vendedora);
+    expect(await contarPapeleraSinVer(prisma, vendedora)).toBe(2);
+  });
+
+  it('marcar visto pone el contador en cero', async () => {
+    const vendedora: Actor = { id: ventasId, role: 'ventas' };
+    await marcarPapeleraVista(prisma, vendedora);
+    expect(await contarPapeleraSinVer(prisma, vendedora)).toBe(0);
+  });
+
+  it('una cotización eliminada DESPUÉS de marcar visto vuelve a contar', async () => {
+    const vendedora: Actor = { id: ventasId, role: 'ventas' };
+    await marcarPapeleraVista(prisma, vendedora);
+    expect(await contarPapeleraSinVer(prisma, vendedora)).toBe(0);
+    await tic();
+    await borradorEnPapelera('Contador Después del Sello', '2031-03-01', vendedora);
+    expect(await contarPapeleraSinVer(prisma, vendedora)).toBe(1);
+  });
+
+  it('restaurar una cotización la saca del contador', async () => {
+    const vendedora: Actor = { id: ventasId, role: 'ventas' };
+    await marcarPapeleraVista(prisma, vendedora);
+    await tic();
+    const q = await borradorEnPapelera('Contador Restaurada', '2031-03-08', vendedora);
+    expect(await contarPapeleraSinVer(prisma, vendedora)).toBe(1);
+    await restoreQuote(prisma, q.id, vendedora);
+    expect(await contarPapeleraSinVer(prisma, vendedora)).toBe(0);
+  });
+
+  it('las rutas responden: GET cuenta, POST marca visto y deja el contador en cero', async () => {
+    const auth = await authCookies(); // el admin de authCookies ES `actor`
+    await marcarPapeleraVista(prisma, actor);
+    await tic();
+    await borradorEnPapelera('Contador Por Ruta', '2031-05-03', actor);
+
+    const antes = await app.inject({ method: 'GET', url: '/api/quotes/trash/sin-ver', cookies: auth });
+    expect(antes.statusCode).toBe(200);
+    expect(antes.json().count).toBe(1);
+
+    const visto = await app.inject({ method: 'POST', url: '/api/quotes/trash/visto', cookies: auth });
+    expect(visto.statusCode).toBe(200);
+    expect(visto.json().ok).toBe(true);
+
+    const despues = await app.inject({ method: 'GET', url: '/api/quotes/trash/sin-ver', cookies: auth });
+    expect(despues.json().count).toBe(0);
+  });
+
+  it('una vendedora no cuenta las de otra; el admin las cuenta todas', async () => {
+    const vendedora: Actor = { id: ventasId, role: 'ventas' };
+    // Se cuenta por DELTA: la papelera del admin es global y otras suites dejan
+    // basura ahí. Lo que se fija es cuánto MUEVE cada eliminación, no el absoluto.
+    await marcarPapeleraVista(prisma, vendedora);
+    await marcarPapeleraVista(prisma, actor);
+    await tic();
+    const adminAntes = await contarPapeleraSinVer(prisma, actor);
+
+    // Una del admin: la vendedora no la ve, el admin sí.
+    await borradorEnPapelera('Contador Del Admin', '2031-04-05', actor);
+    expect(await contarPapeleraSinVer(prisma, vendedora)).toBe(0);
+    expect(await contarPapeleraSinVer(prisma, actor)).toBe(adminAntes + 1);
+
+    // Una de la vendedora: la ve ella, y el admin también (ve todo).
+    await borradorEnPapelera('Contador De La Vendedora', '2031-04-12', vendedora);
+    expect(await contarPapeleraSinVer(prisma, vendedora)).toBe(1);
+    expect(await contarPapeleraSinVer(prisma, actor)).toBe(adminAntes + 2);
   });
 });
 
