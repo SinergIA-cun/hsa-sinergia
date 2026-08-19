@@ -11,6 +11,7 @@ import {
   listarDepositos,
   loadComprobanteDeposito,
 } from './cuenta.js';
+import { crearApartado, listarApartados, cancelarApartado, convertirApartado } from './apartados.js';
 
 /**
  * La cuenta corriente del banquetero.
@@ -136,6 +137,66 @@ export async function banqueteroRoutes(app: FastifyInstance): Promise<void> {
           req.user as Actor,
         );
         return { deposito };
+      } catch (e) {
+        if (e instanceof QuoteError) return reply.code(e.status).send({ error: e.message });
+        throw e;
+      }
+    },
+  );
+
+  // --- Apartados de fecha (sin precio) ---
+
+  // Apartar una fecha. Lo puede hacer ventas: es vender una fecha, no mover dinero
+  // ya recibido. El choque con una fecha comprometida avisa (409 con el detalle) y
+  // se puede pasar con `confirmar: true`.
+  app.post<{ Params: { id: string } }>(
+    '/banqueteros/:id/apartados',
+    { preHandler: requireAuth },
+    async (req, reply) => {
+      try {
+        const result = await crearApartado(app.prisma, req.params.id, req.body, req.user as Actor);
+        return reply.code(201).send(result);
+      } catch (e) {
+        if (e instanceof QuoteError) return reply.code(e.status).send({ error: e.message });
+        throw e;
+      }
+    },
+  );
+
+  app.get<{ Params: { id: string } }>(
+    '/banqueteros/:id/apartados',
+    { preHandler: requireAuth },
+    async (req) => ({ apartados: await listarApartados(app.prisma, req.params.id) }),
+  );
+
+  app.patch<{ Params: { apartadoId: string } }>(
+    '/banqueteros/apartados/:apartadoId/cancelar',
+    { preHandler: requireAdmin },
+    async (req, reply) => {
+      try {
+        return { apartado: await cancelarApartado(app.prisma, req.params.apartadoId, req.body, req.user as Actor) };
+      } catch (e) {
+        if (e instanceof QuoteError) return reply.code(e.status).send({ error: e.message });
+        throw e;
+      }
+    },
+  );
+
+  // Convertir el apartado en cotización. El cuerpo es el de crear una cotización
+  // normal MENOS fecha, espacios y banquetero, que vienen del apartado.
+  app.post<{ Params: { apartadoId: string } }>(
+    '/banqueteros/apartados/:apartadoId/convertir',
+    { preHandler: requireAuth },
+    async (req, reply) => {
+      try {
+        const result = await convertirApartado(
+          app.prisma,
+          storage,
+          req.params.apartadoId,
+          req.body,
+          req.user as Actor,
+        );
+        return reply.code(201).send(result);
       } catch (e) {
         if (e instanceof QuoteError) return reply.code(e.status).send({ error: e.message });
         throw e;
