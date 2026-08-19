@@ -17,7 +17,7 @@
 
 ## Decisiones del dueño (no volver a preguntar)
 
-1. **El descuento de cortesía pega SOLO sobre la renta.** Con 100% la renta queda en cero y alimentos y servicios se cobran completos.
+1. **El descuento de cortesía pega SOLO sobre la renta.** Con 100% la renta queda en cero y alimentos y servicios se cobran completos. **Precisado después** (ver la CORRECCIÓN al final): pega sobre la renta **cambiando su precio**, así que las horas extra y el 5% por alimentos salen del precio ya descontado, y la capilla no se descuenta nunca.
 2. **El servicio adicional del evento se captura SIEMPRE con IVA incluido.** El monto teclado es el final.
 3. **Las 4 cotizaciones `vencida` pasan a `borrador`, y el vencimiento automático se elimina por completo.** Se le advirtió que entonces nada limpia la agenda —los borradores viejos seguirán pintando fechas en ámbar hasta que alguien los borre a mano— y lo aceptó.
 
@@ -121,7 +121,9 @@ model QuoteExtra {
 
 **Decisión 1 del dueño: el % pega SOLO sobre la renta.** Con 100% la renta queda en cero; alimentos y servicios se cobran completos.
 
-> **Ojo con el descuento que ya existe.** El motor ya tiene un descuento del 5% por alimentos (`engine.ts:105-110`) que también pega sobre la renta, y el comentario de la cabecera dice que los descuentos se calculan **sobre la misma base y no se componen entre sí**. El de cortesía tiene que seguir esa misma regla: base = renta de espacios, sin componerse con el otro. Un test debe fijar el caso de los dos juntos.
+> **SUPERADO por la CORRECCIÓN al final de este plan.** Lo que sigue en este párrafo y en la decisión 1 fue la primera versión de la regla y **ya no es lo implementado**; se conserva para entender qué se reemplazó. La regla vigente es la de la sección "CORRECCIÓN de la Task 3": el descuento **cambia el precio de la renta**, y las horas extra y el 5% por alimentos se calculan sobre el precio **ya descontado**.
+>
+> ~~**Ojo con el descuento que ya existe.** El motor ya tiene un descuento del 5% por alimentos (`engine.ts:105-110`) que también pega sobre la renta, y el comentario de la cabecera dice que los descuentos se calculan **sobre la misma base y no se componen entre sí**. El de cortesía tiene que seguir esa misma regla: base = renta de espacios, sin componerse con el otro. Un test debe fijar el caso de los dos juntos.~~
 
 **Files:** `schema.prisma` + migración · `packages/shared/src/pricing/engine.ts` (+ tests) · `apps/api/src/quotes/service.ts` · `apps/web/src/components/QuoteForm.tsx` · `ContratoPage.tsx` · `PublicQuotePage.tsx`
 
@@ -300,11 +302,25 @@ alimentos y capilla en sábado:
 
 Y con **100%**: `rentaTotal = 5,000` (solo la capilla).
 
-- [ ] **Step 1:** Reescribir los tests del descuento con el orden nuevo, **incluido
+- [x] **Step 1:** Reescribir los tests del descuento con el orden nuevo, **incluido
       el de 100% + alimentos + horas extra + capilla**, y confirmar que fallan.
-- [ ] **Step 2:** Reordenar el motor. **Quitar el tope** del descuento: ya no hace
-      falta y dejarlo esconde la regla real.
-- [ ] **Step 3:** Verificar que el test de no-regresión (sin descuento) sigue dando
-      exactamente los mismos números. Si cambia, el reordenamiento movió dinero en
-      cotizaciones sin descuento y está mal.
-- [ ] **Step 4:** Commit.
+      (7 tests rojos, con las diferencias exactas: 10,850→5,425 en horas extra,
+      −5,425→−2,712.50 en el 5% por alimentos, −103,075→−108,500 en la cortesía.)
+- [x] **Step 2:** Reordenar el motor. **Quitar el tope** del descuento: ya no hace
+      falta y dejarlo esconde la regla real. (Se fue `descuentoSobreBase` y el
+      `Math.min(bruto, tope)`; el renglón del descuento se movió a JUNTO a la renta,
+      antes de las horas extra, para que el contrato cuadre a ojo de arriba abajo.)
+- [x] **Step 3:** Verificar que el test de no-regresión (sin descuento) sigue dando
+      exactamente los mismos números. **Verde, con los literales sin tocar**:
+      renta sola 108,500 / 93,534.48 / 14,965.52; cotización completa
+      rentaTotal 118,925, total 360,901. `git diff` del bloque congelado: 0 líneas.
+- [x] **Step 4:** Commit.
+
+### Los dos números fijados, confirmados por los tests
+
+| Caso (renta 108,500 · 2 h extra · capilla sábado · con alimentos) | `rentaTotal` |
+|---|---|
+| 50% de descuento | **61,962.50** (54,250 + 5,425 − 2,712.50 + 5,000) |
+| 100% de descuento | **5,000** (solo la capilla) |
+
+Los dos coinciden con los del plan.

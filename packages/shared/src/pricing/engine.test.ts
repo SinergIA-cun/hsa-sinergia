@@ -352,8 +352,15 @@ describe('computeQuote · servicios sueltos del evento (extras)', () => {
 
 // ---------------------------------------------------------------------------
 // Descuento de cortesía. `esCortesia` nunca afectó el precio; esto se lo da.
-// Pega SOLO sobre la renta (decisión del dueño) y sobre la MISMA base que el
-// descuento por alimentos (renta de espacios), sin componerse con él.
+//
+// LA REGLA (dueño, 13-ago-2026, corrigiendo la primera versión): el descuento
+// cambia el PRECIO DE LA RENTA. Todo lo que se deriva de ese precio —horas extra
+// y el 5% por alimentos— se calcula sobre el precio YA descontado. Textual:
+// "Si yo di 50% de descuento, entonces las horas extras serán el 5% del precio
+// que lleva 50% de descuento". La capilla NO se descuenta nunca.
+//
+// Por eso ya no hay tope: con 100% el precio de la renta es cero y todo lo que
+// se deriva de él sale cero por aritmética, sin reglas inventadas.
 // ---------------------------------------------------------------------------
 describe('computeQuote · descuento de cortesía', () => {
   it('100% deja rentaTotal en cero y otrosTotal intacto', () => {
@@ -375,6 +382,9 @@ describe('computeQuote · descuento de cortesía', () => {
     expect(r.rentaTotal).toBe(0);
     expect(r.otrosTotal).toBeCloseTo(199750 * 1.16, 2);
     expect(r.total).toBe(r.otrosTotal);
+    // El 5% por alimentos es 5% del precio de la renta, y ese precio es cero:
+    // el renglón sigue apareciendo, pero en $0. No hay nada que topar.
+    expect(r.lines.find((l) => l.concepto.startsWith('Descuento por alimentos'))!.monto).toBe(0);
   });
 
   it('50% deja la mitad de la renta', () => {
@@ -392,49 +402,117 @@ describe('computeQuote · descuento de cortesía', () => {
     expect(linea.detalle).toBe('Sobrina del dueño');
   });
 
-  // EL test delicado de las dos tasks. El motor ya tiene un descuento del 5% por
-  // alimentos sobre la renta, y la cabecera del motor dice que los descuentos se
-  // calculan sobre la MISMA base y NO se componen. Si se compusieran, un evento
-  // con alimentos y cortesía cobraría de más y nadie lo notaría hasta sumar a mano.
-  it('cortesía + descuento por alimentos: los dos sobre la MISMA base, sin componerse', () => {
+  // El renglón del descuento va JUNTO a lo que descuenta y ANTES de lo que se
+  // deriva de él. Si apareciera al final, el contrato mostraría unas horas extra
+  // de 5,425 debajo de una renta de 108,500 y no cuadraría a ojo.
+  it('el renglón del descuento va pegado a la renta, antes de las horas extra', () => {
+    const r = computeQuote(
+      catalog,
+      mk({ descuentoPct: 50, descuentoMotivo: 'Media cortesía', horasExtra: 2 }),
+    );
+    expect(r.lines.map((l) => l.concepto)).toEqual([
+      'Renta arcos',
+      'Descuento de cortesía (50% renta)',
+      'Horas extra',
+    ]);
+  });
+
+  // LA regla corregida, en un solo test: las horas extra son el 5% del precio
+  // que YA lleva el descuento, no el 5% del precio de folleto.
+  it('las horas extra son el 5% del precio YA descontado', () => {
+    const r = computeQuote(
+      catalog,
+      mk({ descuentoPct: 50, descuentoMotivo: 'Media cortesía', horasExtra: 2 }),
+    );
+    const horas = r.lines.find((l) => l.concepto === 'Horas extra')!;
+    expect(horas.monto).toBe(5425); // 2 × 5% × 54,250, NO 2 × 5% × 108,500
+    expect(r.rentaTotal).toBe(59675); // 54,250 + 5,425
+  });
+
+  // Misma regla para el otro descuento: el 5% por alimentos también sale del
+  // precio descontado. Esto SÍ se compone con el de cortesía, a propósito: no son
+  // dos descuentos sobre una misma base, es un precio nuevo y un 5% sobre él.
+  it('el 5% por alimentos es 5% del precio YA descontado', () => {
     const r = computeQuote(
       catalog,
       mk({ descuentoPct: 50, descuentoMotivo: 'Media cortesía', foodPackageId: 'boda-supreme' }),
     );
-    const alimentos = r.lines.find((l) => l.concepto.startsWith('Descuento por alimentos'))!;
     const cortesia = r.lines.find((l) => l.concepto.startsWith('Descuento de cortesía'))!;
-    // Los dos se calculan sobre los 108,500 de renta de espacios.
-    expect(alimentos.monto).toBe(-5425); // 5% de 108,500
-    expect(cortesia.monto).toBe(-54250); // 50% de 108,500, NO de 103,075
-    expect(r.rentaTotal).toBe(48825); // 108,500 − 5,425 − 54,250
-    // Compuestos darían 51,537.50 (50% de 103,075): $2,712.50 de diferencia.
-    expect(r.rentaTotal).not.toBe(51537.5);
+    const alimentos = r.lines.find((l) => l.concepto.startsWith('Descuento por alimentos'))!;
+    expect(cortesia.monto).toBe(-54250); // 50% de 108,500
+    expect(alimentos.monto).toBe(-2712.5); // 5% de 54,250, NO de 108,500
+    expect(r.rentaTotal).toBe(51537.5); // 54,250 − 2,712.50
   });
 
-  // Consecuencia de "misma base, sin componerse": 100% + 5% suman 105% de la base
-  // y la renta se iría a −5,425. Un rentaTotal negativo rompe el plan de pagos,
-  // así que los descuentos JUNTOS no pueden pasarse de la base sobre la que se
-  // calculan; el de cortesía es el que se topa.
-  it('los descuentos juntos nunca pasan de su base: la renta no se va a negativo', () => {
+  // El caso que el plan exige fijar, completo: renta de folleto 108,500, 2 horas
+  // extra, capilla en sábado, con paquete de alimentos.
+  it('caso fijado del plan · 50%: rentaTotal = 61,962.50', () => {
     const r = computeQuote(
       catalog,
-      mk({ descuentoPct: 100, descuentoMotivo: 'Cortesía total', foodPackageId: 'boda-supreme' }),
+      mk({
+        descuentoPct: 50,
+        descuentoMotivo: 'Media cortesía',
+        horasExtra: 2,
+        usaCapilla: true,
+        foodPackageId: 'boda-supreme',
+      }),
     );
-    const cortesia = r.lines.find((l) => l.concepto.startsWith('Descuento de cortesía'))!;
-    expect(cortesia.monto).toBe(-103075); // topado: 108,500 − 5,425, no −108,500
+    const monto = (c: string) => r.lines.find((l) => l.concepto.startsWith(c))!.monto;
+    expect(monto('Renta arcos')).toBe(108500);
+    expect(monto('Descuento de cortesía')).toBe(-54250);
+    expect(monto('Horas extra')).toBe(5425);
+    expect(monto('Capilla')).toBe(5000);
+    expect(monto('Descuento por alimentos')).toBe(-2712.5);
+    // 54,250 + 5,425 − 2,712.50 + 5,000
+    expect(r.rentaTotal).toBe(61962.5);
+  });
+
+  it('caso fijado del plan · 100%: rentaTotal = 5,000, nada más que la capilla', () => {
+    const r = computeQuote(
+      catalog,
+      mk({
+        descuentoPct: 100,
+        descuentoMotivo: 'Cortesía total',
+        horasExtra: 2,
+        usaCapilla: true,
+        foodPackageId: 'boda-supreme',
+      }),
+    );
+    const monto = (c: string) => r.lines.find((l) => l.concepto.startsWith(c))!.monto;
+    expect(monto('Descuento de cortesía')).toBe(-108500); // completo, sin topar
+    expect(monto('Horas extra')).toBe(0); // 5% de cero
+    expect(monto('Descuento por alimentos')).toBe(0); // 5% de cero
+    expect(monto('Capilla')).toBe(5000); // la capilla NO se descuenta
+    expect(r.rentaTotal).toBe(5000);
+  });
+
+  // La capilla se cobra en los días que se cobra: "No hay descuentos ni
+  // cortesías" (dueño). Es el único renglón de renta que el descuento no toca.
+  it('la capilla se cobra completa aunque la cortesía sea del 100%', () => {
+    const sab = computeQuote(
+      catalog,
+      mk({ descuentoPct: 100, descuentoMotivo: 'Cortesía total', usaCapilla: true }),
+    );
+    expect(sab.lines.find((l) => l.concepto === 'Capilla')!.monto).toBe(5000);
+    expect(sab.rentaTotal).toBe(5000);
+
+    // Entre semana la capilla ya era cortesía: con 100% la renta queda en cero.
+    const jue = computeQuote(
+      catalog,
+      mk({ fecha: '2027-05-06', descuentoPct: 100, descuentoMotivo: 'Cortesía total', usaCapilla: true }),
+    );
+    expect(jue.rentaTotal).toBe(0);
+  });
+
+  // Sin tope y sin reglas inventadas: el 100% no puede dejar la renta en negativo
+  // porque todo lo que se resta sale del precio ya descontado, que es cero.
+  it('con 100% la renta llega a cero por aritmética, nunca a negativo', () => {
+    const r = computeQuote(
+      catalog,
+      mk({ descuentoPct: 100, descuentoMotivo: 'Cortesía total', horasExtra: 3, foodPackageId: 'boda-supreme' }),
+    );
     expect(r.rentaTotal).toBe(0);
     expect(r.rentaTotal).toBeGreaterThanOrEqual(0);
-  });
-
-  // La base es la renta de ESPACIOS, igual que el 5% por alimentos y las horas
-  // extra (así lo dice la cabecera del motor). Horas extra y capilla no entran a
-  // la base, así que sobreviven a una cortesía del 100%.
-  it('la base es la renta de espacios: con 100%, horas extra y capilla siguen cobrándose', () => {
-    const r = computeQuote(
-      catalog,
-      mk({ descuentoPct: 100, descuentoMotivo: 'Cortesía total', horasExtra: 2, usaCapilla: true }),
-    );
-    expect(r.rentaTotal).toBe(10850 + 5000); // 2 × 5% de 108,500 + capilla de sábado
   });
 
   it('sin descuentoPct (o en 0) no aparece ningún renglón de cortesía', () => {

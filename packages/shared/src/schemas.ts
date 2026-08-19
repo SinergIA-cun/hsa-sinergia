@@ -52,9 +52,11 @@ export const quoteSelectionSchema = z.object({
   /** Servicios sueltos de ESTE evento (ver `quoteExtraSchema`). */
   extras: z.array(quoteExtraSchema).default([]),
   /**
-   * Descuento de cortesía, en por ciento (0..100). Pega SOLO sobre la renta de
-   * espacios, la MISMA base que el descuento del 5% por alimentos, y no se
-   * compone con él (decisión del dueño + regla de la cabecera del motor).
+   * Descuento de cortesía, en por ciento (0..100). Pega SOLO sobre la renta:
+   * CAMBIA EL PRECIO de la renta, y lo que se deriva de ese precio —las horas
+   * extra y el descuento del 5% por alimentos— se calcula sobre el precio ya
+   * descontado. La capilla NO se descuenta nunca. Alimentos y servicios se cobran
+   * completos. Con 100% la renta queda en cero (más la capilla si la hay).
    */
   descuentoPct: z.number().min(0).max(100).optional(),
   /** Motivo del descuento. Obligatorio si hay descuento: sin él no es auditable. */

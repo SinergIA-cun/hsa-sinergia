@@ -260,10 +260,12 @@ model Quote {
   usaCapilla    Boolean     @default(false) // cortesía; $5,000 en sábado. Varios eventos pueden usarla el mismo día.
   capillaHorario String?    // horario de la capilla para este evento (varios eventos comparten el día).
   esCortesia    Boolean     @default(false) // cortesía familiar: se marca verde en la agenda.
-  /// Descuento de cortesía, en por ciento (0..100). Pega SOLO sobre la renta de
-  /// espacios: con 100% la renta queda en cero y alimentos y servicios se cobran
-  /// completos. `null` = sin descuento, que es como se comportó `esCortesia`
-  /// desde siempre (se guardaba, pero el motor nunca la leyó).
+  /// Descuento de cortesía, en por ciento (0..100). Pega SOLO sobre la renta, y
+  /// lo hace CAMBIANDO SU PRECIO: las horas extra y el descuento del 5% por
+  /// alimentos se calculan sobre el precio ya descontado. La capilla nunca se
+  /// descuenta. Alimentos y servicios se cobran completos. Con 100% la renta queda
+  /// en cero (más la capilla, si la hay). `null` = sin descuento, que es como se
+  /// comportó `esCortesia` desde siempre (se guardaba, pero el motor nunca la leyó).
   descuentoPct    Float?
   /// Motivo del descuento. Es OBLIGATORIO cuando hay descuento —lo exige el
   /// esquema de crear/editar—, pero la columna es nullable porque la enorme

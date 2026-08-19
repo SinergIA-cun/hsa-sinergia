@@ -10,15 +10,21 @@ function round2(n: number): number {
 /**
  * Motor de precios (función pura). Recibe el catálogo y las selecciones y
  * devuelve el desglose congelado. Reglas:
- * - Renta: precio(espacio, rango, tipoDía), CON IVA ya incluido; suma de espacios.
- *   Team Building (rentaPlana) usa una tabla PLANA: el mismo precio para cualquier día.
- * - Horas extra: 5% de la renta de espacios (base) por hora.
- * - Descuento por alimentos: 5% de la renta de espacios (base). Horas extra y
- *   descuento se calculan sobre la MISMA base (espacios), no se componen entre sí.
- * - Descuento de cortesía: `descuentoPct`% de la renta de espacios (LA MISMA base
- *   que el 5% por alimentos, sin componerse con él). Con los dos juntos la suma
- *   podría pasarse de la base y dejar la renta en negativo, así que los descuentos
- *   JUNTOS se topan en la base: el de cortesía es el que se recorta.
+ * - Renta de catálogo: precio(espacio, rango, tipoDía), CON IVA ya incluido; suma
+ *   de espacios. Team Building (rentaPlana) usa una tabla PLANA: el mismo precio
+ *   para cualquier día.
+ * - Descuento de cortesía: `descuentoPct`% de la renta de catálogo. NO es un
+ *   descuento más al final: CAMBIA EL PRECIO DE LA RENTA. El resultado
+ *   (`rentaBase`) es el precio efectivo, y todo lo que se deriva del precio de la
+ *   renta se calcula sobre él (decisión del dueño: "si yo di 50% de descuento,
+ *   entonces las horas extras serán el 5% del precio que lleva 50% de descuento").
+ * - Horas extra: 5% de `rentaBase` por hora.
+ * - Descuento por alimentos: 5% de `rentaBase`.
+ * - Capilla: precio completo, SIEMPRE. No se descuenta nunca ("la capilla se cobra
+ *   en los días que se cobra; no hay descuentos ni cortesías").
+ * - Con 100% de cortesía `rentaBase` es cero, y horas extra y descuento por
+ *   alimentos salen cero por aritmética: la renta llega a cero sin necesidad de
+ *   topes ni casos especiales. Solo sobrevive la capilla.
  * - Alimentos: precio por persona × invitados. Si el paquete NO trae IVA, se le agrega.
  * - Add-ons: fijo | porPersona (× invitados) | porUnidad (× cantidad). SIN IVA => se agrega.
  * - Extras (servicios sueltos de ESTE evento, fuera del catálogo): mismos tipos de
@@ -41,7 +47,8 @@ export function computeQuote(
   const dt = dayType(sel.fecha);
   const lines: QuoteLine[] = [];
 
-  // 1. Renta de espacios (con IVA) — suma de espacios. Base para 5% y horas extra.
+  // 1. Renta de espacios de CATÁLOGO (con IVA) — suma de espacios. Todavía no es
+  // la base de nada: el descuento de cortesía la convierte en el precio efectivo.
   // Team Building usa la tabla PLANA (mismo precio todos los días); el resto, por-día.
   const usaFlat = sel.eventTypeId != null && catalog.flatRentalEventTypeIds.includes(sel.eventTypeId);
   const rentalRows = usaFlat ? catalog.rentalPricesFlat : catalog.rentalPrices;
@@ -62,10 +69,31 @@ export function computeQuote(
     lines.push({ concepto: `Renta ${spaceId}`, monto: round2(monto), ivaIncluido: true, grupo: 'renta', spaceId });
   }
 
-  // 2. Horas extra (5% de la renta de espacios por hora, con IVA porque es sobre la renta).
-  let rentaConIva = rentaEspacios;
+  // 2. Descuento de cortesía: CAMBIA EL PRECIO DE LA RENTA. `rentaBase` es el
+  //    precio efectivo, y de ahí en adelante todo lo que se deriva del precio de la
+  //    renta —horas extra y el 5% por alimentos— sale de él, no del de catálogo.
+  //
+  //    El renglón va pegado a la renta y ANTES de lo que se deriva de ella: así el
+  //    contrato se lee de arriba abajo (108,500 · −54,250 · horas extra sobre
+  //    54,250) y cuadra a ojo.
+  let rentaBase = rentaEspacios;
+  if (sel.descuentoPct != null && sel.descuentoPct > 0) {
+    const monto = rentaEspacios * (sel.descuentoPct / 100);
+    rentaBase -= monto;
+    lines.push({
+      concepto: `Descuento de cortesía (${sel.descuentoPct}% renta)`,
+      detalle: sel.descuentoMotivo,
+      monto: round2(-monto),
+      ivaIncluido: true,
+      grupo: 'renta',
+    });
+  }
+
+  // 3. Horas extra (5% del precio YA descontado por hora, con IVA porque es sobre
+  //    la renta). Con 100% de cortesía `rentaBase` es cero y esto sale cero.
+  let rentaConIva = rentaBase;
   if (sel.horasExtra > 0) {
-    const monto = rentaEspacios * catalog.extraHourRate * sel.horasExtra;
+    const monto = rentaBase * catalog.extraHourRate * sel.horasExtra;
     rentaConIva += monto;
     lines.push({
       concepto: 'Horas extra',
@@ -76,8 +104,9 @@ export function computeQuote(
     });
   }
 
-  // 2b. Capilla (opcional): cortesía entre semana, $5,000 en sábado. Va al total
-  //     (rentaConIva) pero NO a la base de horas extra / descuento por alimentos.
+  // 3b. Capilla (opcional): cortesía entre semana, $5,000 en sábado. Va al total
+  //     (rentaConIva) pero NUNCA se descuenta ni entra a la base de horas extra o
+  //     del descuento por alimentos: "se cobra en los días que se cobra".
   if (sel.usaCapilla) {
     const monto = dt === 'sabado' ? catalog.capillaSabado : 0;
     rentaConIva += monto;
@@ -90,11 +119,10 @@ export function computeQuote(
     });
   }
 
-  // 3. Alimentos + descuento 5% (sobre la renta de espacios base, no sobre horas extra).
+  // 4. Alimentos + descuento 5% (sobre `rentaBase` —el precio ya descontado—, no
+  //    sobre horas extra ni capilla).
   let alimentosBaseSinIva = 0; // porción que aún NO trae IVA
   let otrosConIva = 0; // porción de `otros` que YA trae IVA (paquete ivaIncluido, extras)
-  /** Lo ya descontado de la base `rentaEspacios`. Topa al descuento de cortesía. */
-  let descuentoSobreBase = 0;
   if (sel.foodPackageId) {
     const pkg = catalog.foodPackages.find((p) => p.id === sel.foodPackageId);
     if (!pkg) throw new Error(`Paquete de alimentos ${sel.foodPackageId} no existe`);
@@ -115,10 +143,10 @@ export function computeQuote(
       grupo: 'otros',
     });
 
-    // El descuento del 5% aplica SOLO a la renta => va en el grupo de renta.
-    const descuento = rentaEspacios * catalog.foodDiscountRate;
+    // El descuento del 5% aplica SOLO a la renta => va en el grupo de renta, y se
+    // calcula sobre el precio YA descontado: con 100% de cortesía sale en $0.
+    const descuento = rentaBase * catalog.foodDiscountRate;
     rentaConIva -= descuento;
-    descuentoSobreBase += descuento;
     lines.push({
       concepto: 'Descuento por alimentos (5% renta)',
       monto: round2(-descuento),
@@ -127,33 +155,7 @@ export function computeQuote(
     });
   }
 
-  // 3b. Descuento de cortesía: `descuentoPct`% de la renta de ESPACIOS, la misma
-  //     base que el 5% por alimentos y sin componerse con él (50% de cortesía con
-  //     alimentos descuenta 50% de 108,500, no de 103,075).
-  //
-  //     Los dos juntos pueden pasarse de la base —100% + 5% = 105%— y dejar la
-  //     renta en negativo, que rompe el plan de pagos. Por eso el de cortesía se
-  //     topa en lo que queda de la base: con 100% la renta de espacios queda
-  //     exactamente en cero, como pidió el dueño.
-  //
-  //     Horas extra y capilla NO están en la base (igual que para el 5%), así que
-  //     sobreviven a una cortesía del 100%.
-  if (sel.descuentoPct != null && sel.descuentoPct > 0) {
-    const bruto = rentaEspacios * (sel.descuentoPct / 100);
-    const tope = Math.max(0, rentaEspacios - descuentoSobreBase);
-    const monto = Math.min(bruto, tope);
-    rentaConIva -= monto;
-    descuentoSobreBase += monto;
-    lines.push({
-      concepto: `Descuento de cortesía (${sel.descuentoPct}% renta)`,
-      detalle: sel.descuentoMotivo,
-      monto: round2(-monto),
-      ivaIncluido: true,
-      grupo: 'renta',
-    });
-  }
-
-  // 4. Add-ons (sin IVA => se agrega).
+  // 5. Add-ons (sin IVA => se agrega).
   let addonsBaseSinIva = 0;
   for (const a of sel.addOns) {
     const addon = catalog.addOns.find((x) => x.id === a.addOnId);
@@ -176,7 +178,7 @@ export function computeQuote(
     });
   }
 
-  // 4b. DJ Hora extra (opcional, manual): precio por tipo de evento × horas extra.
+  // 5b. DJ Hora extra (opcional, manual): precio por tipo de evento × horas extra.
   //     Va en "otros" (servicio; sin IVA => se agrega). Con alimentos, el DJ de las
   //     horas base ya viene incluido; esto cubre solo las horas extra.
   if (sel.usaDjHoraExtra && sel.horasExtra > 0 && sel.eventTypeId) {
@@ -194,7 +196,7 @@ export function computeQuote(
     }
   }
 
-  // 4c. Servicios sueltos de ESTE evento (fuera del catálogo). El monto capturado
+  // 5c. Servicios sueltos de ESTE evento (fuera del catálogo). El monto capturado
   //     YA trae IVA —lo teclado es lo final, decisión del dueño—, así que a
   //     diferencia de los add-ons NO se le agrega 16%.
   //
@@ -216,7 +218,7 @@ export function computeQuote(
     });
   }
 
-  // 5. Totales por BLOQUE, cada uno con su propio subtotal + IVA + total, para
+  // 6. Totales por BLOQUE, cada uno con su propio subtotal + IVA + total, para
   //    que el desglose muestre por separado lo que cobra HSA (renta) y lo que se
   //    paga al proveedor (alimentos + servicios). No se mezclan.
   const rate = catalog.ivaRate;

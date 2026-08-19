@@ -578,13 +578,15 @@ export function QuoteForm({
             </span>
           </label>
 
-          {/* Descuento de cortesía: pega SOLO sobre la renta. Con 100% la renta
-              queda en cero y los alimentos y servicios se cobran completos. */}
+          {/* Descuento de cortesía: CAMBIA EL PRECIO de la renta. Las horas extra
+              y el 5% por alimentos salen del precio ya descontado; la capilla no
+              se descuenta. Con 100% la renta queda en cero (más la capilla). */}
           {esCortesia && (
             <div className="space-y-3 rounded-lg border border-emerald-600/40 bg-emerald-600/5 px-4 py-3">
               <p className="text-xs text-charcoal-soft">
-                El descuento se aplica <span className="font-medium text-ink">solo a la renta del salón</span>. Los
-                alimentos y los servicios se cobran completos.
+                El descuento cambia el <span className="font-medium text-ink">precio de la renta del salón</span>: las
+                horas extra y el 5% por alimentos se calculan sobre el precio ya descontado. La capilla, los alimentos
+                y los servicios se cobran completos.
               </p>
               <div className="grid gap-3 sm:grid-cols-[8rem_1fr]">
                 <Field label="Descuento (%)">
