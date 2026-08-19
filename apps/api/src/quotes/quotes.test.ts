@@ -1783,6 +1783,118 @@ describe('el contrato cuadra: renglones de renta contra su total', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Arrastrar en la agenda NO puede perder dinero.
+//
+// `moveQuoteDate` reconstruye la selección para recalcular con la fecha nueva, y
+// durante un tiempo la reconstruyó A MANO campo por campo: los extras y el
+// descuento de cortesía no estaban en esa lista, así que arrastrar un evento le
+// borraba el descuento y los servicios sueltos y lo represiaba solo. El dueño
+// arrastra a diario, o sea que pasaba a diario sin que nadie lo notara.
+//
+// Estas pruebas fijan el resultado por comparación: arrastrar tiene que dejar la
+// cotización EXACTAMENTE como si se hubiera capturado en la fecha destino.
+// ---------------------------------------------------------------------------
+describe('arrastrar en la agenda no pierde el descuento ni los extras', () => {
+  const extraMenu = { nombre: 'Cambio de menú', kind: 'porPersona' as const, monto: 200, cantidad: 1 };
+
+  it('el arrastre conserva el descuento de cortesía y los servicios sueltos', async () => {
+    const { eventTypeId, arcosId } = await ids();
+    const q = await createQuote(
+      prisma,
+      {
+        fecha: '2035-03-10',
+        invitados: 250,
+        spaceIds: [arcosId],
+        eventTypeId,
+        extras: [extraMenu],
+        descuentoPct: 50,
+        descuentoMotivo: 'Cortesía que el arrastre no debe borrar',
+        client: { nombre: 'Arrastre Con Descuento' },
+      },
+      actor,
+    );
+    createdQuoteIds.push(q.id);
+    createdClientIds.push(q.clientId);
+
+    // La misma cotización capturada DIRECTO en la fecha destino: es la referencia
+    // de cuánto debe costar el evento ahí. Dos borradores el mismo día no se
+    // estorban (solo los estatus que apartan bloquean el espacio).
+    const referencia = await createQuote(
+      prisma,
+      {
+        fecha: '2035-03-17',
+        invitados: 250,
+        spaceIds: [arcosId],
+        eventTypeId,
+        extras: [extraMenu],
+        descuentoPct: 50,
+        descuentoMotivo: 'Cortesía que el arrastre no debe borrar',
+        client: { nombre: 'Arrastre Referencia' },
+      },
+      actor,
+    );
+    createdQuoteIds.push(referencia.id);
+    createdClientIds.push(referencia.clientId);
+
+    const movida = await moveQuoteDate(prisma, q.id, '2035-03-17', actor);
+
+    // El descuento sobrevive, con su motivo.
+    expect(movida.descuentoPct).toBe(50);
+    expect(movida.descuentoMotivo).toBe('Cortesía que el arrastre no debe borrar');
+    // Y el servicio suelto sigue ahí, uno solo (ni borrado ni duplicado).
+    const extras = await prisma.quoteExtra.findMany({ where: { quoteId: q.id } });
+    expect(extras).toHaveLength(1);
+    expect(extras[0]!.nombre).toBe('Cambio de menú');
+    expect(movida.extras).toHaveLength(1);
+
+    // Los renglones y los totales son los de la cotización capturada directo.
+    expect(lineaDe(movida.breakdown, 'Cambio de menú')?.monto).toBe(200 * 250);
+    expect(lineaDe(movida.breakdown, 'Descuento de cortesía (50% renta)')?.monto).toBe(
+      lineaDe(referencia.breakdown, 'Descuento de cortesía (50% renta)')?.monto,
+    );
+    expect(movida.rentaTotal).toBe(referencia.rentaTotal);
+    expect(movida.total).toBe(referencia.total);
+  });
+
+  it('mover de catálogo tampoco los pierde (el otro camino de recálculo)', async () => {
+    const { eventTypeId, arcosId } = await ids();
+    const q = await createQuote(
+      prisma,
+      {
+        fecha: '2035-04-14',
+        invitados: 250,
+        spaceIds: [arcosId],
+        eventTypeId,
+        extras: [extraMenu],
+        descuentoPct: 50,
+        descuentoMotivo: 'Cortesía que el catálogo no debe borrar',
+        client: { nombre: 'Catálogo Con Descuento' },
+      },
+      actor,
+    );
+    createdQuoteIds.push(q.id);
+    createdClientIds.push(q.clientId);
+
+    // Un catálogo clonado sin incremento: los precios son los mismos, así que el
+    // movimiento no debe cambiar NADA. Si el recálculo perdiera el descuento o el
+    // extra, el total se movería igual.
+    const destino = await clonarCatalogo(prisma, {
+      nombre: `ESPEJO-${SUF}`,
+      anio: 2095,
+      clonarDe: q.priceListId,
+      incrementoPct: 0,
+    });
+    createdPriceListIds.push(destino.id);
+
+    const { quote: movida, antes, despues } = await moverCatalogo(prisma, q.id, destino.id, actor);
+    expect(despues).toBe(antes);
+    expect(movida.descuentoPct).toBe(50);
+    expect(movida.extras).toHaveLength(1);
+    expect(lineaDe(movida.breakdown, 'Cambio de menú')?.monto).toBe(200 * 250);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Código de evento (punto 5 del Plan G): `17ENE-CBOLADO-CUPULA`. La función pura
 // y su formato están fijados en `packages/shared/src/codigoEvento.test.ts`; aquí
 // se prueba lo que necesita la base: unicidad, generación y CONGELADO.

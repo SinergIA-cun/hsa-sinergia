@@ -253,6 +253,101 @@ function toSelection(input: {
   };
 }
 
+// --- Reconstruir la selección de una cotización guardada ----------------------
+//
+// Tres caminos recalculan el desglose SIN que nadie vuelva a capturar el
+// formulario: arrastrar la fecha en la agenda, mover de catálogo y la vista
+// previa de ese movimiento. Los tres tienen que reconstruir la selección desde
+// lo guardado, y armarla a mano campo por campo ya costó tres bugs de dinero en
+// esta rama: cada campo nuevo del motor (los extras, el descuento de cortesía)
+// se olvidaba en uno de los sitios y el recálculo lo borraba en silencio.
+//
+// Por eso hay UN solo armador. Y lo que lo hace a prueba de olvidos es el tipo:
+// `SeleccionGuardadaInput` exige `extras`, `descuentoPct` y `descuentoMotivo`, y
+// una cotización leída sin `include: SELECCION_INCLUDE` no los tiene, así que
+// olvidarlos no compila en vez de perder dinero.
+
+/**
+ * Lo que hay que `include` al leer una cotización que se va a recalcular.
+ *
+ * Los extras no son columnas: si no se piden, `existing.extras` no existe y
+ * `seleccionGuardada` no acepta el objeto. Ese es el candado.
+ */
+export const SELECCION_INCLUDE = {
+  extras: { select: { nombre: true, kind: true, monto: true, cantidad: true } },
+} as const;
+
+/** Una cotización guardada, con TODO lo que el motor necesita para recalcular. */
+interface SeleccionGuardadaInput {
+  fechaEvento: Date;
+  invitados: number;
+  spaceIds: string[];
+  horasExtra: number;
+  usaCapilla: boolean;
+  capillaHorario: string | null;
+  esCortesia: boolean;
+  usaDjHoraExtra: boolean;
+  requiereFactura: boolean;
+  eventTypeId: string;
+  foodPackageId: string | null;
+  horasEvento: number | null;
+  addOns: Prisma.JsonValue;
+  extras: QuoteExtra[];
+  descuentoPct: number | null;
+  descuentoMotivo: string | null;
+}
+
+/** La entrada de `updateQuoteSchema` equivalente a lo que la cotización TIENE hoy. */
+export interface SeleccionGuardada {
+  fecha: string;
+  invitados: number;
+  spaceIds: string[];
+  horasExtra: number;
+  usaCapilla: boolean;
+  capillaHorario: string | null;
+  esCortesia: boolean;
+  usaDjHoraExtra: boolean;
+  requiereFactura: boolean;
+  eventTypeId: string;
+  foodPackageId: string | undefined;
+  horasEvento: number | null;
+  addOns: { addOnId: string; cantidad: number }[];
+  extras: QuoteExtra[];
+  // `undefined` y no `null`: los esquemas de crear/editar declaran estos dos
+  // `.optional()` (no `.nullish()`), y "sin descuento" se expresa omitiéndolos.
+  // Mandar `null` los hace fallar la validación.
+  descuentoPct: number | undefined;
+  descuentoMotivo: string | undefined;
+}
+
+/**
+ * Reconstruye la selección completa de una cotización guardada, tal como la
+ * mandaría el formulario si alguien la abriera y le diera guardar sin cambiar
+ * nada. Quien recalcula parte de aquí y solo sobrescribe lo que de verdad cambia
+ * (la fecha al arrastrar; el paquete y los servicios retraducidos al mover de
+ * catálogo).
+ */
+export function seleccionGuardada(q: SeleccionGuardadaInput): SeleccionGuardada {
+  return {
+    fecha: q.fechaEvento.toISOString().slice(0, 10),
+    invitados: q.invitados,
+    spaceIds: q.spaceIds,
+    horasExtra: q.horasExtra,
+    usaCapilla: q.usaCapilla,
+    capillaHorario: q.capillaHorario,
+    esCortesia: q.esCortesia,
+    usaDjHoraExtra: q.usaDjHoraExtra,
+    requiereFactura: q.requiereFactura,
+    eventTypeId: q.eventTypeId,
+    foodPackageId: q.foodPackageId ?? undefined,
+    horasEvento: q.horasEvento,
+    addOns: (q.addOns as unknown as { addOnId: string; cantidad: number }[] | null) ?? [],
+    extras: q.extras,
+    descuentoPct: q.descuentoPct ?? undefined,
+    descuentoMotivo: q.descuentoMotivo ?? undefined,
+  };
+}
+
 /** Ventas solo ve/edita lo suyo; admin todo. */
 export function ownershipWhere(actor: Actor): Prisma.QuoteWhereInput {
   return actor.role === 'admin' ? {} : { createdById: actor.id };
@@ -571,10 +666,7 @@ export async function duplicateQuote(db: PrismaClient, id: string, actor: Actor)
     // Los extras se copian con el desglose: si no viajaran, la copia mostraría un
     // total que incluye un servicio que la cotización nueva ya no tiene, y al
     // reeditarla el monto se caería sin que nadie lo decidiera.
-    include: {
-      extras: { select: { nombre: true, kind: true, monto: true, cantidad: true } },
-      client: { select: { nombre: true } },
-    },
+    include: { ...SELECCION_INCLUDE, client: { select: { nombre: true } } },
   });
   if (!src) throw new QuoteError(404, 'Cotización no encontrada');
 
@@ -816,9 +908,16 @@ export async function updateQuote(db: PrismaClient, id: string, rawInput: unknow
  * fecha nueva y se delega en `updateQuote`, que recalcula el desglose, valida
  * que el espacio esté libre en el destino y respeta ownership y estatus
  * editables (liquidada y vencida quedan fuera por ese camino).
+ *
+ * La selección la arma `seleccionGuardada`, no este código: armarla a mano dejaba
+ * fuera los extras y el descuento de cortesía, y el arrastre —que el dueño usa a
+ * diario— borraba el descuento y represiaba el evento solo.
  */
 export async function moveQuoteDate(db: PrismaClient, id: string, fecha: string, actor: Actor) {
-  const existing = await db.quote.findFirst({ where: { id, ...ownershipWhere(actor) } });
+  const existing = await db.quote.findFirst({
+    where: { id, ...ownershipWhere(actor) },
+    include: SELECCION_INCLUDE,
+  });
   if (!existing) throw new QuoteError(404, 'Cotización no encontrada');
   assertNotTrashed(existing);
   if (!EDITABLE_STATUSES.has(existing.status)) {
@@ -826,26 +925,13 @@ export async function moveQuoteDate(db: PrismaClient, id: string, fecha: string,
   }
 
   const fechaAntes = existing.fechaEvento.toISOString().slice(0, 10);
-  const addOns = (existing.addOns as unknown as { addOnId: string; cantidad: number }[]) ?? [];
 
   const actualizada = await updateQuote(
     db,
     id,
-    {
-      fecha,
-      invitados: existing.invitados,
-      spaceIds: existing.spaceIds,
-      horasExtra: existing.horasExtra,
-      usaCapilla: existing.usaCapilla,
-      capillaHorario: existing.capillaHorario,
-      esCortesia: existing.esCortesia,
-      usaDjHoraExtra: existing.usaDjHoraExtra,
-      requiereFactura: existing.requiereFactura,
-      eventTypeId: existing.eventTypeId,
-      foodPackageId: existing.foodPackageId ?? undefined,
-      horasEvento: existing.horasEvento,
-      addOns,
-    },
+    // Lo único que cambia es la fecha; todo lo demás se recalcula con lo que la
+    // cotización ya tenía.
+    { ...seleccionGuardada(existing), fecha },
     actor,
   );
 
@@ -936,7 +1022,7 @@ async function prepararMovimiento(db: PrismaClient, id: string, priceListId: str
     // Los extras y el descuento de cortesía NO viven en el catálogo, así que
     // mover de catálogo no debe tocarlos. Sin leerlos aquí, el recálculo los
     // dejaría fuera y el movimiento le borraría dinero a la cotización.
-    include: { extras: { select: { nombre: true, kind: true, monto: true, cantidad: true } } },
+    include: SELECCION_INCLUDE,
   });
   if (!existing) throw new QuoteError(404, 'Cotización no encontrada');
   assertNotTrashed(existing);
@@ -952,18 +1038,11 @@ async function prepararMovimiento(db: PrismaClient, id: string, priceListId: str
   const { breakdown, enriched } = await computeAndEnrich(
     db,
     toSelection({
-      fecha: existing.fechaEvento.toISOString().slice(0, 10),
-      invitados: existing.invitados,
-      spaceIds: existing.spaceIds,
-      horasExtra: existing.horasExtra,
-      usaCapilla: existing.usaCapilla,
-      usaDjHoraExtra: existing.usaDjHoraExtra,
-      eventTypeId: existing.eventTypeId,
+      ...seleccionGuardada(existing),
+      // Lo único que cambia son el paquete y los servicios, RETRADUCIDOS a los
+      // registros equivalentes del catálogo destino.
       foodPackageId: seleccion.foodPackageId ?? undefined,
       addOns: seleccion.addOns,
-      extras: existing.extras,
-      descuentoPct: existing.descuentoPct,
-      descuentoMotivo: existing.descuentoMotivo,
     }),
     destino.id,
   );
