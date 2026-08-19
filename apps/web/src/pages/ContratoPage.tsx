@@ -324,13 +324,16 @@ export function ContratoPage() {
                     // El monto sale del desglose que calculó el servidor: el contrato
                     // imprime lo que se cobra, no una cuenta recalculada aparte.
                     const d = hitoComplemento?.desglose?.find((x) => x.spaceId === id);
-                    const regla = catalogQ.data?.spaces.find((s) => s.id === id)?.paymentRule;
+                    // El apartado sale del HITO, no del catálogo: con un descuento
+                    // el plan se topa al total y el catálogo diría otro número, así
+                    // que los renglones dejarían de sumar el total impreso abajo.
+                    const ap = hitoApartar?.desglose?.find((x) => x.spaceId === id);
                     return (
                       <tr key={id}>
                         <td>{espaciosById.get(id) ?? id}</td>
-                        <td>{d ? formatMXNCents(d.rentaBase) : '—'}</td>
-                        <td>{regla ? formatMXNCents(regla.anticipo) : 'por definir'}</td>
-                        <td>{d ? `${formatPctFraccion(d.pct)} = ${formatMXNCents(d.monto)}` : 'por definir'}</td>
+                        <td>{d?.rentaBase != null ? formatMXNCents(d.rentaBase) : '—'}</td>
+                        <td>{ap ? formatMXNCents(ap.monto) : 'por definir'}</td>
+                        <td>{d?.pct != null ? `${formatPctFraccion(d.pct)} = ${formatMXNCents(d.monto)}` : 'por definir'}</td>
                         <td />
                       </tr>
                     );

@@ -1,3 +1,5 @@
+import { prorratearRenta } from '@hsa/shared';
+
 export type PaymentStatus = 'formalizada' | 'complementada' | 'liquidada';
 
 export interface SpaceRule {
@@ -20,12 +22,23 @@ export interface PaymentLite {
 }
 
 /** Un renglón del complemento: lo que aporta un salón, con su multiplicación a la vista. */
-export interface ComplementoPorEspacio {
+/**
+ * Lo que un salón aporta a un hito. `monto` siempre; `rentaBase` y `pct` solo en
+ * el complemento, que es el único que se imprime como "25% de $X = $Y".
+ *
+ * El apartado también lo lleva porque el contrato imprime un renglón por salón y
+ * un total: si los renglones salieran del catálogo y el total del hito topado, el
+ * documento firmado se contradiría solo en cuanto hubiera un descuento.
+ */
+export interface AportePorEspacio {
   spaceId: string;
-  rentaBase: number;
-  pct: number;
   monto: number;
+  rentaBase?: number;
+  pct?: number;
 }
+
+/** @deprecated Nombre viejo de `AportePorEspacio`; se conserva por los importadores. */
+export type ComplementoPorEspacio = AportePorEspacio;
 
 export interface Milestone {
   key: 'apartar' | 'complemento' | 'finiquito';
@@ -36,7 +49,7 @@ export interface Milestone {
   completo: boolean;
   venceISO: string | null;
   /** Solo el complemento: qué aporta cada salón. `pct × rentaBase == monto`, exacto. */
-  desglose?: ComplementoPorEspacio[];
+  desglose?: AportePorEspacio[];
 }
 
 export interface EstadoCuenta {
@@ -81,20 +94,41 @@ export function computeEstadoCuenta(args: {
   }
 
   // Anticipo: cada espacio aporta el suyo (sección H del contrato, por espacio).
-  const objApartar = rules.reduce((s, r) => s + r.rule.anticipo, 0);
+  const apartarSinTope = rules.reduce((s, r) => s + r.rule.anticipo, 0);
 
   // Complemento: cada salón aporta el porcentaje de SU renta. La renta que se le
   // pasa aquí ya viene prorrateada (incluye su parte de horas extra y capilla),
   // así que la suma de los renglones es idéntica al viejo `pctPonderado × total`
   // pero cada renglón multiplica exacto y se puede imprimir en el contrato.
-  const desglose: ComplementoPorEspacio[] = rules.map((r) => ({
+  const desglose: AportePorEspacio[] = rules.map((r) => ({
     spaceId: r.spaceId,
     rentaBase: r.rentaBase,
     pct: r.rule.complementoPct,
     monto: Math.round(r.rule.complementoPct * r.rentaBase),
   }));
-  const objComplemento = objApartar + desglose.reduce((s, d) => s + d.monto, 0);
-  const objFiniquito = total;
+  // Ningún hito puede pedir más de lo que cuesta el evento.
+  //
+  // `anticipo` es un monto FIJO del catálogo y no sabe de descuentos: con una
+  // cortesía del 100% la renta queda en cero y el apartado seguía pidiendo sus
+  // $20,000, mientras el finiquito pedía $0. Los hitos dejaban de ser una
+  // escalera y el saldo salía negativo sin que nadie hubiera pagado de más.
+  //
+  // El tope no es un caso especial de la cortesía: cualquier descuento que deje
+  // el total por debajo del anticipo fijo produce el mismo absurdo.
+  const tope = Math.max(0, total);
+  const objFiniquito = tope;
+  const objApartar = Math.min(apartarSinTope, tope);
+  const objComplemento = Math.min(apartarSinTope + desglose.reduce((s, d) => s + d.monto, 0), tope);
+
+  // El apartado por salón. Sin tope es su propio anticipo; con tope, su parte
+  // proporcional — se reutiliza `prorratearRenta` porque garantiza que la suma
+  // de los renglones sea exactamente el total (el último absorbe el redondeo).
+  const anticipos = new Map(rules.map((r) => [r.spaceId, r.rule.anticipo]));
+  const repartido = prorratearRenta(anticipos, objApartar);
+  const desgloseApartar: AportePorEspacio[] = rules.map((r) => ({
+    spaceId: r.spaceId,
+    monto: apartarSinTope === objApartar ? r.rule.anticipo : (repartido.get(r.spaceId) ?? 0),
+  }));
 
   // El finiquito más exigente manda cuando los espacios difieren.
   const liquidarDiasAntes = Math.max(...rules.map((r) => r.rule.liquidarDiasAntes));
@@ -113,14 +147,14 @@ export function computeEstadoCuenta(args: {
     label: string,
     objetivo: number,
     venceISO: string | null,
-    desgloseHito?: ComplementoPorEspacio[],
+    desgloseHito?: AportePorEspacio[],
   ): Milestone => {
     const cubierto = Math.min(pagado, objetivo);
     return { key, label, objetivo, cubierto, restante: Math.max(0, objetivo - cubierto), completo: pagado >= objetivo, venceISO, desglose: desgloseHito };
   };
 
   const plan: Milestone[] = [
-    hito('apartar', 'Apartar fecha', objApartar, null),
+    hito('apartar', 'Apartar fecha', objApartar, null, desgloseApartar),
     hito('complemento', 'Complemento', objComplemento, complementoVence?.toISOString() ?? null, desglose),
     hito('finiquito', 'Finiquito', objFiniquito, finiquitoVence.toISOString()),
   ];

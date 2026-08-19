@@ -324,7 +324,7 @@ describe('quotes service', () => {
 
     const { estadoCuenta } = await loadEstadoCuenta(prisma, q);
     const comp = estadoCuenta.plan!.find((m) => m.key === 'complemento')!;
-    const sumaBases = comp.desglose!.reduce((s, d) => s + d.rentaBase, 0);
+    const sumaBases = comp.desglose!.reduce((s, d) => s + d.rentaBase!, 0);
     expect(Math.round(sumaBases * 100) / 100).toBe(q.rentaTotal);
 
     // Y el dinero no se movió: `Σ pct_i × base_i` tiene que dar lo mismo que el
@@ -338,7 +338,7 @@ describe('quotes service', () => {
     }
     const sumaCatalogo = [...catalogo.values()].reduce((s, v) => s + v, 0);
     const pctPonderado = comp.desglose!.reduce(
-      (s, d) => s + d.pct * ((catalogo.get(d.spaceId) ?? 0) / sumaCatalogo),
+      (s, d) => s + d.pct! * ((catalogo.get(d.spaceId) ?? 0) / sumaCatalogo),
       0,
     );
     const objApartar = estadoCuenta.plan!.find((m) => m.key === 'apartar')!.objetivo;
