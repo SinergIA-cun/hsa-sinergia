@@ -8,14 +8,15 @@ import { registrarCambioCatalogo } from './audit.js';
  * Un precio en pesos.
  *
  * `int()` no es cosmético: Prisma NO rechaza un flotante en una columna `Int`, lo
- * manda a Postgres, y Postgres **trunca** sin error ni aviso (5.5 → 5,
- * 3165.5 → 3165). Un precio con centavos entraría como un precio un peso abajo.
+ * **trunca** sin error ni aviso (5.5 → 5, 3165.5 → 3165) y manda a Postgres el
+ * entero ya recortado. Un precio con centavos entraría como un precio un peso
+ * abajo.
  */
 const precio = z.number().int().nonnegative();
 
 /**
  * Ningún precio entra a la base sin pasar por aquí, aunque Zod ya haya exigido
- * `int()`. Es la última red antes de Postgres, que trunca en silencio.
+ * `int()`. Es la última red antes de Prisma, que trunca en silencio.
  */
 const aPesos = (n: number): number => Math.round(n);
 

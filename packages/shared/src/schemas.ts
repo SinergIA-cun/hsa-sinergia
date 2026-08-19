@@ -13,7 +13,7 @@ import { z } from 'zod';
 export const quoteExtraSchema = z.object({
   nombre: z.string().min(1).max(120),
   kind: z.enum(['fijo', 'porPersona', 'porUnidad']),
-  /** Entero: Postgres trunca los flotantes en columnas `Int` sin avisar. */
+  /** Entero: Prisma trunca los flotantes en columnas `Int` sin avisar (5.5 → 5). */
   monto: z.number().int().nonnegative(),
   /** Solo se usa en `porUnidad`; `fijo` y `porPersona` la ignoran. */
   cantidad: z.number().int().positive().default(1),

@@ -530,9 +530,12 @@ describe('computeQuote · descuento de cortesía', () => {
 });
 
 // ---------------------------------------------------------------------------
-// No-regresión. Dos cambios de este plan tocan el motor; una regresión aquí
-// mueve dinero en TODAS las cotizaciones. Los literales son el desglose que
-// devolvía el motor ANTES de estas dos tasks, capturado antes de tocarlo.
+// No-regresión. TRES cambios de este plan tocan el motor —los extras del evento,
+// el descuento de cortesía y el reordenamiento de la CORRECCIÓN— y una regresión
+// aquí mueve dinero en TODAS las cotizaciones. Los literales son el desglose que
+// devolvía el motor ANTES de esas tasks, capturado antes de tocarlo, y han
+// sobrevivido los tres cambios sin moverse una línea. NO se tocan: si se ponen
+// rojos, algo movió dinero.
 // ---------------------------------------------------------------------------
 describe('computeQuote · no-regresión: sin extras y sin descuento nada se movió', () => {
   it('renta sola: desglose idéntico al de antes del plan G', () => {

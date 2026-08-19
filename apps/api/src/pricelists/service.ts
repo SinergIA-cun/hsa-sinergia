@@ -15,10 +15,15 @@ export const clonarCatalogoSchema = z.object({
  * El porcentaje se aplica en UN solo lugar: renta, servicios y alimentos usan la
  * misma regla, y cuatro copias de la fórmula divergen a la primera corrección.
  *
- * `Math.round` no es cosmético. Las columnas de precio son enteros de pesos: un
- * flotante llegaría a Postgres, que redondea a la mitad PAR (2.5 → 2, 3.5 → 4)
- * en vez de hacia arriba, y el catálogo nuevo saldría un peso abajo en la mitad
- * de los renglones.
+ * `Math.round` no es cosmético. Las columnas de precio son enteros de pesos, y un
+ * flotante NO llega nunca a Postgres: el query engine de Prisma lo TRUNCA antes
+ * de mandarlo (5.5 → 5, 3.5 → 3; verificado con el log de queries — el parámetro
+ * sale ya entero). Sin este `Math.round`, el catálogo nuevo saldría un peso abajo
+ * en cada renglón con fracción, sin error ni aviso.
+ *
+ * Ojo con la confusión fácil: Postgres, cuando SÍ le toca castear un `float8` a
+ * `int`, redondea a la mitad PAR (5.5 → 6, 3.5 → 4). Pero ese camino no existe
+ * aquí, porque Prisma nunca le manda el flotante.
  */
 const conIncremento = (v: number, pct: number): number => Math.round(v * (1 + pct / 100));
 
