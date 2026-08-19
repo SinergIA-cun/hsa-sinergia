@@ -55,6 +55,16 @@ export interface QuoteFormInitial {
   descuentoMotivo: string;
   requiereFactura: boolean;
   fiscales: DatosFiscales;
+  /** El banquetero que compró el evento (`''` = cliente directo). */
+  banqueteroId: string;
+  /**
+   * Su nombre. Hace falta porque `/api/banqueteros` solo devuelve los ACTIVOS: sin
+   * él, reeditar un evento cuyo banquetero se dio de baja dejaría el desplegable en
+   * blanco y al guardar lo desligaría sin que nadie lo pidiera.
+   */
+  banqueteroNombre: string;
+  festejado: string;
+  festejadoTelefono: string;
 }
 
 export interface QuotePayload {
@@ -80,6 +90,14 @@ export interface QuotePayload {
   client: { nombre: string; telefono?: string; correo?: string } & DatosFiscales;
   /** Si se reutiliza un cliente existente, su id (el backend lo prioriza sobre `client`). */
   clientId?: string;
+  /**
+   * Los tres campos del desplegable "¿Para quién es este evento?". Viajan SIEMPRE,
+   * en `null` cuando es cliente directo: omitirlos dejaría el banquetero anterior
+   * pegado a la cotización, y cambiar de banquetero a cliente no surtiría efecto.
+   */
+  banqueteroId: string | null;
+  festejado: string | null;
+  festejadoTelefono: string | null;
 }
 
 interface Props {
@@ -122,6 +140,30 @@ export function QuoteForm({
   const [requiereFactura, setRequiereFactura] = useState(initial?.requiereFactura ?? false);
   const [fiscales, setFiscales] = useState<DatosFiscales>(initial?.fiscales ?? {});
 
+  // ¿Para quién es este evento? Con banquetero, ÉL es el cliente de la hacienda:
+  // firma él y se le factura a él (decisión del dueño). El festejado es el cliente
+  // FINAL y es dato operativo: va en la hoja operativa y NO en el contrato.
+  const [banqueteroId, setBanqueteroId] = useState(initial?.banqueteroId ?? '');
+  const [festejado, setFestejado] = useState(initial?.festejado ?? '');
+  const [festejadoTelefono, setFestejadoTelefono] = useState(initial?.festejadoTelefono ?? '');
+  const esDeBanquetero = banqueteroId !== '';
+
+  const { data: banqData } = useQuery({
+    queryKey: ['banqueteros'],
+    queryFn: () => api.get<{ banqueteros: { id: string; nombre: string; telefono: string | null }[] }>('/api/banqueteros'),
+  });
+  /**
+   * Los banqueteros del desplegable: los activos, más el de ESTA cotización si ya
+   * se dio de baja. Sin ese añadido el desplegable saldría en blanco y guardar
+   * desligaría al banquetero en silencio.
+   */
+  const banqueteros = useMemo(() => {
+    const activos = banqData?.banqueteros ?? [];
+    const suyo = initial?.banqueteroId;
+    if (!suyo || activos.some((b) => b.id === suyo)) return activos;
+    return [{ id: suyo, nombre: `${initial?.banqueteroNombre ?? 'Banquetero'} (inactivo)`, telefono: null }, ...activos];
+  }, [banqData, initial?.banqueteroId, initial?.banqueteroNombre]);
+
   function pickCliente(c: ClienteLite) {
     setNombre(c.nombre);
     setTelefono(c.telefono ?? '');
@@ -149,6 +191,30 @@ export function QuoteForm({
     // con él, o acabaríamos guardando el RFC del anterior en el nuevo.
     setFiscales({});
   }
+  /**
+   * Cambia el desplegable "¿Para quién es este evento?".
+   *
+   * Con banquetero, sus datos LLENAN los del cliente: es él quien firma y a quien
+   * se factura, así que el cliente de la cotización tiene que ser él, no el
+   * festejado. Volver a "Cliente" no borra lo capturado —puede ser el mismo dato
+   * que ya estaba— pero sí suelta el festejado, que solo aplica a la reventa.
+   */
+  function elegirBanquetero(id: string) {
+    setBanqueteroId(id);
+    if (id === '') {
+      setFestejado('');
+      setFestejadoTelefono('');
+      return;
+    }
+    const b = banqueteros.find((x) => x.id === id);
+    if (!b) return;
+    setNombre(b.nombre);
+    setTelefono(b.telefono ?? '');
+    // Es otro cliente: se desvincula del que estuviera elegido para no guardarle
+    // los datos fiscales del anterior.
+    desvincular();
+  }
+
   const [eventTypeId, setEventTypeId] = useState(initial?.eventTypeId ?? '');
   const [fecha, setFecha] = useState(initial?.fecha ?? '');
   const [invitados, setInvitados] = useState(initial?.invitados ?? 150);
@@ -348,6 +414,11 @@ export function QuoteForm({
           ...fiscalesParaGuardar(fiscales),
         },
         clientId: pickedClientId,
+        // Los tres viajan siempre: en null limpian, que es cómo se pasa de
+        // banquetero a cliente directo.
+        banqueteroId: banqueteroId || null,
+        festejado: esDeBanquetero ? vacioANull(festejado) : null,
+        festejadoTelefono: esDeBanquetero ? vacioANull(festejadoTelefono) : null,
       });
     } finally {
       setBusy(false);
@@ -360,6 +431,27 @@ export function QuoteForm({
       <div className="space-y-6">
         <Card className="space-y-4 p-6">
           <h2 className="font-display text-xl text-ink">Cliente</h2>
+
+          {/* ¿Para quién es este evento? Con banquetero, ÉL es el cliente de la
+              hacienda: firma él y se le factura a él. El festejado (el cliente
+              final) es dato operativo y no entra al contrato. */}
+          <Field label="¿Para quién es este evento?">
+            <SelectInput value={banqueteroId} onChange={(e) => elegirBanquetero(e.target.value)}>
+              <option value="">Cliente</option>
+              {banqueteros.map((b) => (
+                <option key={b.id} value={b.id}>Banquetero · {b.nombre}</option>
+              ))}
+            </SelectInput>
+          </Field>
+
+          {esDeBanquetero && (
+            <p className="rounded-lg bg-cream-200/70 px-3 py-2 text-sm text-ink">
+              El banquetero es el cliente de la hacienda: <strong>firma él y se le factura a él</strong>.
+              Sus datos quedan de solo lectura; para corregirlos, edítalo en{' '}
+              <a href="/admin" className="underline">Administración · Banqueteros</a>.
+              {enableClientSearch && ' Si ya tiene ficha de cliente, búscala aquí abajo para no duplicarla.'}
+            </p>
+          )}
 
           {enableClientSearch && !pickedClientId && <ClienteSearch onPick={pickCliente} />}
 
@@ -375,9 +467,10 @@ export function QuoteForm({
             </div>
           )}
 
-          <Field label="Nombre">
+          <Field label={esDeBanquetero ? 'Nombre (del banquetero)' : 'Nombre'}>
             <TextInput
               value={nombre}
+              readOnly={esDeBanquetero}
               onChange={(e) => {
                 setNombre(e.target.value);
                 desvincular();
@@ -389,6 +482,7 @@ export function QuoteForm({
             <Field label="Teléfono">
               <TextInput
                 value={telefono}
+                readOnly={esDeBanquetero}
                 onChange={(e) => {
                   setTelefono(e.target.value);
                   desvincular();
@@ -408,6 +502,35 @@ export function QuoteForm({
               />
             </Field>
           </div>
+
+          {/* El festejado: el cliente FINAL de la reventa. Solo aparece con
+              banquetero, porque es ahí donde "quién compró" y "quién festeja"
+              dejan de ser la misma persona. */}
+          {esDeBanquetero && (
+            <div className="space-y-4 rounded-lg border border-cream-200 p-4">
+              <h3 className="font-display text-base text-ink">Festejado (cliente final)</h3>
+              <p className="text-sm text-charcoal-soft">
+                Dato operativo: se imprime en la hoja operativa del evento y{' '}
+                <strong>no</strong> en el contrato. La hacienda no se mete en la reventa.
+              </p>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Field label="Nombre del festejado">
+                  <TextInput
+                    value={festejado}
+                    onChange={(e) => setFestejado(e.target.value)}
+                    placeholder="ej. Alondra Muñoz"
+                  />
+                </Field>
+                <Field label="Teléfono del festejado">
+                  <TextInput
+                    value={festejadoTelefono}
+                    onChange={(e) => setFestejadoTelefono(e.target.value)}
+                    placeholder="Opcional"
+                  />
+                </Field>
+              </div>
+            </div>
+          )}
         </Card>
 
         <Card className="space-y-4 p-6">

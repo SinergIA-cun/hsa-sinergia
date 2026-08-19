@@ -240,7 +240,13 @@ export interface Quote {
   esCortesia?: boolean;
   usaDjHoraExtra?: boolean;
   requiereFactura?: boolean;
+  /** El banquetero que compró el evento. Con banquetero, ÉL es el cliente de la
+   *  hacienda: firma él y se le factura a él. */
   banqueteroId?: string | null;
+  banquetero?: { id: string; nombre: string; telefono: string | null } | null;
+  /** El cliente FINAL. Dato operativo: va en la hoja operativa, NO en el contrato. */
+  festejado?: string | null;
+  festejadoTelefono?: string | null;
   horasEvento?: number | null;
   horarioCivil?: string | null;
   horaInicio?: string | null;

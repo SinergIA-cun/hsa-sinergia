@@ -22,7 +22,9 @@ import {
   listQuotes,
   moveQuoteDate,
   updateQuote,
+  updateOperativa,
   updateStatus,
+  getOperativaDelDia,
   type Actor,
 } from './service.js';
 
@@ -2038,5 +2040,255 @@ describe('código de evento', () => {
 
     expect(q.codigo).toBe('11JUL-DDUPLICADO-CUPULA');
     expect(dup.codigo).toBe('11JUL-DDUPLICADO-CUPULA-2');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Desplegable Banquetero / Cliente (punto 3 del Plan G).
+//
+// Con banquetero, ÉL es el cliente de la hacienda: firma él y se le factura a él
+// (decisión del dueño en el diseño de banqueteros). El festejado es el cliente
+// FINAL y es dato OPERATIVO: sale en la hoja operativa y NO en el contrato.
+//
+// Este plan hace solo la parte del formulario y el campo `festejado`. La cuenta
+// corriente, los apartados sin precio y el estado de cuenta compartible son el
+// plan de banqueteros, aparte.
+// ---------------------------------------------------------------------------
+describe('banquetero / cliente y festejado', () => {
+  let banqueteroId: string;
+
+  beforeAll(async () => {
+    const b = await prisma.banquetero.create({
+      data: { nombre: `Banquetero Plan G ${SUF}`, telefono: '9981234567' },
+    });
+    banqueteroId = b.id;
+  });
+
+  afterAll(async () => {
+    // Las cotizaciones de este bloque se borran en el afterAll global, que corre
+    // DESPUÉS: el banquetero no se puede borrar aquí sin romper su FK, así que se
+    // desliga primero.
+    await prisma.quote.updateMany({ where: { banqueteroId }, data: { banqueteroId: null } });
+    await prisma.banquetero.delete({ where: { id: banqueteroId } });
+  });
+
+  it('con banquetero, el cliente de la cotización es el banquetero y el festejado se guarda aparte', async () => {
+    const { eventTypeId, cupulaId } = await ids();
+    const q = await createQuote(
+      prisma,
+      {
+        fecha: '2035-06-16',
+        invitados: 250,
+        spaceIds: [cupulaId],
+        eventTypeId,
+        banqueteroId,
+        festejado: 'Alondra Muñoz',
+        festejadoTelefono: '9987654321',
+        // El cliente que firma: el banquetero (el formulario llena estos datos
+        // desde su ficha y los deja de solo lectura).
+        client: { nombre: `Banquetero Plan G ${SUF}`, telefono: '9981234567' },
+      },
+      actor,
+    );
+    createdQuoteIds.push(q.id);
+    createdClientIds.push(q.clientId);
+
+    expect(q.banqueteroId).toBe(banqueteroId);
+    expect(q.banquetero?.nombre).toBe(`Banquetero Plan G ${SUF}`);
+    // El contrato y la factura leen al CLIENTE, y el cliente es el banquetero.
+    expect(q.client.nombre).toBe(`Banquetero Plan G ${SUF}`);
+    // El festejado va aparte: no es la contraparte del contrato.
+    expect(q.festejado).toBe('Alondra Muñoz');
+    expect(q.festejadoTelefono).toBe('9987654321');
+    // Y el desglose no cambia por tener banquetero: no toca el precio. Se compara
+    // contra el MISMO evento sin banquetero (dos borradores no se estorban).
+    const sinBanquetero = await createQuote(
+      prisma,
+      {
+        fecha: '2035-06-16',
+        invitados: 250,
+        spaceIds: [cupulaId],
+        eventTypeId,
+        client: { nombre: 'Sin Banquetero Referencia' },
+      },
+      actor,
+    );
+    createdQuoteIds.push(sinBanquetero.id);
+    createdClientIds.push(sinBanquetero.clientId);
+    expect(q.total).toBe(sinBanquetero.total);
+    expect(q.rentaTotal).toBe(sinBanquetero.rentaTotal);
+  });
+
+  it('el festejado sale en la hoja operativa del día, y el contrato sigue leyendo al cliente', async () => {
+    const { eventTypeId, camposId } = await ids();
+    const q = await createQuote(
+      prisma,
+      {
+        fecha: '2035-07-14',
+        invitados: 200,
+        spaceIds: [camposId],
+        eventTypeId,
+        banqueteroId,
+        festejado: 'Generación 2035',
+        client: { nombre: `Banquetero Hoja ${SUF}` },
+      },
+      actor,
+    );
+    createdQuoteIds.push(q.id);
+    createdClientIds.push(q.clientId);
+    // La hoja operativa solo trae eventos que ya apartan la fecha.
+    await updateStatus(prisma, q.id, 'formalizada', actor);
+
+    const dia = await getOperativaDelDia(prisma, '2035-07-14');
+    const evento = dia.eventos.find((e) => e.quoteId === q.id);
+    expect(evento).toBeDefined();
+    expect(evento!.festejado).toBe('Generación 2035');
+    expect(evento!.banquetero).toBe(`Banquetero Plan G ${SUF}`);
+    // El cliente del evento —el que firma y al que se factura— es el banquetero.
+    expect(evento!.cliente).toBe(`Banquetero Hoja ${SUF}`);
+  });
+
+  it('el festejado de la hoja operativa vieja sigue saliendo si la columna está vacía', async () => {
+    const { eventTypeId, arcosId } = await ids();
+    const q = await createQuote(
+      prisma,
+      { fecha: '2035-08-11', invitados: 250, spaceIds: [arcosId], eventTypeId, client: { nombre: 'Festejado Legado' } },
+      actor,
+    );
+    createdQuoteIds.push(q.id);
+    createdClientIds.push(q.clientId);
+    await updateStatus(prisma, q.id, 'formalizada', actor);
+    await updateOperativa(prisma, q.id, { hoja: { nombreFestejado: 'Sofía (hoja vieja)' } }, actor);
+
+    const dia = await getOperativaDelDia(prisma, '2035-08-11');
+    expect(dia.eventos.find((e) => e.quoteId === q.id)?.festejado).toBe('Sofía (hoja vieja)');
+  });
+
+  it('reeditar conserva el banquetero y el festejado, y cambiar a cliente directo los limpia', async () => {
+    const { eventTypeId, arcosId } = await ids();
+    const q = await createQuote(
+      prisma,
+      {
+        fecha: '2035-09-08',
+        invitados: 250,
+        spaceIds: [arcosId],
+        eventTypeId,
+        banqueteroId,
+        festejado: 'Regina',
+        client: { nombre: `Banquetero Editable ${SUF}` },
+      },
+      actor,
+    );
+    createdQuoteIds.push(q.id);
+    createdClientIds.push(q.clientId);
+
+    const base = { fecha: '2035-09-08', invitados: 250, spaceIds: [arcosId], eventTypeId };
+
+    // El formulario reenvía los tres campos: se conservan.
+    const igual = await updateQuote(
+      prisma,
+      q.id,
+      { ...base, banqueteroId, festejado: 'Regina', festejadoTelefono: null },
+      actor,
+    );
+    expect(igual.banqueteroId).toBe(banqueteroId);
+    expect(igual.festejado).toBe('Regina');
+
+    // Cambiar el desplegable a "Cliente" manda null en los tres y los limpia.
+    const directo = await updateQuote(
+      prisma,
+      q.id,
+      { ...base, banqueteroId: null, festejado: null, festejadoTelefono: null },
+      actor,
+    );
+    expect(directo.banqueteroId).toBeNull();
+    expect(directo.festejado).toBeNull();
+  });
+
+  // El bug que el armador único previene: arrastrar la fecha reescribe la
+  // cotización completa, así que sin el banquetero y el festejado en la selección
+  // guardada, el arrastre los borraría igual que borraba el descuento.
+  it('arrastrar la fecha NO borra el banquetero ni el festejado', async () => {
+    const { eventTypeId, cupulaId } = await ids();
+    const q = await createQuote(
+      prisma,
+      {
+        fecha: '2035-10-11',
+        invitados: 250,
+        spaceIds: [cupulaId],
+        eventTypeId,
+        banqueteroId,
+        festejado: 'Ximena',
+        festejadoTelefono: '9990001122',
+        client: { nombre: `Banquetero Arrastre ${SUF}` },
+      },
+      actor,
+    );
+    createdQuoteIds.push(q.id);
+    createdClientIds.push(q.clientId);
+
+    const movida = await moveQuoteDate(prisma, q.id, '2035-10-18', actor);
+    expect(movida.fechaEvento.toISOString().slice(0, 10)).toBe('2035-10-18');
+    expect(movida.banqueteroId).toBe(banqueteroId);
+    expect(movida.festejado).toBe('Ximena');
+    expect(movida.festejadoTelefono).toBe('9990001122');
+  });
+
+  it('duplicar la cotización se lleva el banquetero y el festejado', async () => {
+    const { eventTypeId, arcosId } = await ids();
+    const q = await createQuote(
+      prisma,
+      {
+        fecha: '2035-11-08',
+        invitados: 250,
+        spaceIds: [arcosId],
+        eventTypeId,
+        banqueteroId,
+        festejado: 'Camila',
+        client: { nombre: `Banquetero Duplicable ${SUF}` },
+      },
+      actor,
+    );
+    createdQuoteIds.push(q.id);
+    createdClientIds.push(q.clientId);
+
+    const copia = await duplicateQuote(prisma, q.id, actor);
+    createdQuoteIds.push(copia.id);
+    expect(copia.banqueteroId).toBe(banqueteroId);
+    expect(copia.festejado).toBe('Camila');
+  });
+
+  it('un banquetero que no existe se rechaza con 400 y no deja cotización a medias', async () => {
+    const { eventTypeId, arcosId } = await ids();
+    const antes = await prisma.quote.count();
+    await expect(
+      createQuote(
+        prisma,
+        {
+          fecha: '2035-12-13',
+          invitados: 250,
+          spaceIds: [arcosId],
+          eventTypeId,
+          banqueteroId: 'banquetero-que-no-existe',
+          client: { nombre: 'Banquetero Fantasma' },
+        },
+        actor,
+      ),
+    ).rejects.toThrow(/banquetero/i);
+    expect(await prisma.quote.count()).toBe(antes);
+  });
+
+  it('sin banquetero todo queda como hoy: los tres campos en null', async () => {
+    const { eventTypeId, arcosId } = await ids();
+    const q = await createQuote(
+      prisma,
+      { fecha: '2036-01-10', invitados: 250, spaceIds: [arcosId], eventTypeId, client: { nombre: 'Cliente Directo' } },
+      actor,
+    );
+    createdQuoteIds.push(q.id);
+    createdClientIds.push(q.clientId);
+    expect(q.banqueteroId).toBeNull();
+    expect(q.festejado).toBeNull();
+    expect(q.festejadoTelefono).toBeNull();
   });
 });

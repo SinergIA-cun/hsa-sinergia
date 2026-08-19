@@ -66,6 +66,13 @@ function toInitial(q: Quote): Partial<QuoteFormInitial> {
     descuentoPct: q.descuentoPct ?? null,
     descuentoMotivo: q.descuentoMotivo ?? '',
     requiereFactura: q.requiereFactura ?? false,
+    // El banquetero y el festejado viajan de vuelta por la misma razón que los
+    // extras: guardar manda los tres campos, así que si no regresaran, reeditar
+    // cualquier otra cosa del evento los borraría en silencio.
+    banqueteroId: q.banqueteroId ?? '',
+    banqueteroNombre: q.banquetero?.nombre ?? '',
+    festejado: q.festejado ?? '',
+    festejadoTelefono: q.festejadoTelefono ?? '',
     fiscales: {
       rfc: q.client?.rfc,
       razonSocial: q.client?.razonSocial,

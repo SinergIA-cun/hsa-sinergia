@@ -288,7 +288,22 @@ model Quote {
   usaDjHoraExtra Boolean    @default(false) // DJ por hora extra (precio según tipo de evento).
   requiereFactura Boolean   @default(false) // este cliente pidió factura para ESTE evento.
   banquetero    Banquetero? @relation(fields: [banqueteroId], references: [id])
-  banqueteroId  String?     // proveedor de alimentos (para ventas por banquetero).
+  /// El banquetero de este evento. Con banquetero, ÉL es el cliente de la
+  /// hacienda: firma él y se le factura a él (decisión del dueño en el diseño de
+  /// banqueteros). El festejado de abajo es el cliente final, y es dato operativo.
+  banqueteroId  String?
+  /// Nombre del festejado (el cliente FINAL cuando el evento lo compra un
+  /// banquetero, y de paso el homenajeado de cualquier evento).
+  ///
+  /// Es dato OPERATIVO: va en la hoja operativa y **no** en el contrato — el
+  /// contrato y la factura leen al cliente, que es quien firma. La hacienda no se
+  /// mete en la reventa.
+  ///
+  /// Convive con `operativa.hoja.nombreFestejado`, que es donde se capturaba
+  /// antes al llenar la hoja: esta columna es la que se captura al COTIZAR y manda
+  /// sobre la de la hoja, que queda como respaldo de los eventos anteriores.
+  festejado         String?
+  festejadoTelefono String?
   createdBy     User?       @relation("QuoteCreatedBy", fields: [createdById], references: [id])
   createdById   String?
   createdAt     DateTime    @default(now())

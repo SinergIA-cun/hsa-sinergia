@@ -53,6 +53,22 @@ const clientSchema = z.object({
   correoFacturacion: z.string().max(200).nullish(),
 });
 
+/**
+ * Los tres campos del desplegable "¿Para quién es este evento?".
+ *
+ * Con banquetero, ÉL es el cliente de la hacienda: firma él y se le factura a él
+ * (decisión del dueño). El festejado es el cliente FINAL y es dato operativo: va
+ * en la hoja operativa y **no** en el contrato.
+ *
+ * `nullish` y no `optional`: null es como se limpian —cambiar de banquetero a
+ * cliente directo tiene que poder borrar los tres.
+ */
+const paraQuienSchema = {
+  banqueteroId: z.string().nullish(),
+  festejado: z.string().max(120).nullish(),
+  festejadoTelefono: z.string().max(40).nullish(),
+};
+
 export const createQuoteSchema = quoteSelectionSchema
   .extend({
     eventTypeId: z.string(),
@@ -62,6 +78,7 @@ export const createQuoteSchema = quoteSelectionSchema
     capillaHorario: z.string().max(20).nullable().optional(),
     clientId: z.string().optional(),
     client: clientSchema.optional(),
+    ...paraQuienSchema,
   })
   .refine((d) => Boolean(d.clientId ?? d.client), {
     message: 'Se requiere clientId o datos de client',
@@ -78,6 +95,7 @@ export const updateQuoteSchema = quoteSelectionSchema
     requiereFactura: z.boolean().default(false),
     capillaHorario: z.string().max(20).nullable().optional(),
     client: clientSchema.optional(),
+    ...paraQuienSchema,
   })
   .refine(motivoObligatorio.check, motivoObligatorio.opts);
 
@@ -94,6 +112,9 @@ const includeRels = {
   eventType: true,
   createdBy: { select: { id: true, nombre: true } },
   priceList: { select: { id: true, nombre: true, anio: true } },
+  // El banquetero por nombre: el formulario tiene que poder reabrir la cotización
+  // en modo "Banquetero" y enseñar de quién se trata sin otra consulta.
+  banquetero: { select: { id: true, nombre: true, telefono: true } },
   // Los servicios sueltos del evento: no viven en el catálogo, así que la única
   // forma de recuperarlos para reeditar (y para recalcular) es leerlos de aquí.
   extras: { select: { nombre: true, kind: true, monto: true, cantidad: true } },
@@ -188,6 +209,17 @@ async function conCodigoUnico<T>(
       if (intento >= 3 || !esColisionDeCodigo(e)) throw e;
     }
   }
+}
+
+/**
+ * Valida el banquetero elegido en el formulario. Un id que no existe se rechaza
+ * con 400 y no con un error de FK de Postgres: el mensaje de Prisma no le dice
+ * nada a nadie y la cotización quedaría a medias.
+ */
+async function assertBanquetero(db: PrismaClient, banqueteroId: string | null | undefined): Promise<void> {
+  if (!banqueteroId) return;
+  const existe = await db.banquetero.findUnique({ where: { id: banqueteroId }, select: { id: true } });
+  if (!existe) throw new QuoteError(400, 'El banquetero elegido no existe.');
 }
 
 /**
@@ -295,6 +327,12 @@ interface SeleccionGuardadaInput {
   extras: QuoteExtra[];
   descuentoPct: number | null;
   descuentoMotivo: string | null;
+  // No entran al precio, pero SÍ al guardado: `updateQuote` los reescribe, así que
+  // dejarlos fuera de aquí haría que arrastrar la fecha borrara al banquetero y al
+  // festejado — el mismo bug que este armador existe para prevenir.
+  banqueteroId: string | null;
+  festejado: string | null;
+  festejadoTelefono: string | null;
 }
 
 /** La entrada de `updateQuoteSchema` equivalente a lo que la cotización TIENE hoy. */
@@ -318,6 +356,9 @@ export interface SeleccionGuardada {
   // Mandar `null` los hace fallar la validación.
   descuentoPct: number | undefined;
   descuentoMotivo: string | undefined;
+  banqueteroId: string | null;
+  festejado: string | null;
+  festejadoTelefono: string | null;
 }
 
 /**
@@ -345,6 +386,9 @@ export function seleccionGuardada(q: SeleccionGuardadaInput): SeleccionGuardada 
     extras: q.extras,
     descuentoPct: q.descuentoPct ?? undefined,
     descuentoMotivo: q.descuentoMotivo ?? undefined,
+    banqueteroId: q.banqueteroId,
+    festejado: q.festejado,
+    festejadoTelefono: q.festejadoTelefono,
   };
 }
 
@@ -590,6 +634,7 @@ export async function createQuote(db: PrismaClient, rawInput: unknown, actor: Ac
   // Antes de CUALQUIER escritura (incluida la del cliente): una cotización
   // rechazada no debe dejar un cliente huérfano en la base.
   await assertEspaciosDisponibles(db, input.fecha, input.spaceIds);
+  await assertBanquetero(db, input.banqueteroId);
   // El catálogo se fija AQUÍ y queda casado a la cotización: reeditarla más
   // adelante recalcula contra este, no contra el que esté activo ese día.
   const catalogo = await catalogoActivo(db);
@@ -640,6 +685,11 @@ export async function createQuote(db: PrismaClient, rawInput: unknown, actor: Ac
           extras: { create: input.extras },
           descuentoPct: input.descuentoPct ?? null,
           descuentoMotivo: input.descuentoMotivo ?? null,
+          // Con banquetero, él es el cliente de la hacienda; el festejado es dato
+          // operativo y no entra al contrato.
+          banqueteroId: input.banqueteroId ?? null,
+          festejado: input.festejado ?? null,
+          festejadoTelefono: input.festejadoTelefono ?? null,
           breakdown: enriched as unknown as Prisma.InputJsonValue,
           total: Math.round(breakdown.total),
           rentaTotal: Math.round(breakdown.rentaTotal),
@@ -699,6 +749,12 @@ export async function duplicateQuote(db: PrismaClient, id: string, actor: Actor)
           extras: { create: src.extras },
           descuentoPct: src.descuentoPct,
           descuentoMotivo: src.descuentoMotivo,
+          // La copia es OTRO evento del mismo comprador: el banquetero y el
+          // festejado viajan con ella (justo el caso del banquetero que compra
+          // tres fechas y las duplica para no recapturar).
+          banqueteroId: src.banqueteroId,
+          festejado: src.festejado,
+          festejadoTelefono: src.festejadoTelefono,
           breakdown: src.breakdown as unknown as Prisma.InputJsonValue,
           total: src.total,
           rentaTotal: src.rentaTotal,
@@ -747,6 +803,7 @@ export async function updateQuote(db: PrismaClient, id: string, rawInput: unknow
   const input = updateQuoteSchema.parse(rawInput);
   // Se excluye a sí misma: editar sin mover fecha ni espacio no se auto-bloquea.
   await assertEspaciosDisponibles(db, input.fecha, input.spaceIds, id);
+  await assertBanquetero(db, input.banqueteroId);
   // Con el catálogo que la cotización FIJÓ al crearse, nunca con el activo:
   // reeditar una cotización de 2027 debe usar precios de 2027 aunque el catálogo
   // vigente ya sea 2028. Sin esto, cambiarle el nombre al cliente la represia.
@@ -831,6 +888,9 @@ export async function updateQuote(db: PrismaClient, id: string, rawInput: unknow
         extras: { deleteMany: {}, create: input.extras },
         descuentoPct: input.descuentoPct ?? null,
         descuentoMotivo: input.descuentoMotivo ?? null,
+        banqueteroId: input.banqueteroId ?? null,
+        festejado: input.festejado ?? null,
+        festejadoTelefono: input.festejadoTelefono ?? null,
         breakdown: enriched as unknown as Prisma.InputJsonValue,
         total: Math.round(breakdown.total),
         rentaTotal: Math.round(breakdown.rentaTotal),
@@ -1231,7 +1291,12 @@ export async function getOperativaDelDia(db: PrismaClient, fechaISO: string) {
       deletedAt: null,
       status: { in: ['formalizada', 'complementada', 'liquidada'] },
     },
-    include: { client: true, eventType: true, createdBy: { select: { nombre: true } } },
+    include: {
+      client: true,
+      eventType: true,
+      createdBy: { select: { nombre: true } },
+      banquetero: { select: { nombre: true } },
+    },
     orderBy: { horaInicio: 'asc' },
   });
 
@@ -1248,6 +1313,13 @@ export async function getOperativaDelDia(db: PrismaClient, fechaISO: string) {
       tipoEvento: q.eventType?.nombre ?? 'Evento',
       lugar: q.spaceIds.map((id) => spaceName.get(id) ?? id).join(', '),
       cliente: q.client?.nombre ?? 'Cliente',
+      // El festejado es dato OPERATIVO: sale aquí (hoja operativa, correo diario,
+      // ERP) y nunca en el contrato, que lee al cliente porque es quien firma.
+      // La columna manda sobre `hoja.nombreFestejado`, que es donde se capturaba
+      // antes y queda como respaldo de los eventos anteriores.
+      festejado: q.festejado ?? ((q.operativa as { nombreFestejado?: string } | null)?.nombreFestejado ?? null),
+      festejadoTelefono: q.festejadoTelefono,
+      banquetero: q.banquetero?.nombre ?? null,
       status: q.status,
       total: q.total,
       rentaTotal: q.rentaTotal,
