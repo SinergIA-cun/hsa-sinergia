@@ -220,6 +220,12 @@ export function AgendaPage() {
             eventTypeId: detalle.quote.eventTypeId,
             foodPackageId: detalle.quote.foodPackageId ?? undefined,
             addOns: detalle.quote.addOns ?? [],
+            // Los extras y el descuento de cortesía no dependen de la fecha, pero
+            // sí del total: sin ellos la previa del arrastre enseñaría un número
+            // distinto al que el servidor va a guardar.
+            extras: detalle.quote.extras ?? [],
+            descuentoPct: detalle.quote.descuentoPct ?? undefined,
+            descuentoMotivo: detalle.quote.descuentoMotivo ?? undefined,
           }).total,
         );
       } catch {

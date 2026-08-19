@@ -56,6 +56,7 @@ function mk(overrides: Partial<QuoteSelection> = {}): QuoteSelection {
     usaCapilla: false,
     usaDjHoraExtra: false,
     addOns: [],
+    extras: [],
     ...overrides,
   };
 }
@@ -231,6 +232,7 @@ describe('computeQuote', () => {
       usaCapilla: false,
       usaDjHoraExtra: false,
       addOns: [],
+      extras: [],
     });
 
     const rentas = b.lines.filter((l) => l.spaceId != null);
@@ -239,5 +241,268 @@ describe('computeQuote', () => {
 
     const horasExtra = b.lines.find((l) => l.concepto === 'Horas extra')!;
     expect(horasExtra.spaceId).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Servicio suelto del evento (`extras`). No es un add-on del catálogo: vive en
+// LA cotización, así que no puede cambiar bajo sus pies. El monto capturado
+// SIEMPRE trae IVA incluido (decisión del dueño): lo teclado es lo final.
+// ---------------------------------------------------------------------------
+describe('computeQuote · servicios sueltos del evento (extras)', () => {
+  it('porPersona: $200 × 250 invitados = $50,000 en el grupo otros, con IVA incluido', () => {
+    const r = computeQuote(
+      catalog,
+      mk({ extras: [{ nombre: 'Cambio de menú', kind: 'porPersona', monto: 200, cantidad: 1 }] }),
+    );
+    const linea = r.lines.find((l) => l.concepto === 'Cambio de menú')!;
+    expect(linea.monto).toBe(50000);
+    expect(linea.grupo).toBe('otros');
+    expect(linea.ivaIncluido).toBe(true);
+    expect(linea.detalle).toBe('× 250');
+  });
+
+  it('el monto capturado es FINAL: no se le agrega 16% encima', () => {
+    const r = computeQuote(
+      catalog,
+      mk({ extras: [{ nombre: 'Cambio de menú', kind: 'porPersona', monto: 200, cantidad: 1 }] }),
+    );
+    // 50,000 exactos, NO 58,000. Es la decisión del dueño y es dinero.
+    expect(r.otrosTotal).toBe(50000);
+    expect(r.total).toBe(108500 + 50000);
+  });
+
+  it('fijo: el monto tal cual, sin multiplicar por nada', () => {
+    const r = computeQuote(catalog, mk({ extras: [{ nombre: 'Grúa', kind: 'fijo', monto: 7500, cantidad: 9 }] }));
+    const linea = r.lines.find((l) => l.concepto === 'Grúa')!;
+    expect(linea.monto).toBe(7500); // la cantidad se ignora en `fijo`
+    expect(linea.detalle).toBeUndefined();
+    expect(r.otrosTotal).toBe(7500);
+  });
+
+  it('porUnidad: monto × cantidad', () => {
+    const r = computeQuote(catalog, mk({ extras: [{ nombre: 'Sombrilla', kind: 'porUnidad', monto: 350, cantidad: 12 }] }));
+    const linea = r.lines.find((l) => l.concepto === 'Sombrilla')!;
+    expect(linea.monto).toBe(350 * 12);
+    expect(linea.detalle).toBe('× 12');
+    expect(r.otrosTotal).toBe(4200);
+  });
+
+  it('varios extras se suman entre sí', () => {
+    const r = computeQuote(
+      catalog,
+      mk({
+        extras: [
+          { nombre: 'Cambio de menú', kind: 'porPersona', monto: 200, cantidad: 1 },
+          { nombre: 'Grúa', kind: 'fijo', monto: 7500, cantidad: 1 },
+        ],
+      }),
+    );
+    expect(r.otrosTotal).toBe(50000 + 7500);
+  });
+
+  // LA consecuencia que hay que fijar: el extra va a `otros`, NO a `renta`. Si
+  // entrara a la renta cambiaría la base del complemento y el plan de pagos de
+  // todos los eventos que usen un extra.
+  it('el extra NO toca rentaTotal: no entra a la base del complemento', () => {
+    const sin = computeQuote(catalog, mk());
+    const con = computeQuote(
+      catalog,
+      mk({ extras: [{ nombre: 'Cambio de menú', kind: 'porPersona', monto: 200, cantidad: 1 }] }),
+    );
+    expect(con.rentaTotal).toBe(sin.rentaTotal);
+    expect(con.rentaSubtotal).toBe(sin.rentaSubtotal);
+    expect(con.rentaIva).toBe(sin.rentaIva);
+    expect(con.total).toBe(sin.total + 50000);
+  });
+
+  it('el extra NO entra a la base del descuento por alimentos', () => {
+    const sin = computeQuote(catalog, mk({ foodPackageId: 'boda-supreme' }));
+    const con = computeQuote(
+      catalog,
+      mk({ foodPackageId: 'boda-supreme', extras: [{ nombre: 'Cambio de menú', kind: 'porPersona', monto: 200, cantidad: 1 }] }),
+    );
+    const descuentoDe = (b: typeof sin) => b.lines.find((l) => l.concepto.startsWith('Descuento por alimentos'))!.monto;
+    expect(descuentoDe(con)).toBe(descuentoDe(sin));
+    expect(descuentoDe(con)).toBe(-5425); // 5% de 108,500, no de 158,500
+  });
+
+  it('el extra NO entra a la base del descuento de cortesía', () => {
+    const r = computeQuote(
+      catalog,
+      mk({ descuentoPct: 100, descuentoMotivo: 'Boda del dueño', extras: [{ nombre: 'Cambio de menú', kind: 'porPersona', monto: 200, cantidad: 1 }] }),
+    );
+    expect(r.rentaTotal).toBe(0);
+    expect(r.otrosTotal).toBe(50000); // el extra se cobra completo
+    expect(r.total).toBe(50000);
+  });
+
+  it('cada bloque sigue cuadrando con extras (con IVA incluido en otros)', () => {
+    const r = computeQuote(
+      catalog,
+      mk({ foodPackageId: 'boda-supreme', extras: [{ nombre: 'Cambio de menú', kind: 'porPersona', monto: 200, cantidad: 1 }] }),
+    );
+    expect(round2(r.otrosSubtotal + r.otrosIva)).toBe(r.otrosTotal);
+    expect(round2(r.rentaTotal + r.otrosTotal)).toBe(r.total);
+    expect(round2(r.subtotal + r.iva)).toBe(r.total);
+    // Alimentos SIN IVA (se agrega) + extra CON IVA (no se agrega).
+    expect(r.otrosTotal).toBeCloseTo(199750 * 1.16 + 50000, 2);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Descuento de cortesía. `esCortesia` nunca afectó el precio; esto se lo da.
+// Pega SOLO sobre la renta (decisión del dueño) y sobre la MISMA base que el
+// descuento por alimentos (renta de espacios), sin componerse con él.
+// ---------------------------------------------------------------------------
+describe('computeQuote · descuento de cortesía', () => {
+  it('100% deja rentaTotal en cero y otrosTotal intacto', () => {
+    const r = computeQuote(
+      catalog,
+      mk({ descuentoPct: 100, descuentoMotivo: 'Boda de la familia' }),
+    );
+    expect(r.rentaTotal).toBe(0);
+    expect(r.rentaSubtotal).toBe(0);
+    expect(r.rentaIva).toBe(0);
+    expect(r.total).toBe(0);
+  });
+
+  it('100% con alimentos: la renta queda en cero y los alimentos se cobran completos', () => {
+    const r = computeQuote(
+      catalog,
+      mk({ descuentoPct: 100, descuentoMotivo: 'Boda de la familia', foodPackageId: 'boda-supreme' }),
+    );
+    expect(r.rentaTotal).toBe(0);
+    expect(r.otrosTotal).toBeCloseTo(199750 * 1.16, 2);
+    expect(r.total).toBe(r.otrosTotal);
+  });
+
+  it('50% deja la mitad de la renta', () => {
+    const r = computeQuote(catalog, mk({ descuentoPct: 50, descuentoMotivo: 'Media cortesía' }));
+    expect(r.rentaTotal).toBe(54250);
+  });
+
+  it('el renglón del descuento va en el grupo renta, con monto negativo y el motivo a la vista', () => {
+    const r = computeQuote(catalog, mk({ descuentoPct: 25, descuentoMotivo: 'Sobrina del dueño' }));
+    const linea = r.lines.find((l) => l.concepto.startsWith('Descuento de cortesía'))!;
+    expect(linea.grupo).toBe('renta');
+    expect(linea.monto).toBe(-27125);
+    expect(linea.ivaIncluido).toBe(true);
+    expect(linea.concepto).toBe('Descuento de cortesía (25% renta)');
+    expect(linea.detalle).toBe('Sobrina del dueño');
+  });
+
+  // EL test delicado de las dos tasks. El motor ya tiene un descuento del 5% por
+  // alimentos sobre la renta, y la cabecera del motor dice que los descuentos se
+  // calculan sobre la MISMA base y NO se componen. Si se compusieran, un evento
+  // con alimentos y cortesía cobraría de más y nadie lo notaría hasta sumar a mano.
+  it('cortesía + descuento por alimentos: los dos sobre la MISMA base, sin componerse', () => {
+    const r = computeQuote(
+      catalog,
+      mk({ descuentoPct: 50, descuentoMotivo: 'Media cortesía', foodPackageId: 'boda-supreme' }),
+    );
+    const alimentos = r.lines.find((l) => l.concepto.startsWith('Descuento por alimentos'))!;
+    const cortesia = r.lines.find((l) => l.concepto.startsWith('Descuento de cortesía'))!;
+    // Los dos se calculan sobre los 108,500 de renta de espacios.
+    expect(alimentos.monto).toBe(-5425); // 5% de 108,500
+    expect(cortesia.monto).toBe(-54250); // 50% de 108,500, NO de 103,075
+    expect(r.rentaTotal).toBe(48825); // 108,500 − 5,425 − 54,250
+    // Compuestos darían 51,537.50 (50% de 103,075): $2,712.50 de diferencia.
+    expect(r.rentaTotal).not.toBe(51537.5);
+  });
+
+  // Consecuencia de "misma base, sin componerse": 100% + 5% suman 105% de la base
+  // y la renta se iría a −5,425. Un rentaTotal negativo rompe el plan de pagos,
+  // así que los descuentos JUNTOS no pueden pasarse de la base sobre la que se
+  // calculan; el de cortesía es el que se topa.
+  it('los descuentos juntos nunca pasan de su base: la renta no se va a negativo', () => {
+    const r = computeQuote(
+      catalog,
+      mk({ descuentoPct: 100, descuentoMotivo: 'Cortesía total', foodPackageId: 'boda-supreme' }),
+    );
+    const cortesia = r.lines.find((l) => l.concepto.startsWith('Descuento de cortesía'))!;
+    expect(cortesia.monto).toBe(-103075); // topado: 108,500 − 5,425, no −108,500
+    expect(r.rentaTotal).toBe(0);
+    expect(r.rentaTotal).toBeGreaterThanOrEqual(0);
+  });
+
+  // La base es la renta de ESPACIOS, igual que el 5% por alimentos y las horas
+  // extra (así lo dice la cabecera del motor). Horas extra y capilla no entran a
+  // la base, así que sobreviven a una cortesía del 100%.
+  it('la base es la renta de espacios: con 100%, horas extra y capilla siguen cobrándose', () => {
+    const r = computeQuote(
+      catalog,
+      mk({ descuentoPct: 100, descuentoMotivo: 'Cortesía total', horasExtra: 2, usaCapilla: true }),
+    );
+    expect(r.rentaTotal).toBe(10850 + 5000); // 2 × 5% de 108,500 + capilla de sábado
+  });
+
+  it('sin descuentoPct (o en 0) no aparece ningún renglón de cortesía', () => {
+    const sin = computeQuote(catalog, mk());
+    const cero = computeQuote(catalog, mk({ descuentoPct: 0 }));
+    expect(sin.lines.some((l) => l.concepto.startsWith('Descuento de cortesía'))).toBe(false);
+    expect(cero.lines.some((l) => l.concepto.startsWith('Descuento de cortesía'))).toBe(false);
+    expect(cero.rentaTotal).toBe(sin.rentaTotal);
+  });
+
+  it('un descuentoPct fuera de 0..100 se rechaza', () => {
+    expect(() => computeQuote(catalog, mk({ descuentoPct: 101 }))).toThrow(/descuento/i);
+    expect(() => computeQuote(catalog, mk({ descuentoPct: -1 }))).toThrow(/descuento/i);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// No-regresión. Dos cambios de este plan tocan el motor; una regresión aquí
+// mueve dinero en TODAS las cotizaciones. Los literales son el desglose que
+// devolvía el motor ANTES de estas dos tasks, capturado antes de tocarlo.
+// ---------------------------------------------------------------------------
+describe('computeQuote · no-regresión: sin extras y sin descuento nada se movió', () => {
+  it('renta sola: desglose idéntico al de antes del plan G', () => {
+    expect(computeQuote(catalog, mk())).toEqual({
+      lines: [{ concepto: 'Renta arcos', monto: 108500, ivaIncluido: true, grupo: 'renta', spaceId: 'arcos' }],
+      subtotal: 93534.48,
+      iva: 14965.52,
+      total: 108500,
+      rentaSubtotal: 93534.48,
+      rentaIva: 14965.52,
+      rentaTotal: 108500,
+      otrosSubtotal: 0,
+      otrosIva: 0,
+      otrosTotal: 0,
+    });
+  });
+
+  it('cotización completa (horas extra, capilla, alimentos, add-on y DJ): desglose idéntico al de antes', () => {
+    const r = computeQuote(
+      catalog,
+      mk({
+        horasExtra: 2,
+        usaCapilla: true,
+        eventTypeId: 'boda',
+        usaDjHoraExtra: true,
+        foodPackageId: 'boda-supreme',
+        addOns: [{ addOnId: 'dj', cantidad: 1 }],
+      }),
+    );
+    expect(r).toEqual({
+      lines: [
+        { concepto: 'Renta arcos', monto: 108500, ivaIncluido: true, grupo: 'renta', spaceId: 'arcos' },
+        { concepto: 'Horas extra', detalle: '2 × 5% renta', monto: 10850, ivaIncluido: true, grupo: 'renta' },
+        { concepto: 'Capilla', monto: 5000, ivaIncluido: true, grupo: 'renta' },
+        { concepto: 'Alimentos SUPREME', detalle: '250 × 799', monto: 199750, ivaIncluido: false, grupo: 'otros' },
+        { concepto: 'Descuento por alimentos (5% renta)', monto: -5425, ivaIncluido: true, grupo: 'renta' },
+        { concepto: 'DJ', monto: 2950, ivaIncluido: false, grupo: 'otros' },
+        { concepto: 'DJ Hora extra', detalle: '2 h × 2950', monto: 5900, ivaIncluido: false, grupo: 'otros' },
+      ],
+      subtotal: 311121.55,
+      iva: 49779.45,
+      total: 360901,
+      rentaSubtotal: 102521.55,
+      rentaIva: 16403.45,
+      rentaTotal: 118925,
+      otrosSubtotal: 208600,
+      otrosIva: 33376,
+      otrosTotal: 241976,
+    });
   });
 });

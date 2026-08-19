@@ -7,7 +7,9 @@ import {
   estadoFacturaPago,
   datosFiscalesEditables,
   hoyCivilMexico,
+  motivoObligatorio,
   prorratearRenta,
+  type QuoteExtra,
   type QuoteSelection,
 } from '@hsa/shared';
 import { loadCatalog } from '../catalog/loader.js';
@@ -62,7 +64,10 @@ export const createQuoteSchema = quoteSelectionSchema
   })
   .refine((d) => Boolean(d.clientId ?? d.client), {
     message: 'Se requiere clientId o datos de client',
-  });
+  })
+  // El motivo del descuento es obligatorio si hay descuento. Va aquí y no en
+  // `quoteSelectionSchema` porque `.refine()` devuelve un ZodEffects sin `.extend()`.
+  .refine(motivoObligatorio.check, motivoObligatorio.opts);
 
 export const updateQuoteSchema = quoteSelectionSchema
   .extend({
@@ -72,7 +77,8 @@ export const updateQuoteSchema = quoteSelectionSchema
     requiereFactura: z.boolean().default(false),
     capillaHorario: z.string().max(20).nullable().optional(),
     client: clientSchema.optional(),
-  });
+  })
+  .refine(motivoObligatorio.check, motivoObligatorio.opts);
 
 export const statusSchema = z.object({ status: z.enum(QUOTE_STATUSES) });
 
@@ -87,6 +93,9 @@ const includeRels = {
   eventType: true,
   createdBy: { select: { id: true, nombre: true } },
   priceList: { select: { id: true, nombre: true, anio: true } },
+  // Los servicios sueltos del evento: no viven en el catálogo, así que la única
+  // forma de recuperarlos para reeditar (y para recalcular) es leerlos de aquí.
+  extras: { select: { nombre: true, kind: true, monto: true, cantidad: true } },
 };
 
 // Se permite editar el desglose incluso con compromiso de pago (formalizada/complementada);
@@ -136,6 +145,9 @@ function toSelection(input: {
   eventTypeId?: string;
   foodPackageId?: string;
   addOns: { addOnId: string; cantidad: number }[];
+  extras?: QuoteExtra[];
+  descuentoPct?: number | null;
+  descuentoMotivo?: string | null;
 }): QuoteSelection {
   return {
     fecha: input.fecha,
@@ -147,6 +159,9 @@ function toSelection(input: {
     eventTypeId: input.eventTypeId,
     foodPackageId: input.foodPackageId,
     addOns: input.addOns,
+    extras: input.extras ?? [],
+    descuentoPct: input.descuentoPct ?? undefined,
+    descuentoMotivo: input.descuentoMotivo ?? undefined,
   };
 }
 
@@ -426,6 +441,10 @@ export async function createQuote(db: PrismaClient, rawInput: unknown, actor: Ac
       usaDjHoraExtra: input.usaDjHoraExtra ?? false,
       foodPackageId: input.foodPackageId ?? null,
       addOns: input.addOns as unknown as Prisma.InputJsonValue,
+      // Los extras se copian tal cual: nombre y monto, no un id de catálogo.
+      extras: { create: input.extras },
+      descuentoPct: input.descuentoPct ?? null,
+      descuentoMotivo: input.descuentoMotivo ?? null,
       breakdown: enriched as unknown as Prisma.InputJsonValue,
       total: Math.round(breakdown.total),
       rentaTotal: Math.round(breakdown.rentaTotal),
@@ -446,7 +465,13 @@ export async function createQuote(db: PrismaClient, rawInput: unknown, actor: Ac
  * Copia el desglose tal cual; al reeditar y guardar se recalcula con precios vigentes.
  */
 export async function duplicateQuote(db: PrismaClient, id: string, actor: Actor) {
-  const src = await db.quote.findFirst({ where: { id, ...ownershipWhere(actor) } });
+  const src = await db.quote.findFirst({
+    where: { id, ...ownershipWhere(actor) },
+    // Los extras se copian con el desglose: si no viajaran, la copia mostraría un
+    // total que incluye un servicio que la cotización nueva ya no tiene, y al
+    // reeditarla el monto se caería sin que nadie lo decidiera.
+    include: { extras: { select: { nombre: true, kind: true, monto: true, cantidad: true } } },
+  });
   if (!src) throw new QuoteError(404, 'Cotización no encontrada');
 
   const created = await db.quote.create({
@@ -463,6 +488,9 @@ export async function duplicateQuote(db: PrismaClient, id: string, actor: Actor)
       usaDjHoraExtra: src.usaDjHoraExtra,
       foodPackageId: src.foodPackageId,
       addOns: src.addOns as unknown as Prisma.InputJsonValue,
+      extras: { create: src.extras },
+      descuentoPct: src.descuentoPct,
+      descuentoMotivo: src.descuentoMotivo,
       breakdown: src.breakdown as unknown as Prisma.InputJsonValue,
       total: src.total,
       rentaTotal: src.rentaTotal,
@@ -574,6 +602,11 @@ export async function updateQuote(db: PrismaClient, id: string, rawInput: unknow
       usaDjHoraExtra: input.usaDjHoraExtra ?? false,
       foodPackageId: input.foodPackageId ?? null,
       addOns: input.addOns as unknown as Prisma.InputJsonValue,
+      // Se reemplazan en bloque, igual que los add-ons: el formulario manda la
+      // lista completa, así que borrar y recrear es lo que refleja lo capturado.
+      extras: { deleteMany: {}, create: input.extras },
+      descuentoPct: input.descuentoPct ?? null,
+      descuentoMotivo: input.descuentoMotivo ?? null,
       breakdown: enriched as unknown as Prisma.InputJsonValue,
       total: Math.round(breakdown.total),
       rentaTotal: Math.round(breakdown.rentaTotal),
@@ -754,7 +787,13 @@ async function prepararMovimiento(db: PrismaClient, id: string, priceListId: str
   if (actor.role !== 'admin') {
     throw new QuoteError(403, 'Solo un admin puede mover una cotización de catálogo.');
   }
-  const existing = await db.quote.findFirst({ where: { id, ...ownershipWhere(actor) } });
+  const existing = await db.quote.findFirst({
+    where: { id, ...ownershipWhere(actor) },
+    // Los extras y el descuento de cortesía NO viven en el catálogo, así que
+    // mover de catálogo no debe tocarlos. Sin leerlos aquí, el recálculo los
+    // dejaría fuera y el movimiento le borraría dinero a la cotización.
+    include: { extras: { select: { nombre: true, kind: true, monto: true, cantidad: true } } },
+  });
   if (!existing) throw new QuoteError(404, 'Cotización no encontrada');
   assertNotTrashed(existing);
 
@@ -778,6 +817,9 @@ async function prepararMovimiento(db: PrismaClient, id: string, priceListId: str
       eventTypeId: existing.eventTypeId,
       foodPackageId: seleccion.foodPackageId ?? undefined,
       addOns: seleccion.addOns,
+      extras: existing.extras,
+      descuentoPct: existing.descuentoPct,
+      descuentoMotivo: existing.descuentoMotivo,
     }),
     destino.id,
   );

@@ -207,6 +207,18 @@ export const QUOTE_STATUSES = [
 ] as const;
 export type QuoteStatus = (typeof QUOTE_STATUSES)[number];
 
+/**
+ * Servicio suelto de UN evento, fuera del catálogo. Ej.: el proveedor de comida
+ * cobra $200 más por persona por cambio de menú, solo para este evento. El monto
+ * SIEMPRE trae IVA incluido: lo teclado es lo final.
+ */
+export interface QuoteExtraInput {
+  nombre: string;
+  kind: 'fijo' | 'porPersona' | 'porUnidad';
+  monto: number;
+  cantidad: number;
+}
+
 export interface Quote {
   id: string;
   clientId: string;
@@ -236,6 +248,11 @@ export interface Quote {
   operativa?: HojaOperativa | null;
   foodPackageId: string | null;
   addOns?: { addOnId: string; cantidad: number }[];
+  /** Servicios sueltos de ESTE evento, fuera del catálogo (monto con IVA incluido). */
+  extras?: QuoteExtraInput[];
+  /** Descuento de cortesía, en % sobre la renta. `null` = sin descuento. */
+  descuentoPct?: number | null;
+  descuentoMotivo?: string | null;
   breakdown: QuoteBreakdown;
   total: number;
   rentaTotal: number;

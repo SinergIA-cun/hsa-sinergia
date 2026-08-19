@@ -54,8 +54,15 @@ export function ContratoPage() {
   const rentaLines = lines.filter(
     (l) => l.concepto.startsWith('Renta ') || l.concepto === 'Horas extra',
   );
-  const descuento = lines.find((l) => l.concepto.toLowerCase().includes('descuento'));
+  // TODOS los descuentos, no el primero: desde el Plan G puede haber dos (el 5%
+  // por alimentos y el de cortesía). Con un `find`, el de cortesía quedaba
+  // invisible mientras el "Total de Renta" ya lo traía restado, y el contrato no
+  // cuadraba con lo que el cliente iba a pagar.
+  const descuentos = lines.filter((l) => l.concepto.toLowerCase().includes('descuento'));
   const foodLine = lines.find((l) => l.concepto.startsWith('Alimentos '));
+  // Servicios sueltos y add-ons: todo lo de "otros" que no sea el paquete de
+  // alimentos, que ya se imprime en su propia tabla.
+  const serviciosLines = lines.filter((l) => l.grupo === 'otros' && !l.concepto.startsWith('Alimentos '));
   const paqueteNombre = foodLine ? foodLine.concepto.replace('Alimentos ', '') : null;
   const espaciosById = new Map((catalogQ.data?.spaces ?? []).map((s) => [s.id, s.nombre]));
   // Nombres de los espacios del evento. Se prefiere `spaceId` de las líneas; si el
@@ -161,13 +168,18 @@ export function ContratoPage() {
                   <td>IVA incluido</td>
                 </tr>
               ))}
-              {descuento && (
-                <tr>
-                  <td>Descuento por paquete (5%)</td>
-                  <td style={{ textAlign: 'right' }}>{formatMXNCents(descuento.monto)}</td>
+              {descuentos.map((l, i) => (
+                <tr key={`desc-${i}`}>
+                  {/* El concepto lo trae el desglose congelado: incluye el % y, en
+                      el de cortesía, el motivo. Eso es lo que hay que imprimir. */}
+                  <td>
+                    {l.concepto}
+                    {l.detalle && <> — {l.detalle}</>}
+                  </td>
+                  <td style={{ textAlign: 'right' }}>{formatMXNCents(l.monto)}</td>
                   <td />
                 </tr>
-              )}
+              ))}
               <tr>
                 <td><b>Total de Renta</b></td>
                 <td style={{ textAlign: 'right' }}><b>{formatMXNCents(quote.rentaTotal)}</b></td>
@@ -190,6 +202,25 @@ export function ContratoPage() {
                     <td style={{ textAlign: 'right' }}>{quote.invitados}</td>
                     <td />
                   </tr>
+                </tbody>
+              </table>
+            </>
+          )}
+          {serviciosLines.length > 0 && (
+            <>
+              <p style={{ marginTop: '1rem' }}>Servicios adicionales contratados para este evento:</p>
+              <table>
+                <tbody>
+                  {serviciosLines.map((l, i) => (
+                    <tr key={`serv-${i}`}>
+                      <td>
+                        {l.concepto}
+                        {l.detalle && <> ({l.detalle})</>}
+                      </td>
+                      <td style={{ textAlign: 'right' }}>{formatMXNCents(l.monto)}</td>
+                      <td>{l.ivaIncluido ? 'IVA incluido' : 'IVA no incluido'}</td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             </>

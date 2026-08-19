@@ -260,6 +260,15 @@ model Quote {
   usaCapilla    Boolean     @default(false) // cortesía; $5,000 en sábado. Varios eventos pueden usarla el mismo día.
   capillaHorario String?    // horario de la capilla para este evento (varios eventos comparten el día).
   esCortesia    Boolean     @default(false) // cortesía familiar: se marca verde en la agenda.
+  /// Descuento de cortesía, en por ciento (0..100). Pega SOLO sobre la renta de
+  /// espacios: con 100% la renta queda en cero y alimentos y servicios se cobran
+  /// completos. `null` = sin descuento, que es como se comportó `esCortesia`
+  /// desde siempre (se guardaba, pero el motor nunca la leyó).
+  descuentoPct    Float?
+  /// Motivo del descuento. Es OBLIGATORIO cuando hay descuento —lo exige el
+  /// esquema de crear/editar—, pero la columna es nullable porque la enorme
+  /// mayoría de las cotizaciones no lleva descuento.
+  descuentoMotivo String?
   usaDjHoraExtra Boolean    @default(false) // DJ por hora extra (precio según tipo de evento).
   requiereFactura Boolean   @default(false) // este cliente pidió factura para ESTE evento.
   banquetero    Banquetero? @relation(fields: [banqueteroId], references: [id])
@@ -280,6 +289,7 @@ model Quote {
   priceListId   String
   payments      Payment[]
   activityLog   ActivityLog[]
+  extras        QuoteExtra[]
 
   @@index([clientId])
   @@index([status])
@@ -288,6 +298,31 @@ model Quote {
   @@index([deletedAt])
   @@index([banqueteroId])
   @@index([priceListId])
+}
+
+/// Servicio suelto de UN evento, fuera del catálogo. Ej.: el proveedor de comida
+/// cobra $200 más por persona por cambio de menú, solo para este evento.
+///
+/// NO es un add-on del catálogo, y es importante que no lo sea: por eso guarda el
+/// nombre y el monto COPIADOS y no un id. Así no sufre el problema de "resolver vs
+/// ofrecer" que costó dos bugs (el valet y La Capilla) — vive en la cotización, no
+/// en un catálogo que puede cambiar bajo sus pies.
+///
+/// El monto SIEMPRE trae IVA incluido (decisión del dueño): lo teclado es lo final.
+/// Va al grupo `otros` del desglose, así que NO entra a la base del complemento
+/// ni a la del descuento de cortesía.
+model QuoteExtra {
+  id       String    @id @default(cuid())
+  /// Cascade: la cotización es la dueña del renglón y no tiene sentido sin ella.
+  /// Sin esto, borrar una cotización (o limpiar la base de pruebas) truena por FK.
+  quote    Quote     @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  quoteId  String
+  nombre   String
+  kind     AddOnKind // fijo | porPersona | porUnidad
+  monto    Int
+  cantidad Int       @default(1) // solo se usa en porUnidad
+
+  @@index([quoteId])
 }
 
 model FoodPackage {

@@ -15,18 +15,29 @@ function round2(n: number): number {
  * - Horas extra: 5% de la renta de espacios (base) por hora.
  * - Descuento por alimentos: 5% de la renta de espacios (base). Horas extra y
  *   descuento se calculan sobre la MISMA base (espacios), no se componen entre sí.
+ * - Descuento de cortesía: `descuentoPct`% de la renta de espacios (LA MISMA base
+ *   que el 5% por alimentos, sin componerse con él). Con los dos juntos la suma
+ *   podría pasarse de la base y dejar la renta en negativo, así que los descuentos
+ *   JUNTOS se topan en la base: el de cortesía es el que se recorta.
  * - Alimentos: precio por persona × invitados. Si el paquete NO trae IVA, se le agrega.
  * - Add-ons: fijo | porPersona (× invitados) | porUnidad (× cantidad). SIN IVA => se agrega.
+ * - Extras (servicios sueltos de ESTE evento, fuera del catálogo): mismos tipos de
+ *   cobro que un add-on, pero el monto capturado YA trae IVA (no se le agrega) y
+ *   van al grupo `otros`, así que NO entran a la base del complemento ni de los
+ *   descuentos.
  * - DJ Hora extra (opcional): precio por tipo de evento × horas extra. SIN IVA => se agrega.
  * - `subtotal` es genuinamente pre-IVA y `iva` es el impuesto total; `subtotal + iva == total`.
  *   Es un desglose interno para el plan de pagos, no un desglose fiscal/CFDI.
- * - Cada línea lleva `grupo`: `renta` (espacios, horas extra, capilla, descuento 5%)
+ * - Cada línea lleva `grupo`: `renta` (espacios, horas extra, capilla, descuentos)
  *   u `otros` (alimentos y servicios). `rentaTotal + otrosTotal == total`.
  */
 export function computeQuote(
   catalog: Catalog,
   sel: QuoteSelection,
 ): QuoteBreakdown {
+  if (sel.descuentoPct != null && (sel.descuentoPct < 0 || sel.descuentoPct > 100)) {
+    throw new Error(`Descuento de cortesía inválido: ${sel.descuentoPct}% (debe estar entre 0 y 100)`);
+  }
   const dt = dayType(sel.fecha);
   const lines: QuoteLine[] = [];
 
@@ -81,7 +92,9 @@ export function computeQuote(
 
   // 3. Alimentos + descuento 5% (sobre la renta de espacios base, no sobre horas extra).
   let alimentosBaseSinIva = 0; // porción que aún NO trae IVA
-  let alimentosConIva = 0; // porción que YA trae IVA (paquete ivaIncluido=true)
+  let otrosConIva = 0; // porción de `otros` que YA trae IVA (paquete ivaIncluido, extras)
+  /** Lo ya descontado de la base `rentaEspacios`. Topa al descuento de cortesía. */
+  let descuentoSobreBase = 0;
   if (sel.foodPackageId) {
     const pkg = catalog.foodPackages.find((p) => p.id === sel.foodPackageId);
     if (!pkg) throw new Error(`Paquete de alimentos ${sel.foodPackageId} no existe`);
@@ -92,7 +105,7 @@ export function computeQuote(
       );
     }
     const monto = row.pricePerPerson * sel.invitados;
-    if (pkg.ivaIncluded) alimentosConIva += monto;
+    if (pkg.ivaIncluded) otrosConIva += monto;
     else alimentosBaseSinIva += monto;
     lines.push({
       concepto: `Alimentos ${pkg.name}`,
@@ -105,9 +118,36 @@ export function computeQuote(
     // El descuento del 5% aplica SOLO a la renta => va en el grupo de renta.
     const descuento = rentaEspacios * catalog.foodDiscountRate;
     rentaConIva -= descuento;
+    descuentoSobreBase += descuento;
     lines.push({
       concepto: 'Descuento por alimentos (5% renta)',
       monto: round2(-descuento),
+      ivaIncluido: true,
+      grupo: 'renta',
+    });
+  }
+
+  // 3b. Descuento de cortesía: `descuentoPct`% de la renta de ESPACIOS, la misma
+  //     base que el 5% por alimentos y sin componerse con él (50% de cortesía con
+  //     alimentos descuenta 50% de 108,500, no de 103,075).
+  //
+  //     Los dos juntos pueden pasarse de la base —100% + 5% = 105%— y dejar la
+  //     renta en negativo, que rompe el plan de pagos. Por eso el de cortesía se
+  //     topa en lo que queda de la base: con 100% la renta de espacios queda
+  //     exactamente en cero, como pidió el dueño.
+  //
+  //     Horas extra y capilla NO están en la base (igual que para el 5%), así que
+  //     sobreviven a una cortesía del 100%.
+  if (sel.descuentoPct != null && sel.descuentoPct > 0) {
+    const bruto = rentaEspacios * (sel.descuentoPct / 100);
+    const tope = Math.max(0, rentaEspacios - descuentoSobreBase);
+    const monto = Math.min(bruto, tope);
+    rentaConIva -= monto;
+    descuentoSobreBase += monto;
+    lines.push({
+      concepto: `Descuento de cortesía (${sel.descuentoPct}% renta)`,
+      detalle: sel.descuentoMotivo,
+      monto: round2(-monto),
       ivaIncluido: true,
       grupo: 'renta',
     });
@@ -154,6 +194,28 @@ export function computeQuote(
     }
   }
 
+  // 4c. Servicios sueltos de ESTE evento (fuera del catálogo). El monto capturado
+  //     YA trae IVA —lo teclado es lo final, decisión del dueño—, así que a
+  //     diferencia de los add-ons NO se le agrega 16%.
+  //
+  //     Van al grupo `otros`, no a `renta`: con eso quedan fuera de la base del
+  //     complemento y de la de los descuentos. Si entraran a la renta cambiarían
+  //     el plan de pagos de todo evento que use un extra.
+  for (const e of sel.extras) {
+    let monto: number;
+    if (e.kind === 'fijo') monto = e.monto;
+    else if (e.kind === 'porPersona') monto = e.monto * sel.invitados;
+    else monto = e.monto * e.cantidad;
+    otrosConIva += monto;
+    lines.push({
+      concepto: e.nombre,
+      detalle: e.kind === 'fijo' ? undefined : `× ${e.kind === 'porPersona' ? sel.invitados : e.cantidad}`,
+      monto: round2(monto),
+      ivaIncluido: true,
+      grupo: 'otros',
+    });
+  }
+
   // 5. Totales por BLOQUE, cada uno con su propio subtotal + IVA + total, para
   //    que el desglose muestre por separado lo que cobra HSA (renta) y lo que se
   //    paga al proveedor (alimentos + servicios). No se mezclan.
@@ -164,10 +226,10 @@ export function computeQuote(
   const rentaSubtotal = round2(rentaConIva / (1 + rate));
   const rentaIva = round2(rentaTotal - rentaSubtotal);
 
-  // Otros: parte con IVA incluido (alimentos ivaIncluido) + parte sin IVA (se agrega).
+  // Otros: parte con IVA incluido (alimentos ivaIncluido, extras) + parte sin IVA.
   const otrosSinIva = alimentosBaseSinIva + addonsBaseSinIva;
-  const otrosTotal = round2(alimentosConIva + otrosSinIva * (1 + rate));
-  const otrosSubtotal = round2(alimentosConIva / (1 + rate) + otrosSinIva);
+  const otrosTotal = round2(otrosConIva + otrosSinIva * (1 + rate));
+  const otrosSubtotal = round2(otrosConIva / (1 + rate) + otrosSinIva);
   const otrosIva = round2(otrosTotal - otrosSubtotal);
 
   // Globales (compat): suma de ambos bloques. subtotal + iva === total.

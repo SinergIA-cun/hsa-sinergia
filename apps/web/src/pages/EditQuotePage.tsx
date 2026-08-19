@@ -58,6 +58,12 @@ function toInitial(q: Quote): Partial<QuoteFormInitial> {
     esCortesia: q.esCortesia ?? false,
     usaDjHoraExtra: q.usaDjHoraExtra ?? false,
     addOns: Object.fromEntries((q.addOns ?? []).map((a) => [a.addOnId, a.cantidad])),
+    // Los extras y el descuento se devuelven al formulario porque guardar manda
+    // la lista COMPLETA: si no viajaran de vuelta, reeditar cualquier otra cosa
+    // del evento los borraría en silencio y el total bajaría solo.
+    extras: q.extras ?? [],
+    descuentoPct: q.descuentoPct ?? null,
+    descuentoMotivo: q.descuentoMotivo ?? '',
     requiereFactura: q.requiereFactura ?? false,
     fiscales: {
       rfc: q.client?.rfc,
