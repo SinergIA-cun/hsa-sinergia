@@ -1718,3 +1718,66 @@ describe('descuento de cortesía', () => {
     expect(editada.rentaTotal).toBe(108500);
   });
 });
+
+// ---------------------------------------------------------------------------
+// El contrato imprime los renglones del GRUPO `renta` y, como pie, el total de
+// renta del DESGLOSE. Este test fija la aritmética de esa tabla: la suma de los
+// renglones tiene que ser exactamente el total impreso.
+//
+// Es la red del arreglo de `ContratoPage`: antes filtraba por texto del concepto
+// ('Renta ' y 'Horas extra'), así que la Capilla no se imprimía nunca y todo
+// sábado con capilla sacaba una tabla que sumaba $5,000 menos que su total, en un
+// documento que se firma. Si alguien vuelve a filtrar por texto —o si el motor
+// gana un renglón de renta— este test no lo ve, pero sí ve que el desglose y su
+// total sigan cuadrando, que es la invariante de la que depende la tabla.
+// ---------------------------------------------------------------------------
+describe('el contrato cuadra: renglones de renta contra su total', () => {
+  it('capilla + horas extra + descuento: los renglones suman el total del desglose', async () => {
+    const { eventTypeId, arcosId } = await ids();
+    const paquete = await prisma.foodPackage.findFirstOrThrow({
+      where: { nombre: 'SUPREME', eventTypeId, priceList: { activa: true } },
+    });
+    const q = await createQuote(
+      prisma,
+      {
+        fecha: '2033-01-08', // sábado: la capilla se cobra
+        invitados: 250,
+        spaceIds: [arcosId],
+        eventTypeId,
+        horasExtra: 2,
+        usaCapilla: true,
+        foodPackageId: paquete.id,
+        descuentoPct: 50,
+        descuentoMotivo: 'Boda de la sobrina',
+        client: { nombre: 'Contrato Que Cuadra' },
+      },
+      actor,
+    );
+    createdQuoteIds.push(q.id);
+    createdClientIds.push(q.clientId);
+
+    const breakdown = q.breakdown as unknown as {
+      lines: { concepto: string; monto: number; grupo?: string }[];
+      rentaTotal: number;
+    };
+    const renta = breakdown.lines.filter((l) => l.grupo === 'renta');
+
+    // Los cinco renglones, con su número, en el orden en que se imprimen.
+    expect(renta.map((l) => [l.concepto, l.monto])).toEqual([
+      ['Renta Salón Los Arcos', 108500],
+      ['Descuento de cortesía (50% renta)', -54250],
+      ['Horas extra', 5425],
+      ['Capilla', 5000],
+      ['Descuento por alimentos (5% renta)', -2712.5],
+    ]);
+
+    // 108,500 − 54,250 + 5,425 + 5,000 − 2,712.50 = 61,962.50
+    const suma = renta.reduce((s, l) => s + l.monto, 0);
+    expect(suma).toBe(61962.5);
+    expect(breakdown.rentaTotal).toBe(61962.5);
+
+    // Y por esto el pie del contrato imprime el total del DESGLOSE y no la
+    // columna: la columna es entera y aquí redondea medio peso hacia arriba.
+    expect(q.rentaTotal).toBe(61963);
+  });
+});

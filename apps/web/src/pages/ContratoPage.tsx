@@ -51,14 +51,36 @@ export function ContratoPage() {
   const hitoComplemento = plan?.find((m) => m.key === 'complemento');
   const hitoFiniquito = plan?.find((m) => m.key === 'finiquito');
   const lines = quote.breakdown.lines;
-  const rentaLines = lines.filter(
-    (l) => l.concepto.startsWith('Renta ') || l.concepto === 'Horas extra',
-  );
-  // TODOS los descuentos, no el primero: desde el Plan G puede haber dos (el 5%
-  // por alimentos y el de cortesía). Con un `find`, el de cortesía quedaba
-  // invisible mientras el "Total de Renta" ya lo traía restado, y el contrato no
-  // cuadraba con lo que el cliente iba a pagar.
-  const descuentos = lines.filter((l) => l.concepto.toLowerCase().includes('descuento'));
+  // Los renglones de renta salen del GRUPO de la línea, NUNCA del texto del
+  // concepto. Filtrar por texto ('Renta ' y 'Horas extra') dejaba la Capilla
+  // fuera de la tabla mientras el pie imprimía `quote.rentaTotal`, que sí la
+  // trae: todo evento de sábado con capilla imprimía una tabla cuyos renglones
+  // sumaban $5,000 menos que su propio total, en un documento que se firma.
+  // El grupo también recoge los dos descuentos, que antes se imprimían en un
+  // filtro aparte (y con `find` en vez de `filter` solo salía el primero).
+  //
+  // `rentaTotal` es EXACTAMENTE la suma de las líneas del grupo `renta`: mientras
+  // el filtro sea el grupo, la tabla cuadra sola aunque el motor gane renglones.
+  const tieneGrupos = lines.some((l) => l.grupo);
+  const rentaLines = tieneGrupos
+    ? lines.filter((l) => l.grupo === 'renta')
+    : // Desgloses congelados antes de que la línea llevara `grupo`. Se listan sus
+      // conceptos de renta por texto porque es lo único que traen; no hay forma
+      // mejor, y ninguno de ellos puede tener descuento de cortesía ni extras.
+      lines.filter(
+        (l) =>
+          l.concepto.startsWith('Renta ') ||
+          l.concepto === 'Horas extra' ||
+          l.concepto === 'Capilla' ||
+          l.concepto.toLowerCase().includes('descuento'),
+      );
+  // El pie de la tabla imprime el total del DESGLOSE, no la columna `rentaTotal`
+  // de la cotización: esa columna es un entero (`Math.round`), así que con un
+  // descuento que cae en medio peso decía 61,963.00 mientras los renglones
+  // sumaban 61,962.50. Un contrato cuyos renglones no suman su propio total es
+  // justo lo que este bloque existe para evitar. Los desgloses viejos (sin
+  // grupo) no traen el total por bloque: para ellos sigue mandando la columna.
+  const rentaTotalImpreso = tieneGrupos ? quote.breakdown.rentaTotal : quote.rentaTotal;
   const foodLine = lines.find((l) => l.concepto.startsWith('Alimentos '));
   // Servicios sueltos y add-ons: todo lo de "otros" que no sea el paquete de
   // alimentos, que ya se imprime en su propia tabla.
@@ -69,7 +91,7 @@ export function ContratoPage() {
   // desglose es anterior a ese campo, se usa el texto del concepto como respaldo.
   const nombresEspacios = quote.spaceIds.length > 0
     ? quote.spaceIds.map((id) => espaciosById.get(id) ?? id)
-    : rentaLines
+    : lines
         .filter((l) => l.concepto.startsWith('Renta '))
         .map((l) => l.concepto.replace('Renta ', ''));
   const espacioNombre = nombresEspacios.length > 0 ? nombresEspacios.join(' y ') : BLANK;
@@ -161,28 +183,22 @@ export function ContratoPage() {
           <p><b>C)</b> El precio por la renta de las instalaciones contratadas es de:</p>
           <table>
             <tbody>
+              {/* Un solo recorrido, en el orden del desglose congelado. El concepto
+                  y el detalle vienen de ahí: el detalle trae el motivo del
+                  descuento de cortesía y el "2 × 5% renta" de las horas extra. */}
               {rentaLines.map((l, i) => (
                 <tr key={i}>
-                  <td>{l.concepto}</td>
-                  <td style={{ textAlign: 'right' }}>{formatMXNCents(l.monto)}</td>
-                  <td>IVA incluido</td>
-                </tr>
-              ))}
-              {descuentos.map((l, i) => (
-                <tr key={`desc-${i}`}>
-                  {/* El concepto lo trae el desglose congelado: incluye el % y, en
-                      el de cortesía, el motivo. Eso es lo que hay que imprimir. */}
                   <td>
                     {l.concepto}
                     {l.detalle && <> — {l.detalle}</>}
                   </td>
                   <td style={{ textAlign: 'right' }}>{formatMXNCents(l.monto)}</td>
-                  <td />
+                  <td>{l.monto < 0 ? '' : 'IVA incluido'}</td>
                 </tr>
               ))}
               <tr>
                 <td><b>Total de Renta</b></td>
-                <td style={{ textAlign: 'right' }}><b>{formatMXNCents(quote.rentaTotal)}</b></td>
+                <td style={{ textAlign: 'right' }}><b>{formatMXNCents(rentaTotalImpreso)}</b></td>
                 <td>IVA incluido</td>
               </tr>
             </tbody>
