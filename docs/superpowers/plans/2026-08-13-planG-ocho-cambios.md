@@ -250,3 +250,61 @@ Se van `enviada`, `aceptada` y `vencida`. Quedan `borrador`, `formalizada`, `com
 - [ ] **Step 3:** Confirmar que el desglose de una cotización **sin** extras y **sin** descuento es idéntico al de antes del plan. Dos cambios de este plan tocan el motor; una regresión ahí mueve dinero.
 - [ ] **Step 4: Push y PR. No mergear sin autorización del dueño.**
 - [ ] **Step 5: Actualizar la memoria del proyecto.**
+
+---
+
+## CORRECCIÓN de la Task 3 (dueño, 13-ago-2026, después de implementarla)
+
+El dueño precisó la regla y **disuelve la incompatibilidad** que tenía la Task 3
+original (100% + 5% de alimentos = 105% de la base → `rentaTotal` negativo, que se
+había resuelto con un tope inventado). Textual:
+
+> "Las horas extras ya van a reflejar el mismo descuento. Es el 5% de la renta. Si
+> yo di 50% de descuento, entonces las horas extras serán el 5% del precio que
+> lleva 50% de descuento. La capilla se cobra en los días que se cobra. No hay
+> descuentos ni cortesías."
+
+### La regla correcta
+
+**El descuento cambia el PRECIO DE LA RENTA.** Todo lo que se deriva de ese precio
+se calcula sobre el precio **ya descontado**. La capilla no se descuenta nunca.
+
+Orden nuevo del motor:
+
+1. `rentaEspacios` = suma de la renta de catálogo de cada espacio.
+2. **Se aplica el descuento → `rentaBase`.** Este es el precio efectivo de la renta.
+3. Horas extra = `rentaBase × extraHourRate × horasExtra`.
+4. Descuento por alimentos = `rentaBase × foodDiscountRate`.
+5. **Capilla: precio completo, sin descuento.**
+6. `rentaConIva = rentaBase + horasExtra − descuentoAlimentos + capilla`.
+
+### Por qué esto es mejor que lo que había
+
+- **Se elimina el tope.** Con 100%: `rentaBase` = 0, horas extra = 0, descuento de
+  alimentos = 0, capilla completa. Nunca hay negativo, sin reglas inventadas.
+- Desaparece la asimetría de tener dos descuentos con bases distintas.
+- Es la lectura literal de "el precio que lleva 50% de descuento".
+
+### Ejemplo que un test debe fijar
+
+Renta de catálogo $108,500, 2 horas extra, 50% de descuento, con paquete de
+alimentos y capilla en sábado:
+
+| | |
+|---|---|
+| Renta base (108,500 × 50%) | 54,250 |
+| Horas extra (5% × 54,250 × 2) | +5,425 |
+| Descuento alimentos (5% × 54,250) | −2,712.50 |
+| Capilla sábado | +5,000 |
+| **rentaTotal** | **61,962.50** |
+
+Y con **100%**: `rentaTotal = 5,000` (solo la capilla).
+
+- [ ] **Step 1:** Reescribir los tests del descuento con el orden nuevo, **incluido
+      el de 100% + alimentos + horas extra + capilla**, y confirmar que fallan.
+- [ ] **Step 2:** Reordenar el motor. **Quitar el tope** del descuento: ya no hace
+      falta y dejarlo esconde la regla real.
+- [ ] **Step 3:** Verificar que el test de no-regresión (sin descuento) sigue dando
+      exactamente los mismos números. Si cambia, el reordenamiento movió dinero en
+      cotizaciones sin descuento y está mal.
+- [ ] **Step 4:** Commit.
