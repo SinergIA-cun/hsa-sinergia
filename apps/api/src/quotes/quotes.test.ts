@@ -1781,3 +1781,150 @@ describe('el contrato cuadra: renglones de renta contra su total', () => {
     expect(q.rentaTotal).toBe(61963);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Código de evento (punto 5 del Plan G): `17ENE-CBOLADO-CUPULA`. La función pura
+// y su formato están fijados en `packages/shared/src/codigoEvento.test.ts`; aquí
+// se prueba lo que necesita la base: unicidad, generación y CONGELADO.
+// ---------------------------------------------------------------------------
+describe('código de evento', () => {
+  it('createQuote lo genera con el formato pedido por el dueño', async () => {
+    const { eventTypeId, cupulaId } = await ids();
+    const q = await createQuote(
+      prisma,
+      {
+        fecha: '2034-01-17',
+        invitados: 250,
+        spaceIds: [cupulaId],
+        eventTypeId,
+        client: { nombre: 'Carlos Bolado' },
+      },
+      actor,
+    );
+    createdQuoteIds.push(q.id);
+    createdClientIds.push(q.clientId);
+    expect(q.codigo).toBe('17ENE-CBOLADO-CUPULA');
+  });
+
+  it('dos eventos del mismo cliente, misma fecha y mismo salón: sufijo, y el guardado no truena', async () => {
+    const { eventTypeId, cupulaId } = await ids();
+    const base = { fecha: '2034-02-20', invitados: 250, spaceIds: [cupulaId], eventTypeId };
+    const uno = await createQuote(prisma, { ...base, client: { nombre: 'Colisión Exacta' } }, actor);
+    createdQuoteIds.push(uno.id);
+    createdClientIds.push(uno.clientId);
+    // El MISMO cliente, la MISMA fecha y el MISMO salón: raro, pero posible.
+    const dos = await createQuote(prisma, { ...base, clientId: uno.clientId }, actor);
+    createdQuoteIds.push(dos.id);
+    const tres = await createQuote(prisma, { ...base, clientId: uno.clientId }, actor);
+    createdQuoteIds.push(tres.id);
+
+    expect(uno.codigo).toBe('20FEB-CEXACTA-CUPULA');
+    expect(dos.codigo).toBe('20FEB-CEXACTA-CUPULA-2');
+    expect(tres.codigo).toBe('20FEB-CEXACTA-CUPULA-3');
+  });
+
+  it('el código se CONGELA al formalizar: cambiar la fecha ya no lo mueve', async () => {
+    const { eventTypeId, cupulaId } = await ids();
+    const q = await createQuote(
+      prisma,
+      {
+        fecha: '2034-03-14',
+        invitados: 250,
+        spaceIds: [cupulaId],
+        eventTypeId,
+        client: { nombre: 'Frida Congelada' },
+      },
+      actor,
+    );
+    createdQuoteIds.push(q.id);
+    createdClientIds.push(q.clientId);
+    expect(q.codigo).toBe('14MAR-FCONGELADA-CUPULA');
+
+    // En borrador todavía se regenera: el código sigue a la fecha.
+    const movida = await updateQuote(
+      prisma,
+      q.id,
+      { fecha: '2034-03-21', invitados: 250, spaceIds: [cupulaId], eventTypeId },
+      actor,
+    );
+    expect(movida.codigo).toBe('21MAR-FCONGELADA-CUPULA');
+
+    // Con compromiso de pago queda fijo: ya está impreso en recibos y contratos.
+    await updateStatus(prisma, q.id, 'formalizada', actor);
+    const editada = await updateQuote(
+      prisma,
+      q.id,
+      { fecha: '2034-04-11', invitados: 250, spaceIds: [cupulaId], eventTypeId },
+      actor,
+    );
+    expect(editada.fechaEvento.toISOString().slice(0, 10)).toBe('2034-04-11');
+    expect(editada.codigo).toBe('21MAR-FCONGELADA-CUPULA');
+
+    // Y tampoco lo mueve el arrastre en la agenda, que es el otro camino a la fecha.
+    const arrastrada = await moveQuoteDate(prisma, q.id, '2034-05-09', actor);
+    expect(arrastrada.fechaEvento.toISOString().slice(0, 10)).toBe('2034-05-09');
+    expect(arrastrada.codigo).toBe('21MAR-FCONGELADA-CUPULA');
+  });
+
+  it('en borrador, cambiar el cliente o el espacio también mueve el código', async () => {
+    const { eventTypeId, cupulaId, arcosId } = await ids();
+    const q = await createQuote(
+      prisma,
+      {
+        fecha: '2034-06-13',
+        invitados: 250,
+        spaceIds: [cupulaId],
+        eventTypeId,
+        client: { nombre: 'Ana Movible' },
+      },
+      actor,
+    );
+    createdQuoteIds.push(q.id);
+    createdClientIds.push(q.clientId);
+    expect(q.codigo).toBe('13JUN-AMOVIBLE-CUPULA');
+
+    const otroEspacio = await updateQuote(
+      prisma,
+      q.id,
+      { fecha: '2034-06-13', invitados: 250, spaceIds: [arcosId], eventTypeId },
+      actor,
+    );
+    expect(otroEspacio.codigo).toBe('13JUN-AMOVIBLE-ARCOS');
+
+    const otroNombre = await updateQuote(
+      prisma,
+      q.id,
+      {
+        fecha: '2034-06-13',
+        invitados: 250,
+        spaceIds: [arcosId],
+        eventTypeId,
+        client: { nombre: 'Ana Recapturada' },
+      },
+      actor,
+    );
+    expect(otroNombre.codigo).toBe('13JUN-ARECAPTURADA-ARCOS');
+  });
+
+  it('el duplicado nace con su propio código, no con el del original', async () => {
+    const { eventTypeId, cupulaId } = await ids();
+    const q = await createQuote(
+      prisma,
+      {
+        fecha: '2034-07-11',
+        invitados: 250,
+        spaceIds: [cupulaId],
+        eventTypeId,
+        client: { nombre: 'Diego Duplicado' },
+      },
+      actor,
+    );
+    createdQuoteIds.push(q.id);
+    createdClientIds.push(q.clientId);
+    const dup = await duplicateQuote(prisma, q.id, actor);
+    createdQuoteIds.push(dup.id);
+
+    expect(q.codigo).toBe('11JUL-DDUPLICADO-CUPULA');
+    expect(dup.codigo).toBe('11JUL-DDUPLICADO-CUPULA-2');
+  });
+});

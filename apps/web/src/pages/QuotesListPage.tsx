@@ -39,6 +39,11 @@ function QuoteRow({ q, showSeller }: { q: Quote; showSeller: boolean }) {
       <div className="min-w-[11rem] flex-1" onClick={() => navigate(`/cotizaciones/${q.id}`)}>
         <p className="font-display text-xl text-ink">{q.client?.nombre ?? 'Cliente'}</p>
         <p className="text-xs uppercase tracking-wide text-gold">{q.eventType?.nombre ?? 'Evento'}</p>
+        {/* El código de evento en la lista: es por donde la gente busca "el
+            evento del 17 de enero" sin abrir uno por uno. */}
+        {q.codigo && (
+          <p className="mt-0.5 font-mono text-[0.7rem] tracking-tight text-charcoal-soft">{q.codigo}</p>
+        )}
         {showSeller && q.createdBy && (
           <p className="mt-0.5 inline-flex items-center gap-1 text-xs text-charcoal-soft">
             <UserCircle size={12} /> {q.createdBy.nombre}

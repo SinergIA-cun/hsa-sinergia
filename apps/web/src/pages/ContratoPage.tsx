@@ -151,6 +151,7 @@ export function ContratoPage() {
         </Link>
         <span style={{ fontFamily: 'Archivo, sans-serif', fontSize: '0.85rem' }}>
           Contrato · {quote.client?.nombre}
+          {quote.codigo && ` · ${quote.codigo}`}
         </span>
         <button onClick={() => window.print()} className="contrato-btn" style={{ background: '#b0894e', color: '#fff' }}>
           <Printer size={15} /> Imprimir / PDF
@@ -161,7 +162,11 @@ export function ContratoPage() {
         {/* PÁGINA 1 */}
         <section className="doc-page">
           <div className="marca">Hacienda San Andrés<small>1894</small></div>
-          <div className="folio">-1-</div>
+          {/* El código de evento va en la primera página: es el identificador que
+              alguien va a copiar del contrato al recibo o al correo. */}
+          <div className="folio">
+            {quote.codigo ? <>Evento <b>{quote.codigo}</b> · </> : null}-1-
+          </div>
           <p>
             Contrato de Prestación de Servicios y Renta de Instalaciones que celebran por una parte{' '}
             <b>Hacienda San Andrés Atoto, S.A.</b> y por la otra parte{' '}

@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowLeft,
   BookMarked,
+  Hash,
   ExternalLink,
   Printer,
   FileText,
@@ -246,6 +247,13 @@ export function EditQuotePage() {
           {/* A qué catálogo pertenece: es el dato que explica por qué dos
               cotizaciones de fechas parecidas tienen precios distintos. */}
           <p className="mt-1.5 flex flex-wrap items-center gap-2 text-xs text-charcoal-soft">
+            {/* El código de evento: la identidad del evento, la que se copia al
+                recibo, al contrato y a los correos. Se congela al formalizar. */}
+            {quote.codigo && (
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-ink px-2.5 py-0.5 font-mono text-[0.7rem] font-semibold tracking-tight text-cream">
+                <Hash size={12} /> {quote.codigo}
+              </span>
+            )}
             <span className="inline-flex items-center gap-1.5 rounded-full bg-cream-200 px-2.5 py-0.5 font-semibold uppercase tracking-wide text-ink-500">
               <BookMarked size={12} /> Catálogo {quote.priceList?.nombre ?? '—'}
             </span>

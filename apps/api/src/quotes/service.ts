@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import type { PrismaClient, Prisma } from '@hsa/database';
 import {
+  codigoEvento,
   computeQuote,
   quoteSelectionSchema,
   estadoFacturaPago,
@@ -101,6 +102,93 @@ const includeRels = {
 // Se permite editar el desglose incluso con compromiso de pago (formalizada/complementada);
 // las ediciones en esos estatus quedan registradas en la bitácora de actividad.
 const EDITABLE_STATUSES = new Set(['borrador', 'enviada', 'aceptada', 'formalizada', 'complementada']);
+
+// --- Código de evento ---------------------------------------------------------
+
+/**
+ * Estatus que ya APARTAN la fecha (hay compromiso de pago). Son los mismos que
+ * bloquean el espacio en `availability/service.ts`, y son la frontera del
+ * congelado: mientras la cotización no aparta, su código sigue a la fecha, al
+ * cliente y al espacio; en cuanto aparta, queda fijo — a partir de ahí el código
+ * ya está impreso en recibos y contratos, y regenerarlo cambiaría un
+ * identificador que alguien ya copió.
+ */
+const STATUSES_QUE_APARTAN = new Set(['formalizada', 'complementada', 'liquidada']);
+
+/** Un choque del índice único de `Quote.codigo` (y no de cualquier otro campo). */
+function esColisionDeCodigo(e: unknown): boolean {
+  if (typeof e !== 'object' || e === null) return false;
+  const err = e as { code?: unknown; meta?: { target?: unknown } };
+  if (err.code !== 'P2002') return false;
+  const target = err.meta?.target;
+  const texto = Array.isArray(target) ? target.join(',') : String(target ?? '');
+  return texto.includes('codigo');
+}
+
+/**
+ * El código libre a partir del base: `base`, o `base-2`, `base-3`… Dos eventos
+ * del mismo cliente, la misma fecha y el mismo salón son raros pero posibles, y
+ * no pueden romper el guardado.
+ */
+async function codigoLibre(db: PrismaClient, base: string, excludeQuoteId?: string): Promise<string> {
+  const usados = await db.quote.findMany({
+    where: {
+      // El `-` del prefijo evita que `…-CUPULA` se coma a `…-CUPULANORTE`.
+      OR: [{ codigo: base }, { codigo: { startsWith: `${base}-` } }],
+      ...(excludeQuoteId ? { id: { not: excludeQuoteId } } : {}),
+    },
+    select: { codigo: true },
+  });
+  const tomados = new Set(usados.map((q) => q.codigo));
+  if (!tomados.has(base)) return base;
+  for (let n = 2; n <= 999; n++) {
+    const candidato = `${base}-${n}`;
+    if (!tomados.has(candidato)) return candidato;
+  }
+  throw new QuoteError(409, `No hay sufijo libre para el código de evento ${base}`);
+}
+
+/**
+ * El código de evento de una cotización, ya resuelto contra la base.
+ *
+ * Los nombres de los espacios se leen EN EL ORDEN de `spaceIds`: `findMany` no
+ * garantiza orden, y de eso depende cuál espacio manda en el código.
+ */
+async function generarCodigo(
+  db: PrismaClient,
+  datos: { fecha: string; cliente: string; spaceIds: string[] },
+  excludeQuoteId?: string,
+): Promise<string> {
+  const spaces = await db.space.findMany({
+    where: { id: { in: datos.spaceIds } },
+    select: { id: true, nombre: true },
+  });
+  const nombreById = new Map(spaces.map((sp) => [sp.id, sp.nombre]));
+  const espacios = datos.spaceIds.map((id) => nombreById.get(id) ?? '');
+  const base = codigoEvento({ fechaISO: datos.fecha, cliente: datos.cliente, espacios });
+  return codigoLibre(db, base, excludeQuoteId);
+}
+
+/**
+ * Escribe la cotización con su código, reintentando si otra sesión se quedó con
+ * el mismo entre el cálculo y la escritura. `codigoLibre` resuelve las colisiones
+ * conocidas; esto cubre la carrera, que el índice único convertiría en un 500.
+ */
+async function conCodigoUnico<T>(
+  db: PrismaClient,
+  datos: { fecha: string; cliente: string; spaceIds: string[] },
+  escribir: (codigo: string) => Promise<T>,
+  excludeQuoteId?: string,
+): Promise<T> {
+  for (let intento = 0; ; intento++) {
+    const codigo = await generarCodigo(db, datos, excludeQuoteId);
+    try {
+      return await escribir(codigo);
+    } catch (e) {
+      if (intento >= 3 || !esColisionDeCodigo(e)) throw e;
+    }
+  }
+}
 
 /**
  * El catálogo activo, o un 409 si no hay ninguno. Es el que se le fija a una
@@ -425,36 +513,49 @@ export async function createQuote(db: PrismaClient, rawInput: unknown, actor: Ac
     await db.client.update({ where: { id: clientId }, data: input.client });
   }
 
-  const created = await db.quote.create({
-    data: {
-      clientId: clientId!,
-      eventTypeId: input.eventTypeId,
-      fechaEvento: new Date(`${input.fecha}T00:00:00.000Z`),
-      horasEvento: input.horasEvento ?? null,
-      invitados: input.invitados,
-      spaceIds: input.spaceIds,
-      horasExtra: input.horasExtra,
-      usaCapilla: input.usaCapilla ?? false,
-      capillaHorario: input.capillaHorario ?? null,
-      esCortesia: input.esCortesia ?? false,
-      requiereFactura: input.requiereFactura,
-      usaDjHoraExtra: input.usaDjHoraExtra ?? false,
-      foodPackageId: input.foodPackageId ?? null,
-      addOns: input.addOns as unknown as Prisma.InputJsonValue,
-      // Los extras se copian tal cual: nombre y monto, no un id de catálogo.
-      extras: { create: input.extras },
-      descuentoPct: input.descuentoPct ?? null,
-      descuentoMotivo: input.descuentoMotivo ?? null,
-      breakdown: enriched as unknown as Prisma.InputJsonValue,
-      total: Math.round(breakdown.total),
-      rentaTotal: Math.round(breakdown.rentaTotal),
-      publicToken: randomUUID().replace(/-/g, ''),
-      vigenciaHasta: vigenciaDesde(new Date()),
-      createdById: actor.id,
-      priceListId: catalogo.id,
-    },
-    include: includeRels,
-  });
+  // El nombre con el que se arma el código: el capturado si vino en la petición,
+  // y si no el del cliente que se reutilizó.
+  const nombreCliente =
+    input.client?.nombre ??
+    (await db.client.findUnique({ where: { id: clientId! }, select: { nombre: true } }))?.nombre ??
+    '';
+
+  const created = await conCodigoUnico(
+    db,
+    { fecha: input.fecha, cliente: nombreCliente, spaceIds: input.spaceIds },
+    (codigo) =>
+      db.quote.create({
+        data: {
+          codigo,
+          clientId: clientId!,
+          eventTypeId: input.eventTypeId,
+          fechaEvento: new Date(`${input.fecha}T00:00:00.000Z`),
+          horasEvento: input.horasEvento ?? null,
+          invitados: input.invitados,
+          spaceIds: input.spaceIds,
+          horasExtra: input.horasExtra,
+          usaCapilla: input.usaCapilla ?? false,
+          capillaHorario: input.capillaHorario ?? null,
+          esCortesia: input.esCortesia ?? false,
+          requiereFactura: input.requiereFactura,
+          usaDjHoraExtra: input.usaDjHoraExtra ?? false,
+          foodPackageId: input.foodPackageId ?? null,
+          addOns: input.addOns as unknown as Prisma.InputJsonValue,
+          // Los extras se copian tal cual: nombre y monto, no un id de catálogo.
+          extras: { create: input.extras },
+          descuentoPct: input.descuentoPct ?? null,
+          descuentoMotivo: input.descuentoMotivo ?? null,
+          breakdown: enriched as unknown as Prisma.InputJsonValue,
+          total: Math.round(breakdown.total),
+          rentaTotal: Math.round(breakdown.rentaTotal),
+          publicToken: randomUUID().replace(/-/g, ''),
+          vigenciaHasta: vigenciaDesde(new Date()),
+          createdById: actor.id,
+          priceListId: catalogo.id,
+        },
+        include: includeRels,
+      }),
+  );
   await logActivity(db, { quoteId: created.id, tipo: 'creada', descripcion: 'Cotización creada', actorId: actor.id });
   return created;
 }
@@ -470,39 +571,55 @@ export async function duplicateQuote(db: PrismaClient, id: string, actor: Actor)
     // Los extras se copian con el desglose: si no viajaran, la copia mostraría un
     // total que incluye un servicio que la cotización nueva ya no tiene, y al
     // reeditarla el monto se caería sin que nadie lo decidiera.
-    include: { extras: { select: { nombre: true, kind: true, monto: true, cantidad: true } } },
+    include: {
+      extras: { select: { nombre: true, kind: true, monto: true, cantidad: true } },
+      client: { select: { nombre: true } },
+    },
   });
   if (!src) throw new QuoteError(404, 'Cotización no encontrada');
 
-  const created = await db.quote.create({
-    data: {
-      clientId: src.clientId,
-      eventTypeId: src.eventTypeId,
-      fechaEvento: src.fechaEvento,
-      horasEvento: src.horasEvento,
-      invitados: src.invitados,
+  // La copia NO hereda el código: es otro evento. Con el mismo cliente, fecha y
+  // salón que el original, su base choca y le toca sufijo — que es justamente el
+  // camino por el que la colisión aparece en la vida real.
+  const created = await conCodigoUnico(
+    db,
+    {
+      fecha: src.fechaEvento.toISOString().slice(0, 10),
+      cliente: src.client?.nombre ?? '',
       spaceIds: src.spaceIds,
-      horasExtra: src.horasExtra,
-      usaCapilla: src.usaCapilla,
-      capillaHorario: src.capillaHorario,
-      usaDjHoraExtra: src.usaDjHoraExtra,
-      foodPackageId: src.foodPackageId,
-      addOns: src.addOns as unknown as Prisma.InputJsonValue,
-      extras: { create: src.extras },
-      descuentoPct: src.descuentoPct,
-      descuentoMotivo: src.descuentoMotivo,
-      breakdown: src.breakdown as unknown as Prisma.InputJsonValue,
-      total: src.total,
-      rentaTotal: src.rentaTotal,
-      publicToken: randomUUID().replace(/-/g, ''),
-      vigenciaHasta: vigenciaDesde(new Date()),
-      createdById: actor.id,
-      // La copia hereda el catálogo del original: copia el desglose tal cual, así
-      // que tiene que poder recalcularse contra los MISMOS precios.
-      priceListId: src.priceListId,
     },
-    include: includeRels,
-  });
+    (codigo) =>
+      db.quote.create({
+        data: {
+          codigo,
+          clientId: src.clientId,
+          eventTypeId: src.eventTypeId,
+          fechaEvento: src.fechaEvento,
+          horasEvento: src.horasEvento,
+          invitados: src.invitados,
+          spaceIds: src.spaceIds,
+          horasExtra: src.horasExtra,
+          usaCapilla: src.usaCapilla,
+          capillaHorario: src.capillaHorario,
+          usaDjHoraExtra: src.usaDjHoraExtra,
+          foodPackageId: src.foodPackageId,
+          addOns: src.addOns as unknown as Prisma.InputJsonValue,
+          extras: { create: src.extras },
+          descuentoPct: src.descuentoPct,
+          descuentoMotivo: src.descuentoMotivo,
+          breakdown: src.breakdown as unknown as Prisma.InputJsonValue,
+          total: src.total,
+          rentaTotal: src.rentaTotal,
+          publicToken: randomUUID().replace(/-/g, ''),
+          vigenciaHasta: vigenciaDesde(new Date()),
+          createdById: actor.id,
+          // La copia hereda el catálogo del original: copia el desglose tal cual,
+          // así que tiene que poder recalcularse contra los MISMOS precios.
+          priceListId: src.priceListId,
+        },
+        include: includeRels,
+      }),
+  );
   await logActivity(db, {
     quoteId: created.id,
     tipo: 'creada',
@@ -586,33 +703,60 @@ export async function updateQuote(db: PrismaClient, id: string, rawInput: unknow
     await db.client.update({ where: { id: existing.clientId }, data: input.client });
   }
 
-  const updated = await db.quote.update({
-    where: { id },
-    data: {
-      eventTypeId: input.eventTypeId,
-      fechaEvento: new Date(`${input.fecha}T00:00:00.000Z`),
-      horasEvento: input.horasEvento ?? null,
-      invitados: input.invitados,
-      spaceIds: input.spaceIds,
-      horasExtra: input.horasExtra,
-      usaCapilla: input.usaCapilla ?? false,
-      capillaHorario: input.capillaHorario ?? null,
-      esCortesia: input.esCortesia ?? false,
-      requiereFactura: input.requiereFactura,
-      usaDjHoraExtra: input.usaDjHoraExtra ?? false,
-      foodPackageId: input.foodPackageId ?? null,
-      addOns: input.addOns as unknown as Prisma.InputJsonValue,
-      // Se reemplazan en bloque, igual que los add-ons: el formulario manda la
-      // lista completa, así que borrar y recrear es lo que refleja lo capturado.
-      extras: { deleteMany: {}, create: input.extras },
-      descuentoPct: input.descuentoPct ?? null,
-      descuentoMotivo: input.descuentoMotivo ?? null,
-      breakdown: enriched as unknown as Prisma.InputJsonValue,
-      total: Math.round(breakdown.total),
-      rentaTotal: Math.round(breakdown.rentaTotal),
-    },
-    include: includeRels,
-  });
+  // El código se regenera mientras la cotización NO aparte la fecha: en borrador
+  // sigue a la fecha, al cliente y al espacio. Con compromiso de pago queda
+  // congelado —`codigo: undefined` deja la columna intacta—, porque a partir de
+  // ahí ya está impreso en recibos y contratos. Y si por lo que sea la columna
+  // viene vacía (cotización anterior al campo que se formalizó sin backfill), se
+  // genera aunque ya aparte: un evento sin código no tiene identidad que romper.
+  const debeRegenerar = !STATUSES_QUE_APARTAN.has(existing.status) || existing.codigo == null;
+  const nombreCliente = debeRegenerar
+    ? input.client?.nombre ??
+      (await db.client.findUnique({ where: { id: existing.clientId }, select: { nombre: true } }))?.nombre ??
+      ''
+    : '';
+
+  const escribir = (codigo: string | undefined) =>
+    db.quote.update({
+      where: { id },
+      data: {
+        codigo,
+        eventTypeId: input.eventTypeId,
+        fechaEvento: new Date(`${input.fecha}T00:00:00.000Z`),
+        horasEvento: input.horasEvento ?? null,
+        invitados: input.invitados,
+        spaceIds: input.spaceIds,
+        horasExtra: input.horasExtra,
+        usaCapilla: input.usaCapilla ?? false,
+        capillaHorario: input.capillaHorario ?? null,
+        esCortesia: input.esCortesia ?? false,
+        requiereFactura: input.requiereFactura,
+        usaDjHoraExtra: input.usaDjHoraExtra ?? false,
+        foodPackageId: input.foodPackageId ?? null,
+        addOns: input.addOns as unknown as Prisma.InputJsonValue,
+        // Se reemplazan en bloque, igual que los add-ons: el formulario manda la
+        // lista completa, así que borrar y recrear es lo que refleja lo capturado.
+        extras: { deleteMany: {}, create: input.extras },
+        descuentoPct: input.descuentoPct ?? null,
+        descuentoMotivo: input.descuentoMotivo ?? null,
+        breakdown: enriched as unknown as Prisma.InputJsonValue,
+        total: Math.round(breakdown.total),
+        rentaTotal: Math.round(breakdown.rentaTotal),
+      },
+      include: includeRels,
+    });
+
+  const updated = debeRegenerar
+    ? await conCodigoUnico(
+        db,
+        { fecha: input.fecha, cliente: nombreCliente, spaceIds: input.spaceIds },
+        escribir,
+        // Se excluye a sí misma: si el código base no cambió, la cotización se
+        // quedaría chocando consigo misma y se auto-bumpearía a `-2` en cada
+        // guardado, cambiando el identificador sin que nadie lo pidiera.
+        id,
+      )
+    : await escribir(undefined);
 
   // Todo cambio de datos fiscales se registra, esté o no congelado el candado:
   // el RFC con el que se timbra es información que hay que poder auditar hacia

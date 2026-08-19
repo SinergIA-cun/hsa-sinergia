@@ -255,6 +255,20 @@ model Quote {
   total         Int
   rentaTotal    Int
   status        QuoteStatus @default(borrador)
+  /// Código de evento (`17ENE-CBOLADO-CUPULA`): día, mes, inicial + apellido del
+  /// cliente y el espacio abreviado. Es la identidad legible del evento, la que
+  /// se copia en recibos y contratos.
+  ///
+  /// Único: si el código base ya existe se le pone sufijo (`-2`, `-3`). Dos
+  /// eventos del mismo cliente, misma fecha y mismo salón son raros pero
+  /// posibles, y no pueden romper el guardado.
+  ///
+  /// Se regenera mientras la cotización es borrador (cambiar fecha, cliente o
+  /// espacio lo cambia) y **se congela en cuanto el estatus aparta la fecha**:
+  /// a partir de ahí ya está impreso en cosas.
+  ///
+  /// Nullable: las cotizaciones anteriores nacen sin él y las llena el backfill.
+  codigo        String?     @unique
   publicToken   String      @unique
   vigenciaHasta DateTime?
   usaCapilla    Boolean     @default(false) // cortesía; $5,000 en sábado. Varios eventos pueden usarla el mismo día.
