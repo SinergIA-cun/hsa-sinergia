@@ -185,6 +185,15 @@ model Banquetero {
   nombre    String
   telefono  String?
   activo    Boolean  @default(true)
+  /// Token del enlace de solo lectura de su estado de cuenta, mismo formato que
+  /// `Quote.publicToken` (32 hex sin guiones). Es lo que mata el hilo de WhatsApp.
+  ///
+  /// El default lo pone POSTGRES y no la aplicación a propósito: hay seis lugares
+  /// que crean banqueteros (seed, panel de admin, cuatro suites de prueba) y un
+  /// token generado en código obliga a acordarse en todos. Con el default en la
+  /// base, una fila SIN token no puede existir. El costo conocido es que
+  /// `migrate diff` lo repita como los `nextval`; está anotado en la migración.
+  publicToken String  @unique @default(dbgenerated("replace((gen_random_uuid())::text, '-'::text, ''::text)"))
   createdAt DateTime @default(now())
   quotes    Quote[]
   /// Los depósitos a cuenta que ha hecho. El dinero entra a su cuenta y DESPUÉS

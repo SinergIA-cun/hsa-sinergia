@@ -12,6 +12,7 @@ import {
   loadComprobanteDeposito,
 } from './cuenta.js';
 import { crearApartado, listarApartados, cancelarApartado, convertirApartado } from './apartados.js';
+import { estadoCuentaBanquetero, estadoCuentaPublico } from './estadoCuenta.js';
 
 /**
  * La cuenta corriente del banquetero.
@@ -203,6 +204,31 @@ export async function banqueteroRoutes(app: FastifyInstance): Promise<void> {
       }
     },
   );
+
+  // --- Estado de cuenta ---
+
+  // Interno: admin y ventas. NO se filtra por pertenencia — el saldo de una
+  // contraparte es uno solo y "sus eventos que además son míos" no cuadraría.
+  app.get<{ Params: { id: string } }>(
+    '/banqueteros/:id/estado-cuenta',
+    { preHandler: requireAuth },
+    async (req, reply) => {
+      try {
+        return await estadoCuentaBanquetero(app.prisma, req.params.id);
+      } catch (e) {
+        if (e instanceof QuoteError) return reply.code(e.status).send({ error: e.message });
+        throw e;
+      }
+    },
+  );
+
+  // PÚBLICA: sin auth, de solo lectura y por token, igual que `/c/:token` del
+  // cliente. Un token que no existe da 404 sin decir por qué.
+  app.get<{ Params: { token: string } }>('/b/:token', async (req, reply) => {
+    const result = await estadoCuentaPublico(app.prisma, req.params.token);
+    if (!result) return reply.code(404).send({ error: 'No encontrado' });
+    return result;
+  });
 
   // La ficha del banco del depósito (interno; el enlace público no la expone).
   app.get<{ Params: { depositoId: string } }>(
