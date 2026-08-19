@@ -12,7 +12,7 @@ import { useAuth } from '../auth/auth.tsx';
 import type { Quote, QuoteStatus, Catalog } from '../lib/types.ts';
 
 const SECTIONS: { title: string; statuses: QuoteStatus[]; defaultOpen: boolean }[] = [
-  { title: 'Contratos', statuses: ['borrador', 'enviada', 'aceptada', 'vencida'], defaultOpen: true },
+  { title: 'Contratos', statuses: ['borrador'], defaultOpen: true },
   { title: 'Eventos Formalizados', statuses: ['formalizada'], defaultOpen: true },
   { title: 'Complemento cubierto', statuses: ['complementada'], defaultOpen: false },
   { title: 'Eventos Liquidados', statuses: ['liquidada'], defaultOpen: false },

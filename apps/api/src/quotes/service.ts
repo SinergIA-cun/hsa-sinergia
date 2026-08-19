@@ -23,15 +23,12 @@ export interface Actor {
   role: 'ventas' | 'admin';
 }
 
-export const QUOTE_STATUSES = [
-  'borrador',
-  'enviada',
-  'aceptada',
-  'formalizada',
-  'complementada',
-  'liquidada',
-  'vencida',
-] as const;
+/**
+ * Los cuatro estatus vivos. `enviada`, `aceptada` y `vencida` se retiraron el
+ * 13-ago-2026 (punto 8): nadie los movía a mano y `vencida` era además el único
+ * mecanismo automático que limpiaba la agenda. Con él se fue `expireStaleQuotes`.
+ */
+export const QUOTE_STATUSES = ['borrador', 'formalizada', 'complementada', 'liquidada'] as const;
 
 const clientSchema = z.object({
   nombre: z.string().min(1),
@@ -122,7 +119,7 @@ const includeRels = {
 
 // Se permite editar el desglose incluso con compromiso de pago (formalizada/complementada);
 // las ediciones en esos estatus quedan registradas en la bitácora de actividad.
-const EDITABLE_STATUSES = new Set(['borrador', 'enviada', 'aceptada', 'formalizada', 'complementada']);
+const EDITABLE_STATUSES = new Set(['borrador', 'formalizada', 'complementada']);
 
 // --- Código de evento ---------------------------------------------------------
 
@@ -967,7 +964,7 @@ export async function updateQuote(db: PrismaClient, id: string, rawInput: unknow
  * NO se escribe la fecha a secas — se reconstruye la selección actual con la
  * fecha nueva y se delega en `updateQuote`, que recalcula el desglose, valida
  * que el espacio esté libre en el destino y respeta ownership y estatus
- * editables (liquidada y vencida quedan fuera por ese camino).
+ * editables (liquidada queda fuera por ese camino).
  *
  * La selección la arma `seleccionGuardada`, no este código: armarla a mano dejaba
  * fuera los extras y el descuento de cortesía, y el arrastre —que el dueño usa a
@@ -1333,57 +1330,20 @@ export async function getOperativaDelDia(db: PrismaClient, fechaISO: string) {
   };
 }
 
-// --- Vigencia / vencimiento automático ---------------------------------------
+// --- Vigencia -----------------------------------------------------------------
 
-// Los precios de una cotización valen 30 días (política del negocio, ver página
-// pública). Pasada la vigencia sin convertirse en reserva, la cotización vence.
+// Los precios de una cotización valen 30 días (política del negocio, impresa en
+// la página pública). `vigenciaHasta` se guarda y se muestra, pero NO degrada
+// nada: el vencimiento automático se eliminó junto con el estatus `vencida`
+// (punto 8, decisión del dueño). La consecuencia la aceptó explícitamente —
+// nada limpia la agenda sola, y un borrador viejo sigue pintando su fecha hasta
+// que alguien lo mande a la papelera.
 export const VIGENCIA_DIAS = 30;
-// Estatus "en pipeline": ofertas aún no reservadas. Solo estas vencen; un evento
-// ya apartado/formalizado/liquidado nunca se degrada automáticamente.
-const PIPELINE_STATUSES = ['borrador', 'enviada', 'aceptada'] as const;
 
 export function vigenciaDesde(creacion: Date): Date {
   const d = new Date(creacion);
   d.setUTCDate(d.getUTCDate() + VIGENCIA_DIAS);
   return d;
-}
-
-/**
- * Marca como "vencida" toda cotización en pipeline cuya vigencia ya pasó
- * (por `vigenciaHasta`, o `createdAt + 30 días` para las previas al campo).
- * Un solo sentido: no revive sola — se revive duplicándola. Best-effort.
- * Devuelve cuántas venció (útil para pruebas).
- */
-export async function expireStaleQuotes(db: PrismaClient, now: Date = new Date()): Promise<number> {
-  try {
-    const hace30 = new Date(now);
-    hace30.setUTCDate(hace30.getUTCDate() - VIGENCIA_DIAS);
-    const stale = await db.quote.findMany({
-      where: {
-        status: { in: [...PIPELINE_STATUSES] },
-        deletedAt: null,
-        OR: [
-          { vigenciaHasta: { lt: now } },
-          { vigenciaHasta: null, createdAt: { lt: hace30 } },
-        ],
-      },
-      select: { id: true, status: true },
-    });
-    if (stale.length === 0) return 0;
-    await db.quote.updateMany({ where: { id: { in: stale.map((s) => s.id) } }, data: { status: 'vencida' } });
-    for (const s of stale) {
-      await logActivity(db, {
-        quoteId: s.id,
-        tipo: 'estatus',
-        descripcion: `Estatus: ${s.status} → vencida (vencimiento automático por vigencia)`,
-        meta: { de: s.status, a: 'vencida', motivo: 'vigencia' },
-        actorId: null,
-      });
-    }
-    return stale.length;
-  } catch {
-    return 0; // no bloquea la operación principal
-  }
 }
 
 // --- Papelera (soft-delete) ---------------------------------------------------
@@ -1449,7 +1409,7 @@ export async function restoreQuote(db: PrismaClient, id: string, actor: Actor) {
   return restored;
 }
 
-/** Cotizaciones en papelera (no expiradas). Purga las vencidas de paso. */
+/** Cotizaciones en papelera (no purgadas). Purga las que ya pasaron los 30 días. */
 export async function listTrash(db: PrismaClient, actor: Actor) {
   await purgeExpiredTrash(db);
   return db.quote.findMany({
@@ -1495,7 +1455,6 @@ export async function marcarPapeleraVista(db: PrismaClient, actor: Actor): Promi
 
 export async function listQuotes(db: PrismaClient, actor: Actor) {
   void purgeExpiredTrash(db);
-  await expireStaleQuotes(db); // vencimiento automático por vigencia antes de listar
   const quotes = await db.quote.findMany({
     where: { ...ownershipWhere(actor), deletedAt: null },
     orderBy: { createdAt: 'desc' },

@@ -1,5 +1,5 @@
 import type { PrismaClient } from '@hsa/database';
-import { ownershipWhere, loadEstadoCuentaBulk, expireStaleQuotes, type Actor } from '../quotes/service.js';
+import { ownershipWhere, loadEstadoCuentaBulk, type Actor } from '../quotes/service.js';
 
 // Estatus de evento real (ya reservado) — para fichas, próxima semana y alertas.
 const EVENTOS = ['formalizada', 'complementada', 'liquidada'] as const;
@@ -201,8 +201,6 @@ export async function getDashboard(
   actor: Actor,
   now: Date = new Date(),
 ): Promise<DashboardData> {
-  await expireStaleQuotes(db, now);
-
   const [quotes, spaces] = await Promise.all([
     db.quote.findMany({
       where: { ...ownershipWhere(actor), deletedAt: null },

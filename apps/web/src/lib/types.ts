@@ -196,15 +196,11 @@ export interface Client {
   correoFacturacion?: string | null;
 }
 
-export const QUOTE_STATUSES = [
-  'borrador',
-  'enviada',
-  'aceptada',
-  'formalizada',
-  'complementada',
-  'liquidada',
-  'vencida',
-] as const;
+/**
+ * Los cuatro estatus vivos. `enviada`, `aceptada` y `vencida` se retiraron el
+ * 13-ago-2026 (punto 8). Debe seguir a `QUOTE_STATUSES` de la API.
+ */
+export const QUOTE_STATUSES = ['borrador', 'formalizada', 'complementada', 'liquidada'] as const;
 export type QuoteStatus = (typeof QUOTE_STATUSES)[number];
 
 /**

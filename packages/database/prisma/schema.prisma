@@ -25,14 +25,17 @@ enum UserRole {
   admin
 }
 
+/// Los cuatro estatus que el negocio usa de verdad.
+///
+/// Se retiraron `enviada`, `aceptada` y `vencida` (punto 8, 13-ago-2026): nadie
+/// los movía a mano, y `vencida` era además el ÚNICO mecanismo automático que
+/// limpiaba la agenda. Al quitarlo, un borrador viejo sigue pintando su fecha
+/// hasta que alguien lo manda a la papelera — consecuencia aceptada por el dueño.
 enum QuoteStatus {
   borrador
-  enviada
-  aceptada
   formalizada
   complementada
   liquidada
-  vencida
 }
 
 enum PaymentMethod {

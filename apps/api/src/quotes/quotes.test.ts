@@ -9,7 +9,6 @@ import { clonarCatalogo } from '../pricelists/service.js';
 import {
   createQuote,
   duplicateQuote,
-  expireStaleQuotes,
   getByToken,
   loadEstadoCuenta,
   moverCatalogo,
@@ -25,6 +24,7 @@ import {
   updateOperativa,
   updateStatus,
   getOperativaDelDia,
+  QUOTE_STATUSES,
   type Actor,
 } from './service.js';
 
@@ -197,36 +197,6 @@ describe('quotes service', () => {
     expect(dup.publicToken).not.toBe(q.publicToken);
     const log = await prisma.activityLog.findMany({ where: { quoteId: dup.id } });
     expect(log.some((l) => /duplicada de/.test(l.descripcion))).toBe(true);
-  });
-
-  it('expireStaleQuotes vence pipeline pasado de vigencia, pero no toca las reservadas', async () => {
-    const { eventTypeId, arcosId } = await ids();
-    const pipeline = await createQuote(
-      prisma,
-      { fecha: '2027-08-01', invitados: 200, spaceIds: [arcosId], eventTypeId, client: { nombre: 'Vence Pipeline' } },
-      actor,
-    );
-    createdQuoteIds.push(pipeline.id);
-    createdClientIds.push(pipeline.clientId);
-    await prisma.quote.update({ where: { id: pipeline.id }, data: { vigenciaHasta: new Date('2020-01-01T00:00:00.000Z') } });
-
-    const reservada = await createQuote(
-      prisma,
-      { fecha: '2027-08-02', invitados: 200, spaceIds: [arcosId], eventTypeId, client: { nombre: 'No Vence Reservada' } },
-      actor,
-    );
-    createdQuoteIds.push(reservada.id);
-    createdClientIds.push(reservada.clientId);
-    await updateStatus(prisma, reservada.id, 'formalizada', actor);
-    await prisma.quote.update({ where: { id: reservada.id }, data: { vigenciaHasta: new Date('2020-01-01T00:00:00.000Z') } });
-
-    const vencidas = await expireStaleQuotes(prisma);
-    expect(vencidas).toBeGreaterThanOrEqual(1);
-
-    const p = await prisma.quote.findUnique({ where: { id: pipeline.id } });
-    const r = await prisma.quote.findUnique({ where: { id: reservada.id } });
-    expect(p?.status).toBe('vencida');
-    expect(r?.status).toBe('formalizada'); // reserva intacta
   });
 
   it('el complemento tiene fecha de vencimiento después de formalizar (bitácora nueva)', async () => {
@@ -2290,5 +2260,81 @@ describe('banquetero / cliente y festejado', () => {
     expect(q.banqueteroId).toBeNull();
     expect(q.festejado).toBeNull();
     expect(q.festejadoTelefono).toBeNull();
+  });
+});
+
+/**
+ * Punto 8: se retiran `enviada`, `aceptada` y `vencida`. Quedan cuatro estatus.
+ *
+ * Y con `vencida` se fue el vencimiento automático completo (decisión del dueño,
+ * con la consecuencia aceptada: nada limpia la agenda sola). Estos tests fijan
+ * las dos mitades — que los tres valores ya no existen, y que un borrador viejo
+ * se queda en borrador.
+ */
+describe('estatus retirados (punto 8)', () => {
+  it('el enum de la base tiene exactamente los cuatro estatus vivos', async () => {
+    // Postgres no puede quitar un valor de un enum, así que la migración creó un
+    // tipo nuevo y movió la columna. Esto comprueba que el tipo VIEJO ya no es el
+    // que usa la columna: si el swap no corrió, aquí siguen apareciendo siete.
+    const filas = await prisma.$queryRaw<{ valor: string }[]>`
+      SELECT e.enumlabel AS valor
+        FROM pg_enum e
+        JOIN pg_type t ON t.oid = e.enumtypid
+       WHERE t.typname = 'QuoteStatus'
+       ORDER BY e.enumsortorder
+    `;
+    expect(filas.map((f) => f.valor)).toEqual(['borrador', 'formalizada', 'complementada', 'liquidada']);
+  });
+
+  it('QUOTE_STATUSES ya no ofrece los tres retirados', () => {
+    expect(QUOTE_STATUSES).toEqual(['borrador', 'formalizada', 'complementada', 'liquidada']);
+  });
+
+  it('PATCH /status con un estatus retirado responde 400 y no toca la cotización', async () => {
+    const { eventTypeId, arcosId } = await ids();
+    const q = await createQuote(
+      prisma,
+      { fecha: '2036-02-14', invitados: 250, spaceIds: [arcosId], eventTypeId, client: { nombre: 'Estatus Retirado' } },
+      actor,
+    );
+    createdQuoteIds.push(q.id);
+    createdClientIds.push(q.clientId);
+    const auth = await authCookies();
+
+    for (const status of ['enviada', 'aceptada', 'vencida']) {
+      const res = await app.inject({
+        method: 'PATCH',
+        url: `/api/quotes/${q.id}/status`,
+        cookies: auth,
+        payload: { status },
+      });
+      expect(res.statusCode, status).toBe(400);
+    }
+
+    const sinTocar = await prisma.quote.findUnique({ where: { id: q.id } });
+    expect(sinTocar?.status).toBe('borrador');
+  });
+
+  it('un borrador pasado de vigencia NO se vence al listar: el vencimiento automático se eliminó', async () => {
+    const { eventTypeId, arcosId } = await ids();
+    const q = await createQuote(
+      prisma,
+      { fecha: '2036-03-21', invitados: 200, spaceIds: [arcosId], eventTypeId, client: { nombre: 'Borrador Viejo' } },
+      actor,
+    );
+    createdQuoteIds.push(q.id);
+    createdClientIds.push(q.clientId);
+    await prisma.quote.update({
+      where: { id: q.id },
+      data: { vigenciaHasta: new Date('2020-01-01T00:00:00.000Z') },
+    });
+
+    await listQuotes(prisma, actor);
+
+    const despues = await prisma.quote.findUnique({ where: { id: q.id } });
+    expect(despues?.status).toBe('borrador');
+    // Y no queda bitácora de vencimiento: la función que la escribía ya no existe.
+    const log = await prisma.activityLog.findMany({ where: { quoteId: q.id } });
+    expect(log.some((l) => /venc/i.test(l.descripcion))).toBe(false);
   });
 });

@@ -6,8 +6,14 @@ import { ownershipWhere, type Actor } from './service.js';
  * `../availability/service.ts`: si allá cambia qué bloquea, aquí también.
  */
 const BLOQUEANTES = ['formalizada', 'complementada', 'liquidada'] as const;
-/** Estatus que todavía esperan respuesta y por lo tanto pueden quedar desplazados. */
-const VIVAS = ['borrador', 'enviada', 'aceptada'] as const;
+/**
+ * Estatus que todavía esperan respuesta y por lo tanto pueden quedar desplazados.
+ *
+ * Solo queda `borrador` desde que se retiraron `enviada` y `aceptada` (punto 8).
+ * Y sin `vencida`, un borrador viejo sigue avisando: es la consecuencia que el
+ * dueño aceptó al eliminar el vencimiento automático.
+ */
+const VIVAS = ['borrador'] as const;
 
 export interface Desplazada {
   id: string;

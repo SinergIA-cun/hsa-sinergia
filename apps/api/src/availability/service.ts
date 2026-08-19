@@ -25,9 +25,15 @@ function dayRange(fechaISO: string): { gte: Date; lt: Date } {
   return { gte, lt };
 }
 
-// Estatus que "ocupan": borrador/enviada/aceptada = cotización sin pago (aviso
-// suave); cualquier cosa con compromiso de pago bloquea. vencida se ignora.
-const COTIZACION = new Set(['borrador', 'enviada', 'aceptada']);
+// Estatus que "ocupan": `borrador` = cotización sin pago (aviso suave);
+// cualquier cosa con compromiso de pago bloquea.
+//
+// Ya no hay filtro de estatus en las consultas: `vencida` se retiró (punto 8) y
+// era lo único que sacaba una cotización vieja de los colores y de la agenda.
+// Consecuencia aceptada por el dueño: un borrador viejo sigue pintando su fecha
+// en ámbar hasta que alguien lo mande a la papelera. La papelera SÍ se sigue
+// excluyendo — `deletedAt: null`.
+const COTIZACION = new Set(['borrador']);
 const BLOQUEO = new Set(['formalizada', 'complementada', 'liquidada']);
 
 /**
@@ -47,7 +53,6 @@ export async function getAvailability(
       where: {
         fechaEvento: range,
         spaceIds: { hasSome: spaceIds },
-        status: { not: 'vencida' },
         deletedAt: null,
         ...(excludeQuoteId ? { id: { not: excludeQuoteId } } : {}),
       },
@@ -59,7 +64,6 @@ export async function getAvailability(
       where: {
         fechaEvento: range,
         usaCapilla: true,
-        status: { not: 'vencida' },
         deletedAt: null,
         ...(excludeQuoteId ? { id: { not: excludeQuoteId } } : {}),
       },
@@ -114,7 +118,7 @@ export interface AgendaEvent {
   esCortesia: boolean;
 }
 
-/** Eventos (cotizaciones no vencidas) en un rango de fechas, para la agenda. */
+/** Eventos (todo lo que no está en la papelera) en un rango de fechas, para la agenda. */
 export async function getAgenda(
   db: PrismaClient,
   fromISO: string,
@@ -124,7 +128,7 @@ export async function getAgenda(
   const lt = new Date(`${toISO}T00:00:00.000Z`);
   lt.setUTCDate(lt.getUTCDate() + 1);
   const quotes = await db.quote.findMany({
-    where: { fechaEvento: { gte, lt }, status: { not: 'vencida' }, deletedAt: null },
+    where: { fechaEvento: { gte, lt }, deletedAt: null },
     include: { client: { select: { nombre: true } }, eventType: { select: { nombre: true } } },
     orderBy: { fechaEvento: 'asc' },
   });

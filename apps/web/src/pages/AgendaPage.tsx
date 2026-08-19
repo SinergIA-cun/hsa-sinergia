@@ -315,7 +315,7 @@ export function AgendaPage() {
                         <ChipArrastrable
                           key={e.quoteId}
                           id={e.quoteId}
-                          movible={e.status !== 'liquidada' && e.status !== 'vencida'}
+                          movible={e.status !== 'liquidada'}
                           onClick={() => abrir(e.quoteId)}
                           title={`${espacio || e.eventoNombre} · ${e.cliente} · ${e.eventoNombre} · ${
                             e.esCortesia ? 'Cortesía familiar' : STATUS_LABEL[e.status]
