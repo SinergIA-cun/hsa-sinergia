@@ -63,7 +63,9 @@ describe('codigoEvento', () => {
       cliente: 'Wolfgang Amadeus Villalobos Villaseñor',
       espacios: ['Salón Internacional Extraordinario'],
     });
-    const [dia, cli, esp] = codigo.split('-');
+    const partes = codigo.split('-');
+    expect(partes).toHaveLength(3);
+    const [dia, cli, esp] = partes as [string, string, string];
     expect(dia).toBe('14AGO');
     expect(cli).toBe('WVILLASENOR'.slice(0, CODIGO_MAX_PARTE));
     expect(esp).toBe('EXTRAORDINARIO'.slice(0, CODIGO_MAX_PARTE));
