@@ -741,6 +741,24 @@ export interface FichaSemana {
   finiquito: FiniquitoFicha;
 }
 
+/**
+ * Un evento que YA PASÓ y sigue debiendo.
+ *
+ * Por la regla del negocio —"no hay forma de hacer el evento si no está
+ * pagado"— no debería existir ninguno. Si existe, o no se capturó un pago o el
+ * evento no se hizo.
+ */
+export interface EventoPasadoSinLiquidar {
+  quoteId: string;
+  cliente: string;
+  evento: string;
+  espacio: string;
+  fechaEventoISO: string;
+  status: QuoteStatus;
+  restante: number;
+  diasDesdeEvento: number;
+}
+
 export interface DashboardData {
   kpis: { eventosMes: number };
   fichasSemana: FichaSemana[];
@@ -762,4 +780,12 @@ export interface DashboardData {
     restante: number;
     diasVencido: number;
   }[];
+  pasadosSinLiquidar: EventoPasadoSinLiquidar[];
+  /** La cartera de banqueteros. GLOBAL: no filtrada por pertenencia. */
+  banqueteros: {
+    totalSinAsignar: number;
+    saldos: ResumenBanquetero[];
+    apartados: ApartadoPendiente[];
+    porVencer: number;
+  };
 }
