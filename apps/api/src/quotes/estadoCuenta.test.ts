@@ -205,3 +205,124 @@ describe('complemento por salón', () => {
     expect(comp.objetivo).toBe(74_100); // 25,000 + 49,100
   });
 });
+
+describe('el plan nunca pide más de lo que cuesta el evento', () => {
+  it('con cortesía del 100% no se cobra apartado: los tres hitos van en cero', () => {
+    // La renta se fue a cero por el descuento, pero `anticipo` es un monto FIJO
+    // del catálogo y no sabe del descuento. Sin tope, el apartado pedía $20,000
+    // de un evento que no cuesta nada, y el finiquito pedía $0 — o sea que los
+    // hitos dejaban de ser una escalera y el saldo salía negativo.
+    const ec = computeEstadoCuenta({
+      ...base,
+      total: 0,
+      rules: [{ spaceId: 'arcos', rule: ARCOS, rentaBase: 0 }],
+      payments: [],
+    });
+    for (const key of ['apartar', 'complemento', 'finiquito'] as const) {
+      expect(ec.plan!.find((m) => m.key === key)!.objetivo).toBe(0);
+    }
+    expect(ec.saldo).toBe(0);
+  });
+
+  it('un descuento parcial topa el apartado al total, no al anticipo fijo', () => {
+    // 90% de descuento: la renta queda en 10,000 y el anticipo fijo es 20,000.
+    const ec = computeEstadoCuenta({
+      ...base,
+      total: 10000,
+      rules: [{ spaceId: 'arcos', rule: ARCOS, rentaBase: 10000 }],
+      payments: [],
+    });
+    expect(ec.plan!.find((m) => m.key === 'apartar')!.objetivo).toBe(10000);
+    expect(ec.plan!.find((m) => m.key === 'complemento')!.objetivo).toBe(10000);
+    expect(ec.plan!.find((m) => m.key === 'finiquito')!.objetivo).toBe(10000);
+  });
+
+  it('los hitos siempre van en escalera: apartar ≤ complemento ≤ finiquito', () => {
+    for (const total of [0, 1, 5000, 20000, 25000, 30000, 100000]) {
+      const ec = computeEstadoCuenta({
+        ...base,
+        total,
+        rules: [{ spaceId: 'arcos', rule: ARCOS, rentaBase: total }],
+        payments: [],
+      });
+      const obj = (k: 'apartar' | 'complemento' | 'finiquito'): number =>
+        ec.plan!.find((m) => m.key === k)!.objetivo;
+      expect(obj('apartar')).toBeLessThanOrEqual(obj('complemento'));
+      expect(obj('complemento')).toBeLessThanOrEqual(obj('finiquito'));
+      expect(obj('finiquito')).toBe(total);
+    }
+  });
+
+  it('sin descuento el plan no se mueve (el tope no muerde)', () => {
+    const ec = computeEstadoCuenta({ ...base, rules: soloArcos, payments: [] });
+    expect(ec.plan!.find((m) => m.key === 'apartar')!.objetivo).toBe(20000);
+    expect(ec.plan!.find((m) => m.key === 'complemento')!.objetivo).toBe(30000);
+    expect(ec.plan!.find((m) => m.key === 'finiquito')!.objetivo).toBe(100000);
+  });
+
+  it('un evento gratis ya pagado queda a favor, no en desfase', () => {
+    // Se cobró el apartado y DESPUÉS se aplicó la cortesía: hay dinero de más.
+    const ec = computeEstadoCuenta({
+      ...base,
+      total: 0,
+      rules: [{ spaceId: 'arcos', rule: ARCOS, rentaBase: 0 }],
+      payments: [{ monto: 25000, anuladoAt: null }],
+      status: 'formalizada' as const,
+    });
+    expect(ec.saldo).toBe(-25000); // negativo = a favor del cliente
+    expect(ec.desfase).toBe(false); // no es un desfase: pagó de más, no de menos
+    expect(ec.sugerido).toBe('liquidada');
+  });
+});
+
+describe('el desglose del apartado cuadra con su total', () => {
+  const dos = [
+    { spaceId: 'arcos', rule: ARCOS, rentaBase: 60000 },
+    { spaceId: 'campos', rule: CAMPOS, rentaBase: 40000 },
+  ];
+
+  it('sin tope, cada salón muestra su propio anticipo', () => {
+    const ec = computeEstadoCuenta({ ...base, rules: dos, payments: [] });
+    const ap = ec.plan!.find((m) => m.key === 'apartar')!;
+    expect(ap.desglose).toEqual([
+      { spaceId: 'arcos', monto: 20000 },
+      { spaceId: 'campos', monto: 15000 },
+    ]);
+    expect(ap.desglose!.reduce((s, d) => s + d.monto, 0)).toBe(ap.objetivo);
+  });
+
+  it('con el tope mordiendo, el desglose se reparte y SIGUE sumando el total', () => {
+    // El contrato imprime un renglón por salón y un total. Si los renglones
+    // salen del catálogo y el total del hito topado, el documento firmado se
+    // contradice solo — es el mismo defecto que ya costó la Capilla.
+    const ec = computeEstadoCuenta({
+      ...base,
+      total: 14000,
+      rules: [
+        { spaceId: 'arcos', rule: ARCOS, rentaBase: 8400 },
+        { spaceId: 'campos', rule: CAMPOS, rentaBase: 5600 },
+      ],
+      payments: [],
+    });
+    const ap = ec.plan!.find((m) => m.key === 'apartar')!;
+    expect(ap.objetivo).toBe(14000);
+    expect(ap.desglose!.reduce((s, d) => s + d.monto, 0)).toBe(14000);
+  });
+
+  it('con cortesía del 100% el desglose va en ceros, no en montos del catálogo', () => {
+    const ec = computeEstadoCuenta({
+      ...base,
+      total: 0,
+      rules: [
+        { spaceId: 'arcos', rule: ARCOS, rentaBase: 0 },
+        { spaceId: 'campos', rule: CAMPOS, rentaBase: 0 },
+      ],
+      payments: [],
+    });
+    const ap = ec.plan!.find((m) => m.key === 'apartar')!;
+    expect(ap.desglose).toEqual([
+      { spaceId: 'arcos', monto: 0 },
+      { spaceId: 'campos', monto: 0 },
+    ]);
+  });
+});
