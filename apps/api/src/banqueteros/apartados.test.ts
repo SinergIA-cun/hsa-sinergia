@@ -415,6 +415,18 @@ describe('validaciones y permisos', () => {
     await expect(nuevoApartado({ vence: '2020-01-01' })).rejects.toMatchObject({ status: 400 });
   });
 
+  /**
+   * Un `spaceId` inventado no lo atrapa nadie: el apartado no pasa por el motor
+   * de precios, que es quien truena al cotizar. Sin esta validación quedaría
+   * guardado bloqueando NADA —depósito cobrado, fecha libre para que alguien más
+   * la venda— y eso no falla en ninguna parte hasta que hay dos eventos el mismo
+   * día en el mismo salón.
+   */
+  it('un espacio que no existe se rechaza (o el apartado no bloquearía nada)', async () => {
+    await expect(nuevoApartado({ spaceIds: ['no-existe'] })).rejects.toMatchObject({ status: 400 });
+    await expect(nuevoApartado({ spaceIds: [arcosId, 'no-existe'] })).rejects.toMatchObject({ status: 400 });
+  });
+
   it('un banquetero o un catálogo que no existen se rechazan', async () => {
     await expect(nuevoApartado({ banqueteroId: 'no-existe' })).rejects.toMatchObject({ status: 404 });
     await expect(nuevoApartado({ priceListId: 'no-existe' })).rejects.toMatchObject({ status: 400 });

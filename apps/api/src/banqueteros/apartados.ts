@@ -82,6 +82,14 @@ export async function crearApartado(
     const cat = await db.priceList.findUnique({ where: { id: input.priceListId }, select: { id: true } });
     if (!cat) throw new QuoteError(400, 'El catálogo elegido no existe.');
   }
+  // Los espacios tienen que existir. Un apartado no pasa por el motor de precios,
+  // que es quien truena con un `spaceId` inventado al cotizar: aquí nadie lo
+  // atraparía y el apartado quedaría guardado bloqueando NADA — cobrado el
+  // depósito y con la fecha libre para que alguien más la venda.
+  const espacios = await db.space.findMany({ where: { id: { in: input.spaceIds } }, select: { id: true } });
+  if (espacios.length !== new Set(input.spaceIds).size) {
+    throw new QuoteError(400, 'Alguno de los espacios elegidos no existe.');
+  }
 
   const hoy = hoyCivilMexico();
   // Un apartado que nace vencido no bloquea nada: aceptarlo en silencio sería
