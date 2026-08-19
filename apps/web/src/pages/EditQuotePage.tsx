@@ -345,6 +345,7 @@ export function EditQuotePage() {
           />
           <PagosPanel
             quoteId={quote.id}
+            publicToken={quote.publicToken}
             isAdmin={isAdmin}
             estadoCuenta={estadoCuenta}
             payments={payments}
@@ -379,6 +380,7 @@ export function EditQuotePage() {
       {!editable && (
         <PagosPanel
           quoteId={quote.id}
+          publicToken={quote.publicToken}
           isAdmin={isAdmin}
           estadoCuenta={estadoCuenta}
           payments={payments}

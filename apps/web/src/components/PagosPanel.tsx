@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { Lock, ReceiptText } from 'lucide-react';
+import { Lock, Receipt, ReceiptText } from 'lucide-react';
 import { api } from '../lib/api.ts';
 import { formatMXN } from '../lib/money.ts';
 import { formatEventDate, formatTimestamp } from '../lib/date.ts';
@@ -10,6 +10,8 @@ import type { EstadoCuenta, Payment, ActivityEntry, QuoteStatus } from '../lib/t
 
 interface Props {
   quoteId: string;
+  /** Token público de la cotización: con él se arma el enlace al recibo del pago. */
+  publicToken: string;
   isAdmin: boolean;
   estadoCuenta: EstadoCuenta;
   payments: Payment[];
@@ -18,7 +20,7 @@ interface Props {
   readOnly?: boolean;
 }
 
-export function PagosPanel({ quoteId, isAdmin, estadoCuenta, payments, activityLog, readOnly = false }: Props) {
+export function PagosPanel({ quoteId, publicToken, isAdmin, estadoCuenta, payments, activityLog, readOnly = false }: Props) {
   const qc = useQueryClient();
   const [monto, setMonto] = useState('');
   const [metodo, setMetodo] = useState('transferencia');
@@ -198,6 +200,24 @@ export function PagosPanel({ quoteId, isAdmin, estadoCuenta, payments, activityL
                       className="text-xs font-medium text-gold hover:underline"
                     >
                       Ver comprobante
+                    </a>
+                  )}
+                  {/* El recibo imprimible del pago. Ya existía para el cliente
+                      (cuelga de su token); esto es el enlace que le faltaba a la
+                      vendedora, que tiene ese token a mano.
+
+                      En los pagos ANULADOS no se muestra: un recibo de un pago
+                      anulado circulando es un problema. El servidor tampoco lo
+                      sirve —`getByToken` filtra los anulados—, así que el enlace
+                      solo llevaría a "Recibo no encontrado". */}
+                  {!p.anuladoAt && (
+                    <a
+                      href={`/c/${publicToken}/recibo/${p.id}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center gap-1 text-xs font-medium text-gold hover:underline"
+                    >
+                      <Receipt size={12} /> Ver recibo
                     </a>
                   )}
                   {p.facturadoAt && (
