@@ -33,6 +33,20 @@ async function findOwnedQuote(db: PrismaClient, id: string, actor: Actor) {
   return quote;
 }
 
+/**
+ * Lo que solo trae un pago que NACE de una asignación de depósito de banquetero
+ * (`banqueteros/cuenta.ts`): la liga al depósito madre y su comprobante, que es
+ * el mismo movimiento bancario para todos los pagos que salieron de él.
+ *
+ * No es parte del esquema de captura a propósito: nadie debe poder colgar un pago
+ * de un depósito desde el formulario.
+ */
+export interface OrigenDeposito {
+  pagoBanqueteroId?: string;
+  comprobanteKey?: string | null;
+  comprobanteMime?: string | null;
+}
+
 export async function registerPayment(
   db: PrismaClient,
   storage: ComprobanteStorage,
@@ -40,12 +54,13 @@ export async function registerPayment(
   rawInput: unknown,
   actor: Actor,
   file?: { data: Buffer; mime: string },
+  origen?: OrigenDeposito,
 ) {
   const quote = await findOwnedQuote(db, quoteId, actor);
   const input = registerPaymentSchema.parse(rawInput);
 
-  let comprobanteKey: string | null = null;
-  let comprobanteMime: string | null = null;
+  let comprobanteKey: string | null = origen?.comprobanteKey ?? null;
+  let comprobanteMime: string | null = origen?.comprobanteMime ?? null;
   if (file) {
     const stored = await storage.save(file.data, file.mime);
     comprobanteKey = stored.key;
@@ -63,6 +78,7 @@ export async function registerPayment(
       comprobanteKey,
       comprobanteMime,
       registradoById: actor.id,
+      pagoBanqueteroId: origen?.pagoBanqueteroId ?? null,
     },
   });
 

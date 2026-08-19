@@ -185,6 +185,48 @@ model Banquetero {
   activo    Boolean  @default(true)
   createdAt DateTime @default(now())
   quotes    Quote[]
+  /// Los depósitos a cuenta que ha hecho. El dinero entra a su cuenta y DESPUÉS
+  /// se reparte entre sus eventos (decisión 3 del dueño).
+  depositos PagoBanquetero[]
+}
+
+/// Un depósito del banquetero a la hacienda, ANTES de saber a qué eventos va.
+///
+/// El dinero llega antes que la instrucción de cómo repartirlo (decisión 3 del
+/// dueño), así que el saldo sin asignar es un estado legítimo y visible.
+///
+/// Cada asignación genera un `Payment` REAL en la cotización, con su folio de
+/// recibo: por eso el estado de cuenta, los hitos del plan, el candado de
+/// facturación y el API del BI siguen funcionando sin cambiar una línea. Lo único
+/// que gana el `Payment` es `pagoBanqueteroId`, la liga al depósito madre.
+model PagoBanquetero {
+  id              String        @id @default(cuid())
+  banquetero      Banquetero    @relation(fields: [banqueteroId], references: [id])
+  banqueteroId    String
+  monto           Int
+  metodo          PaymentMethod
+  /// Cuándo se RECIBIÓ el dinero. Es la fecha que heredan los `Payment` de sus
+  /// asignaciones, no la del reparto: el SAT exige facturar el ingreso en el mes
+  /// en que se recibe, así que un depósito de marzo repartido en mayo sigue
+  /// siendo ingreso de marzo para el candado del Plan C.
+  fecha           DateTime
+  referencia      String?
+  comprobanteKey  String?
+  comprobanteMime String?
+  registradoBy    User?         @relation("PagoBanqueteroRegistradoBy", fields: [registradoById], references: [id])
+  registradoById  String?
+  anuladoAt       DateTime?
+  /// Quién lo anuló. No estaba en el diseño y se agregó por simetría con
+  /// `Payment`: anular un depósito es un movimiento de dinero de admin y sin esto
+  /// quedaba el motivo pero no el responsable.
+  anuladoBy       User?         @relation("PagoBanqueteroAnuladoBy", fields: [anuladoById], references: [id])
+  anuladoById     String?
+  motivoAnulacion String?
+  createdAt       DateTime      @default(now())
+  /// Los pagos por evento que salieron de este depósito.
+  asignaciones    Payment[]
+
+  @@index([banqueteroId, fecha])
 }
 
 // Personal HSA: catálogo de empleados y cuadrillas (grupos) para armar la hoja
@@ -441,9 +483,15 @@ model Payment {
   anuladoBy            User?          @relation("PaymentAnuladoBy", fields: [anuladoById], references: [id])
   anuladoById          String?
   motivoAnulacion      String?
+  /// El depósito del banquetero del que salió este pago, si nació de una
+  /// asignación. `null` = pago capturado directo en la cotización, que es el
+  /// camino de siempre.
+  pagoBanquetero       PagoBanquetero? @relation(fields: [pagoBanqueteroId], references: [id])
+  pagoBanqueteroId     String?
   createdAt            DateTime       @default(now())
 
   @@index([quoteId])
+  @@index([pagoBanqueteroId])
 }
 
 model ActivityLog {
@@ -478,6 +526,8 @@ model User {
   quotesCreated       Quote[]       @relation("QuoteCreatedBy")
   paymentsRegistrados Payment[]     @relation("PaymentRegistradoBy")
   paymentsAnulados    Payment[]     @relation("PaymentAnuladoBy")
+  depositosRegistrados PagoBanquetero[] @relation("PagoBanqueteroRegistradoBy")
+  depositosAnulados    PagoBanquetero[] @relation("PagoBanqueteroAnuladoBy")
   actividades         ActivityLog[] @relation("ActivityActor")
   priceListAudits     PriceListAudit[] @relation("PriceListAuditActor")
 }
