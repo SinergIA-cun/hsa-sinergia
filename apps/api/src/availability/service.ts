@@ -198,6 +198,9 @@ export interface AgendaEvent {
  */
 export interface AgendaApartado {
   apartadoId: string;
+  /** Para que el chip de la agenda pueda abrir la ficha de su banquetero, que es
+   *  donde el apartado se cancela o se convierte. Sin él el chip no lleva a nada. */
+  banqueteroId: string;
   banquetero: string;
   fechaEvento: string;
   spaceIds: string[];
@@ -241,6 +244,7 @@ export async function getAgenda(
     })),
     apartados: apartados.map((a) => ({
       apartadoId: a.id,
+      banqueteroId: a.banqueteroId,
       banquetero: a.banquetero?.nombre ?? 'Banquetero',
       fechaEvento: a.fechaEvento.toISOString(),
       spaceIds: a.spaceIds,

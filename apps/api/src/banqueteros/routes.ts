@@ -13,6 +13,7 @@ import {
 } from './cuenta.js';
 import { crearApartado, listarApartados, cancelarApartado, convertirApartado } from './apartados.js';
 import { estadoCuentaBanquetero, estadoCuentaPublico } from './estadoCuenta.js';
+import { resumenBanqueteros } from './resumen.js';
 
 /**
  * La cuenta corriente del banquetero.
@@ -26,6 +27,13 @@ export async function banqueteroRoutes(app: FastifyInstance): Promise<void> {
   // El mismo directorio y la misma clase que los comprobantes de pago: la ficha
   // del banco de un depósito es un comprobante como cualquier otro.
   const storage = new ServerStorage(app.config.COMPROBANTES_DIR);
+
+  // El resumen de TODOS, para la lista de admin y el tablero. Ruta estática:
+  // Fastify la resuelve antes que `/banqueteros/:id/...`, así que no hay riesgo
+  // de que "resumen" se lea como un id.
+  app.get('/banqueteros/resumen', { preHandler: requireAuth }, async () =>
+    resumenBanqueteros(app.prisma),
+  );
 
   // Registrar un depósito a cuenta. Acepta multipart (foto de la ficha desde la
   // tablet) o JSON, igual que el registro de pagos.

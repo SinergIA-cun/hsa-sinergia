@@ -272,11 +272,14 @@ export interface Quote {
 
 export type PaymentConcept = 'anticipo' | 'complemento' | 'aCuenta' | 'finiquito';
 
+/** Debe seguir al enum `PaymentMethod` de Prisma. */
+export type PaymentMethod = 'efectivo' | 'transferencia' | 'tarjeta';
+
 export interface Payment {
   id: string;
   folio: number;
   monto: number;
-  metodo: 'efectivo' | 'transferencia' | 'tarjeta';
+  metodo: PaymentMethod;
   /**
    * El concepto EFECTIVO: se deduce de dónde deja el acumulado contra los hitos
    * del plan, no de lo que se teclea. Se reclasifica cuando cambia el acumulado
@@ -383,12 +386,33 @@ export interface QuoteDetail {
 
 export type AvailabilityLevel = 'libre' | 'cotizaciones' | 'bloqueada';
 
+/**
+ * Un apartado de banquetero que bloquea el espacio.
+ *
+ * Viene en su propia lista y NO dentro de `quotes` porque no es una cotización:
+ * no tiene cliente, ni total, ni estatus. Sin mirarla, un espacio bloqueado solo
+ * por un apartado se pinta como "comprometido" sin poder decir por quién.
+ */
+export interface ApartadoBloqueo {
+  apartadoId: string;
+  banquetero: string;
+  venceISO: string;
+  deposito: number;
+}
+
 export interface SpaceAvailability {
   spaceId: string;
   nombre: string;
   level: AvailabilityLevel;
-  counts: { cotizaciones: number; formalizadas: number; complementadas: number; liquidadas: number };
+  counts: {
+    cotizaciones: number;
+    formalizadas: number;
+    complementadas: number;
+    liquidadas: number;
+    apartados: number;
+  };
   quotes: { id: string; cliente: string; status: string }[];
+  apartados: ApartadoBloqueo[];
 }
 
 export interface CapillaEvento {
@@ -403,6 +427,180 @@ export interface Banquetero {
   telefono?: string | null;
   activo: boolean;
   createdAt?: string;
+}
+
+// --- Cuenta corriente del banquetero (Plan H) ---
+
+/**
+ * Un pago por evento que salió de un depósito. Es un `Payment` de verdad, con su
+ * folio de recibo: por eso el estado de cuenta, los hitos del plan y el candado
+ * de facturación siguen funcionando sin enterarse del depósito madre.
+ */
+export interface AsignacionDeposito {
+  id: string;
+  quoteId: string;
+  monto: number;
+  folio: number;
+  fecha: string;
+  concepto: PaymentConcept;
+  anuladoAt: string | null;
+  motivoAnulacion: string | null;
+  quote: { id: string; codigo: string | null; client: { nombre: string } | null } | null;
+}
+
+/** Un depósito del banquetero, con su reparto y lo que sigue sin destino. */
+export interface DepositoBanquetero {
+  id: string;
+  banqueteroId: string;
+  monto: number;
+  metodo: PaymentMethod;
+  /** Cuándo se RECIBIÓ. Es la fecha que heredan los pagos de sus asignaciones. */
+  fecha: string;
+  referencia: string | null;
+  comprobanteKey: string | null;
+  comprobanteMime: string | null;
+  anuladoAt: string | null;
+  motivoAnulacion: string | null;
+  createdAt: string;
+  asignaciones: AsignacionDeposito[];
+  /** `monto − Σ asignaciones vivas`. Dinero de la hacienda sin destino. */
+  saldoSinAsignar: number;
+}
+
+/** Una fecha apartada sin precio, tal como la devuelve la API con sus derivados. */
+export interface ApartadoFecha {
+  id: string;
+  banqueteroId: string;
+  fechaEvento: string;
+  spaceIds: string[];
+  priceListId: string | null;
+  deposito: number;
+  depositoMetodo: PaymentMethod | null;
+  depositoFecha: string | null;
+  vence: string;
+  nota: string | null;
+  quoteId: string | null;
+  canceladoAt: string | null;
+  motivoCancelacion: string | null;
+  createdAt: string;
+  banquetero?: { id: string; nombre: string; telefono: string | null };
+  priceList?: { id: string; nombre: string; anio: number } | null;
+  quote?: { id: string; codigo: string | null; total: number; status: QuoteStatus } | null;
+  /** Sigue bloqueando su fecha: ni cancelado, ni convertido, ni vencido. */
+  vivo: boolean;
+  /** Se le pasó el vencimiento sin convertirse: ya no bloquea nada. */
+  vencido: boolean;
+}
+
+export interface EventoBanquetero {
+  quoteId: string;
+  codigo: string | null;
+  fechaEventoISO: string;
+  status: QuoteStatus;
+  cliente: string | null;
+  festejado: string | null;
+  festejadoTelefono: string | null;
+  catalogo: string | null;
+  total: number;
+  rentaTotal: number;
+  pagado: number;
+  saldo: number;
+  planPendiente: boolean;
+}
+
+export interface TotalesBanquetero {
+  eventos: number;
+  /** Solo de las cotizaciones: un apartado no tiene total. */
+  rentaTotal: number;
+  pagado: number;
+  saldo: number;
+  depositado: number;
+  saldoSinAsignar: number;
+  apartadosVivos: number;
+  apartadosPorVencer: number;
+}
+
+export interface EstadoCuentaBanquetero {
+  banquetero: {
+    id: string;
+    nombre: string;
+    telefono: string | null;
+    activo: boolean;
+    publicToken: string;
+  };
+  eventos: EventoBanquetero[];
+  depositos: DepositoBanquetero[];
+  apartados: ApartadoFecha[];
+  apartadosPorVencer: ApartadoFecha[];
+  totales: TotalesBanquetero;
+}
+
+/**
+ * La proyección del enlace de solo lectura. Es un objeto DISTINTO al interno a
+ * propósito: no trae ids, ni llaves de comprobante, ni motivos de anulación, ni
+ * quién registró cada movimiento.
+ */
+export interface EstadoCuentaPublico {
+  banquetero: { nombre: string; telefono: string | null };
+  eventos: {
+    codigo: string | null;
+    fechaEventoISO: string;
+    status: QuoteStatus;
+    festejado: string | null;
+    total: number;
+    rentaTotal: number;
+    pagado: number;
+    saldo: number;
+  }[];
+  depositos: {
+    fechaISO: string;
+    monto: number;
+    metodo: PaymentMethod;
+    referencia: string | null;
+    saldoSinAsignar: number;
+    asignaciones: { folio: number; monto: number; codigo: string | null }[];
+  }[];
+  apartados: {
+    fechaEventoISO: string;
+    spaceIds: string[];
+    deposito: number;
+    venceISO: string;
+    catalogo: string | null;
+  }[];
+  totales: TotalesBanquetero;
+}
+
+/**
+ * El renglón de `GET /api/banqueteros/resumen`: la cuenta de todos en una
+ * consulta. Lo consumen la lista de admin y el tablero, y **no** filtra por
+ * pertenencia: el saldo de una contraparte es uno solo.
+ */
+export interface ResumenBanquetero {
+  banqueteroId: string;
+  nombre: string;
+  telefono: string | null;
+  activo: boolean;
+  publicToken: string;
+  eventos: number;
+  depositado: number;
+  saldoSinAsignar: number;
+  apartadosVivos: number;
+  apartadosPorVencer: number;
+  proximoVencimientoISO: string | null;
+}
+
+/** Un apartado vivo sin convertir, con su urgencia ya calculada por el servidor. */
+export interface ApartadoPendiente {
+  apartadoId: string;
+  banqueteroId: string;
+  banquetero: string;
+  fechaEventoISO: string;
+  venceISO: string;
+  diasParaVencer: number;
+  deposito: number;
+  spaceIds: string[];
+  catalogo: string | null;
+  nota: string | null;
 }
 
 export interface VentaBanquetero {
@@ -456,6 +654,30 @@ export interface AgendaEvent {
   spaceIds: string[];
   status: QuoteStatus;
   esCortesia: boolean;
+}
+
+/**
+ * Una fecha apartada, en la agenda.
+ *
+ * Llega en su PROPIA lista y no dentro de `events`: `AgendaEvent` exige
+ * `quoteId` y un apartado no tiene cotización, así que meterlo ahí rompería en
+ * runtime el arrastre y el aviso de empalmes. La agenda es quien lo pinta
+ * distinto.
+ */
+export interface AgendaApartado {
+  apartadoId: string;
+  banqueteroId: string;
+  banquetero: string;
+  fechaEvento: string;
+  spaceIds: string[];
+  venceISO: string;
+  deposito: number;
+  nota: string | null;
+}
+
+export interface AgendaResponse {
+  events: AgendaEvent[];
+  apartados: AgendaApartado[];
 }
 
 /**

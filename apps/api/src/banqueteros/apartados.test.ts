@@ -198,6 +198,9 @@ describe('un apartado bloquea la fecha', () => {
     expect(mio).toBeDefined();
     expect(mio!.banquetero).toContain('Apartador');
     expect(mio!.nota).toBe('graduación 2033');
+    // El id del banquetero viaja para que el chip de la agenda pueda abrir su
+    // ficha, que es el único lugar donde el apartado se cancela o se convierte.
+    expect(mio!.banqueteroId).toBe(banqueteroId);
     expect(agenda.events.some((e) => (e as { apartadoId?: string }).apartadoId != null)).toBe(false);
   });
 

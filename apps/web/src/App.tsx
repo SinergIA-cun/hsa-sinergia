@@ -10,6 +10,8 @@ import { NewQuotePage } from './pages/NewQuotePage.tsx';
 import { EditQuotePage } from './pages/EditQuotePage.tsx';
 import { AgendaPage } from './pages/AgendaPage.tsx';
 import { PublicQuotePage } from './pages/PublicQuotePage.tsx';
+import { BanqueteroPage } from './pages/BanqueteroPage.tsx';
+import { BanqueteroPublicoPage } from './pages/BanqueteroPublicoPage.tsx';
 import { ContratoPage } from './pages/ContratoPage.tsx';
 import { ReciboPage } from './pages/ReciboPage.tsx';
 import { HojaOperativaPage } from './pages/HojaOperativaPage.tsx';
@@ -56,6 +58,9 @@ export function App() {
           <Routes>
             <Route path="/login" element={<LoginPage />} />
             <Route path="/c/:token" element={<PublicQuotePage />} />
+            {/* El estado de cuenta del banquetero por enlace, mismo patrón que
+                `/c/:token` del cliente: sin sesión y de solo lectura. */}
+            <Route path="/b/:token" element={<BanqueteroPublicoPage />} />
             <Route path="/c/:token/recibo/:paymentId" element={<ReciboPage />} />
             <Route
               path="/cotizaciones"
@@ -95,6 +100,18 @@ export function App() {
                 <ProtectedBare>
                   <HojaOperativaPage />
                 </ProtectedBare>
+              }
+            />
+            {/* La ficha del banquetero NO es AdminOnly: ventas reparte un depósito
+                sobre sus eventos —es la instrucción del banquetero sobre dinero
+                que ya entró, no un movimiento nuevo— y la página esconde lo que
+                solo un admin puede hacer. */}
+            <Route
+              path="/banqueteros/:id"
+              element={
+                <Protected>
+                  <BanqueteroPage />
+                </Protected>
               }
             />
             <Route
