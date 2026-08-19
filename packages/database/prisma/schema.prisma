@@ -191,8 +191,14 @@ model Banquetero {
   /// El default lo pone POSTGRES y no la aplicación a propósito: hay seis lugares
   /// que crean banqueteros (seed, panel de admin, cuatro suites de prueba) y un
   /// token generado en código obliga a acordarse en todos. Con el default en la
-  /// base, una fila SIN token no puede existir. El costo conocido es que
-  /// `migrate diff` lo repita como los `nextval`; está anotado en la migración.
+  /// base, una fila SIN token no puede existir.
+  ///
+  /// VERIFICADO: a diferencia de los `nextval`, este `dbgenerated` **no** ensucia
+  /// el diff — `migrate diff --from-migrations … --shadow-database-url` sale
+  /// limpio salvo los dos `DROP SEQUENCE` de siempre. La migración
+  /// `20260819190000_banquetero_public_token` dice lo contrario en un comentario:
+  /// se escribió por precaución antes de comprobarlo y ya no se puede corregir
+  /// sin invalidar su checksum en `_prisma_migrations`. Manda esto.
   publicToken String  @unique @default(dbgenerated("replace((gen_random_uuid())::text, '-'::text, ''::text)"))
   createdAt DateTime @default(now())
   quotes    Quote[]
