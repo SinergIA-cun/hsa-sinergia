@@ -3,7 +3,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Copy, Check, Pencil } from 'lucide-react';
 import { api } from '../../lib/api.ts';
 import { PRICE_LISTS_KEY, usePriceLists } from '../../lib/catalogos.ts';
-import { formatMXN, formatPctFraccion } from '../../lib/money.ts';
+import { formatPctFraccion } from '../../lib/money.ts';
 import { Button, Card, Field, TextInput, SelectInput } from '../ui.tsx';
 import type { PriceList } from '../../lib/types.ts';
 import { apiErrorMessage } from './shared.tsx';
@@ -117,15 +117,15 @@ function CatalogoRow({
             )}
           </p>
           <p className="mt-0.5 text-xs text-charcoal-soft">
-            Año {pl.anio} · {pl.cotizaciones} cotizaciones · {pl.renta} renglones de renta ·{' '}
-            {pl.servicios} servicios · {pl.paquetes} paquetes
+            Año {pl.anio} · {plural(pl.cotizaciones, 'cotización', 'cotizaciones')} ·{' '}
+            {plural(pl.renta, 'renglón de renta', 'renglones de renta')} ·{' '}
+            {plural(pl.servicios, 'servicio', 'servicios')} ·{' '}
+            {plural(pl.paquetes, 'paquete', 'paquetes')} · <DjCobertura dj={pl.dj} />
           </p>
           <p className="mt-0.5 text-xs text-charcoal-soft/80">
             IVA {formatPctFraccion(pl.ivaRate)} · hora extra {formatPctFraccion(pl.extraHourRate)} ·
-            descuento alimentos {formatPctFraccion(pl.foodDiscountRate)} · capilla sábado{' '}
-            {formatMXN(pl.capillaSabado)}
+            descuento alimentos {formatPctFraccion(pl.foodDiscountRate)}
           </p>
-          <DjPrecios dj={pl.dj} />
         </div>
         <div className="flex items-center gap-1">
           {/* Editar el contenido: precios de renta, servicios, alimentos, DJ y
@@ -191,33 +191,28 @@ function CatalogoRow({
   );
 }
 
+/** "1 servicio" y no "1 servicios". Cero va en plural, como en español. */
+function plural(n: number, singular: string, plural: string): string {
+  return `${n} ${n === 1 ? singular : plural}`;
+}
+
 /**
- * El DJ por hora extra, por tipo de evento. Solo lectura en este tramo: editar
- * los precios línea por línea es del tramo 2.
+ * Cuántos tipos de evento ofrecen la hora extra de DJ en este catálogo.
+ *
+ * A propósito NO muestra los precios. Esta tarjeta sirve para elegir entre
+ * catálogos, y llenarla de montos de un solo servicio le daba al DJ un peso que
+ * no tiene: los precios se ven y se editan dentro del catálogo.
  *
  * Lo que un tipo de evento NO tiene aquí es información, no un hueco: sin
  * renglón, ese tipo de evento no ofrece el servicio y la casilla no cobra nada.
+ * Por eso cero sí se dice, en vino: es un catálogo donde nadie lo ofrece.
  */
-function DjPrecios({ dj }: { dj: PriceList['dj'] }) {
-  if (dj.length === 0) {
-    return (
-      <p className="mt-1.5 text-xs text-charcoal-soft/80">
-        DJ hora extra: <span className="text-wine">sin precios</span> — ningún tipo de evento lo
-        ofrece en este catálogo.
-      </p>
-    );
-  }
+function DjCobertura({ dj }: { dj: PriceList['dj'] }) {
+  if (dj.length === 0) return <span className="text-wine">sin DJ hora extra</span>;
   return (
-    <div className="mt-1.5">
-      <p className="text-xs font-medium text-charcoal-soft">DJ hora extra (por tipo de evento)</p>
-      <ul className="mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5">
-        {dj.map((d) => (
-          <li key={d.eventTypeId} className="text-xs text-charcoal-soft/80">
-            {d.eventType} <span className="font-medium text-ink/80">{formatMXN(d.price)}</span>
-          </li>
-        ))}
-      </ul>
-    </div>
+    <span>
+      DJ hora extra en {dj.length} {dj.length === 1 ? 'tipo de evento' : 'tipos de evento'}
+    </span>
   );
 }
 
