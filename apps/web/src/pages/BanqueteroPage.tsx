@@ -230,6 +230,7 @@ export function BanqueteroPage() {
         <h2 className="mb-3 font-display text-2xl text-ink">Fechas apartadas</h2>
         <ApartadosPanel
           banqueteroId={id}
+          banqueteroNombre={banquetero.nombre}
           apartados={apartados}
           spaces={catalogQ.data?.spaces ?? []}
           priceLists={priceListsQ.data?.priceLists ?? []}
