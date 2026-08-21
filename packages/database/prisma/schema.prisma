@@ -89,6 +89,8 @@ model PriceList {
   djPrices     DjHoraExtraPrice[]
   quotes       Quote[]
   auditoria    PriceListAudit[]
+  /// Apartados con precio garantizado contra este catálogo.
+  apartados    ApartadoFecha[]
 }
 
 /// Bitácora de cambios AL CONTENIDO de un catálogo. Separada de `ActivityLog`
@@ -183,8 +185,119 @@ model Banquetero {
   nombre    String
   telefono  String?
   activo    Boolean  @default(true)
+  /// Token del enlace de solo lectura de su estado de cuenta, mismo formato que
+  /// `Quote.publicToken` (32 hex sin guiones). Es lo que mata el hilo de WhatsApp.
+  ///
+  /// El default lo pone POSTGRES y no la aplicación a propósito: hay seis lugares
+  /// que crean banqueteros (seed, panel de admin, cuatro suites de prueba) y un
+  /// token generado en código obliga a acordarse en todos. Con el default en la
+  /// base, una fila SIN token no puede existir.
+  ///
+  /// VERIFICADO: a diferencia de los `nextval`, este `dbgenerated` **no** ensucia
+  /// el diff — `migrate diff --from-migrations … --shadow-database-url` sale
+  /// limpio salvo los dos `DROP SEQUENCE` de siempre. La migración
+  /// `20260819190000_banquetero_public_token` dice lo contrario en un comentario:
+  /// se escribió por precaución antes de comprobarlo y ya no se puede corregir
+  /// sin invalidar su checksum en `_prisma_migrations`. Manda esto.
+  publicToken String  @unique @default(dbgenerated("replace((gen_random_uuid())::text, '-'::text, ''::text)"))
   createdAt DateTime @default(now())
   quotes    Quote[]
+  /// Los depósitos a cuenta que ha hecho. El dinero entra a su cuenta y DESPUÉS
+  /// se reparte entre sus eventos (decisión 3 del dueño).
+  depositos PagoBanquetero[]
+  /// Las fechas que tiene apartadas sin cotización todavía.
+  apartados ApartadoFecha[]
+}
+
+/// Un depósito del banquetero a la hacienda, ANTES de saber a qué eventos va.
+///
+/// El dinero llega antes que la instrucción de cómo repartirlo (decisión 3 del
+/// dueño), así que el saldo sin asignar es un estado legítimo y visible.
+///
+/// Cada asignación genera un `Payment` REAL en la cotización, con su folio de
+/// recibo: por eso el estado de cuenta, los hitos del plan, el candado de
+/// facturación y el API del BI siguen funcionando sin cambiar una línea. Lo único
+/// que gana el `Payment` es `pagoBanqueteroId`, la liga al depósito madre.
+model PagoBanquetero {
+  id              String        @id @default(cuid())
+  banquetero      Banquetero    @relation(fields: [banqueteroId], references: [id])
+  banqueteroId    String
+  monto           Int
+  metodo          PaymentMethod
+  /// Cuándo se RECIBIÓ el dinero. Es la fecha que heredan los `Payment` de sus
+  /// asignaciones, no la del reparto: el SAT exige facturar el ingreso en el mes
+  /// en que se recibe, así que un depósito de marzo repartido en mayo sigue
+  /// siendo ingreso de marzo para el candado del Plan C.
+  fecha           DateTime
+  referencia      String?
+  comprobanteKey  String?
+  comprobanteMime String?
+  registradoBy    User?         @relation("PagoBanqueteroRegistradoBy", fields: [registradoById], references: [id])
+  registradoById  String?
+  anuladoAt       DateTime?
+  /// Quién lo anuló. No estaba en el diseño y se agregó por simetría con
+  /// `Payment`: anular un depósito es un movimiento de dinero de admin y sin esto
+  /// quedaba el motivo pero no el responsable.
+  anuladoBy       User?         @relation("PagoBanqueteroAnuladoBy", fields: [anuladoById], references: [id])
+  anuladoById     String?
+  motivoAnulacion String?
+  createdAt       DateTime      @default(now())
+  /// Los pagos por evento que salieron de este depósito.
+  asignaciones    Payment[]
+
+  @@index([banqueteroId, fecha])
+}
+
+/// Una fecha apartada por un banquetero ANTES de que exista cotización o precio.
+///
+/// Existe por el caso 3 del dueño: los banqueteros son los que más graduaciones
+/// venden, piden fechas muy adelantadas —hoy 2028— y pagan la fecha sin que los
+/// precios existan todavía. Hoy eso no cabe: `createQuote` exige un catálogo y
+/// calcula un total.
+///
+/// Bloquea la disponibilidad igual que un evento comprometido —es dinero real
+/// sobre una fecha— pero NO tiene total: no es una venta cerrada y no debe entrar
+/// a ningún reporte de ingreso comprometido.
+model ApartadoFecha {
+  id            String      @id @default(cuid())
+  banquetero    Banquetero  @relation(fields: [banqueteroId], references: [id])
+  banqueteroId  String
+  fechaEvento   DateTime
+  spaceIds      String[]
+  /// Catálogo al que se le garantizó el precio, si se negoció uno. Es el tramo 1
+  /// del Plan E cobrando: se clona 2027 con el incremento negociado y se amarra el
+  /// apartado a ese catálogo, así el banquetero no paga a ciegas.
+  priceList     PriceList?  @relation(fields: [priceListId], references: [id])
+  priceListId   String?
+  deposito      Int         @default(0)
+  /// Método y fecha del depósito. NO estaban en el diseño y sin ellos el pago que
+  /// nace al convertir no tendría ni forma de pago ni fecha de recepción: llevaría
+  /// la de la conversión, que es el MISMO bug fiscal que la Task 1 arregló en las
+  /// asignaciones. Obligatorios cuando `deposito > 0`.
+  depositoMetodo PaymentMethod?
+  depositoFecha  DateTime?
+  /// Vence. Sin esto apartan 2029 gratis y se pierde inventario de fechas buenas.
+  vence         DateTime
+  nota          String?
+  /// La cotización que nació de este apartado, al convertirlo. Mientras es `null`
+  /// el apartado es lo que bloquea la fecha; en cuanto existe, la que bloquea es
+  /// la cotización y el apartado deja de contar (si no, se contaría doble y el
+  /// evento convertido choocaría con su propio apartado).
+  quote         Quote?      @relation(fields: [quoteId], references: [id])
+  quoteId       String?     @unique
+  /// Quién lo apartó y quién lo canceló. No estaban en el diseño: `ActivityLog`
+  /// exige `quoteId` y un apartado no pertenece a ninguna cotización, así que la
+  /// fila es su propia bitácora y sin el actor no sirve de rastro.
+  createdBy     User?       @relation("ApartadoCreatedBy", fields: [createdById], references: [id])
+  createdById   String?
+  canceladoAt   DateTime?
+  canceladoBy   User?       @relation("ApartadoCanceladoBy", fields: [canceladoById], references: [id])
+  canceladoById String?
+  motivoCancelacion String?
+  createdAt     DateTime    @default(now())
+
+  @@index([fechaEvento])
+  @@index([banqueteroId])
 }
 
 // Personal HSA: catálogo de empleados y cuadrillas (grupos) para armar la hoja
@@ -324,6 +437,8 @@ model Quote {
   payments      Payment[]
   activityLog   ActivityLog[]
   extras        QuoteExtra[]
+  /// El apartado del que nació, si nació de uno.
+  apartado      ApartadoFecha?
 
   @@index([clientId])
   @@index([status])
@@ -441,9 +556,15 @@ model Payment {
   anuladoBy            User?          @relation("PaymentAnuladoBy", fields: [anuladoById], references: [id])
   anuladoById          String?
   motivoAnulacion      String?
+  /// El depósito del banquetero del que salió este pago, si nació de una
+  /// asignación. `null` = pago capturado directo en la cotización, que es el
+  /// camino de siempre.
+  pagoBanquetero       PagoBanquetero? @relation(fields: [pagoBanqueteroId], references: [id])
+  pagoBanqueteroId     String?
   createdAt            DateTime       @default(now())
 
   @@index([quoteId])
+  @@index([pagoBanqueteroId])
 }
 
 model ActivityLog {
@@ -478,6 +599,10 @@ model User {
   quotesCreated       Quote[]       @relation("QuoteCreatedBy")
   paymentsRegistrados Payment[]     @relation("PaymentRegistradoBy")
   paymentsAnulados    Payment[]     @relation("PaymentAnuladoBy")
+  depositosRegistrados PagoBanquetero[] @relation("PagoBanqueteroRegistradoBy")
+  depositosAnulados    PagoBanquetero[] @relation("PagoBanqueteroAnuladoBy")
+  apartadosCreados     ApartadoFecha[]  @relation("ApartadoCreatedBy")
+  apartadosCancelados  ApartadoFecha[]  @relation("ApartadoCanceladoBy")
   actividades         ActivityLog[] @relation("ActivityActor")
   priceListAudits     PriceListAudit[] @relation("PriceListAuditActor")
 }

@@ -233,6 +233,13 @@ async function catalogoActivo(db: PrismaClient): Promise<{ id: string }> {
   return activo;
 }
 
+/** Un catálogo por id, o 409 si ya no existe (un apartado puede apuntar a uno borrado). */
+async function catalogoPorId(db: PrismaClient, priceListId: string): Promise<{ id: string }> {
+  const cat = await db.priceList.findUnique({ where: { id: priceListId }, select: { id: true } });
+  if (!cat) throw new QuoteError(409, 'El catálogo garantizado ya no existe.');
+  return cat;
+}
+
 /** Calcula el desglose y enriquece las líneas de renta con el nombre del espacio. */
 async function computeAndEnrich(db: PrismaClient, selection: QuoteSelection, priceListId?: string) {
   const catalog = await loadCatalog(db, priceListId ? { priceListId } : {});
@@ -404,8 +411,9 @@ async function assertEspaciosDisponibles(
   fecha: string,
   spaceIds: string[],
   excludeQuoteId?: string,
+  excludeApartadoId?: string,
 ): Promise<void> {
-  const disp = await getAvailability(db, fecha, spaceIds, excludeQuoteId);
+  const disp = await getAvailability(db, fecha, spaceIds, excludeQuoteId, { excludeApartadoId });
   const ocupados = disp.spaces.filter((s) => s.level === 'bloqueada');
   if (ocupados.length > 0) {
     const nombres = ocupados.map((s) => s.nombre).join(', ');
@@ -626,15 +634,42 @@ export async function reconcileStatuses(
   return cambios;
 }
 
-export async function createQuote(db: PrismaClient, rawInput: unknown, actor: Actor) {
+/**
+ * Lo que solo puede decidir un camino INTERNO, nunca el formulario: por eso no
+ * vive en `createQuoteSchema`. Hoy lo usa la conversión de un apartado de fecha
+ * (`banqueteros/apartados.ts`), que necesita las dos cosas.
+ */
+export interface CreateQuoteOpts {
+  /**
+   * El catálogo con el que nace, en vez del activo. Es el precio GARANTIZADO que
+   * se le negoció al apartado ("te congelo 2027 más ocho por ciento"): si al
+   * convertir tomara el activo, la garantía se perdería en silencio.
+   */
+  priceListId?: string;
+  /**
+   * El apartado que se está convirtiendo, para que la cotización nueva no choque
+   * contra él. El apartado bloquea exactamente la fecha y el espacio que ella
+   * pide, así que sin esto convertir sería imposible.
+   */
+  excludeApartadoId?: string;
+}
+
+export async function createQuote(
+  db: PrismaClient,
+  rawInput: unknown,
+  actor: Actor,
+  opts: CreateQuoteOpts = {},
+) {
   const input = createQuoteSchema.parse(rawInput);
   // Antes de CUALQUIER escritura (incluida la del cliente): una cotización
   // rechazada no debe dejar un cliente huérfano en la base.
-  await assertEspaciosDisponibles(db, input.fecha, input.spaceIds);
+  await assertEspaciosDisponibles(db, input.fecha, input.spaceIds, undefined, opts.excludeApartadoId);
   await assertBanquetero(db, input.banqueteroId);
   // El catálogo se fija AQUÍ y queda casado a la cotización: reeditarla más
   // adelante recalcula contra este, no contra el que esté activo ese día.
-  const catalogo = await catalogoActivo(db);
+  const catalogo = opts.priceListId
+    ? await catalogoPorId(db, opts.priceListId)
+    : await catalogoActivo(db);
   const { breakdown, enriched } = await computeAndEnrich(db, toSelection(input), catalogo.id);
 
   let clientId = input.clientId;

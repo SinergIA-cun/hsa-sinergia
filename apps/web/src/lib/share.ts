@@ -12,3 +12,11 @@ export function whatsappUrl(telefono: string | null | undefined, mensaje: string
 export function mensajeCotizacion(cliente: string, evento: string, url: string): string {
   return `Hola ${cliente}, le comparto su cotización de ${evento} en Hacienda San Andrés: ${url}`;
 }
+
+/**
+ * Mensaje para mandarle al banquetero su estado de cuenta. Es lo que sustituye al
+ * hilo de WhatsApp donde hoy se discute cuánto trae sin repartir.
+ */
+export function mensajeEstadoCuenta(banquetero: string, url: string): string {
+  return `Hola ${banquetero}, aquí puede ver en vivo su estado de cuenta con Hacienda San Andrés: sus eventos, sus depósitos y cómo se repartieron. ${url}`;
+}

@@ -1,5 +1,12 @@
 import type { PrismaClient } from '@hsa/database';
+import { hoyCivilMexico } from '@hsa/shared';
 import { ownershipWhere, loadEstadoCuentaBulk, type Actor } from '../quotes/service.js';
+import {
+  resumenBanqueteros,
+  type ApartadoPendiente,
+  type ResumenBanquetero,
+} from '../banqueteros/resumen.js';
+import { DIAS_POR_VENCER } from '../banqueteros/estadoCuenta.js';
 
 // Estatus de evento real (ya reservado) — para fichas, próxima semana y alertas.
 const EVENTOS = ['formalizada', 'complementada', 'liquidada'] as const;
@@ -80,11 +87,61 @@ export interface AlertaFiniquito {
   diasVencido: number;
 }
 
+/**
+ * Un evento que YA PASÓ y sigue debiendo.
+ *
+ * Por la regla del negocio —"no hay forma de hacer el evento si no está
+ * pagado"— **no debería existir ninguno**. Si existe, o no se capturó un pago o
+ * el evento no se hizo. Va como alerta con nombre y fecha, no como un número
+ * silencioso: es lo único del panel que dice "aquí hay un error de captura o un
+ * cobro perdido", y nadie lo puede ver hoy.
+ *
+ * Sí, todos aparecen también en `alertas` (un evento pasado ya rebasó su ventana
+ * de finiquito de 30 días). No es lo mismo: "finiquito vencido" es un cobro por
+ * hacer y "el evento ya pasó sin pagarse" es un hecho que no se puede cobrar
+ * después. La interfaz los saca de la lista de finiquito para no listar el mismo
+ * evento dos veces con dos urgencias distintas.
+ */
+export interface EventoPasadoSinLiquidar {
+  quoteId: string;
+  cliente: string;
+  evento: string;
+  espacio: string;
+  fechaEventoISO: string;
+  status: string;
+  restante: number;
+  diasDesdeEvento: number;
+}
+
+/** Lo que el panel dice de la cartera de banqueteros. */
+export interface BanqueterosDashboard {
+  /** Σ de todos los saldos sin asignar. Dinero de la hacienda sin destino. */
+  totalSinAsignar: number;
+  /** Solo los que traen saldo, del mayor al menor: los demás no son noticia. */
+  saldos: ResumenBanquetero[];
+  /** Fechas apartadas sin convertir, del vencimiento más próximo al más lejano. */
+  apartados: ApartadoPendiente[];
+  /** Cuántos de esos vencen dentro de los próximos 30 días. */
+  porVencer: number;
+}
+
 export interface DashboardData {
   kpis: { eventosMes: number };
   fichasSemana: FichaSemana[];
   proximaSemana: EventoProxima[];
   alertas: AlertaFiniquito[];
+  /**
+   * Los eventos pasados sin liquidar. Aparte de `alertas` a propósito: ver el
+   * comentario de `EventoPasadoSinLiquidar`.
+   */
+  pasadosSinLiquidar: EventoPasadoSinLiquidar[];
+  /**
+   * La cartera de banqueteros. **Global, no filtrada por pertenencia**: el saldo
+   * sin asignar es dinero que la hacienda tiene en la mano, no una cifra de
+   * ventas de nadie, y "el saldo de lo mío" no cuadraría contra el banco. Es la
+   * misma razón por la que `getAvailability` es global.
+   */
+  banqueteros: BanqueterosDashboard;
 }
 
 /** Medianoche de hoy en UTC (las fechas de evento se guardan en UTC medianoche). */
@@ -201,7 +258,11 @@ export async function getDashboard(
   actor: Actor,
   now: Date = new Date(),
 ): Promise<DashboardData> {
-  const [quotes, spaces] = await Promise.all([
+  // El vencimiento de los apartados se mide con el día civil de MÉXICO, no con
+  // `hoyUTC`: es el mismo "hoy" que usan `getAvailability` y la agenda. Con dos
+  // relojes distintos el panel podría declarar muerto un apartado que la agenda
+  // sigue pintando y que sigue bloqueando su fecha.
+  const [quotes, spaces, cartera] = await Promise.all([
     db.quote.findMany({
       where: { ...ownershipWhere(actor), deletedAt: null },
       include: {
@@ -211,6 +272,7 @@ export async function getDashboard(
       },
     }),
     db.space.findMany({ select: { id: true, nombre: true } }),
+    resumenBanqueteros(db, { hoy: hoyCivilMexico(now) }),
   ]);
   const estados = await loadEstadoCuentaBulk(db, quotes);
   const espacioById = new Map(spaces.map((s) => [s.id, s.nombre]));
@@ -223,6 +285,7 @@ export async function getDashboard(
   const fichasSemana: FichaSemana[] = [];
   const proximaSemana: EventoProxima[] = [];
   const alertas: AlertaFiniquito[] = [];
+  const pasadosSinLiquidar: EventoPasadoSinLiquidar[] = [];
 
   for (const q of quotes as unknown as QuoteRow[]) {
     if (!(EVENTOS as readonly string[]).includes(q.status)) continue;
@@ -297,6 +360,22 @@ export async function getDashboard(
       }
     }
 
+    // El evento YA PASÓ y sigue debiendo. No debería existir ninguno: o no se
+    // capturó un pago o el evento no se hizo. Incluye a las `liquidada` con saldo
+    // —el total subió después de liquidar— porque ahí el dinero también falta.
+    if (q.fechaEvento < hoy && ec.saldo > 0) {
+      pasadosSinLiquidar.push({
+        quoteId: q.id,
+        cliente,
+        evento,
+        espacio,
+        fechaEventoISO: q.fechaEvento.toISOString(),
+        status: q.status,
+        restante: ec.saldo,
+        diasDesdeEvento: Math.round((hoy.getTime() - q.fechaEvento.getTime()) / 86_400_000),
+      });
+    }
+
     // Alertas: confirmado (formalizada/complementada) que ya entró en sus 30 días sin finiquitar.
     if ((CONFIRMADOS as readonly string[]).includes(q.status) && finiquito.pendiente) {
       const dias = Math.round((hoy.getTime() - new Date(finiquito.venceISO).getTime()) / 86_400_000);
@@ -315,11 +394,30 @@ export async function getDashboard(
   fichasSemana.sort((a, b) => (a.fechaEventoISO < b.fechaEventoISO ? -1 : 1));
   proximaSemana.sort((a, b) => (a.fechaEventoISO < b.fechaEventoISO ? -1 : 1));
   alertas.sort((a, b) => b.diasVencido - a.diasVencido);
+  // Del más reciente al más viejo: el del sábado pasado es el que alguien todavía
+  // recuerda y puede corregir hoy.
+  pasadosSinLiquidar.sort((a, b) => (a.fechaEventoISO < b.fechaEventoISO ? 1 : -1));
+
+  const limitePorVencer = new Date(hoyCivilMexico(now));
+  limitePorVencer.setUTCDate(limitePorVencer.getUTCDate() + DIAS_POR_VENCER);
 
   return {
     kpis: { eventosMes },
     fichasSemana: fichasSemana.slice(0, 9),
     proximaSemana: proximaSemana.slice(0, 9),
     alertas,
+    pasadosSinLiquidar,
+    banqueteros: {
+      totalSinAsignar: cartera.totalSinAsignar,
+      // Solo los que traen saldo: un banquetero con la cuenta en ceros no es
+      // noticia y llenaría la alerta de ruido.
+      saldos: cartera.banqueteros
+        .filter((b) => b.saldoSinAsignar > 0)
+        .sort((a, b) => b.saldoSinAsignar - a.saldoSinAsignar),
+      apartados: cartera.apartados,
+      porVencer: cartera.apartados.filter(
+        (a) => new Date(a.venceISO).getTime() <= limitePorVencer.getTime(),
+      ).length,
+    },
   };
 }

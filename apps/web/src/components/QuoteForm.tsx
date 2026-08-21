@@ -605,7 +605,15 @@ export function QuoteForm({
                   <span className="text-right text-xs">
                     {ocupado ? (
                       <span className="text-wine">
-                        {av!.quotes[0]?.cliente ? `apartado · ${av!.quotes[0]!.cliente}` : 'apartado'}
+                        {/* Un espacio puede estar bloqueado por una cotización
+                            comprometida O por un apartado de banquetero, que no
+                            tiene cliente. Sin mirar `apartados` el chip decía
+                            solo "apartado" y nadie sabía por quién. */}
+                        {av!.quotes[0]?.cliente
+                          ? `apartado · ${av!.quotes[0]!.cliente}`
+                          : av!.apartados[0]
+                            ? `apartado · ${av!.apartados[0]!.banquetero}`
+                            : 'apartado'}
                       </span>
                     ) : av?.level === 'cotizaciones' ? (
                       <span className="text-amber-700">{av.counts.cotizaciones} cotización(es)</span>
@@ -999,13 +1007,25 @@ function AvailabilityBanner({
   if (!fecha || !avail) return null;
 
   if (avail.level === 'bloqueada') {
+    // Sin cotizaciones que bloqueen, el bloqueo viene de un apartado de
+    // banquetero: una fecha pagada SIN precio todavía. Decir "ya tiene un evento
+    // comprometido" ahí sería falso y mandaría a buscar un contrato que no existe.
+    const soloApartado = avail.quotes.length === 0 && avail.apartados.length > 0;
     return (
       <div className="flex items-start gap-2 rounded-lg border border-wine/30 bg-wine/10 px-3 py-2.5 text-sm text-wine">
         <Ban size={16} className="mt-0.5 shrink-0" />
-        <span>
-          <strong>{avail.nombre}</strong> ya tiene un evento comprometido en esta fecha. No se
-          puede cotizar este espacio para el {fecha}.
-        </span>
+        {soloApartado ? (
+          <span>
+            <strong>{avail.nombre}</strong> está apartado el {fecha} por{' '}
+            <strong>{avail.apartados.map((a) => a.banquetero).join(', ')}</strong>: una fecha
+            comprada sin precio todavía. Se libera si el apartado vence o se cancela.
+          </span>
+        ) : (
+          <span>
+            <strong>{avail.nombre}</strong> ya tiene un evento comprometido en esta fecha. No se
+            puede cotizar este espacio para el {fecha}.
+          </span>
+        )}
       </div>
     );
   }

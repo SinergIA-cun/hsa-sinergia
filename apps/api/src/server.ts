@@ -19,6 +19,7 @@ import { priceListRoutes } from './pricelists/routes.js';
 import { clientRoutes } from './clients/routes.js';
 import { dashboardRoutes } from './dashboard/routes.js';
 import { biRoutes } from './bi/routes.js';
+import { banqueteroRoutes } from './banqueteros/routes.js';
 
 declare module 'fastify' {
   interface FastifyInstance {
@@ -76,6 +77,7 @@ export async function buildServer(opts: BuildOptions = {}): Promise<FastifyInsta
   await app.register(clientRoutes, { prefix: '/api' });
   await app.register(dashboardRoutes, { prefix: '/api' });
   await app.register(biRoutes, { prefix: '/api' });
+  await app.register(banqueteroRoutes, { prefix: '/api' });
 
   return app;
 }

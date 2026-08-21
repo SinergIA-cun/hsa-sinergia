@@ -1,7 +1,7 @@
 import { useMemo, useState, type ReactNode } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { Bookmark, ChevronLeft, ChevronRight } from 'lucide-react';
 import {
   DndContext,
   PointerSensor,
@@ -18,7 +18,7 @@ import { Card, ArrowDivider, Button } from '../components/ui.tsx';
 import { MoverFechaModal } from '../components/MoverFechaModal.tsx';
 import { DESPLAZADAS_KEY, useDesplazadas } from '../lib/desplazadas.ts';
 import { STATUS_LABEL } from '../lib/status.ts';
-import type { AgendaEvent, Catalog, QuoteDetail } from '../lib/types.ts';
+import type { AgendaApartado, AgendaEvent, AgendaResponse, Catalog, QuoteDetail } from '../lib/types.ts';
 
 const DIAS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
 const pad = (n: number) => String(n).padStart(2, '0');
@@ -57,7 +57,19 @@ const LEYENDA: { label: string; dot: string }[] = [
   { label: 'Formalizada', dot: 'bg-blue-600' },
   { label: 'Complemento cubierto', dot: 'bg-white ring-1 ring-ink' },
   { label: 'Cortesía familiar', dot: 'bg-emerald-600' },
+  { label: 'Fecha apartada (sin precio)', dot: 'bg-gold' },
 ];
+
+/** El espacio "principal" de un apartado, con el mismo orden operativo. */
+function primarySpaceApartado(a: AgendaApartado, nombreById: Map<string, string>): string {
+  let best = { nombre: '', prio: SPACE_ORDER.length + 1 };
+  for (const id of a.spaceIds) {
+    const nombre = nombreById.get(id) ?? '';
+    const prio = spacePriority(nombre);
+    if (prio < best.prio) best = { nombre, prio };
+  }
+  return best.nombre;
+}
 
 /** El mes visible vive en la URL (?m=YYYY-MM) para que "atrás" del navegador
  *  regrese al mismo mes en vez de reiniciar a hoy. */
@@ -81,7 +93,7 @@ export function AgendaPage() {
 
   const agendaQ = useQuery({
     queryKey: ['agenda', from, to],
-    queryFn: () => api.get<{ events: AgendaEvent[] }>(`/api/agenda?from=${from}&to=${to}`),
+    queryFn: () => api.get<AgendaResponse>(`/api/agenda?from=${from}&to=${to}`),
   });
   const catalogQ = useQuery({
     queryKey: ['catalog'],
@@ -99,6 +111,25 @@ export function AgendaPage() {
     () => new Map((catalogQ.data?.spaces ?? []).map((s) => [s.id, s.nombre])),
     [catalogQ.data],
   );
+
+  /**
+   * Los apartados por día, en su PROPIO mapa.
+   *
+   * No se mezclan con `events`: un apartado no tiene `quoteId`, ni cliente, ni
+   * estatus, y el servidor los manda en una lista aparte justo para que la agenda
+   * los pinte distinto. Meterlos en `porDia` obligaría a que el arrastre, el aviso
+   * de empalmes y los colores por estatus trataran con eventos a medias.
+   */
+  const apartadosPorDia = useMemo(() => {
+    const m = new Map<string, AgendaApartado[]>();
+    (agendaQ.data?.apartados ?? []).forEach((a) => {
+      const key = a.fechaEvento.slice(0, 10);
+      const arr = m.get(key) ?? [];
+      arr.push(a);
+      m.set(key, arr);
+    });
+    return m;
+  }, [agendaQ.data]);
 
   const porDia = useMemo(() => {
     const m = new Map<string, AgendaEvent[]>();
@@ -341,6 +372,17 @@ export function AgendaPage() {
                         </ChipArrastrable>
                       );
                     })}
+                    {(apartadosPorDia.get(fecha) ?? []).map((a) => {
+                      const espacio = primarySpaceApartado(a, nombreById);
+                      return (
+                        <ChipApartado
+                          key={a.apartadoId}
+                          apartado={a}
+                          espacio={espacio}
+                          onClick={() => navigate(`/banqueteros/${a.banqueteroId}`)}
+                        />
+                      );
+                    })}
                   </div>
                 </CeldaSoltable>
               );
@@ -362,6 +404,12 @@ export function AgendaPage() {
         El chip muestra el espacio (Cúpula → Arcos → Campos). Toca un evento para abrir su
         contrato, o arrástralo a otro día para cambiarle la fecha. El símbolo ⚠ marca las
         cotizaciones cuyo espacio ya fue apartado por otro evento ese mismo día.
+      </p>
+      <p className="mt-1 text-xs text-charcoal-soft">
+        Los chips dorados con marcador son <strong>fechas apartadas</strong> por un banquetero:
+        bloquean la fecha pero todavía no tienen precio ni cotización. No se arrastran —cambiarles la
+        fecha se hace desde la cuenta del banquetero, que es donde también se cancelan o se
+        convierten— y al tocarlos se abre esa cuenta.
       </p>
 
       {mover && (
@@ -416,6 +464,50 @@ function ChipArrastrable({ id, movible, className, title, onClick, children }: {
       className={`${className} ${isDragging ? 'opacity-40' : ''} ${movible ? 'cursor-grab touch-none' : ''}`}
     >
       {children}
+    </button>
+  );
+}
+
+/**
+ * Una fecha apartada por un banquetero.
+ *
+ * Se ve distinto a propósito: dorado punteado con marcador, con el nombre del
+ * banquetero en vez de un cliente y SIN precio, porque no hay ninguno. No se
+ * arrastra —la API no tiene forma de mover un apartado de fecha, y un arrastre
+ * que no hace nada es peor que no poder arrastrar— y al tocarlo se abre la cuenta
+ * del banquetero, donde el apartado se cancela o se convierte.
+ */
+function ChipApartado({
+  apartado: a,
+  espacio,
+  onClick,
+}: {
+  apartado: AgendaApartado;
+  espacio: string;
+  onClick: () => void;
+}) {
+  const vence = new Date(a.venceISO).toLocaleDateString('es-MX', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    timeZone: 'UTC',
+  });
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={`Fecha apartada · ${espacio || 'espacio'} · ${a.banquetero} · vence ${vence}${
+        a.deposito > 0 ? ` · depósito $${a.deposito.toLocaleString('es-MX')}` : ' · sin depósito'
+      }${a.nota ? ` · ${a.nota}` : ''} · sin precio todavía`}
+      className="block w-full rounded border border-dashed border-gold bg-gold/15 px-1.5 py-1 text-left text-[0.7rem] leading-tight text-gold transition-colors hover:bg-gold/25"
+    >
+      <span className="flex items-start gap-1">
+        {/* Texto real para el lector de pantalla, no solo un color. */}
+        <Bookmark size={11} className="mt-[0.15rem] shrink-0" aria-hidden />
+        <span className="sr-only">Fecha apartada, sin precio: </span>
+        <span className="block min-w-0 truncate font-semibold">{espacio || 'Apartado'}</span>
+      </span>
+      <span className="block truncate opacity-80">{a.banquetero}</span>
     </button>
   );
 }
