@@ -789,3 +789,45 @@ export interface DashboardData {
     porVencer: number;
   };
 }
+
+// --- Bitácora forense (auditoría a nivel base de datos) ---
+
+/**
+ * De dónde salió un cambio.
+ *
+ * - `persona`: alguien con sesión, desde la aplicación.
+ * - `sistema`: nuestro propio código sin persona detrás (migraciones, backfills).
+ * - `externo`: **otro cliente de base de datos**. Ésta es la señal que importa.
+ */
+export type OrigenAuditoria = 'persona' | 'sistema' | 'externo';
+
+/** Un cambio visto por los triggers de Postgres. */
+export interface RenglonAuditoria {
+  id: string;
+  tabla: string;
+  operacion: 'INSERT' | 'UPDATE' | 'DELETE' | 'TRUNCATE';
+  registroId: string | null;
+  actorId: string | null;
+  actorNombre: string | null;
+  origen: OrigenAuditoria;
+  usuarioDb: string;
+  aplicacion: string | null;
+  direccionIp: string | null;
+  createdAt: string;
+  /** Campos que cambiaron (solo en UPDATE). */
+  campos: string[];
+}
+
+export interface DetalleAuditoria extends RenglonAuditoria {
+  txid: string;
+  antes: Record<string, unknown> | null;
+  despues: Record<string, unknown> | null;
+}
+
+export interface PaginaAuditoria {
+  filas: RenglonAuditoria[];
+  siguienteCursor: string | null;
+  /** Cambios de los últimos 30 días que entraron por fuera de la aplicación. */
+  externosRecientes: number;
+  tablas: string[];
+}

@@ -8,6 +8,7 @@ import { prisma, type PrismaClient } from '@hsa/database';
 import { ZodError } from 'zod';
 import { loadConfig, type AppConfig } from './config.js';
 import { setupAuth } from './auth/plugin.js';
+import { setupContextoActor } from './auditoria/contexto.js';
 import { authRoutes } from './auth/routes.js';
 import { catalogRoutes } from './catalog/routes.js';
 import { quoteRoutes } from './quotes/routes.js';
@@ -20,6 +21,7 @@ import { clientRoutes } from './clients/routes.js';
 import { dashboardRoutes } from './dashboard/routes.js';
 import { biRoutes } from './bi/routes.js';
 import { banqueteroRoutes } from './banqueteros/routes.js';
+import { auditoriaRoutes } from './auditoria/routes.js';
 
 declare module 'fastify' {
   interface FastifyInstance {
@@ -50,6 +52,9 @@ export async function buildServer(opts: BuildOptions = {}): Promise<FastifyInsta
   await app.register(rateLimit, { max: 200, timeWindow: '1 minute' });
   await app.register(multipart, { limits: { fileSize: 8 * 1024 * 1024 } });
 
+  // El orden importa: primero se abre el contexto de la petición, luego la
+  // autenticación lo llena con el usuario del token.
+  setupContextoActor(app);
   setupAuth(app);
 
   app.setErrorHandler((error, _req, reply) => {
@@ -78,6 +83,7 @@ export async function buildServer(opts: BuildOptions = {}): Promise<FastifyInsta
   await app.register(dashboardRoutes, { prefix: '/api' });
   await app.register(biRoutes, { prefix: '/api' });
   await app.register(banqueteroRoutes, { prefix: '/api' });
+  await app.register(auditoriaRoutes, { prefix: '/api' });
 
   return app;
 }

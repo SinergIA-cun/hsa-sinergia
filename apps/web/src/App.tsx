@@ -17,6 +17,7 @@ import { ContratoPage } from './pages/ContratoPage.tsx';
 import { ReciboPage } from './pages/ReciboPage.tsx';
 import { HojaOperativaPage } from './pages/HojaOperativaPage.tsx';
 import { AdminPage } from './pages/AdminPage.tsx';
+import { AuditoriaPage } from './pages/AuditoriaPage.tsx';
 import { PapeleraPage } from './pages/PapeleraPage.tsx';
 
 const queryClient = new QueryClient({
@@ -149,6 +150,18 @@ export function App() {
                 <Protected>
                   <AdminOnly>
                     <AdminPage />
+                  </AdminOnly>
+                </Protected>
+              }
+            />
+            {/* La bitácora forense vive fuera del panel: es una herramienta de
+                investigación que se abre dos veces al año, no configuración. */}
+            <Route
+              path="/admin/auditoria"
+              element={
+                <Protected>
+                  <AdminOnly>
+                    <AuditoriaPage />
                   </AdminOnly>
                 </Protected>
               }

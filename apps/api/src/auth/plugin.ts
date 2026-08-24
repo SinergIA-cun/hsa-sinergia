@@ -1,5 +1,6 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { COOKIE_NAME } from '../config.js';
+import { sellarActor } from '../auditoria/contexto.js';
 import { verifyToken } from './jwt.js';
 
 /**
@@ -13,7 +14,11 @@ export function setupAuth(app: FastifyInstance): void {
     const token = req.cookies?.[COOKIE_NAME];
     if (!token) return;
     const payload = await verifyToken(token, app.config.JWT_SECRET);
-    if (payload) req.user = { id: payload.sub, role: payload.role };
+    if (!payload) return;
+    req.user = { id: payload.sub, role: payload.role };
+    // Y también en el contexto que viaja hasta Prisma: es lo que hace que la
+    // bitácora forense sepa el nombre de quien hizo el cambio.
+    sellarActor(payload.sub);
   });
 }
 

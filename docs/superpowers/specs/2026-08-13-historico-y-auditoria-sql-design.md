@@ -8,6 +8,25 @@ va a pasar.**
 
 ## Parte 1 · La bitácora que capta TODO
 
+> **Estado: construido el 24-ago-2026.** Migración `20260824120000_auditoria_db`,
+> puente del actor en `packages/database/src/`, consulta y pantalla en
+> `apps/api/src/auditoria/` y `/admin/auditoria`.
+>
+> Dos cosas salieron distintas de lo diseñado, y las dos por lo mismo — el diseño
+> trataba "sin actor" como sinónimo de "sospechoso":
+>
+> 1. **Hay tres orígenes, no dos.** Nuestros propios backfills y migraciones
+>    tampoco traen persona. Marcarlos como externos habría hecho sonar la alarma
+>    en cada despliegue con cientos de renglones, y una alarma que suena siempre
+>    deja de mirarse. La frontera real es `application_name`: `persona` (app con
+>    sesión), `sistema` (nuestro código sin persona) y `externo` (cualquier otro
+>    cliente de base de datos).
+> 2. **El trigger se engancha solo a las tablas nuevas.** La función
+>    `asegurar_auditoria()` corre en cada arranque, así que una tabla que traiga
+>    una migración futura no se escapa por olvido.
+>
+> Falta la Parte 2.
+
 ### El pedido
 
 > "Quiero que la bitácora capte TODO, aún si yo inyecto algo o borro directo de
