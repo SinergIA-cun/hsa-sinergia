@@ -97,29 +97,29 @@ model PriceList {
 /// porque esa exige `quoteId` y un cambio de catálogo no pertenece a ninguna
 /// cotización — pertenece a todas las que cuelgan de él.
 model PriceListAudit {
-  id          String    @id @default(cuid())
-  priceList   PriceList @relation(fields: [priceListId], references: [id])
-  priceListId String
+  id                   String    @id @default(cuid())
+  priceList            PriceList @relation(fields: [priceListId], references: [id])
+  priceListId          String
   /// "renta" | "servicio" | "paquete" | "dj" | "parametros"
-  tipo        String
-  descripcion String
-  meta        Json?
-  actor       User?     @relation("PriceListAuditActor", fields: [actorId], references: [id])
-  actorId     String?
+  tipo                 String
+  descripcion          String
+  meta                 Json?
+  actor                User?     @relation("PriceListAuditActor", fields: [actorId], references: [id])
+  actorId              String?
   /// Cuántas cotizaciones estaban casadas a este catálogo AL MOMENTO del cambio.
   /// Se guarda el número entonces, no se recalcula después: es la medida real de
   /// lo que quien editó puso en riesgo, y cambiaría si se leyera hoy.
-  cotizacionesEnRiesgo Int      @default(0)
-  createdAt            DateTime @default(now())
+  cotizacionesEnRiesgo Int       @default(0)
+  createdAt            DateTime  @default(now())
 
   @@index([priceListId, createdAt])
 }
 
 model Space {
-  id           String             @id @default(cuid())
+  id           String            @id @default(cuid())
   nombre       String
   capacidadMax Int?
-  activo       Boolean            @default(true)
+  activo       Boolean           @default(true)
   rentalPrices RentalPrice[]
   paymentRule  SpacePaymentRule?
 }
@@ -146,10 +146,10 @@ model RentalPrice {
 }
 
 model EventType {
-  id           String        @id @default(cuid())
+  id           String             @id @default(cuid())
   nombre       String
-  slug         String        @unique
-  rentaPlana   Boolean       @default(false) // usa la renta plana (Team Building) en vez de la de por-día
+  slug         String             @unique
+  rentaPlana   Boolean            @default(false) // usa la renta plana (Team Building) en vez de la de por-día
   foodPackages FoodPackage[]
   /// El precio del DJ por hora extra, por catálogo. Vivía aquí como un `Int?`
   /// global: clonar el catálogo no lo subía y editarlo represiaba lo reeditado.
@@ -181,10 +181,10 @@ model DjHoraExtraPrice {
 // Banqueteros (proveedores de alimentos). Se elige uno en la hoja operativa para
 // llevar registro de ventas por banquetero.
 model Banquetero {
-  id        String   @id @default(cuid())
-  nombre    String
-  telefono  String?
-  activo    Boolean  @default(true)
+  id          String           @id @default(cuid())
+  nombre      String
+  telefono    String?
+  activo      Boolean          @default(true)
   /// Token del enlace de solo lectura de su estado de cuenta, mismo formato que
   /// `Quote.publicToken` (32 hex sin guiones). Es lo que mata el hilo de WhatsApp.
   ///
@@ -199,14 +199,14 @@ model Banquetero {
   /// `20260819190000_banquetero_public_token` dice lo contrario en un comentario:
   /// se escribió por precaución antes de comprobarlo y ya no se puede corregir
   /// sin invalidar su checksum en `_prisma_migrations`. Manda esto.
-  publicToken String  @unique @default(dbgenerated("replace((gen_random_uuid())::text, '-'::text, ''::text)"))
-  createdAt DateTime @default(now())
-  quotes    Quote[]
+  publicToken String           @unique @default(dbgenerated("replace((gen_random_uuid())::text, '-'::text, ''::text)"))
+  createdAt   DateTime         @default(now())
+  quotes      Quote[]
   /// Los depósitos a cuenta que ha hecho. El dinero entra a su cuenta y DESPUÉS
   /// se reparte entre sus eventos (decisión 3 del dueño).
-  depositos PagoBanquetero[]
+  depositos   PagoBanquetero[]
   /// Las fechas que tiene apartadas sin cotización todavía.
-  apartados ApartadoFecha[]
+  apartados   ApartadoFecha[]
 }
 
 /// Un depósito del banquetero a la hacienda, ANTES de saber a qué eventos va.
@@ -259,42 +259,42 @@ model PagoBanquetero {
 /// sobre una fecha— pero NO tiene total: no es una venta cerrada y no debe entrar
 /// a ningún reporte de ingreso comprometido.
 model ApartadoFecha {
-  id            String      @id @default(cuid())
-  banquetero    Banquetero  @relation(fields: [banqueteroId], references: [id])
-  banqueteroId  String
-  fechaEvento   DateTime
-  spaceIds      String[]
+  id                String         @id @default(cuid())
+  banquetero        Banquetero     @relation(fields: [banqueteroId], references: [id])
+  banqueteroId      String
+  fechaEvento       DateTime
+  spaceIds          String[]
   /// Catálogo al que se le garantizó el precio, si se negoció uno. Es el tramo 1
   /// del Plan E cobrando: se clona 2027 con el incremento negociado y se amarra el
   /// apartado a ese catálogo, así el banquetero no paga a ciegas.
-  priceList     PriceList?  @relation(fields: [priceListId], references: [id])
-  priceListId   String?
-  deposito      Int         @default(0)
+  priceList         PriceList?     @relation(fields: [priceListId], references: [id])
+  priceListId       String?
+  deposito          Int            @default(0)
   /// Método y fecha del depósito. NO estaban en el diseño y sin ellos el pago que
   /// nace al convertir no tendría ni forma de pago ni fecha de recepción: llevaría
   /// la de la conversión, que es el MISMO bug fiscal que la Task 1 arregló en las
   /// asignaciones. Obligatorios cuando `deposito > 0`.
-  depositoMetodo PaymentMethod?
-  depositoFecha  DateTime?
+  depositoMetodo    PaymentMethod?
+  depositoFecha     DateTime?
   /// Vence. Sin esto apartan 2029 gratis y se pierde inventario de fechas buenas.
-  vence         DateTime
-  nota          String?
+  vence             DateTime
+  nota              String?
   /// La cotización que nació de este apartado, al convertirlo. Mientras es `null`
   /// el apartado es lo que bloquea la fecha; en cuanto existe, la que bloquea es
   /// la cotización y el apartado deja de contar (si no, se contaría doble y el
   /// evento convertido choocaría con su propio apartado).
-  quote         Quote?      @relation(fields: [quoteId], references: [id])
-  quoteId       String?     @unique
+  quote             Quote?         @relation(fields: [quoteId], references: [id])
+  quoteId           String?        @unique
   /// Quién lo apartó y quién lo canceló. No estaban en el diseño: `ActivityLog`
   /// exige `quoteId` y un apartado no pertenece a ninguna cotización, así que la
   /// fila es su propia bitácora y sin el actor no sirve de rastro.
-  createdBy     User?       @relation("ApartadoCreatedBy", fields: [createdById], references: [id])
-  createdById   String?
-  canceladoAt   DateTime?
-  canceladoBy   User?       @relation("ApartadoCanceladoBy", fields: [canceladoById], references: [id])
-  canceladoById String?
+  createdBy         User?          @relation("ApartadoCreatedBy", fields: [createdById], references: [id])
+  createdById       String?
+  canceladoAt       DateTime?
+  canceladoBy       User?          @relation("ApartadoCanceladoBy", fields: [canceladoById], references: [id])
+  canceladoById     String?
   motivoCancelacion String?
-  createdAt     DateTime    @default(now())
+  createdAt         DateTime       @default(now())
 
   @@index([fechaEvento])
   @@index([banqueteroId])
@@ -303,19 +303,19 @@ model ApartadoFecha {
 // Personal HSA: catálogo de empleados y cuadrillas (grupos) para armar la hoja
 // operativa de cada evento eligiendo una cuadrilla y ajustando horarios.
 model Empleado {
-  id        String              @id @default(cuid())
-  nombre    String
-  rol       String?             // rol por defecto (p. ej. "Comodín", "Jefe de área")
-  activo    Boolean             @default(true)
-  createdAt DateTime            @default(now())
+  id         String             @id @default(cuid())
+  nombre     String
+  rol        String? // rol por defecto (p. ej. "Comodín", "Jefe de área")
+  activo     Boolean            @default(true)
+  createdAt  DateTime           @default(now())
   cuadrillas CuadrillaMiembro[]
 }
 
 model Cuadrilla {
-  id        String              @id @default(cuid())
+  id        String             @id @default(cuid())
   nombre    String
-  activo    Boolean             @default(true)
-  createdAt DateTime            @default(now())
+  activo    Boolean            @default(true)
+  createdAt DateTime           @default(now())
   miembros  CuadrillaMiembro[]
 }
 
@@ -343,34 +343,34 @@ model Client {
   // Datos fiscales (CFDI 4.0). Opcionales: se capturan solo si el cliente
   // pide factura, y se reutilizan en todos sus eventos.
   rfc               String?
-  razonSocial       String?  // nombre fiscal exacto, SIN régimen societario
-  regimenFiscal     String?  // clave SAT: 601, 612, 626…
-  cpFiscal          String?  // 5 dígitos del domicilio fiscal
-  usoCfdi           String?  // clave SAT: G03, S01…
+  razonSocial       String? // nombre fiscal exacto, SIN régimen societario
+  regimenFiscal     String? // clave SAT: 601, 612, 626…
+  cpFiscal          String? // 5 dígitos del domicilio fiscal
+  usoCfdi           String? // clave SAT: G03, S01…
   correoFacturacion String?
-  csfKey            String?  // Constancia de Situación Fiscal adjunta
+  csfKey            String? // Constancia de Situación Fiscal adjunta
   csfMime           String?
   createdAt         DateTime @default(now())
   quotes            Quote[]
 }
 
 model Quote {
-  id            String      @id @default(cuid())
-  client        Client      @relation(fields: [clientId], references: [id])
-  clientId      String
-  eventType     EventType   @relation(fields: [eventTypeId], references: [id])
-  eventTypeId   String
-  fechaEvento   DateTime
-  horasEvento   Int?
-  invitados     Int
-  spaceIds      String[]
-  horasExtra    Int         @default(0)
-  foodPackageId String?
-  addOns        Json        @default("[]")
-  breakdown     Json
-  total         Int
-  rentaTotal    Int
-  status        QuoteStatus @default(borrador)
+  id                String         @id @default(cuid())
+  client            Client         @relation(fields: [clientId], references: [id])
+  clientId          String
+  eventType         EventType      @relation(fields: [eventTypeId], references: [id])
+  eventTypeId       String
+  fechaEvento       DateTime
+  horasEvento       Int?
+  invitados         Int
+  spaceIds          String[]
+  horasExtra        Int            @default(0)
+  foodPackageId     String?
+  addOns            Json           @default("[]")
+  breakdown         Json
+  total             Int
+  rentaTotal        Int
+  status            QuoteStatus    @default(borrador)
   /// Código de evento (`17ENE-CBOLADO-CUPULA`): día, mes, inicial + apellido del
   /// cliente y el espacio abreviado. Es la identidad legible del evento, la que
   /// se copia en recibos y contratos.
@@ -384,30 +384,30 @@ model Quote {
   /// a partir de ahí ya está impreso en cosas.
   ///
   /// Nullable: las cotizaciones anteriores nacen sin él y las llena el backfill.
-  codigo        String?     @unique
-  publicToken   String      @unique
-  vigenciaHasta DateTime?
-  usaCapilla    Boolean     @default(false) // cortesía; $5,000 en sábado. Varios eventos pueden usarla el mismo día.
-  capillaHorario String?    // horario de la capilla para este evento (varios eventos comparten el día).
-  esCortesia    Boolean     @default(false) // cortesía familiar: se marca verde en la agenda.
+  codigo            String?        @unique
+  publicToken       String         @unique
+  vigenciaHasta     DateTime?
+  usaCapilla        Boolean        @default(false) // cortesía; $5,000 en sábado. Varios eventos pueden usarla el mismo día.
+  capillaHorario    String? // horario de la capilla para este evento (varios eventos comparten el día).
+  esCortesia        Boolean        @default(false) // cortesía familiar: se marca verde en la agenda.
   /// Descuento de cortesía, en por ciento (0..100). Pega SOLO sobre la renta, y
   /// lo hace CAMBIANDO SU PRECIO: las horas extra y el descuento del 5% por
   /// alimentos se calculan sobre el precio ya descontado. La capilla nunca se
   /// descuenta. Alimentos y servicios se cobran completos. Con 100% la renta queda
   /// en cero (más la capilla, si la hay). `null` = sin descuento, que es como se
   /// comportó `esCortesia` desde siempre (se guardaba, pero el motor nunca la leyó).
-  descuentoPct    Float?
+  descuentoPct      Float?
   /// Motivo del descuento. Es OBLIGATORIO cuando hay descuento —lo exige el
   /// esquema de crear/editar—, pero la columna es nullable porque la enorme
   /// mayoría de las cotizaciones no lleva descuento.
-  descuentoMotivo String?
-  usaDjHoraExtra Boolean    @default(false) // DJ por hora extra (precio según tipo de evento).
-  requiereFactura Boolean   @default(false) // este cliente pidió factura para ESTE evento.
-  banquetero    Banquetero? @relation(fields: [banqueteroId], references: [id])
+  descuentoMotivo   String?
+  usaDjHoraExtra    Boolean        @default(false) // DJ por hora extra (precio según tipo de evento).
+  requiereFactura   Boolean        @default(false) // este cliente pidió factura para ESTE evento.
+  banquetero        Banquetero?    @relation(fields: [banqueteroId], references: [id])
   /// El banquetero de este evento. Con banquetero, ÉL es el cliente de la
   /// hacienda: firma él y se le factura a él (decisión del dueño en el diseño de
   /// banqueteros). El festejado de abajo es el cliente final, y es dato operativo.
-  banqueteroId  String?
+  banqueteroId      String?
   /// Nombre del festejado (el cliente FINAL cuando el evento lo compra un
   /// banquetero, y de paso el homenajeado de cualquier evento).
   ///
@@ -420,25 +420,25 @@ model Quote {
   /// sobre la de la hoja, que queda como respaldo de los eventos anteriores.
   festejado         String?
   festejadoTelefono String?
-  createdBy     User?       @relation("QuoteCreatedBy", fields: [createdById], references: [id])
-  createdById   String?
-  createdAt     DateTime    @default(now())
-  horaInicio    String?
-  horaTermino   String?
-  horarioCivil  String?
+  createdBy         User?          @relation("QuoteCreatedBy", fields: [createdById], references: [id])
+  createdById       String?
+  createdAt         DateTime       @default(now())
+  horaInicio        String?
+  horaTermino       String?
+  horarioCivil      String?
   // Hoja operativa (datos ricos por evento: banquetero, equipo, personal, etc.).
   // JSON flexible para alimentar el documento interno, el correo diario y el ERP futuro.
-  operativa     Json?
-  deletedAt     DateTime?
+  operativa         Json?
+  deletedAt         DateTime?
   /// Catálogo con el que se coteó. MANDA al recalcular: reeditar una cotización
   /// de 2027 usa precios de 2027 aunque el catálogo activo ya sea 2028.
-  priceList     PriceList   @relation(fields: [priceListId], references: [id])
-  priceListId   String
-  payments      Payment[]
-  activityLog   ActivityLog[]
-  extras        QuoteExtra[]
+  priceList         PriceList      @relation(fields: [priceListId], references: [id])
+  priceListId       String
+  payments          Payment[]
+  activityLog       ActivityLog[]
+  extras            QuoteExtra[]
   /// El apartado del que nació, si nació de uno.
-  apartado      ApartadoFecha?
+  apartado          ApartadoFecha?
 
   @@index([clientId])
   @@index([status])
@@ -498,7 +498,7 @@ model FoodPackagePrice {
 }
 
 model AddOn {
-  id          String     @id @default(cuid())
+  id          String    @id @default(cuid())
   nombre      String
   kind        AddOnKind
   price       Int
@@ -519,17 +519,17 @@ model SpacePaymentRule {
 }
 
 model Payment {
-  id                   String         @id @default(cuid())
-  quote                Quote          @relation(fields: [quoteId], references: [id])
-  quoteId              String
-  monto                Int
-  metodo               PaymentMethod
+  id               String          @id @default(cuid())
+  quote            Quote           @relation(fields: [quoteId], references: [id])
+  quoteId          String
+  monto            Int
+  metodo           PaymentMethod
   /// Concepto EFECTIVO del pago: el que se DEDUCE de dónde deja el acumulado
   /// contra los hitos del plan (`packages/shared/src/pagos/concepto.ts`). No es
   /// lo que se teclea: se recalcula al registrar, al anular y al corregirlo a
   /// mano, porque anular un pago cambia el acumulado y con él el concepto de los
   /// pagos POSTERIORES.
-  concepto             PaymentConcept
+  concepto         PaymentConcept
   /// El concepto que alguien capturó o corrigió A MANO, para poder discrepar de
   /// la deducción. `null` = nadie discrepó.
   ///
@@ -539,29 +539,29 @@ model Payment {
   ///
   /// La regla del finiquito gana SIEMPRE sobre esto (decisión del dueño): la
   /// etiqueta de finiquito la manda el saldo, no la captura.
-  conceptoManual       PaymentConcept?
-  fecha                DateTime
-  referencia           String?
-  folio                Int            @unique @default(dbgenerated("nextval('recibo_folio_seq')"))
+  conceptoManual   PaymentConcept?
+  fecha            DateTime
+  referencia       String?
+  folio            Int             @unique @default(dbgenerated("nextval('recibo_folio_seq')"))
   // Candado de facturación (ver docs del Plan C). El ingreso se factura en el mes
   // en que se recibe; pasado ese mes se va a la global de público en general.
-  facturadoAt          DateTime?
-  facturaUuid          String?
-  desbloqueoAt         DateTime?
-  comprobanteKey       String?
-  comprobanteMime      String?
-  registradoBy         User?          @relation("PaymentRegistradoBy", fields: [registradoById], references: [id])
-  registradoById       String?
-  anuladoAt            DateTime?
-  anuladoBy            User?          @relation("PaymentAnuladoBy", fields: [anuladoById], references: [id])
-  anuladoById          String?
-  motivoAnulacion      String?
+  facturadoAt      DateTime?
+  facturaUuid      String?
+  desbloqueoAt     DateTime?
+  comprobanteKey   String?
+  comprobanteMime  String?
+  registradoBy     User?           @relation("PaymentRegistradoBy", fields: [registradoById], references: [id])
+  registradoById   String?
+  anuladoAt        DateTime?
+  anuladoBy        User?           @relation("PaymentAnuladoBy", fields: [anuladoById], references: [id])
+  anuladoById      String?
+  motivoAnulacion  String?
   /// El depósito del banquetero del que salió este pago, si nació de una
   /// asignación. `null` = pago capturado directo en la cotización, que es el
   /// camino de siempre.
-  pagoBanquetero       PagoBanquetero? @relation(fields: [pagoBanqueteroId], references: [id])
-  pagoBanqueteroId     String?
-  createdAt            DateTime       @default(now())
+  pagoBanquetero   PagoBanquetero? @relation(fields: [pagoBanqueteroId], references: [id])
+  pagoBanqueteroId String?
+  createdAt        DateTime        @default(now())
 
   @@index([quoteId])
   @@index([pagoBanqueteroId])
@@ -582,27 +582,64 @@ model ActivityLog {
 }
 
 model User {
-  id                  String        @id @default(cuid())
-  nombre              String
-  email               String        @unique
-  passwordHash        String
-  role                UserRole      @default(ventas)
-  activo              Boolean       @default(true)
-  createdAt           DateTime      @default(now())
+  id                   String           @id @default(cuid())
+  nombre               String
+  email                String           @unique
+  passwordHash         String
+  role                 UserRole         @default(ventas)
+  activo               Boolean          @default(true)
+  createdAt            DateTime         @default(now())
   /// Última vez que ESTE usuario abrió la papelera. El contador rojo son las
   /// cotizaciones que él puede ver con `deletedAt` posterior a este sello.
   /// Va en el usuario y no en la cotización a propósito: "sin ver" es una
   /// propiedad de quien mira, no de la cotización — dos personas pueden tener
   /// pendiente de ver la misma, y una la ve sin que la otra deje de verla.
   /// `null` = nunca la ha abierto: toda su papelera cuenta.
-  papeleraVistaAt     DateTime?
-  quotesCreated       Quote[]       @relation("QuoteCreatedBy")
-  paymentsRegistrados Payment[]     @relation("PaymentRegistradoBy")
-  paymentsAnulados    Payment[]     @relation("PaymentAnuladoBy")
+  papeleraVistaAt      DateTime?
+  quotesCreated        Quote[]          @relation("QuoteCreatedBy")
+  paymentsRegistrados  Payment[]        @relation("PaymentRegistradoBy")
+  paymentsAnulados     Payment[]        @relation("PaymentAnuladoBy")
   depositosRegistrados PagoBanquetero[] @relation("PagoBanqueteroRegistradoBy")
   depositosAnulados    PagoBanquetero[] @relation("PagoBanqueteroAnuladoBy")
   apartadosCreados     ApartadoFecha[]  @relation("ApartadoCreatedBy")
   apartadosCancelados  ApartadoFecha[]  @relation("ApartadoCanceladoBy")
-  actividades         ActivityLog[] @relation("ActivityActor")
-  priceListAudits     PriceListAudit[] @relation("PriceListAuditActor")
+  actividades          ActivityLog[]    @relation("ActivityActor")
+  priceListAudits      PriceListAudit[] @relation("PriceListAuditActor")
+}
+
+/// La bitácora forense: quién tocó qué fila, con el contenido antes y después.
+///
+/// NO la escribe la aplicación. La escriben triggers de Postgres, así que
+/// registra el cambio venga de donde venga —la API, psql, una migración, la
+/// consola del proveedor—. Está aquí para poder LEERLA desde la app; ningún
+/// código debe insertar, actualizar ni borrar en ella (un trigger de solo
+/// escritura lo impide, y la purga por retención es la única excepción).
+///
+/// Convive con `ActivityLog` a propósito: aquella es la narrativa que lee el
+/// equipo ("Estatus: borrador → formalizada"), ésta es la forense que lee quien
+/// investiga algo raro. Sirven a preguntas distintas.
+model AuditoriaDb {
+  id          BigInt   @id @default(autoincrement())
+  tabla       String
+  /// INSERT | UPDATE | DELETE | TRUNCATE
+  operacion   String
+  /// La PK de la fila afectada. `null` en TRUNCATE, que no tiene filas.
+  registroId  String?
+  antes       Json?
+  despues     Json?
+  /// Los valores por omisión los pone Postgres y el trigger NO los manda. Hay que
+  /// declararlos aquí o `prisma migrate dev` genera un `DROP DEFAULT` para ellos,
+  /// y a partir de ahí cada escritura de la app truena por NOT NULL.
+  usuarioDb   String   @default(dbgenerated("CURRENT_USER"))
+  aplicacion  String?
+  direccionIp String?
+  /// Quién es la persona, sellado por la API dentro de su transacción.
+  /// **`null` significa que el cambio NO vino de la app** — es la alarma.
+  actorId     String?
+  txid        String   @default(dbgenerated("(txid_current())::text"))
+  createdAt   DateTime @default(now()) @db.Timestamptz(6)
+
+  @@index([createdAt(sort: Desc)])
+  @@index([tabla, createdAt(sort: Desc)])
+  @@index([registroId])
 }

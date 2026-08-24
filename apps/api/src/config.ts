@@ -18,6 +18,10 @@ const envSchema = z.object({
   // debe apuntar a un volumen persistente del VPS. (El adaptador Drive futuro
   // ignorará este valor.)
   COMPROBANTES_DIR: z.string().default('./data/comprobantes'),
+  // Cuánto se guarda la bitácora forense. Cinco años por omisión, que es lo que
+  // el SAT exige conservar de la contabilidad; esta bitácora acompaña a los
+  // movimientos de dinero que sustentan esos comprobantes.
+  AUDITORIA_RETENCION_DIAS: z.coerce.number().int().positive().default(1825),
   // Llave del API de solo lectura para el BI. Si no está, el módulo /api/bi
   // NO se registra y sus rutas responden 404: no hay modo "abierto" por descuido.
   //

@@ -29,3 +29,18 @@ export function formatEventDate(iso: string, style: EventDateStyle = 'short'): s
 export function formatTimestamp(iso: string): string {
   return new Date(iso).toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric' });
 }
+
+/**
+ * Fecha Y hora. La usa la bitácora forense, donde el día no basta: "lo cambiaron
+ * el 24 de agosto" y "lo cambiaron el 24 de agosto a las 3:40 de la mañana" son
+ * dos hallazgos distintos.
+ */
+export function formatFechaHora(iso: string): string {
+  return new Date(iso).toLocaleString('es-MX', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
