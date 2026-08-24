@@ -6,6 +6,7 @@ import { api } from '../lib/api.ts';
 import { formatMXN } from '../lib/money.ts';
 import { Button, Card, Field, TextInput, SelectInput } from './ui.tsx';
 import { ClienteSearch, type ClienteLite } from './ClienteSearch.tsx';
+import { BanqueteroPicker, type ModoVenta } from './banqueteros/BanqueteroPicker.tsx';
 import { FacturacionSection } from './FacturacionSection.tsx';
 import { BreakdownGrouped } from './BreakdownGrouped.tsx';
 import type { Catalog, Availability, SpaceAvailability, QuoteExtraInput } from '../lib/types.ts';
@@ -147,6 +148,9 @@ export function QuoteForm({
   const [festejado, setFestejado] = useState(initial?.festejado ?? '');
   const [festejadoTelefono, setFestejadoTelefono] = useState(initial?.festejadoTelefono ?? '');
   const esDeBanquetero = banqueteroId !== '';
+  const [modoVenta, setModoVenta] = useState<ModoVenta>(esDeBanquetero ? 'banquetero' : 'cliente');
+  /** Se está buscando banquetero y todavía no hay ninguno elegido. */
+  const buscandoBanquetero = modoVenta === 'banquetero' && !esDeBanquetero;
 
   const { data: banqData } = useQuery({
     queryKey: ['banqueteros'],
@@ -435,25 +439,30 @@ export function QuoteForm({
           {/* ¿Para quién es este evento? Con banquetero, ÉL es el cliente de la
               hacienda: firma él y se le factura a él. El festejado (el cliente
               final) es dato operativo y no entra al contrato. */}
-          <Field label="¿Para quién es este evento?">
-            <SelectInput value={banqueteroId} onChange={(e) => elegirBanquetero(e.target.value)}>
-              <option value="">Cliente</option>
-              {banqueteros.map((b) => (
-                <option key={b.id} value={b.id}>Banquetero · {b.nombre}</option>
-              ))}
-            </SelectInput>
-          </Field>
+          <BanqueteroPicker
+            banqueteros={banqueteros}
+            value={banqueteroId}
+            nombreActual={banqueteros.find((b) => b.id === banqueteroId)?.nombre ?? nombre}
+            onChange={elegirBanquetero}
+            modo={modoVenta}
+            onModo={setModoVenta}
+          />
 
           {esDeBanquetero && (
             <p className="rounded-lg bg-cream-200/70 px-3 py-2 text-sm text-ink">
               El banquetero es el cliente de la hacienda: <strong>firma él y se le factura a él</strong>.
               Sus datos quedan de solo lectura; para corregirlos, edítalo en{' '}
-              <a href="/admin" className="underline">Administración · Banqueteros</a>.
+              <a href="/banqueteros" className="underline">Banqueteros</a>.
               {enableClientSearch && ' Si ya tiene ficha de cliente, búscala aquí abajo para no duplicarla.'}
             </p>
           )}
 
-          {enableClientSearch && !pickedClientId && <ClienteSearch onPick={pickCliente} />}
+          {/* Dos buscadores encimados confunden: mientras se busca al banquetero,
+              el de clientes se guarda. Vuelve en cuanto hay banquetero elegido,
+              que es cuando sí sirve —para no duplicarle la ficha. */}
+          {enableClientSearch && !pickedClientId && !buscandoBanquetero && (
+            <ClienteSearch onPick={pickCliente} />
+          )}
 
           {pickedClientId && (
             <div className="flex items-center justify-between gap-3 rounded-lg border border-gold/40 bg-gold/5 px-3 py-2 text-sm">

@@ -63,8 +63,10 @@ export function BanqueteroPage() {
 
   return (
     <div>
+      {/* A la cartera, no a `/admin`: esa ruta rebota a ventas y el botón de
+          regresar los sacaba a `/cotizaciones` sin explicación. */}
       <Link
-        to="/admin"
+        to="/banqueteros"
         className="mb-4 inline-flex items-center gap-1.5 text-sm text-charcoal-soft hover:text-ink"
       >
         <ArrowLeft size={15} /> Banqueteros
