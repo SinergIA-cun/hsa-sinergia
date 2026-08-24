@@ -10,6 +10,7 @@ import { NewQuotePage } from './pages/NewQuotePage.tsx';
 import { EditQuotePage } from './pages/EditQuotePage.tsx';
 import { AgendaPage } from './pages/AgendaPage.tsx';
 import { PublicQuotePage } from './pages/PublicQuotePage.tsx';
+import { BanqueterosPage } from './pages/BanqueterosPage.tsx';
 import { BanqueteroPage } from './pages/BanqueteroPage.tsx';
 import { BanqueteroPublicoPage } from './pages/BanqueteroPublicoPage.tsx';
 import { ContratoPage } from './pages/ContratoPage.tsx';
@@ -100,6 +101,18 @@ export function App() {
                 <ProtectedBare>
                   <HojaOperativaPage />
                 </ProtectedBare>
+              }
+            />
+            {/* La cartera de banqueteros tampoco es AdminOnly: ventas vende a
+                nombre de un banquetero y reparte sus depósitos, así que necesita
+                la lista. Lo que solo un admin puede hacer —alta, baja, edición—
+                no se pinta, y la API lo bloquea igual. */}
+            <Route
+              path="/banqueteros"
+              element={
+                <Protected>
+                  <BanqueterosPage />
+                </Protected>
               }
             />
             {/* La ficha del banquetero NO es AdminOnly: ventas reparte un depósito
