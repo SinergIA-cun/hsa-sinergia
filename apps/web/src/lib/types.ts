@@ -831,3 +831,109 @@ export interface PaginaAuditoria {
   externosRecientes: number;
   tablas: string[];
 }
+
+// --- Histórico de eventos ---
+
+/** Un pago tal como quedó en la foto. */
+export interface PagoFoto {
+  folio: number;
+  monto: number;
+  metodo: string;
+  concepto: string;
+  fechaISO: string;
+  referencia: string | null;
+  registradoPor: string | null;
+  facturado: boolean;
+  facturaUuid: string | null;
+  anulado: boolean;
+  motivoAnulacion: string | null;
+}
+
+/**
+ * Lo que sucedió ese día, resuelto y por NOMBRE.
+ *
+ * Se lee sola: no depende de los espacios, del catálogo ni del cliente vivos.
+ */
+export interface FotoEvento {
+  tomadaEnISO: string;
+  codigo: string | null;
+  fechaEventoISO: string;
+  status: string;
+  seRealizo: boolean;
+  liquidado: boolean;
+  cliente: {
+    nombre: string;
+    telefono: string | null;
+    correo: string | null;
+    empresa: string | null;
+    referencia: number | null;
+    rfc: string | null;
+    razonSocial: string | null;
+    regimenFiscal: string | null;
+    cpFiscal: string | null;
+    usoCfdi: string | null;
+    correoFacturacion: string | null;
+    requiereFactura: boolean;
+  };
+  banquetero: string | null;
+  festejado: string | null;
+  festejadoTelefono: string | null;
+  vendedor: string | null;
+  evento: {
+    tipo: string;
+    espacios: string[];
+    catalogo: string;
+    invitados: number;
+    horasEvento: number | null;
+    horasExtra: number;
+    usaCapilla: boolean;
+    capillaHorario: string | null;
+    esCortesia: boolean;
+    descuentoPct: number | null;
+    descuentoMotivo: string | null;
+    usaDjHoraExtra: boolean;
+    horaInicio: string | null;
+    horaTermino: string | null;
+    horarioCivil: string | null;
+  };
+  desglose: QuoteBreakdown | null;
+  /** `saldoRenta`: en esta aplicación el estado de cuenta se calcula sobre la RENTA. */
+  totales: { total: number; rentaTotal: number; pagado: number; saldoRenta: number };
+  pagos: PagoFoto[];
+  operativa: Record<string, unknown> | null;
+}
+
+export interface RenglonHistorico {
+  id: string;
+  quoteId: string;
+  version: number;
+  versiones: number;
+  fechaEventoISO: string;
+  codigo: string | null;
+  cliente: string;
+  banquetero: string | null;
+  eventoTipo: string;
+  espacios: string[];
+  total: number;
+  pagado: number;
+  saldo: number;
+  seRealizo: boolean;
+  liquidado: boolean;
+}
+
+export interface PaginaHistorico {
+  filas: RenglonHistorico[];
+  total: number;
+  hayMas: boolean;
+  anios: number[];
+}
+
+export interface DetalleHistorico {
+  id: string;
+  quoteId: string;
+  version: number;
+  motivo: string;
+  tomadaEnISO: string;
+  foto: FotoEvento;
+  versiones: { id: string; version: number; motivo: string; tomadaEnISO: string }[];
+}

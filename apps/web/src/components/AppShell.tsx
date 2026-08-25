@@ -1,7 +1,7 @@
 import { type ReactNode } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { LogOut, FileText, Plus, CalendarDays, ChefHat, SlidersHorizontal, Trash2, LayoutDashboard } from 'lucide-react';
+import { LogOut, FileText, Plus, CalendarDays, ChefHat, Archive, SlidersHorizontal, Trash2, LayoutDashboard } from 'lucide-react';
 import { useAuth } from '../auth/auth.tsx';
 import { api } from '../lib/api.ts';
 import { Logo } from './Logo.tsx';
@@ -57,6 +57,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             {navItem('/cotizaciones', <FileText size={16} />, 'Contratos')}
             {navItem('/agenda', <CalendarDays size={16} />, 'Agenda')}
             {navItem('/banqueteros', <ChefHat size={16} />, 'Banqueteros')}
+            {navItem('/historico', <Archive size={16} />, 'Histórico')}
             {navItem('/cotizaciones/nueva', <Plus size={16} />, 'Nueva')}
             {navItem('/papelera', <Trash2 size={16} />, 'Papelera', pendientes)}
             {user?.role === 'admin' &&

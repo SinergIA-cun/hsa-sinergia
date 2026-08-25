@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus, ExternalLink, CalendarDays, Users, UserCircle, Trash2, Search, AlertTriangle } from 'lucide-react';
-import { faltanDatosFactura } from '@hsa/shared';
+import { Plus, ExternalLink, CalendarDays, Users, UserCircle, Trash2, Search, AlertTriangle, Archive } from 'lucide-react';
+import { faltanDatosFactura, hoyCivilMexico } from '@hsa/shared';
 import { api } from '../lib/api.ts';
 import { formatMXN } from '../lib/money.ts';
 import { Button, Card, ArrowDivider } from '../components/ui.tsx';
@@ -195,7 +195,22 @@ export function QuotesListPage() {
     queryFn: () => api.get<Catalog>('/api/catalog'),
   });
   const spaceNameById = new Map((catalog?.spaces ?? []).map((s) => [s.id, s.nombre]));
-  const allQuotes = data?.quotes ?? [];
+
+  /**
+   * Los eventos que ya pasaron salen de esta lista.
+   *
+   * Antes los sacaba el estatus `vencida`, que se retiró en el Plan G, y desde
+   * entonces nada limpiaba la lista: un borrador de hace tres años seguía
+   * apareciendo entre los contratos por trabajar. Ahora salen **por haber
+   * pasado**, que es la razón correcta, y quedan en el histórico con su foto.
+   *
+   * No se pierden ni dejan de ser cobrables: el tablero grita los pasados sin
+   * liquidar y cada renglón del histórico lleva a su contrato vivo.
+   */
+  const hoy = hoyCivilMexico();
+  const todas = data?.quotes ?? [];
+  const allQuotes = todas.filter((q) => new Date(q.fechaEvento) >= hoy);
+  const pasados = todas.length - allQuotes.length;
   const needle = query.trim().toLowerCase();
   const quotes = needle ? allQuotes.filter((q) => matchesQuery(q, needle, spaceNameById)) : allQuotes;
 
@@ -241,6 +256,19 @@ export function QuotesListPage() {
         </div>
       )}
 
+      {!isLoading && pasados > 0 && (
+        <Link
+          to="/historico"
+          className="mb-6 inline-flex items-center gap-2 rounded-lg border border-cream-300 bg-white/70 px-4 py-2.5 text-sm text-ink transition-colors hover:border-ink/40"
+        >
+          <Archive size={15} className="text-gold" />
+          <span>
+            <strong>{pasados}</strong> evento{pasados === 1 ? '' : 's'} ya {pasados === 1 ? 'pasó' : 'pasaron'} y
+            {pasados === 1 ? ' está' : ' están'} en el histórico
+          </span>
+        </Link>
+      )}
+
       {!isLoading && allQuotes.length > 0 && (
         <div className="relative mb-6 max-w-md">
           <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-charcoal-soft" />
@@ -255,7 +283,7 @@ export function QuotesListPage() {
 
       {isLoading && <p className="text-charcoal-soft">Cargando…</p>}
 
-      {!isLoading && allQuotes.length === 0 && (
+      {!isLoading && allQuotes.length === 0 && pasados === 0 && (
         <Card className="p-12 text-center">
           <p className="font-display text-2xl text-ink">Aún no hay contratos</p>
           <p className="mt-2 text-sm text-charcoal-soft">Crea la primera en un par de minutos.</p>

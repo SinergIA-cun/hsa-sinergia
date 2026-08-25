@@ -1,6 +1,6 @@
 import { useMemo, useState, type ReactNode } from 'react';
 import { Building2, Search, UserRound, X } from 'lucide-react';
-import { coincide } from '../../lib/buscar.ts';
+import { coincideTexto } from '@hsa/shared';
 
 export interface BanqueteroLite {
   id: string;
@@ -54,7 +54,7 @@ export function BanqueteroPicker({
   const needle = q.trim();
   const resultados = useMemo(() => {
     if (!needle) return [];
-    return banqueteros.filter((b) => coincide([b.nombre, b.telefono], needle));
+    return banqueteros.filter((b) => coincideTexto([b.nombre, b.telefono], needle));
   }, [banqueteros, needle]);
 
   const visibles = resultados.slice(0, TOPE_RESULTADOS);

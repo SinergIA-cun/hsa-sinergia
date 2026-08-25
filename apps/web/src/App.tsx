@@ -18,6 +18,7 @@ import { ReciboPage } from './pages/ReciboPage.tsx';
 import { HojaOperativaPage } from './pages/HojaOperativaPage.tsx';
 import { AdminPage } from './pages/AdminPage.tsx';
 import { AuditoriaPage } from './pages/AuditoriaPage.tsx';
+import { HistoricoPage } from './pages/HistoricoPage.tsx';
 import { PapeleraPage } from './pages/PapeleraPage.tsx';
 
 const queryClient = new QueryClient({
@@ -125,6 +126,16 @@ export function App() {
               element={
                 <Protected>
                   <BanqueteroPage />
+                </Protected>
+              }
+            />
+            {/* El archivo lo consulta todo el equipo: saber qué se hizo el año
+                pasado en La Cúpula es trabajo de ventas tanto como de admin. */}
+            <Route
+              path="/historico"
+              element={
+                <Protected>
+                  <HistoricoPage />
                 </Protected>
               }
             />

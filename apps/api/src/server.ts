@@ -22,6 +22,7 @@ import { dashboardRoutes } from './dashboard/routes.js';
 import { biRoutes } from './bi/routes.js';
 import { banqueteroRoutes } from './banqueteros/routes.js';
 import { auditoriaRoutes } from './auditoria/routes.js';
+import { historicoRoutes } from './historico/routes.js';
 
 declare module 'fastify' {
   interface FastifyInstance {
@@ -84,6 +85,7 @@ export async function buildServer(opts: BuildOptions = {}): Promise<FastifyInsta
   await app.register(biRoutes, { prefix: '/api' });
   await app.register(banqueteroRoutes, { prefix: '/api' });
   await app.register(auditoriaRoutes, { prefix: '/api' });
+  await app.register(historicoRoutes, { prefix: '/api' });
 
   return app;
 }
