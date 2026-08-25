@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import type { FastifyInstance } from 'fastify';
+import { randomUUID } from 'node:crypto';
 import { prisma } from '@hsa/database';
 import { buildServer } from '../server.js';
 import { loadConfig } from '../config.js';
@@ -10,6 +11,8 @@ const createdAddOnIds: string[] = [];
 const createdEmpleadoIds: string[] = [];
 const createdCuadrillaIds: string[] = [];
 const createdBanqueteroIds: string[] = [];
+const createdQuoteIds: string[] = [];
+const createdClientIds: string[] = [];
 
 function cookie() {
   return { [adminCookie.name]: adminCookie.value };
@@ -34,6 +37,12 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  // Los contratos de prueba primero: si una prueba truena a medias, la limpieza
+  // inline no corre y el contrato se queda para siempre en la base compartida.
+  // Ya pasó una vez.
+  await prisma.activityLog.deleteMany({ where: { quoteId: { in: createdQuoteIds } } });
+  await prisma.quote.deleteMany({ where: { id: { in: createdQuoteIds } } });
+  await prisma.client.deleteMany({ where: { id: { in: createdClientIds } } });
   await prisma.addOn.deleteMany({ where: { id: { in: createdAddOnIds } } });
   await prisma.cuadrilla.deleteMany({ where: { id: { in: createdCuadrillaIds } } });
   await prisma.empleado.deleteMany({ where: { id: { in: createdEmpleadoIds } } });
@@ -77,6 +86,60 @@ describe('admin borrado con guardas', () => {
     const del = await app.inject({ method: 'DELETE', url: `/api/admin/banqueteros/${id}`, cookies: cookie() });
     expect(del.statusCode).toBe(204);
     expect(await prisma.banquetero.findUnique({ where: { id } })).toBeNull();
+  });
+});
+
+describe('borrar algo que un contrato usa', () => {
+  it('el 409 del banquetero llega con la lista de contratos, no solo con el número', async () => {
+    // El reporte del dueño: "me dice que 1 contrato lo usa. Encontrar ese
+    // contrato en 300 contratos diferentes se vuelve una pesadilla."
+    const banq = await prisma.banquetero.create({
+      data: { nombre: `ZZ Banquetero usado ${randomUUID().slice(0, 6)}` },
+    });
+    createdBanqueteroIds.push(banq.id);
+
+    // El contrato se arma directo y con su catálogo FIJADO, sin pasar por
+    // `createQuote`: así esta prueba no depende de cuál catálogo esté activo, que
+    // es un estado que otras suites mueven y restauran.
+    const eventType = await prisma.eventType.findFirstOrThrow({ where: { slug: 'boda' } });
+    const arcos = await prisma.space.findFirstOrThrow({ where: { nombre: 'Salón Los Arcos' } });
+    const cliente = await prisma.client.create({
+      data: { nombre: 'Cliente que bloquea el borrado' },
+    });
+    createdClientIds.push(cliente.id);
+    const q = await prisma.quote.create({
+      data: {
+        clientId: cliente.id,
+        eventTypeId: eventType.id,
+        priceListId: (await catalogoActivo()).id,
+        banqueteroId: banq.id,
+        fechaEvento: new Date('2033-09-10T00:00:00.000Z'),
+        invitados: 200,
+        spaceIds: [arcos.id],
+        breakdown: { lines: [], total: 0, rentaTotal: 0 },
+        total: 0,
+        rentaTotal: 0,
+        codigo: `10SEP-CBLOQUEA-ARCOS-${randomUUID().slice(0, 4)}`,
+        publicToken: randomUUID(),
+      },
+    });
+    createdQuoteIds.push(q.id);
+
+    const res = await app.inject({
+      method: 'DELETE',
+      url: `/api/admin/banqueteros/${banq.id}`,
+      cookies: cookie(),
+    });
+    expect(res.statusCode).toBe(409);
+    const body = res.json();
+    // El mensaje sigue estando; lo nuevo es que se puede ir directo.
+    expect(body.error).toContain('No se puede borrar');
+    expect(body.enUso.total).toBe(1);
+    expect(body.enUso.muestra[0].id).toBe(q.id);
+    expect(body.enUso.muestra[0].cliente).toBe('Cliente que bloquea el borrado');
+    expect(body.enUso.muestra[0].enPapelera).toBe(false);
+    expect(body.enUso.muestra[0].codigo).toBe(q.codigo);
+
   });
 });
 

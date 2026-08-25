@@ -813,9 +813,19 @@ export async function duplicateQuote(db: PrismaClient, id: string, actor: Actor)
 
 export class QuoteError extends Error {
   status: number;
-  constructor(status: number, message: string) {
+  /**
+   * Detalle estructurado que viaja junto al mensaje.
+   *
+   * Existe para los errores que necesitan que la interfaz haga algo con ellos y
+   * no solo los imprima: "no se puede borrar, lo usan estos contratos" trae la
+   * lista, y la pantalla la pinta como ligas. Un mensaje de texto obliga a
+   * buscar a mano.
+   */
+  detalle?: Record<string, unknown>;
+  constructor(status: number, message: string, detalle?: Record<string, unknown>) {
     super(message);
     this.status = status;
+    this.detalle = detalle;
   }
 }
 

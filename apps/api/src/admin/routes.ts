@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { requireAdmin, requireAuth } from '../auth/plugin.js';
+import { contratosQueUsan, mensajeEnUso, type UsoEnContratos } from '../quotes/usos.js';
 
 const banqueteroCreateSchema = z.object({
   nombre: z.string().min(1),
@@ -33,11 +34,14 @@ const cuadrillaUpdateSchema = z.object({
   empleadoIds: z.array(z.string()).optional(),
 });
 
-/** Mensaje 409 estándar cuando un registro está referenciado y no se puede borrar. */
-function enUso(reply: import('fastify').FastifyReply, entidad: string, n: number): void {
-  reply.code(409).send({
-    error: `No se puede borrar: en uso por ${n} ${entidad}. Desactívalo en vez de borrarlo.`,
-  });
+/**
+ * El 409 de "lo usan estos contratos", con la lista.
+ *
+ * Manda la lista y no solo el número: sin ella el aviso obliga a buscar a mano
+ * entre cientos de contratos cuál es el que estorba.
+ */
+function enUsoPorContratos(reply: import('fastify').FastifyReply, uso: UsoEnContratos): void {
+  reply.code(409).send({ error: mensajeEnUso(uso), enUso: uso });
 }
 
 /**
@@ -89,8 +93,8 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
   // Borra un banquetero sólo si no está asignado a ningún contrato (activo o en papelera).
   app.delete<{ Params: { id: string } }>('/admin/banqueteros/:id', { preHandler: requireAdmin }, async (req, reply) => {
     const { id } = req.params;
-    const n = await app.prisma.quote.count({ where: { banqueteroId: id } });
-    if (n > 0) return enUso(reply, n === 1 ? 'contrato' : 'contratos', n);
+    const uso = await contratosQueUsan(app.prisma, { banqueteroId: id });
+    if (uso.total > 0) return enUsoPorContratos(reply, uso);
     try {
       await app.prisma.banquetero.delete({ where: { id } });
       return reply.code(204).send();

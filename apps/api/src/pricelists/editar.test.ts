@@ -370,6 +370,53 @@ describe('servicios del catálogo', () => {
     expect(await prisma.addOn.findUnique({ where: { id: s.id } })).not.toBeNull();
   });
 
+  it('el 409 dice CUÁLES contratos lo usan, con nombre y código', async () => {
+    // "En uso por 1 contrato" sin decir cuál convierte el borrado en una
+    // búsqueda a mano entre cientos de contratos. Es el reporte del dueño.
+    const cat = await catalogoDePrueba('SERV-QUIEN-USA', 2066);
+    const s = await crearServicio(prisma, cat.id, { nombre: 'Servicio rastreable', kind: 'fijo', price: 500 }, actor);
+    const q = await cotizacionEn(cat.id, '2032-05-08');
+    await prisma.quote.update({
+      where: { id: q.id },
+      data: { addOns: [{ addOnId: s.id, cantidad: 1 }] },
+    });
+    const cliente = await prisma.client.findUniqueOrThrow({ where: { id: q.clientId } });
+
+    await expect(borrarServicio(prisma, cat.id, s.id, actor)).rejects.toMatchObject({
+      status: 409,
+      detalle: {
+        enUso: {
+          total: 1,
+          muestra: [
+            {
+              id: q.id,
+              cliente: cliente.nombre,
+              codigo: q.codigo,
+              enPapelera: false,
+            },
+          ],
+        },
+      },
+    });
+  });
+
+  it('avisa cuando el contrato que bloquea está en la papelera', async () => {
+    // El peor caso: un contrato eliminado no aparece en ninguna lista, así que
+    // sin decirlo la búsqueda es infinita y el bloqueo, inexplicable.
+    const cat = await catalogoDePrueba('SERV-PAPELERA', 2065);
+    const s = await crearServicio(prisma, cat.id, { nombre: 'Servicio en papelera', kind: 'fijo', price: 400 }, actor);
+    const q = await cotizacionEn(cat.id, '2032-06-05');
+    await prisma.quote.update({
+      where: { id: q.id },
+      data: { addOns: [{ addOnId: s.id, cantidad: 1 }], deletedAt: new Date() },
+    });
+
+    await expect(borrarServicio(prisma, cat.id, s.id, actor)).rejects.toMatchObject({
+      status: 409,
+      detalle: { enUso: { total: 1, muestra: [{ id: q.id, enPapelera: true }] } },
+    });
+  });
+
   it('borrar un servicio sin uso sí lo borra', async () => {
     const cat = await catalogoDePrueba('SERV-BORRABLE', 2067);
     const s = await crearServicio(prisma, cat.id, { nombre: 'Servicio sin uso', kind: 'fijo', price: 300 }, actor);

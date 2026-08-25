@@ -937,3 +937,22 @@ export interface DetalleHistorico {
   foto: FotoEvento;
   versiones: { id: string; version: number; motivo: string; tomadaEnISO: string }[];
 }
+
+// --- "No se puede borrar: lo usan estos contratos" ---
+
+/** Un contrato que impide borrar algo, con lo justo para poder abrirlo. */
+export interface ContratoQueUsa {
+  id: string;
+  codigo: string | null;
+  cliente: string;
+  fechaEventoISO: string;
+  status: string;
+  /** Está en la papelera: no aparece en ninguna lista, y por eso hay que decirlo. */
+  enPapelera: boolean;
+}
+
+export interface UsoEnContratos {
+  total: number;
+  /** Los primeros; `total` dice cuántos son en realidad. */
+  muestra: ContratoQueUsa[];
+}

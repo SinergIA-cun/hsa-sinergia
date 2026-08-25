@@ -26,7 +26,11 @@ async function conErrores<T>(reply: FastifyReply, fn: () => Promise<T>): Promise
   try {
     return await fn();
   } catch (e) {
-    if (e instanceof QuoteError) return reply.code(e.status).send({ error: e.message });
+    // El detalle estructurado viaja junto al mensaje: es lo que le permite a la
+    // pantalla pintar "lo usan estos contratos" como ligas en vez de texto.
+    if (e instanceof QuoteError) {
+      return reply.code(e.status).send({ error: e.message, ...(e.detalle ?? {}) });
+    }
     throw e;
   }
 }
