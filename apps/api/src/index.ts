@@ -2,6 +2,7 @@ import { prisma } from '@hsa/database';
 import { buildServer } from './server.js';
 import { loadConfig } from './config.js';
 import { mantenimientoAuditoria } from './auditoria/mantenimiento.js';
+import { barridoHistorico } from './historico/archivar.js';
 
 async function main(): Promise<void> {
   const config = loadConfig();
@@ -24,6 +25,20 @@ async function main(): Promise<void> {
     }
   } catch (e) {
     console.error('Auditoría: FALLÓ el mantenimiento de la bitácora forense.', e);
+  }
+
+  // Los eventos que pasaron mientras nadie miraba. Es la red de seguridad, no la
+  // fuente de verdad: lo que la interfaz muestra como pasado se deriva de la
+  // fecha. Falla ruidosa pero no fatal, por la misma razón que la auditoría.
+  try {
+    const barrido = await barridoHistorico(prisma);
+    if (barrido.archivados > 0 || barrido.actualizados > 0) {
+      console.log(
+        `Histórico: ${barrido.archivados} evento(s) archivados, ${barrido.actualizados} actualizados.`,
+      );
+    }
+  } catch (e) {
+    console.error('Histórico: FALLÓ el barrido de eventos pasados.', e);
   }
 
   const app = await buildServer({ config });

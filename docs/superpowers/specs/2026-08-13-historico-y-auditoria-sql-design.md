@@ -25,7 +25,8 @@ va a pasar.**
 >    `asegurar_auditoria()` corre en cada arranque, así que una tabla que traiga
 >    una migración futura no se escapa por olvido.
 >
-> Falta la Parte 2.
+> La Parte 2 se construyó el 24-ago-2026 y esta bitácora registró su migración,
+> que era justamente el punto de hacerla primero.
 
 ### El pedido
 
@@ -115,6 +116,11 @@ que borrar un renglón de la bitácora narrativa también deje rastro.
 ---
 
 ## Parte 2 · Histórico de eventos con foto
+
+> **Estado: construido el 24-ago-2026.** Migración `20260824180000_evento_historico`,
+> archivo en `apps/api/src/historico/` y pantalla en `/historico`. El plan de
+> ejecución y las desviaciones están en
+> `docs/superpowers/plans/2026-08-24-historico-eventos.md`.
 
 ### El pedido
 

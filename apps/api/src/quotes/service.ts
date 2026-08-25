@@ -16,6 +16,7 @@ import {
 import { loadCatalog } from '../catalog/loader.js';
 import { getAvailability } from '../availability/service.js';
 import { logActivity } from './activityLog.js';
+import { archivarEvento, yaPaso } from '../historico/archivar.js';
 import { computeEstadoCuenta, esUpgrade, type EstadoCuenta, type SpaceRuleWithRent } from './estadoCuenta.js';
 
 export interface Actor {
@@ -845,6 +846,23 @@ export async function updateQuote(db: PrismaClient, id: string, rawInput: unknow
     existing.priceListId,
   );
 
+  /**
+   * Un evento que ya pasó deja de recalcular precio.
+   *
+   * "Editable pero no dinámico": después de un evento sí se corrigen cosas
+   * reales —el conteo final de personas, el salón que de verdad se usó— y
+   * bloquear la edición obliga a mentir en otro lado. Pero que esas correcciones
+   * muevan el precio de algo que ya se dio y ya se cobró, no: el precio es un
+   * hecho, no una previsión.
+   *
+   * Se exige que la fecha esté en el pasado ANTES y DESPUÉS de la edición. Un
+   * evento pospuesto a una fecha futura vuelve a ser una previsión y sí tiene que
+   * recalcular; y uno que se mueve del futuro al pasado se recalcula para que su
+   * desglose corresponda al tipo de día en el que quedó.
+   */
+  const congelaPrecio =
+    yaPaso(existing.fechaEvento) && yaPaso(new Date(`${input.fecha}T00:00:00.000Z`));
+
   let bitacoraFiscal: { campos: string[]; desbloqueoDeAdmin: boolean } | null = null;
   if (input.client) {
     // Los datos fiscales se congelan cuando ya salió un CFDI con ellos: cambiarlos
@@ -923,9 +941,9 @@ export async function updateQuote(db: PrismaClient, id: string, rawInput: unknow
         banqueteroId: input.banqueteroId ?? null,
         festejado: input.festejado ?? null,
         festejadoTelefono: input.festejadoTelefono ?? null,
-        breakdown: enriched as unknown as Prisma.InputJsonValue,
-        total: Math.round(breakdown.total),
-        rentaTotal: Math.round(breakdown.rentaTotal),
+        breakdown: (congelaPrecio ? existing.breakdown : enriched) as unknown as Prisma.InputJsonValue,
+        total: congelaPrecio ? existing.total : Math.round(breakdown.total),
+        rentaTotal: congelaPrecio ? existing.rentaTotal : Math.round(breakdown.rentaTotal),
       },
       include: includeRels,
     });
@@ -951,6 +969,25 @@ export async function updateQuote(db: PrismaClient, id: string, rawInput: unknow
       tipo: 'fiscal',
       descripcion: `Datos fiscales actualizados${bitacoraFiscal.desbloqueoDeAdmin ? ' (desbloqueo de admin)' : ''}: ${bitacoraFiscal.campos.join(', ')}`,
       meta: { campos: bitacoraFiscal.campos, desbloqueoDeAdmin: bitacoraFiscal.desbloqueoDeAdmin },
+      actorId: actor.id,
+    });
+  }
+
+  // Que el precio se haya quedado quieto NO puede ser silencioso. Quien editó un
+  // evento pasado esperando ver otro total tiene que encontrar la explicación en
+  // la bitácora, y no concluir que la aplicación perdió su cambio.
+  if (congelaPrecio && Math.round(breakdown.total) !== existing.total) {
+    await logActivity(db, {
+      quoteId: id,
+      tipo: 'edicion',
+      descripcion:
+        `Edición de un evento ya pasado: el precio NO se recalculó. ` +
+        `Se mantiene en ${existing.total} (el recálculo habría dado ${Math.round(breakdown.total)}).`,
+      meta: {
+        precioCongelado: true,
+        totalVigente: existing.total,
+        totalQueHabriaDado: Math.round(breakdown.total),
+      },
       actorId: actor.id,
     });
   }
@@ -988,6 +1025,10 @@ export async function updateQuote(db: PrismaClient, id: string, rawInput: unknow
       actorId: actor.id,
     });
   }
+
+  // La foto se pone al día si el evento ya pasó (idempotente: si nada cambió, no
+  // escribe versión nueva).
+  await archivarEvento(db, id);
 
   return updated;
 }
@@ -1295,7 +1336,7 @@ export async function updateOperativa(db: PrismaClient, id: string, rawInput: un
     personalHsa: personalHsa ?? null,
   };
 
-  return db.quote.update({
+  const actualizada = await db.quote.update({
     where: { id },
     data: {
       horarioCivil: input.horarioCivil ?? null,
@@ -1306,6 +1347,14 @@ export async function updateOperativa(db: PrismaClient, id: string, rawInput: un
     },
     include: includeRels,
   });
+
+  // La hoja de un evento pasado sigue siendo editable —el conteo final de
+  // personas y quién trabajó de verdad se corrigen DESPUÉS—, y cada corrección
+  // deja una versión nueva de la foto. Eso es lo que significa "editable pero no
+  // dinámico": se puede corregir el registro, no reescribir la historia.
+  await archivarEvento(db, id);
+
+  return actualizada;
 }
 
 /**
@@ -1402,6 +1451,15 @@ export async function purgeExpiredTrash(db: PrismaClient): Promise<void> {
     const ids = expired.map((q) => q.id);
     await db.payment.deleteMany({ where: { quoteId: { in: ids } } });
     await db.activityLog.deleteMany({ where: { quoteId: { in: ids } } });
+    // También sus fotos del histórico. La llave foránea es RESTRICT a propósito
+    // —el archivo no se borra por accidente— así que sin esta línea la purga
+    // tronaría, y como el `catch` de abajo se traga el error, la papelera dejaría
+    // de vaciarse para siempre sin que nadie se enterara.
+    //
+    // Se pueden borrar sin remordimiento: a la papelera solo llegan BORRADORES
+    // sin pagos (lo exige `softDeleteQuote`), así que una foto de aquí es la de
+    // una cotización que nunca se cerró, no la de un evento que sucedió.
+    await db.eventoHistorico.deleteMany({ where: { quoteId: { in: ids } } });
     await db.quote.deleteMany({ where: { id: { in: ids } } });
   } catch {
     // no bloquea la operación principal

@@ -3,6 +3,7 @@ import type { PrismaClient } from '@hsa/database';
 import { estadoFacturaPago, hoyCivilMexico, paymentConceptSchema } from '@hsa/shared';
 import { QuoteError, ownershipWhere, loadEstadoCuenta, assertNotTrashed, type Actor } from '../quotes/service.js';
 import { logActivity } from '../quotes/activityLog.js';
+import { archivarEvento } from '../historico/archivar.js';
 import { esUpgrade, type PaymentStatus } from '../quotes/estadoCuenta.js';
 import { reclasificarConceptos } from './conceptos.js';
 import type { ComprobanteStorage } from './storage.js';
@@ -120,6 +121,13 @@ export async function registerPayment(
     ({ estadoCuenta } = await loadEstadoCuenta(db, { ...quote, status: nuevoEstatus }));
   }
 
+  // Si el evento ya pasó, su foto del histórico se pone al día con este pago.
+  // El diseño lo pide explícitamente: los pagos se siguen registrando hasta
+  // liquidar y la parte financiera de la foto se actualiza con cada uno. Sin
+  // esto habría que esperar al siguiente reinicio del contenedor para que el
+  // histórico dijera la verdad.
+  await archivarEvento(db, quoteId);
+
   // El pago se devuelve con el concepto EFECTIVO, no con el tecleado: quien lo
   // imprima (el panel, el recibo) no debe ver el que la deducción descartó.
   return { payment: { ...payment, concepto: conceptoEfectivo }, estadoCuenta, nuevoEstatus };
@@ -152,6 +160,8 @@ export async function anularPayment(
   // lo que eran: el que cerraba la cuenta ya no la cierra. Se reclasifican todos
   // y la cadena queda en la bitácora.
   const { estadoCuenta, cambios } = await reclasificarConceptos(db, quote, { actorId: actor.id });
+  // Anular también mueve el dinero del evento: la foto tiene que reflejarlo.
+  await archivarEvento(db, quoteId);
   return { estadoCuenta, cambios };
 }
 

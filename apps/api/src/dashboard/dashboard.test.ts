@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { randomUUID } from 'node:crypto';
+import { hoyCivilMexico } from '@hsa/shared';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { prisma } from '@hsa/database';
@@ -192,7 +193,10 @@ describe('getDashboard · lo que el tablero grita', () => {
     });
     createdBanqueteros.push(b.id);
 
-    const enDiez = new Date();
+    // Se cuenta desde el día civil de MÉXICO, no desde el reloj UTC. Es lo que
+    // usa `diasParaVencer`, y después de las 18:00 hora de México el UTC ya pasó
+    // a mañana: la prueba fallaba cada tarde con "expected 11 to be <= 10".
+    const enDiez = hoyCivilMexico();
     enDiez.setUTCDate(enDiez.getUTCDate() + 10);
     const { apartado } = await crearApartado(
       prisma,

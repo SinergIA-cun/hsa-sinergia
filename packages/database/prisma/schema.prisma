@@ -355,22 +355,22 @@ model Client {
 }
 
 model Quote {
-  id                String         @id @default(cuid())
-  client            Client         @relation(fields: [clientId], references: [id])
+  id                String            @id @default(cuid())
+  client            Client            @relation(fields: [clientId], references: [id])
   clientId          String
-  eventType         EventType      @relation(fields: [eventTypeId], references: [id])
+  eventType         EventType         @relation(fields: [eventTypeId], references: [id])
   eventTypeId       String
   fechaEvento       DateTime
   horasEvento       Int?
   invitados         Int
   spaceIds          String[]
-  horasExtra        Int            @default(0)
+  horasExtra        Int               @default(0)
   foodPackageId     String?
-  addOns            Json           @default("[]")
+  addOns            Json              @default("[]")
   breakdown         Json
   total             Int
   rentaTotal        Int
-  status            QuoteStatus    @default(borrador)
+  status            QuoteStatus       @default(borrador)
   /// Código de evento (`17ENE-CBOLADO-CUPULA`): día, mes, inicial + apellido del
   /// cliente y el espacio abreviado. Es la identidad legible del evento, la que
   /// se copia en recibos y contratos.
@@ -384,12 +384,12 @@ model Quote {
   /// a partir de ahí ya está impreso en cosas.
   ///
   /// Nullable: las cotizaciones anteriores nacen sin él y las llena el backfill.
-  codigo            String?        @unique
-  publicToken       String         @unique
+  codigo            String?           @unique
+  publicToken       String            @unique
   vigenciaHasta     DateTime?
-  usaCapilla        Boolean        @default(false) // cortesía; $5,000 en sábado. Varios eventos pueden usarla el mismo día.
+  usaCapilla        Boolean           @default(false) // cortesía; $5,000 en sábado. Varios eventos pueden usarla el mismo día.
   capillaHorario    String? // horario de la capilla para este evento (varios eventos comparten el día).
-  esCortesia        Boolean        @default(false) // cortesía familiar: se marca verde en la agenda.
+  esCortesia        Boolean           @default(false) // cortesía familiar: se marca verde en la agenda.
   /// Descuento de cortesía, en por ciento (0..100). Pega SOLO sobre la renta, y
   /// lo hace CAMBIANDO SU PRECIO: las horas extra y el descuento del 5% por
   /// alimentos se calculan sobre el precio ya descontado. La capilla nunca se
@@ -401,9 +401,9 @@ model Quote {
   /// esquema de crear/editar—, pero la columna es nullable porque la enorme
   /// mayoría de las cotizaciones no lleva descuento.
   descuentoMotivo   String?
-  usaDjHoraExtra    Boolean        @default(false) // DJ por hora extra (precio según tipo de evento).
-  requiereFactura   Boolean        @default(false) // este cliente pidió factura para ESTE evento.
-  banquetero        Banquetero?    @relation(fields: [banqueteroId], references: [id])
+  usaDjHoraExtra    Boolean           @default(false) // DJ por hora extra (precio según tipo de evento).
+  requiereFactura   Boolean           @default(false) // este cliente pidió factura para ESTE evento.
+  banquetero        Banquetero?       @relation(fields: [banqueteroId], references: [id])
   /// El banquetero de este evento. Con banquetero, ÉL es el cliente de la
   /// hacienda: firma él y se le factura a él (decisión del dueño en el diseño de
   /// banqueteros). El festejado de abajo es el cliente final, y es dato operativo.
@@ -420,9 +420,9 @@ model Quote {
   /// sobre la de la hoja, que queda como respaldo de los eventos anteriores.
   festejado         String?
   festejadoTelefono String?
-  createdBy         User?          @relation("QuoteCreatedBy", fields: [createdById], references: [id])
+  createdBy         User?             @relation("QuoteCreatedBy", fields: [createdById], references: [id])
   createdById       String?
-  createdAt         DateTime       @default(now())
+  createdAt         DateTime          @default(now())
   horaInicio        String?
   horaTermino       String?
   horarioCivil      String?
@@ -432,13 +432,15 @@ model Quote {
   deletedAt         DateTime?
   /// Catálogo con el que se coteó. MANDA al recalcular: reeditar una cotización
   /// de 2027 usa precios de 2027 aunque el catálogo activo ya sea 2028.
-  priceList         PriceList      @relation(fields: [priceListId], references: [id])
+  priceList         PriceList         @relation(fields: [priceListId], references: [id])
   priceListId       String
   payments          Payment[]
   activityLog       ActivityLog[]
   extras            QuoteExtra[]
   /// El apartado del que nació, si nació de uno.
   apartado          ApartadoFecha?
+  /// Las fotos del evento una vez pasada su fecha (una por versión).
+  historico         EventoHistorico[]
 
   @@index([clientId])
   @@index([status])
@@ -642,4 +644,49 @@ model AuditoriaDb {
   @@index([createdAt(sort: Desc)])
   @@index([tabla, createdAt(sort: Desc)])
   @@index([registroId])
+}
+
+/// La foto de un evento cuya fecha ya pasó.
+///
+/// Existe porque un evento pasado deja de ser una previsión y se vuelve un
+/// hecho, y los hechos no se recalculan. La cotización viva sigue ahí —los pagos
+/// se siguen registrando hasta liquidar— pero el desglose, los nombres de los
+/// espacios, los datos fiscales de entonces y la hoja operativa quedan copiados
+/// aquí, **resueltos y por nombre**: la foto tiene que ser legible en diez años
+/// sin las tablas vivas.
+///
+/// Es de solo agregar. Una corrección posterior escribe una VERSIÓN NUEVA, nunca
+/// encima. Y solo se escribe cuando el contenido de verdad cambió: una lista de
+/// versiones idénticas esconde las que sí importan.
+model EventoHistorico {
+  id          String   @id @default(cuid())
+  quote       Quote    @relation(fields: [quoteId], references: [id])
+  quoteId     String
+  version     Int
+  /// Por qué se tomó: `archivado` (la primera) o `actualizada`.
+  motivo      String
+  fechaEvento DateTime
+  codigo      String?
+  /// Todo lo demás, aplanado. Ver `FotoEvento` en `apps/api/src/historico/foto.ts`.
+  foto        Json
+  // --- Campos desnormalizados: existen para BUSCAR y ORDENAR sin abrir el json ---
+  cliente     String
+  banquetero  String?
+  eventoTipo  String
+  espacios    String[]
+  total       Int
+  pagado      Int
+  saldo       Int
+  /// ¿Llegó a apartar la fecha? `false` = quedó en borrador y el evento no se dio.
+  seRealizo   Boolean
+  liquidado   Boolean
+  /// `cliente + código + banquetero + espacios`, en minúsculas y sin acentos.
+  /// Se guarda calculado para que buscar "munoz" encuentre "Muñoz" sin pedirle a
+  /// Postgres una extensión que este despliegue no tiene.
+  busqueda    String
+  createdAt   DateTime @default(now())
+
+  @@unique([quoteId, version])
+  @@index([fechaEvento(sort: Desc)])
+  @@index([busqueda])
 }

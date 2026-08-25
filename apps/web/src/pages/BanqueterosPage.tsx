@@ -14,7 +14,7 @@ import {
 import { api } from '../lib/api.ts';
 import { formatMXN } from '../lib/money.ts';
 import { formatEventDate } from '../lib/date.ts';
-import { coincide } from '../lib/buscar.ts';
+import { coincideTexto } from '@hsa/shared';
 import { useAuth } from '../auth/auth.tsx';
 import { ArrowDivider, Button, Card, Field, TextInput } from '../components/ui.tsx';
 import { apiErrorMessage, ConfirmDelete } from '../components/admin/shared.tsx';
@@ -116,7 +116,7 @@ export function BanqueterosPage() {
     // banquetero dado de baja, encontrarlo vale más que respetar el filtro. Por
     // eso la búsqueda IGNORA el filtro en vez de combinarse con él, que es como
     // se llega a "no aparece" teniendo el registro enfrente.
-    if (needle) return todos.filter((b) => coincide([b.nombre, b.telefono], needle));
+    if (needle) return todos.filter((b) => coincideTexto([b.nombre, b.telefono], needle));
     return todos.filter((b) => {
       if (filtro === 'activos') return b.activo;
       if (filtro === 'inactivos') return !b.activo;
