@@ -2,11 +2,28 @@ import { useState } from 'react';
 import { Trash2 } from 'lucide-react';
 import { ApiError } from '../../lib/api.ts';
 import { Button } from '../ui.tsx';
+import { ContratosQueUsan } from './ContratosQueUsan.tsx';
+import type { UsoEnContratos } from '../../lib/types.ts';
 
 /** Extrae un mensaje legible de un error de API, con respaldo. */
 export function apiErrorMessage(err: unknown, fallback: string): string {
   if (err instanceof ApiError) return err.message || fallback;
   return fallback;
+}
+
+/**
+ * ¿El error trae la lista de contratos que bloquean el borrado?
+ *
+ * El servidor manda `enUso` en el 409 justo para que la pantalla pueda pintarla.
+ * Se valida la forma en vez de confiar: un error de otra ruta puede traer
+ * cualquier cosa en el cuerpo.
+ */
+export function usoEnContratos(err: unknown): UsoEnContratos | null {
+  if (!(err instanceof ApiError)) return null;
+  const datos = err.datos as { enUso?: UsoEnContratos } | null;
+  const uso = datos?.enUso;
+  if (!uso || typeof uso.total !== 'number' || !Array.isArray(uso.muestra)) return null;
+  return uso;
 }
 
 /**
@@ -25,15 +42,18 @@ export function ConfirmDelete({
   const [armed, setArmed] = useState(false);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState('');
+  const [uso, setUso] = useState<UsoEnContratos | null>(null);
 
   async function run() {
     setPending(true);
     setError('');
+    setUso(null);
     try {
       await onConfirm();
       setArmed(false);
     } catch (e) {
       setError(apiErrorMessage(e, 'No se pudo borrar.'));
+      setUso(usoEnContratos(e));
     } finally {
       setPending(false);
     }
@@ -48,7 +68,7 @@ export function ConfirmDelete({
             variant="ghost"
             className="px-2.5 py-1.5 text-xs"
             disabled={pending}
-            onClick={() => { setArmed(false); setError(''); }}
+            onClick={() => { setArmed(false); setError(''); setUso(null); }}
           >
             Cancela
           </Button>
@@ -79,6 +99,9 @@ export function ConfirmDelete({
           {error}
         </span>
       )}
+      {/* Y si el servidor dijo CUÁLES contratos lo usan, se pintan con liga: es
+          la diferencia entre un aviso y una pista. */}
+      {uso && <ContratosQueUsan uso={uso} />}
     </div>
   );
 }

@@ -2,6 +2,7 @@ import { z } from 'zod';
 import type { Prisma, PrismaClient } from '@hsa/database';
 import { validarBrackets } from '@hsa/shared';
 import { QuoteError, type Actor } from '../quotes/service.js';
+import { contratosQueUsan, mensajeEnUso } from '../quotes/usos.js';
 import { registrarCambioCatalogo } from './audit.js';
 
 /**
@@ -250,17 +251,17 @@ export async function borrarServicio(
     await assertCatalogo(tx, priceListId);
     const addOn = await servicioDelCatalogo(tx, priceListId, addOnId);
 
-    // `addOns` es JSON, no una relación: el uso se cuenta con un contains de jsonb.
-    const rows = await tx.$queryRaw<{ count: number }[]>`
-      SELECT COUNT(*)::int AS count FROM "Quote"
+    // `addOns` es JSON, no una relación: los que lo usan se buscan con un
+    // contains de jsonb. Se piden los IDS y no un COUNT porque el mensaje de
+    // error tiene que poder decir CUÁLES son: "en uso por 1 contrato" sin decir
+    // cuál convierte el borrado en una búsqueda a mano entre cientos.
+    const rows = await tx.$queryRaw<{ id: string }[]>`
+      SELECT "id" FROM "Quote"
       WHERE "priceListId" = ${priceListId}
         AND "addOns" @> ${JSON.stringify([{ addOnId }])}::jsonb`;
-    const n = rows[0]?.count ?? 0;
-    if (n > 0) {
-      throw new QuoteError(
-        409,
-        `No se puede borrar: en uso por ${n} cotización(es) de este catálogo. Desactívalo en vez de borrarlo.`,
-      );
+    if (rows.length > 0) {
+      const uso = await contratosQueUsan(tx, { id: { in: rows.map((r) => r.id) } });
+      throw new QuoteError(409, mensajeEnUso(uso), { enUso: uso });
     }
 
     await tx.addOn.delete({ where: { id: addOnId } });
@@ -484,12 +485,12 @@ export async function borrarPaquete(
     await assertCatalogo(tx, priceListId);
     const paquete = await paqueteDelCatalogo(tx, priceListId, packageId);
 
-    const n = await tx.quote.count({ where: { priceListId, foodPackageId: packageId } });
-    if (n > 0) {
-      throw new QuoteError(
-        409,
-        `No se puede borrar: en uso por ${n} cotización(es) de este catálogo.`,
-      );
+    const uso = await contratosQueUsan(tx, { priceListId, foodPackageId: packageId });
+    if (uso.total > 0) {
+      // Un paquete no se puede "desactivar" como un servicio, así que el mensaje
+      // no lo sugiere; lo que sí puede hacer quien lo lee es abrir esos contratos
+      // y cambiarles el paquete.
+      throw new QuoteError(409, mensajeEnUso(uso, false), { enUso: uso });
     }
 
     await tx.foodPackagePrice.deleteMany({ where: { packageId } });

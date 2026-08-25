@@ -1,8 +1,18 @@
 export class ApiError extends Error {
   status: number;
-  constructor(status: number, message: string) {
+  /**
+   * El cuerpo completo de la respuesta de error.
+   *
+   * Antes solo se guardaba el mensaje, y por eso un 409 que ya traía el detalle
+   * —"lo usan estos contratos", con la lista— llegaba a la pantalla como un
+   * texto sin ligas. Lo que el servidor se toma el trabajo de explicar, la
+   * interfaz tiene que poder usarlo.
+   */
+  datos: unknown;
+  constructor(status: number, message: string, datos?: unknown) {
     super(message);
     this.status = status;
+    this.datos = datos;
   }
 }
 
@@ -28,7 +38,7 @@ async function request<T>(method: string, url: string, body?: unknown): Promise<
 
   if (!res.ok) {
     const message = (data && (data.error as string)) || `Error ${res.status}`;
-    throw new ApiError(res.status, message);
+    throw new ApiError(res.status, message, data);
   }
   return data as T;
 }
