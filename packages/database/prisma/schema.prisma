@@ -183,7 +183,14 @@ model DjHoraExtraPrice {
 model Banquetero {
   id          String           @id @default(cuid())
   nombre      String
+  /// OBLIGATORIO al dar de alta (lo exige el esquema de la API), pero la columna
+  /// es nullable: a los banqueteros que ya existían sin teléfono no se les puede
+  /// inventar uno, y rellenarlos sería peor —un teléfono falso se ve igual que
+  /// uno real—. La ficha los marca como incompletos hasta que alguien capture el
+  /// de verdad.
   telefono    String?
+  /// Opcional. Sirve para mandarle su estado de cuenta sin depender de WhatsApp.
+  correo      String?
   activo      Boolean          @default(true)
   /// Token del enlace de solo lectura de su estado de cuenta, mismo formato que
   /// `Quote.publicToken` (32 hex sin guiones). Es lo que mata el hilo de WhatsApp.

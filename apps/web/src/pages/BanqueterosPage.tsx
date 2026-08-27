@@ -1,13 +1,12 @@
 import { useMemo, useState, type FormEvent } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
+  AlertTriangle,
   CalendarClock,
   Coins,
-  Pencil,
   Phone,
   Plus,
-  Save,
   Search,
   X,
 } from 'lucide-react';
@@ -236,7 +235,6 @@ export function BanqueterosPage() {
                 venta={ventasById.get(b.banqueteroId)}
                 isAdmin={isAdmin}
                 saving={updateBanq.isPending}
-                onSave={(data) => updateBanq.mutateAsync({ id: b.banqueteroId, data })}
                 onToggleActivo={() =>
                   updateBanq.mutate({ id: b.banqueteroId, data: { activo: !b.activo } })
                 }
@@ -268,17 +266,20 @@ function AltaBanquetero({
 }) {
   const [nombre, setNombre] = useState('');
   const [telefono, setTelefono] = useState('');
+  const [correo, setCorreo] = useState('');
   const [error, setError] = useState('');
 
   const crear = useMutation({
     mutationFn: () =>
       api.post<{ banquetero: Banquetero }>('/api/admin/banqueteros', {
         nombre: nombre.trim(),
-        telefono: telefono.trim() || undefined,
+        telefono: telefono.trim(),
+        correo: correo.trim() || undefined,
       }),
     onSuccess: async () => {
       setNombre('');
       setTelefono('');
+      setCorreo('');
       setError('');
       await onCreado();
       onCerrar();
@@ -288,14 +289,16 @@ function AltaBanquetero({
 
   function onSubmit(e: FormEvent) {
     e.preventDefault();
-    if (!nombre.trim()) return;
+    // El teléfono es obligatorio: un banquetero con el que no se puede hablar es
+    // una contraparte de la que depende dinero y nadie sabe localizar.
+    if (!nombre.trim() || !telefono.trim()) return;
     crear.mutate();
   }
 
   return (
     <Card className="mb-6 p-6">
       <h2 className="mb-4 font-display text-lg text-ink">Nuevo banquetero</h2>
-      <form onSubmit={onSubmit} className="grid gap-4 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
+      <form onSubmit={onSubmit} className="grid gap-4 sm:grid-cols-[1fr_1fr_1fr_auto] sm:items-end">
         <Field label="Nombre">
           <TextInput
             value={nombre}
@@ -303,14 +306,27 @@ function AltaBanquetero({
             placeholder="ej. Carlos Barrera"
           />
         </Field>
-        <Field label="Teléfono (opcional)">
+        <Field label="Teléfono" hint="Obligatorio.">
           <TextInput
             value={telefono}
             onChange={(e) => setTelefono(e.target.value)}
             placeholder="ej. 55 1234 5678"
+            className={telefono.trim() ? undefined : 'border-wine/50'}
           />
         </Field>
-        <Button type="submit" variant="gold" disabled={crear.isPending}>
+        <Field label="Correo (opcional)">
+          <TextInput
+            type="email"
+            value={correo}
+            onChange={(e) => setCorreo(e.target.value)}
+            placeholder="ej. contacto@banquetes.mx"
+          />
+        </Field>
+        <Button
+          type="submit"
+          variant="gold"
+          disabled={crear.isPending || !nombre.trim() || !telefono.trim()}
+        >
           {crear.isPending ? 'Guardando…' : 'Agregar'}
         </Button>
       </form>
@@ -324,7 +340,6 @@ function BanqueteroRow({
   venta,
   isAdmin,
   saving,
-  onSave,
   onToggleActivo,
   onDelete,
 }: {
@@ -332,60 +347,18 @@ function BanqueteroRow({
   venta?: VentaBanquetero;
   isAdmin: boolean;
   saving: boolean;
-  onSave: (data: BanqueteroPatch) => Promise<unknown>;
   onToggleActivo: () => void;
   onDelete: () => Promise<unknown>;
 }) {
-  const [editing, setEditing] = useState(false);
-  const [nombre, setNombre] = useState(b.nombre);
-  const [telefono, setTelefono] = useState(b.telefono ?? '');
-
-  async function guardar() {
-    if (!nombre.trim()) return;
-    await onSave({ nombre: nombre.trim(), telefono: telefono.trim() || null });
-    setEditing(false);
-  }
-
-  if (editing) {
-    return (
-      <li className="space-y-2 p-4">
-        <div className="grid gap-2 sm:grid-cols-2">
-          <TextInput value={nombre} onChange={(e) => setNombre(e.target.value)} placeholder="Nombre" />
-          <TextInput
-            value={telefono}
-            onChange={(e) => setTelefono(e.target.value)}
-            placeholder="Teléfono"
-          />
-        </div>
-        <div className="flex items-center gap-2">
-          <Button
-            type="button"
-            variant="gold"
-            className="px-3 py-1.5 text-xs"
-            disabled={saving}
-            onClick={guardar}
-          >
-            <Save size={13} /> Guardar
-          </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            className="px-3 py-1.5 text-xs"
-            onClick={() => {
-              setEditing(false);
-              setNombre(b.nombre);
-              setTelefono(b.telefono ?? '');
-            }}
-          >
-            Cancela
-          </Button>
-        </div>
-      </li>
-    );
-  }
+  const navigate = useNavigate();
 
   return (
-    <li className="flex flex-wrap items-center justify-between gap-3 p-4 hover:bg-cream-100/60">
+    // Todo el renglón abre la ficha: apuntarle al nombre exacto es una puntería
+    // que nadie tiene por qué tener. Los botones de la derecha detienen el clic.
+    <li
+      onClick={() => navigate(`/banqueteros/${b.banqueteroId}`)}
+      className="flex cursor-pointer flex-wrap items-center justify-between gap-3 p-4 hover:bg-cream-100/60"
+    >
       <div className="min-w-[12rem] flex-1">
         <Link
           to={`/banqueteros/${b.banqueteroId}`}
@@ -396,9 +369,15 @@ function BanqueteroRow({
           {b.nombre}
         </Link>
         <p className="mt-0.5 flex flex-wrap items-center gap-x-3 text-xs text-charcoal-soft">
-          {b.telefono && (
+          {b.telefono ? (
             <span className="inline-flex items-center gap-1">
               <Phone size={11} /> {b.telefono}
+            </span>
+          ) : (
+            // El teléfono es obligatorio desde hoy; los de antes pueden no
+            // tenerlo. Se marca en vez de rellenarlo con algo inventado.
+            <span className="inline-flex items-center gap-1 font-medium text-wine">
+              <AlertTriangle size={11} /> Falta teléfono
             </span>
           )}
           <span>
@@ -428,7 +407,7 @@ function BanqueteroRow({
           </p>
         )}
       </div>
-      <div className="flex flex-wrap items-center gap-1">
+      <div className="flex flex-wrap items-center gap-1" onClick={(e) => e.stopPropagation()}>
         <Link to={`/banqueteros/${b.banqueteroId}`}>
           <Button type="button" variant="outline" className="px-2.5 py-1.5 text-xs">
             <Coins size={13} /> Cuenta
@@ -436,14 +415,6 @@ function BanqueteroRow({
         </Link>
         {isAdmin && (
           <>
-            <Button
-              type="button"
-              variant="outline"
-              className="px-2.5 py-1.5 text-xs"
-              onClick={() => setEditing(true)}
-            >
-              <Pencil size={13} /> Editar
-            </Button>
             <Button
               type="button"
               variant="ghost"

@@ -363,6 +363,41 @@ describe('convertir el apartado', () => {
     expect(await prisma.payment.count({ where: { quoteId: quote.id } })).toBe(0);
   });
 
+  it('el cliente es el banquetero, aunque el cuerpo mande otro', async () => {
+    // Con banquetero, ÉL es el cliente de la hacienda: firma él y se le factura a
+    // él. Preguntarlo en el formulario invitaba a teclear otro nombre y crear un
+    // cliente paralelo del mismo señor; ahora el servidor lo impone.
+    const { apartado } = await nuevoApartado();
+    const { quote } = await convertirApartado(
+      prisma,
+      storage,
+      apartado.id,
+      cuerpo({ client: { nombre: 'Alguien que no es el banquetero' } }),
+      actor,
+    );
+    quotes.push(quote.id);
+    clients.push(quote.clientId);
+
+    const cliente = await prisma.client.findUniqueOrThrow({ where: { id: quote.clientId } });
+    const banq = await prisma.banquetero.findUniqueOrThrow({ where: { id: banqueteroId } });
+    expect(cliente.nombre).toBe(banq.nombre);
+  });
+
+  it('reutiliza la ficha del banquetero en vez de duplicarla en cada conversión', async () => {
+    // Tres apartados convertidos son tres eventos del mismo señor, no tres
+    // clientes con el mismo nombre.
+    const a = await nuevoApartado();
+    const primera = await convertirApartado(prisma, storage, a.apartado.id, cuerpo(), actor);
+    quotes.push(primera.quote.id);
+    clients.push(primera.quote.clientId);
+
+    const b = await nuevoApartado();
+    const segunda = await convertirApartado(prisma, storage, b.apartado.id, cuerpo(), actor);
+    quotes.push(segunda.quote.id);
+
+    expect(segunda.quote.clientId).toBe(primera.quote.clientId);
+  });
+
   it('convertir DOS veces el mismo apartado responde 409', async () => {
     const { apartado } = await nuevoApartado();
     const { quote } = await convertirApartado(prisma, storage, apartado.id, cuerpo(), actor);

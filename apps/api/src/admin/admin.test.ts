@@ -80,12 +80,54 @@ describe('admin borrado con guardas', () => {
       method: 'POST',
       url: '/api/admin/banqueteros',
       cookies: cookie(),
-      payload: { nombre: 'Banquetero Borrable' },
+      payload: { nombre: 'Banquetero Borrable', telefono: '55 0000 0000' },
     });
     const id = res.json().banquetero.id as string;
     const del = await app.inject({ method: 'DELETE', url: `/api/admin/banqueteros/${id}`, cookies: cookie() });
     expect(del.statusCode).toBe(204);
     expect(await prisma.banquetero.findUnique({ where: { id } })).toBeNull();
+  });
+});
+
+describe('el contacto del banquetero', () => {
+  it('no deja dar de alta uno sin teléfono', async () => {
+    // De estos señores depende dinero: un banquetero al que no se le puede
+    // hablar es una contraparte que nadie sabe localizar.
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/admin/banqueteros',
+      cookies: cookie(),
+      payload: { nombre: 'ZZ Sin teléfono' },
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it('guarda el correo y deja corregir el teléfono después', async () => {
+    const alta = await app.inject({
+      method: 'POST',
+      url: '/api/admin/banqueteros',
+      cookies: cookie(),
+      payload: {
+        nombre: `ZZ Con contacto ${randomUUID().slice(0, 6)}`,
+        telefono: '55 1111 2222',
+        correo: 'contacto@banquetes.mx',
+      },
+    });
+    expect(alta.statusCode).toBe(201);
+    const id = alta.json().banquetero.id as string;
+    createdBanqueteroIds.push(id);
+    expect(alta.json().banquetero.correo).toBe('contacto@banquetes.mx');
+
+    // Editar SÍ admite vaciarlo: es como se corrige uno mal capturado, y los
+    // banqueteros que ya existían sin teléfono no se pueden bloquear.
+    const patch = await app.inject({
+      method: 'PATCH',
+      url: `/api/admin/banqueteros/${id}`,
+      cookies: cookie(),
+      payload: { telefono: null, correo: null },
+    });
+    expect(patch.statusCode).toBe(200);
+    expect(patch.json().banquetero.telefono).toBeNull();
   });
 });
 

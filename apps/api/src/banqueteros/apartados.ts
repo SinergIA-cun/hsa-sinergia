@@ -206,14 +206,45 @@ export async function convertirApartado(
     );
   }
 
-  const body = (rawInput ?? {}) as Record<string, unknown>;
+  const banquetero = await db.banquetero.findUniqueOrThrow({
+    where: { id: apartado.banqueteroId },
+    select: { nombre: true, telefono: true },
+  });
+
+  /**
+   * El CLIENTE lo impone el apartado, no lo captura quien convierte.
+   *
+   * Con banquetero, él es el cliente de la hacienda: firma él y se le factura a
+   * él. Es la misma regla que el cotizador aplica desde el Plan H, donde los
+   * campos del cliente quedan de solo lectura. Pedirlos aquí era pedir un dato
+   * que ya se sabía —y peor: quien lo capturaba distinto creaba un cliente
+   * paralelo para el mismo banquetero.
+   *
+   * Se reutiliza su ficha de cliente si ya la tiene, en vez de crear una nueva
+   * en cada conversión: tres apartados convertidos son tres eventos del mismo
+   * señor, no tres clientes.
+   */
+  const fichaExistente = await db.client.findFirst({
+    where: { nombre: { equals: banquetero.nombre, mode: 'insensitive' } },
+    orderBy: { createdAt: 'desc' },
+    select: { id: true },
+  });
+
+  // Se quitan del cuerpo: lo que el servidor impone no puede llegar de afuera, o
+  // un cliente tecleado le ganaría al banquetero sin que nadie lo note.
+  const resto: Record<string, unknown> = { ...((rawInput ?? {}) as Record<string, unknown>) };
+  delete resto.client;
+  delete resto.clientId;
   const quote = await createQuote(
     db,
     {
-      ...body,
+      ...resto,
       fecha: apartado.fechaEvento.toISOString().slice(0, 10),
       spaceIds: apartado.spaceIds,
       banqueteroId: apartado.banqueteroId,
+      ...(fichaExistente
+        ? { clientId: fichaExistente.id }
+        : { client: { nombre: banquetero.nombre, telefono: banquetero.telefono ?? undefined } }),
     },
     actor,
     {

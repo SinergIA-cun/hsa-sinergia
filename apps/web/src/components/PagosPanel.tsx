@@ -4,7 +4,7 @@ import { Lock, Receipt, ReceiptText } from 'lucide-react';
 import { api } from '../lib/api.ts';
 import { formatMXN } from '../lib/money.ts';
 import { formatEventDate, formatTimestamp } from '../lib/date.ts';
-import { Button, Card, TextInput, SelectInput, Field } from './ui.tsx';
+import { Button, Card, MoneyInput, TextInput, SelectInput, Field } from './ui.tsx';
 import { STATUS_LABEL } from '../lib/status.ts';
 import type { EstadoCuenta, Payment, PaymentConcept, ActivityEntry, QuoteStatus } from '../lib/types.ts';
 
@@ -173,7 +173,7 @@ export function PagosPanel({ quoteId, publicToken, isAdmin, estadoCuenta, paymen
       <Card className="p-6">
         <h3 className="mb-4 font-display text-xl text-ink">Registrar pago</h3>
         <form onSubmit={registrar} className="grid gap-4 sm:grid-cols-2">
-          <Field label="Monto (MXN)"><TextInput type="number" min="1" value={monto} onChange={(e) => setMonto(e.target.value)} required /></Field>
+          <Field label="Monto (MXN)"><MoneyInput value={monto} onValue={setMonto} required /></Field>
           <Field label="Fecha"><TextInput type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} required /></Field>
           <Field label="Método">
             <SelectInput value={metodo} onChange={(e) => setMetodo(e.target.value)}>

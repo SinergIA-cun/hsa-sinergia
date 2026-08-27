@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { Plus, Save, Trash2 } from 'lucide-react';
-import { Button, Field, SelectInput, TextInput } from '../../ui.tsx';
+import { Button, Field, MoneyInput, SelectInput, TextInput } from '../../ui.tsx';
 import type { FoodPackageBracket, PaqueteCatalogo } from '../../../lib/types.ts';
 import { ConfirmDelete } from '../shared.tsx';
 import { BarraGuardar, useGuardar } from './guardado.tsx';
@@ -267,14 +267,11 @@ function BracketsTabla({
                 />
               </td>
               <td className="py-1 pr-2">
-                <TextInput
-                  type="number"
-                  min={0}
-                  step={1}
+                <MoneyInput
                   aria-label={`Rango ${i + 1} precio por persona`}
                   className="w-28 px-2 py-1 text-sm"
                   value={b.pricePerPerson}
-                  onChange={(e) => editar(i, 'pricePerPerson', e.target.value)}
+                  onValue={(v) => editar(i, 'pricePerPerson', v)}
                 />
               </td>
               <td className="py-1">

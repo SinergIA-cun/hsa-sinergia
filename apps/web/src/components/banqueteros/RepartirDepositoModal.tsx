@@ -3,7 +3,7 @@ import { AlertTriangle, Coins } from 'lucide-react';
 import { api } from '../../lib/api.ts';
 import { formatMXN } from '../../lib/money.ts';
 import { formatEventDate } from '../../lib/date.ts';
-import { Button, Card, TextInput } from '../ui.tsx';
+import { Button, Card, MoneyInput } from '../ui.tsx';
 import { apiErrorMessage } from '../admin/shared.tsx';
 import { STATUS_LABEL } from '../../lib/status.ts';
 import type { DepositoBanquetero, EventoBanquetero } from '../../lib/types.ts';
@@ -133,13 +133,12 @@ export function RepartirDepositoModal({ deposito, eventos, onCancel, onSaved }: 
                         {formatMXN(e.saldo)}
                       </td>
                       <td className="py-2.5 pr-3 text-right">
-                        <TextInput
-                          inputMode="numeric"
+                        <MoneyInput
                           aria-label={`Monto para ${e.codigo ?? e.festejado ?? 'el evento'}`}
                           value={raw}
-                          onChange={(ev) => setMontos((m) => ({ ...m, [e.quoteId]: ev.target.value }))}
+                          onValue={(v) => setMontos((m) => ({ ...m, [e.quoteId]: v }))}
                           placeholder="0"
-                          className={`w-28 text-right tabular-nums ${monto == null ? 'border-wine' : ''}`}
+                          className={`w-28 text-right ${monto == null ? 'border-wine' : ''}`}
                         />
                         {monto == null && (
                           <span className="mt-1 block text-[0.7rem] text-wine">Pesos enteros</span>

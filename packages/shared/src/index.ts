@@ -6,6 +6,7 @@ export * from './pricing/brackets.js';
 export * from './pricing/day-type.js';
 export * from './pricing/engine.js';
 export * from './pricing/prorrateo.js';
+export * from './pricing/reparto.js';
 export * from './facturacion/catalogos.js';
 export * from './facturacion/requisitos.js';
 export * from './facturacion/candado.js';

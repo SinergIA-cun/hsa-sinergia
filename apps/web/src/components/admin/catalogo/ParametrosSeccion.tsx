@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Field, TextInput } from '../../ui.tsx';
+import { Field, MoneyInput, TextInput } from '../../ui.tsx';
 import type { CatalogoContenido } from '../../../lib/types.ts';
 import { BarraGuardar, useGuardar } from './guardado.tsx';
 
@@ -133,15 +133,12 @@ export function ParametrosSeccion({
           </Field>
         ))}
         <Field label="Capilla en sábado (MXN)" hint="Entre semana es cortesía; el sábado se cobra.">
-          <TextInput
-            type="number"
-            min={0}
-            step={1}
+          <MoneyInput
             value={capilla}
-            onChange={(e) => {
+            onValue={(v) => {
               limpiar();
               setInvalido('');
-              setCapilla(e.target.value);
+              setCapilla(v);
             }}
           />
         </Field>

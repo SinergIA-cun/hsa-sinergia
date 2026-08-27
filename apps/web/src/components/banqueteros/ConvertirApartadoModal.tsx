@@ -6,7 +6,7 @@ import { api } from '../../lib/api.ts';
 import { apiErrorMessage } from '../admin/shared.tsx';
 import { formatMXN } from '../../lib/money.ts';
 import { formatEventDate } from '../../lib/date.ts';
-import { Button, Field, TextInput, SelectInput } from '../ui.tsx';
+import { Button, Card, Field, TextInput, SelectInput } from '../ui.tsx';
 import type { ApartadoFecha, Catalog } from '../../lib/types.ts';
 
 interface Props {
@@ -20,8 +20,9 @@ interface Props {
 /**
  * Convertir un apartado en cotización.
  *
- * Pide SOLO lo que el apartado no tenía —tipo de evento, invitados y cliente— y
- * después lleva a la cotización para terminarla con el cotizador de siempre.
+ * Pide SOLO lo que el apartado no tenía —tipo de evento e invitados— y después
+ * lleva a la cotización para terminarla con el cotizador de siempre. El cliente
+ * no se pregunta: con banquetero, él es el cliente de la hacienda.
  *
  * No se replica aquí el formulario completo a propósito: sería un segundo camino
  * al mismo dato, que es justo lo que este proyecto lleva semanas eliminando. Y lo
@@ -39,8 +40,6 @@ export function ConvertirApartadoModal({
   const navigate = useNavigate();
   const [eventTypeId, setEventTypeId] = useState('');
   const [invitados, setInvitados] = useState('');
-  const [cliente, setCliente] = useState('');
-  const [telefono, setTelefono] = useState('');
   const [festejado, setFestejado] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -66,8 +65,7 @@ export function ConvertirApartadoModal({
     !faltaDeposito &&
     !faltaCatalogo &&
     Boolean(eventTypeId) &&
-    Number(invitados) > 0 &&
-    cliente.trim().length > 0;
+    Number(invitados) > 0;
 
   async function convertir() {
     setBusy(true);
@@ -81,7 +79,6 @@ export function ConvertirApartadoModal({
           horasExtra: 0,
           addOns: [],
           extras: [],
-          client: { nombre: cliente.trim(), telefono: telefono.trim() || undefined },
           festejado: festejado.trim() || undefined,
         },
       );
@@ -94,8 +91,19 @@ export function ConvertirApartadoModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 p-4">
-      <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-marfil p-6 shadow-xl">
+    // `bg-marfil` no existe en esta paleta —el marfil es `cream`— así que el
+    // panel salía TRANSPARENTE y se veía la página encima: el "se empalma" que
+    // reportó el dueño. Se usa `Card`, que es lo que usan los otros modales.
+    <div
+      className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-ink/40 px-4 py-8"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Convertir el apartado en cotización"
+    >
+      {/* `bg-cream` encima de la Card: un diálogo tiene que TAPAR. La Card
+          normal es blanco al 80% y sobre el velo oscuro se sigue transparentando,
+          que es lo que se veía como "se empalma". */}
+      <Card className="w-full max-w-lg bg-cream p-6">
         <h2 className="flex items-center gap-2 font-display text-2xl text-ink">
           <CalendarCheck size={20} className="text-gold" /> Convertir en cotización
         </h2>
@@ -116,6 +124,14 @@ export function ConvertirApartadoModal({
             </div>
             <div className="flex justify-between gap-4">
               <dt className="text-charcoal-soft">Banquetero</dt>
+              <dd className="text-ink">{banqueteroNombre}</dd>
+            </div>
+            {/* El cliente NO se pregunta: con banquetero, él es el cliente de la
+                hacienda —firma él y se le factura a él—, la misma regla que el
+                cotizador aplica desde el Plan H. Preguntarlo invitaba a teclear
+                otro nombre y crear un cliente paralelo del mismo señor. */}
+            <div className="flex justify-between gap-4">
+              <dt className="text-charcoal-soft">Cliente</dt>
               <dd className="text-ink">{banqueteroNombre}</dd>
             </div>
             <div className="flex justify-between gap-4">
@@ -181,21 +197,9 @@ export function ConvertirApartadoModal({
           </Field>
 
           <Field
-            label="Cliente"
-            hint="El banquetero es el cliente de la hacienda: firma él y se le factura a él."
+            label="Festejado (el cliente final)"
+            hint="Opcional. Va en la hoja operativa, no en el contrato: la hacienda no se mete en la reventa."
           >
-            <TextInput
-              value={cliente}
-              onChange={(e) => setCliente(e.target.value)}
-              placeholder={banqueteroNombre}
-            />
-          </Field>
-
-          <Field label="Teléfono del cliente" hint="Opcional.">
-            <TextInput value={telefono} onChange={(e) => setTelefono(e.target.value)} />
-          </Field>
-
-          <Field label="Festejado" hint="Opcional. Va en la hoja operativa, no en el contrato.">
             <TextInput
               value={festejado}
               onChange={(e) => setFestejado(e.target.value)}
@@ -219,7 +223,7 @@ export function ConvertirApartadoModal({
             {busy ? 'Convirtiendo…' : 'Convertir y abrir la cotización'}
           </Button>
         </div>
-      </div>
+      </Card>
     </div>
   );
 }

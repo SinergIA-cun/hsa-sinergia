@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { formatMXN } from '../../../lib/money.ts';
-import { TextInput } from '../../ui.tsx';
+import { MoneyInput } from '../../ui.tsx';
 import type { RentaRenglon } from '../../../lib/types.ts';
 import { BarraGuardar, useGuardar } from './guardado.tsx';
 
@@ -225,14 +225,11 @@ function Renglon({
         const cambiado = aPrecio(valores[campo]) !== renglon[campo];
         return (
           <td key={campo} className="py-1.5 pr-3">
-            <TextInput
-              type="number"
-              min={0}
-              step={1}
+            <MoneyInput
               aria-label={`${renglon.espacio} ${rango(renglon)} ${ETIQUETA[campo]}`}
               className={`w-28 px-2 py-1 text-sm ${malo ? 'border-wine' : ''}`}
               value={valores[campo]}
-              onChange={(e) => onEditar(campo, e.target.value)}
+              onValue={(v) => onEditar(campo, v)}
             />
             {cambiado && !malo && (
               <span className="mt-0.5 block text-[0.65rem] text-charcoal-soft">

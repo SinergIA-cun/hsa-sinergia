@@ -1,5 +1,7 @@
 import {
   forwardRef,
+  useEffect,
+  useRef,
   type ButtonHTMLAttributes,
   type InputHTMLAttributes,
   type SelectHTMLAttributes,
@@ -71,6 +73,84 @@ export const TextInput = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLIn
     return <input ref={ref} className={cn(inputBase, className)} {...props} />;
   },
 );
+
+/** Solo los dígitos, sin ceros a la izquierda. Es el valor que viaja al estado. */
+function soloDigitos(v: unknown): string {
+  return String(v ?? '')
+    .replace(/\D/g, '')
+    .replace(/^0+(?=\d)/, '');
+}
+
+/**
+ * Campo de dinero con comas de millar.
+ *
+ * `125300` y `125,300` se leen distinto, y el segundo es el que evita teclear un
+ * cero de más sin notarlo. El estado sigue guardando dígitos pelones —los mismos
+ * que antes— así que quien lo usa no cambia: lo único que cambia es lo que se ve.
+ *
+ * No es `type="number"`: ese no admite comas y además trae la ruedita del ratón,
+ * que sobre un campo de dinero cambia el monto por accidente con solo pasar el
+ * cursor. `inputMode="numeric"` conserva el teclado numérico en tablet, que es
+ * donde se captura la mayoría de los pagos.
+ *
+ * El cursor se queda donde estaba: se cuenta cuántos DÍGITOS quedaban a su
+ * izquierda y se recoloca después de esos mismos. Sin eso, corregir una cifra a
+ * la mitad manda el cursor al final en cada tecla.
+ */
+export const MoneyInput = forwardRef<
+  HTMLInputElement,
+  Omit<InputHTMLAttributes<HTMLInputElement>, 'value' | 'onChange' | 'type'> & {
+    value: string | number;
+    onValue: (digitos: string) => void;
+  }
+>(function MoneyInput({ className, value, onValue, ...props }, ref) {
+  const propio = useRef<HTMLInputElement | null>(null);
+  const caret = useRef<number | null>(null);
+
+  const digitos = soloDigitos(value);
+  const visible = digitos === '' ? '' : Number(digitos).toLocaleString('es-MX');
+
+  useEffect(() => {
+    const el = propio.current;
+    const pendientes = caret.current;
+    if (!el || pendientes == null) return;
+    caret.current = null;
+    // Después de N dígitos contando desde la izquierda, ¿en qué posición del
+    // texto con comas queda el cursor?
+    let vistos = 0;
+    let pos = el.value.length;
+    for (let i = 0; i < el.value.length; i++) {
+      if (/\d/.test(el.value[i] ?? '')) vistos++;
+      if (vistos === pendientes) {
+        pos = i + 1;
+        break;
+      }
+    }
+    if (pendientes === 0) pos = 0;
+    el.setSelectionRange(pos, pos);
+  }, [visible]);
+
+  return (
+    <input
+      ref={(el) => {
+        propio.current = el;
+        if (typeof ref === 'function') ref(el);
+        else if (ref) ref.current = el;
+      }}
+      type="text"
+      inputMode="numeric"
+      autoComplete="off"
+      value={visible}
+      onChange={(e) => {
+        const hastaElCursor = e.target.value.slice(0, e.target.selectionStart ?? 0);
+        caret.current = hastaElCursor.replace(/\D/g, '').length;
+        onValue(soloDigitos(e.target.value));
+      }}
+      className={cn(inputBase, 'tabular-nums', className)}
+      {...props}
+    />
+  );
+});
 
 /** Normaliza un valor de hora a HH:MM (rellena "2:30" → "02:30") para <input type="time">. */
 function toTimeValue(v: unknown): string {
