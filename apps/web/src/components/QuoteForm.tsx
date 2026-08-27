@@ -1,10 +1,16 @@
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { computeQuote, type DatosFiscales, type QuoteBreakdown, type QuoteLine } from '@hsa/shared';
+import {
+  capacidadTotal,
+  computeQuote,
+  type DatosFiscales,
+  type QuoteBreakdown,
+  type QuoteLine,
+} from '@hsa/shared';
 import { Sparkles, AlertTriangle, CheckCircle2, Ban, UserCheck, X, Plus, Trash2 } from 'lucide-react';
 import { api } from '../lib/api.ts';
 import { formatMXN } from '../lib/money.ts';
-import { Button, Card, Field, TextInput, SelectInput } from './ui.tsx';
+import { Button, Card, Field, MoneyInput, TextInput, SelectInput } from './ui.tsx';
 import { ClienteSearch, type ClienteLite } from './ClienteSearch.tsx';
 import { BanqueteroPicker, type ModoVenta } from './banqueteros/BanqueteroPicker.tsx';
 import { FacturacionSection } from './FacturacionSection.tsx';
@@ -242,6 +248,10 @@ export function QuoteForm({
   const foodPackages = eventType?.foodPackages ?? [];
   // Precio del DJ por hora extra según el tipo de evento (undefined = no aplica).
   const djPrecio = eventTypeId ? catalog.engine.djHoraExtraByEventType[eventTypeId] : undefined;
+  // Cuánta gente cabe entre los espacios elegidos. Sale del catálogo del motor,
+  // que es el mismo que decide el precio: un cupo calculado aparte podría decir
+  // que sí y el motor que no.
+  const cupoElegido = capacidadTotal(spaceIds, catalog.engine.rentalPrices);
 
   /**
    * El descuento capturado, ya validado, o `undefined` si no hay. Solo cuenta con
@@ -641,6 +651,19 @@ export function QuoteForm({
               <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-wine" />Apartado</span>
             </div>
           )}
+          {/* El cupo de la combinación. Con dos salones de 400 el tope real es
+              800, y sin decirlo la gente captura 600, ve un error de precios y
+              concluye que no se puede. */}
+          {spaceIds.length > 1 && cupoElegido > 0 && (
+            <p
+              className={`text-xs ${invitados > cupoElegido ? 'font-medium text-wine' : 'text-charcoal-soft'}`}
+            >
+              Cupo entre los {spaceIds.length} espacios elegidos: <strong>{cupoElegido}</strong>{' '}
+              invitados
+              {invitados > cupoElegido && ` — capturaste ${invitados}`}
+            </p>
+          )}
+
           {spaceIds.map((id) => (
             <AvailabilityBanner key={id} avail={availBySpace.get(id)} fecha={fecha} />
           ))}
@@ -894,12 +917,9 @@ export function QuoteForm({
                   <option value="porPersona">Por persona</option>
                   <option value="porUnidad">Por unidad</option>
                 </SelectInput>
-                <TextInput
-                  type="number"
-                  min={0}
-                  step={1}
+                <MoneyInput
                   value={e.monto === 0 ? '' : String(e.monto)}
-                  onChange={(ev) => actualizarExtra(i, { monto: Math.trunc(Number(ev.target.value) || 0) })}
+                  onValue={(v) => actualizarExtra(i, { monto: Math.trunc(Number(v) || 0) })}
                   placeholder="Monto"
                   aria-label="Monto con IVA incluido"
                 />

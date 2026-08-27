@@ -5,12 +5,20 @@ import { contratosQueUsan, mensajeEnUso, type UsoEnContratos } from '../quotes/u
 
 const banqueteroCreateSchema = z.object({
   nombre: z.string().min(1),
-  telefono: z.string().max(40).optional(),
+  // OBLIGATORIO al dar de alta (decisión del dueño): un banquetero sin teléfono
+  // es una contraparte con la que no se puede hablar, y de éstos depende dinero.
+  // El correo es opcional.
+  telefono: z.string().min(1, 'El teléfono del banquetero es obligatorio').max(40),
+  correo: z.string().max(200).nullish(),
 });
 
 const banqueteroUpdateSchema = z.object({
   nombre: z.string().min(1).optional(),
+  // Al EDITAR sí puede llegar vacío como `null`: es como se corrige un teléfono
+  // mal capturado, y los banqueteros que ya existían sin él no se pueden bloquear
+  // retroactivamente. La ficha los marca como incompletos.
   telefono: z.string().max(40).nullable().optional(),
+  correo: z.string().max(200).nullable().optional(),
   activo: z.boolean().optional(),
 });
 

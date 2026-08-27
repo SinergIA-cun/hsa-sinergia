@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { Plus, Save, Check, X, Pencil } from 'lucide-react';
 import { formatMXN } from '../../../lib/money.ts';
-import { Button, Field, SelectInput, TextInput } from '../../ui.tsx';
+import { Button, Field, MoneyInput, SelectInput, TextInput } from '../../ui.tsx';
 import type { AddOn } from '../../../lib/types.ts';
 import { ConfirmDelete } from '../shared.tsx';
 import { useGuardar } from './guardado.tsx';
@@ -118,14 +118,7 @@ function ServicioRow({
             onChange={(e) => setNombre(e.target.value)}
           />
           <KindSelect value={kind} onChange={setKind} />
-          <TextInput
-            type="number"
-            min={0}
-            step={1}
-            aria-label="Precio del servicio"
-            value={price}
-            onChange={(e) => setPrice(e.target.value)}
-          />
+          <MoneyInput aria-label="Precio del servicio" value={price} onValue={setPrice} />
         </div>
         {error && (
           <p role="alert" className="text-xs text-wine">
@@ -237,14 +230,7 @@ function NuevoServicio({ onCrear }: { onCrear: (datos: ServicioNuevo) => Promise
         <KindSelect value={kind} onChange={setKind} />
       </Field>
       <Field label="Precio (MXN)" hint="Pesos enteros, sin centavos.">
-        <TextInput
-          type="number"
-          min={0}
-          step={1}
-          value={price}
-          onChange={(e) => setPrice(e.target.value)}
-          placeholder="0"
-        />
+        <MoneyInput value={price} onValue={setPrice} placeholder="0" />
       </Field>
       {(invalido || error) && (
         <p role="alert" className="text-xs text-wine">

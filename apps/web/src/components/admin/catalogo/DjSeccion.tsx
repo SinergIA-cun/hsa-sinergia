@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { formatMXN } from '../../../lib/money.ts';
-import { TextInput } from '../../ui.tsx';
+import { MoneyInput } from '../../ui.tsx';
 import { BarraGuardar, useGuardar } from './guardado.tsx';
 
 export interface DjCambio {
@@ -90,18 +90,15 @@ export function DjSeccion({
                   {antes === undefined ? 'No cobra DJ por hora extra' : `Ahora: ${formatMXN(antes)}`}
                 </p>
               </div>
-              <TextInput
-                type="number"
-                min={0}
-                step={1}
+              <MoneyInput
                 aria-label={`DJ hora extra en ${t.nombre}`}
                 placeholder="no se cobra"
                 className={`w-36 px-2.5 py-1.5 text-sm ${malo ? 'border-wine' : ''}`}
                 value={crudo}
-                onChange={(e) => {
+                onValue={(v) => {
                   limpiar();
                   setInvalido('');
-                  setBorrador((prev) => ({ ...prev, [t.id]: e.target.value }));
+                  setBorrador((prev) => ({ ...prev, [t.id]: v }));
                 }}
               />
             </li>

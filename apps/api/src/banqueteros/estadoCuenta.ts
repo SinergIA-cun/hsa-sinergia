@@ -28,7 +28,7 @@ export async function estadoCuentaBanquetero(
 ) {
   const banquetero = await db.banquetero.findUnique({
     where: { id: banqueteroId },
-    select: { id: true, nombre: true, telefono: true, activo: true, publicToken: true },
+    select: { id: true, nombre: true, telefono: true, correo: true, activo: true, publicToken: true },
   });
   if (!banquetero) throw new QuoteError(404, 'Banquetero no encontrado');
   const hoy = opts.hoy ?? hoyCivilMexico();

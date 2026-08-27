@@ -4,7 +4,7 @@ import { Ban, FileImage, Paperclip, Split } from 'lucide-react';
 import { api } from '../../lib/api.ts';
 import { formatMXN } from '../../lib/money.ts';
 import { formatEventDate } from '../../lib/date.ts';
-import { Button, Card, Field, SelectInput, TextInput } from '../ui.tsx';
+import { Button, Card, Field, MoneyInput, SelectInput, TextInput } from '../ui.tsx';
 import { apiErrorMessage } from '../admin/shared.tsx';
 import type { DepositoBanquetero, PaymentMethod } from '../../lib/types.ts';
 
@@ -321,13 +321,7 @@ function RegistrarDeposito({
       </p>
       <form onSubmit={registrar} className="space-y-3">
         <Field label="Monto (pesos enteros)">
-          <TextInput
-            inputMode="numeric"
-            value={monto}
-            onChange={(e) => setMonto(e.target.value)}
-            placeholder="ej. 323345"
-            className="tabular-nums"
-          />
+          <MoneyInput value={monto} onValue={setMonto} placeholder="ej. 323,345" />
         </Field>
         <Field label="Forma de pago">
           <SelectInput value={metodo} onChange={(e) => setMetodo(e.target.value as PaymentMethod)}>

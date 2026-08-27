@@ -23,6 +23,7 @@ export interface ResumenBanquetero {
   banqueteroId: string;
   nombre: string;
   telefono: string | null;
+  correo: string | null;
   activo: boolean;
   publicToken: string;
   /** Cotizaciones vivas suyas (sin papelera). Los apartados NO cuentan: no son ventas. */
@@ -114,6 +115,7 @@ export async function resumenBanqueteros(
       banqueteroId: b.id,
       nombre: b.nombre,
       telefono: b.telefono,
+      correo: b.correo,
       activo: b.activo,
       publicToken: b.publicToken,
       eventos: eventosPorBanquetero.get(b.id) ?? 0,

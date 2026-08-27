@@ -425,6 +425,7 @@ export interface Banquetero {
   id: string;
   nombre: string;
   telefono?: string | null;
+  correo?: string | null;
   activo: boolean;
   createdAt?: string;
 }
@@ -525,6 +526,7 @@ export interface EstadoCuentaBanquetero {
     id: string;
     nombre: string;
     telefono: string | null;
+    correo: string | null;
     activo: boolean;
     publicToken: string;
   };
@@ -579,6 +581,7 @@ export interface ResumenBanquetero {
   banqueteroId: string;
   nombre: string;
   telefono: string | null;
+  correo: string | null;
   activo: boolean;
   publicToken: string;
   eventos: number;

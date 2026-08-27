@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { ArrowLeft, CalendarClock, Coins, Phone, Share2 } from 'lucide-react';
+import { ArrowLeft, CalendarClock, Coins, Share2 } from 'lucide-react';
 import { api } from '../lib/api.ts';
 import { formatMXN } from '../lib/money.ts';
 import { formatEventDate } from '../lib/date.ts';
@@ -13,6 +13,7 @@ import { DepositosPanel } from '../components/banqueteros/DepositosPanel.tsx';
 import { ApartadosPanel } from '../components/banqueteros/ApartadosPanel.tsx';
 import { RepartirDepositoModal } from '../components/banqueteros/RepartirDepositoModal.tsx';
 import { CompartirBanqueteroModal } from '../components/banqueteros/CompartirBanqueteroModal.tsx';
+import { ContactoBanquetero } from '../components/banqueteros/ContactoBanquetero.tsx';
 import { useAuth } from '../auth/auth.tsx';
 import type { Catalog, DepositoBanquetero, PriceList } from '../lib/types.ts';
 
@@ -77,11 +78,6 @@ export function BanqueteroPage() {
           <ArrowDivider>Cuenta corriente</ArrowDivider>
           <h1 className="mt-2 font-display text-4xl text-ink">{banquetero.nombre}</h1>
           <p className="mt-1 flex flex-wrap items-center gap-x-3 text-sm text-charcoal-soft">
-            {banquetero.telefono && (
-              <span className="inline-flex items-center gap-1.5">
-                <Phone size={13} /> {banquetero.telefono}
-              </span>
-            )}
             <span>
               {totales.eventos} evento(s) · {totales.apartadosVivos} fecha(s) apartada(s)
             </span>
@@ -92,6 +88,14 @@ export function BanqueteroPage() {
           <Share2 size={15} /> QR / enlace
         </Button>
       </div>
+
+      <ContactoBanquetero
+        banqueteroId={banquetero.id}
+        nombre={banquetero.nombre}
+        telefono={banquetero.telefono}
+        correo={banquetero.correo}
+        onGuardado={invalidar}
+      />
 
       {/* El saldo sin asignar manda: es el número que justifica toda la cuenta. */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">

@@ -1,6 +1,7 @@
 import type { Catalog, QuoteBreakdown, QuoteLine } from '../types.js';
 import type { QuoteSelection } from '../schemas.js';
 import { findBracket } from './brackets.js';
+import { bracketDeParte, capacidadTotal, repartirInvitados } from './reparto.js';
 import { dayType } from './day-type.js';
 
 function round2(n: number): number {
@@ -52,13 +53,27 @@ export function computeQuote(
   // Team Building usa la tabla PLANA (mismo precio todos los días); el resto, por-día.
   const usaFlat = sel.eventTypeId != null && catalog.flatRentalEventTypeIds.includes(sel.eventTypeId);
   const rentalRows = usaFlat ? catalog.rentalPricesFlat : catalog.rentalPrices;
+  //
+  // Con VARIOS salones la gente se reparte entre ellos y cada uno cobra según la
+  // que le toca: 600 invitados en dos salones de 400 son 300 en cada uno. Antes
+  // se buscaba el rango de cada salón con el TOTAL, así que esa cotización no se
+  // podía crear aunque entre los dos cupieran 800.
+  const reparto = repartirInvitados(sel.spaceIds, rentalRows, sel.invitados);
+  const variosEspacios = sel.spaceIds.length > 1;
   let rentaEspacios = 0;
   for (const spaceId of sel.spaceIds) {
     const rows = rentalRows.filter((r) => r.spaceId === spaceId);
-    const row = findBracket(rows, sel.invitados);
+    const tocan = reparto.get(spaceId) ?? sel.invitados;
+    const row = variosEspacios ? bracketDeParte(rows, tocan) : findBracket(rows, tocan);
     if (!row) {
+      // El mensaje dice el cupo de TODOS los espacios elegidos, no el de uno: con
+      // varios salones, "no cabe" es una respuesta sobre el conjunto, y saber que
+      // el tope es 800 es lo que permite corregir.
+      const cupo = capacidadTotal(sel.spaceIds, rentalRows);
       throw new Error(
-        `El espacio ${spaceId} no tiene rango de renta para ${sel.invitados} invitados`,
+        variosEspacios
+          ? `${sel.invitados} invitados no caben en los espacios elegidos (cupo ${Number.isFinite(cupo) ? cupo : '∞'})`
+          : `El espacio ${spaceId} no tiene rango de renta para ${sel.invitados} invitados`,
       );
     }
     const monto = row.prices[dt];
@@ -66,7 +81,16 @@ export function computeQuote(
       throw new Error(`Falta precio para el espacio ${spaceId} en día ${dt}`);
     }
     rentaEspacios += monto;
-    lines.push({ concepto: `Renta ${spaceId}`, monto: round2(monto), ivaIncluido: true, grupo: 'renta', spaceId });
+    lines.push({
+      concepto: `Renta ${spaceId}`,
+      // Con un solo salón el reparto no es noticia; con varios, decir cuántos le
+      // tocaron es lo que evita que el precio parezca sacado de la manga.
+      detalle: variosEspacios ? `${tocan} de ${sel.invitados} invitados` : undefined,
+      monto: round2(monto),
+      ivaIncluido: true,
+      grupo: 'renta',
+      spaceId,
+    });
   }
 
   // 2. Descuento de cortesía: CAMBIA EL PRECIO DE LA RENTA. `rentaBase` es el

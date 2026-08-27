@@ -4,7 +4,7 @@ import { AlertTriangle, BookmarkPlus, CalendarClock } from 'lucide-react';
 import { api, ApiError } from '../../lib/api.ts';
 import { formatMXN } from '../../lib/money.ts';
 import { formatEventDate } from '../../lib/date.ts';
-import { Button, Card, Field, SelectInput, TextInput } from '../ui.tsx';
+import { Button, Card, Field, MoneyInput, SelectInput, TextInput } from '../ui.tsx';
 import { apiErrorMessage } from '../admin/shared.tsx';
 import { ConvertirApartadoModal } from './ConvertirApartadoModal.tsx';
 import type { ApartadoFecha, PaymentMethod, PriceList, Space } from '../../lib/types.ts';
@@ -361,13 +361,7 @@ function CrearApartado({
           </Field>
         )}
         <Field label="Depósito (opcional, pesos enteros)">
-          <TextInput
-            inputMode="numeric"
-            value={deposito}
-            onChange={(e) => setDeposito(e.target.value)}
-            placeholder="0"
-            className="tabular-nums"
-          />
+          <MoneyInput value={deposito} onValue={setDeposito} placeholder="0" />
         </Field>
         {depositoNum > 0 && (
           <>
