@@ -2,6 +2,7 @@ import type { PrismaClient } from '@hsa/database';
 import { hoyCivilMexico } from '@hsa/shared';
 import { saldoSinAsignar } from './cuenta.js';
 import { apartadoVivo } from './apartados.js';
+import { totalAbonado } from './abonos.js';
 import { DIAS_POR_VENCER } from './estadoCuenta.js';
 
 /**
@@ -47,7 +48,8 @@ export interface ApartadoPendiente {
   venceISO: string;
   /** Negativo nunca: un apartado vencido ya no está vivo y no llega aquí. */
   diasParaVencer: number;
-  deposito: number;
+  /** Lo que lleva juntado esa fecha, sumando sus abonos vivos. */
+  abonado: number;
   spaceIds: string[];
   catalogo: string | null;
   nota: string | null;
@@ -75,6 +77,7 @@ export async function resumenBanqueteros(
       include: {
         banquetero: { select: { nombre: true } },
         priceList: { select: { nombre: true } },
+        abonos: { select: { monto: true, anuladoAt: true } },
       },
       orderBy: { vence: 'asc' },
     }),
@@ -102,7 +105,7 @@ export async function resumenBanqueteros(
     fechaEventoISO: a.fechaEvento.toISOString(),
     venceISO: a.vence.toISOString(),
     diasParaVencer: Math.round((a.vence.getTime() - hoy.getTime()) / MS_DIA),
-    deposito: a.deposito,
+    abonado: totalAbonado(a.abonos),
     spaceIds: a.spaceIds,
     catalogo: a.priceList?.nombre ?? null,
     nota: a.nota,

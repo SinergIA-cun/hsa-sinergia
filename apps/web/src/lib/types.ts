@@ -397,7 +397,8 @@ export interface ApartadoBloqueo {
   apartadoId: string;
   banquetero: string;
   venceISO: string;
-  deposito: number;
+  /** Lo juntado en esa fecha. */
+  abonado: number;
 }
 
 export interface SpaceAvailability {
@@ -469,15 +470,41 @@ export interface DepositoBanquetero {
 }
 
 /** Una fecha apartada sin precio, tal como la devuelve la API con sus derivados. */
+/**
+ * Una entrada de dinero sobre una fecha apartada.
+ *
+ * Un apartado no tiene precio —2029 no tiene catálogo, ni PAX, ni tipo de
+ * evento— así que esto no abona a una deuda: junta dinero a favor de esa fecha.
+ * Al convertirla, cada abono se vuelve un pago con SU fecha de recepción.
+ */
+export interface AbonoApartado {
+  id: string;
+  monto: number;
+  metodo: PaymentMethod;
+  /** Cuándo se RECIBIÓ el dinero. */
+  fecha: string;
+  referencia: string | null;
+  comprobanteKey: string | null;
+  /** Si salió del saldo del banquetero, de qué depósito. */
+  pagoBanqueteroId: string | null;
+  /** El pago que nació de él al convertir. `null` = todavía es abono. */
+  paymentId: string | null;
+  registradoBy?: { nombre: string } | null;
+  anuladoAt: string | null;
+  motivoAnulacion: string | null;
+  createdAt: string;
+}
+
 export interface ApartadoFecha {
   id: string;
   banqueteroId: string;
   fechaEvento: string;
   spaceIds: string[];
   priceListId: string | null;
-  deposito: number;
-  depositoMetodo: PaymentMethod | null;
-  depositoFecha: string | null;
+  /** Lo que lleva juntado esta fecha, sumando sus abonos vivos. NO es un saldo
+   *  pendiente: un apartado no tiene precio contra el cual restar. */
+  abonado: number;
+  abonos: AbonoApartado[];
   vence: string;
   nota: string | null;
   quoteId: string | null;
@@ -565,7 +592,8 @@ export interface EstadoCuentaPublico {
   apartados: {
     fechaEventoISO: string;
     spaceIds: string[];
-    deposito: number;
+    /** Lo juntado en esa fecha. */
+  abonado: number;
     venceISO: string;
     catalogo: string | null;
   }[];
@@ -600,7 +628,8 @@ export interface ApartadoPendiente {
   fechaEventoISO: string;
   venceISO: string;
   diasParaVencer: number;
-  deposito: number;
+  /** Lo juntado en esa fecha. */
+  abonado: number;
   spaceIds: string[];
   catalogo: string | null;
   nota: string | null;
@@ -674,7 +703,8 @@ export interface AgendaApartado {
   fechaEvento: string;
   spaceIds: string[];
   venceISO: string;
-  deposito: number;
+  /** Lo juntado en esa fecha. */
+  abonado: number;
   nota: string | null;
 }
 

@@ -7,6 +7,7 @@ import { formatEventDate } from '../../lib/date.ts';
 import { Button, Card, Field, MoneyInput, SelectInput, TextInput } from '../ui.tsx';
 import { apiErrorMessage } from '../admin/shared.tsx';
 import { ConvertirApartadoModal } from './ConvertirApartadoModal.tsx';
+import { AbonosApartado } from './AbonosApartado.tsx';
 import type { ApartadoFecha, PaymentMethod, PriceList, Space } from '../../lib/types.ts';
 
 const METODOS: PaymentMethod[] = ['transferencia', 'efectivo', 'tarjeta'];
@@ -128,7 +129,7 @@ function ApartadoRow({
           </p>
           <p className="mt-1 text-xs text-charcoal-soft">
             Vence {formatEventDate(a.vence)}
-            {a.deposito > 0 ? ` · depósito ${formatMXN(a.deposito)}` : ' · sin depósito'}
+            {a.abonado > 0 ? ` · abonado ${formatMXN(a.abonado)}` : ' · sin abonos'}
           </p>
           {a.nota && <p className="mt-1 text-xs italic text-charcoal-soft">{a.nota}</p>}
           {a.quote && (
@@ -169,6 +170,8 @@ function ApartadoRow({
           )}
         </div>
       </div>
+
+      <AbonosApartado apartado={a} onCambio={onCambio} />
 
       {convertir && (
         <ConvertirApartadoModal

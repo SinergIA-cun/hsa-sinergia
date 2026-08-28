@@ -129,7 +129,7 @@ describe('un apartado bloquea la fecha', () => {
     expect(dispo.spaces[0]!.level).toBe('bloqueada');
     expect(dispo.spaces[0]!.counts.apartados).toBe(1);
     expect(dispo.spaces[0]!.apartados[0]!.apartadoId).toBe(apartado.id);
-    expect(dispo.spaces[0]!.apartados[0]!.deposito).toBe(30_000);
+    expect(dispo.spaces[0]!.apartados[0]!.abonado).toBe(30_000);
     // El otro salón de ese día sigue vendible.
     expect(dispo.spaces[1]!.level).toBe('libre');
     expect(dispo.blocked).toBe(true);

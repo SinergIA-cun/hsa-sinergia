@@ -194,7 +194,7 @@ export function BanqueteroPublicoPage() {
                   <span className="inline-flex items-center gap-1.5 text-xs text-charcoal-soft">
                     <CalendarClock size={13} /> vence {formatEventDate(a.venceISO)}
                     {a.catalogo ? ` · precio garantizado ${a.catalogo}` : ''}
-                    {a.deposito > 0 ? ` · depósito ${formatMXN(a.deposito)}` : ''}
+                    {a.abonado > 0 ? ` · abonado ${formatMXN(a.abonado)}` : ''}
                   </span>
                 </li>
               ))}

@@ -283,7 +283,7 @@ export function InicioPage() {
                               </span>
                               <span className="block truncate text-xs text-charcoal-soft">
                                 {a.banquetero}
-                                {a.deposito > 0 ? ` · ${formatMXN(a.deposito)}` : ' · sin depósito'}
+                                {a.abonado > 0 ? ` · ${formatMXN(a.abonado)}` : ' · sin abonos'}
                               </span>
                             </span>
                             <span

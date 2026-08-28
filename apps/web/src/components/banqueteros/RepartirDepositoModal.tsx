@@ -6,11 +6,18 @@ import { formatEventDate } from '../../lib/date.ts';
 import { Button, Card, MoneyInput } from '../ui.tsx';
 import { apiErrorMessage } from '../admin/shared.tsx';
 import { STATUS_LABEL } from '../../lib/status.ts';
-import type { DepositoBanquetero, EventoBanquetero } from '../../lib/types.ts';
+import type { ApartadoFecha, DepositoBanquetero, EventoBanquetero } from '../../lib/types.ts';
 
 interface Props {
   deposito: DepositoBanquetero;
   eventos: EventoBanquetero[];
+  /**
+   * Sus fechas apartadas vivas. Van en el MISMO reparto que los eventos porque
+   * son el mismo dinero repartiéndose: "de esos 300 mil, 100 al evento de mayo y
+   * 200 a la fecha de 2029". Dos pantallas serían dos maneras de gastarse el
+   * mismo saldo sin que ninguna vea a la otra.
+   */
+  apartados: ApartadoFecha[];
   onCancel: () => void;
   /** Se llama después de guardar, con los pagos que nacieron del reparto. */
   onSaved: (pagos: PagoCreado[]) => Promise<void>;
@@ -36,8 +43,9 @@ export interface PagoCreado {
  * antes de escribir nada, así que un reparto que se pasa del saldo no deja dos
  * pagos hechos y el tercero rechazado.
  */
-export function RepartirDepositoModal({ deposito, eventos, onCancel, onSaved }: Props) {
+export function RepartirDepositoModal({ deposito, eventos, apartados, onCancel, onSaved }: Props) {
   const [montos, setMontos] = useState<Record<string, string>>({});
+  const [montosApartado, setMontosApartado] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
@@ -58,11 +66,25 @@ export function RepartirDepositoModal({ deposito, eventos, onCancel, onSaved }: 
     [eventos, montos],
   );
 
-  const invalido = renglones.some((r) => r.monto == null);
-  const pedido = renglones.reduce((s, r) => s + (r.monto ?? 0), 0);
+  const filasApartado = useMemo(
+    () =>
+      apartados.map((a) => ({
+        apartado: a,
+        raw: montosApartado[a.id] ?? '',
+        monto: parseMonto(montosApartado[a.id] ?? ''),
+      })),
+    [apartados, montosApartado],
+  );
+
+  const invalido = renglones.some((r) => r.monto == null) || filasApartado.some((r) => r.monto == null);
+  const pedido =
+    renglones.reduce((s, r) => s + (r.monto ?? 0), 0) +
+    filasApartado.reduce((s, r) => s + (r.monto ?? 0), 0);
   const remanente = deposito.saldoSinAsignar - pedido;
   const conMonto = renglones.filter((r) => (r.monto ?? 0) > 0);
-  const puedeGuardar = !invalido && conMonto.length > 0 && remanente >= 0 && !busy;
+  const apartadosConMonto = filasApartado.filter((r) => (r.monto ?? 0) > 0);
+  const puedeGuardar =
+    !invalido && conMonto.length + apartadosConMonto.length > 0 && remanente >= 0 && !busy;
 
   /** Vuelca todo el remanente en este renglón: "el resto al evento C". */
   function elResto(quoteId: string) {
@@ -76,7 +98,10 @@ export function RepartirDepositoModal({ deposito, eventos, onCancel, onSaved }: 
     try {
       const res = await api.post<{ pagos: PagoCreado[] }>(
         `/api/banqueteros/depositos/${deposito.id}/asignaciones`,
-        { asignaciones: conMonto.map((r) => ({ quoteId: r.evento.quoteId, monto: r.monto })) },
+        {
+          asignaciones: conMonto.map((r) => ({ quoteId: r.evento.quoteId, monto: r.monto })),
+          apartados: apartadosConMonto.map((r) => ({ apartadoId: r.apartado.id, monto: r.monto })),
+        },
       );
       await onSaved(res.pagos);
     } catch (e) {
@@ -99,12 +124,12 @@ export function RepartirDepositoModal({ deposito, eventos, onCancel, onSaved }: 
           </p>
         </div>
 
-        {eventos.length === 0 ? (
+        {eventos.length === 0 && apartados.length === 0 ? (
           <p className="rounded-lg border border-wine/30 bg-wine/5 px-3 py-2.5 text-sm text-wine">
-            Este banquetero no tiene eventos a los que repartir. Primero hay que cotizarle uno o
-            convertir un apartado.
+            Este banquetero no tiene eventos ni fechas apartadas a los que repartir. Primero hay que
+            cotizarle uno o apartarle una fecha.
           </p>
-        ) : (
+        ) : eventos.length === 0 ? null : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
@@ -163,6 +188,71 @@ export function RepartirDepositoModal({ deposito, eventos, onCancel, onSaved }: 
                     </tr>
                   );
                 })}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {/* Y sus fechas apartadas. No tienen saldo porque no tienen precio: lo que
+            se enseña es lo que llevan juntado. */}
+        {apartados.length > 0 && (
+          <div className="overflow-x-auto">
+            <p className="mb-1 text-xs font-medium uppercase tracking-wide text-charcoal-soft">
+              Fechas apartadas
+            </p>
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-cream-300 text-left text-xs uppercase tracking-wide text-charcoal-soft">
+                  <th className="py-2 pr-3 font-semibold">Fecha</th>
+                  <th className="py-2 pr-3 text-right font-semibold">Ya lleva</th>
+                  <th className="py-2 pr-3 text-right font-semibold">Se le abona</th>
+                  <th className="py-2" />
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-cream-200">
+                {filasApartado.map(({ apartado: a, raw, monto }) => (
+                  <tr key={a.id}>
+                    <td className="py-2.5 pr-3">
+                      <span className="block font-medium text-ink">
+                        {formatEventDate(a.fechaEvento)}
+                      </span>
+                      <span className="block text-xs text-charcoal-soft">
+                        {a.priceList ? `precio garantizado ${a.priceList.nombre}` : 'sin precio garantizado'}
+                      </span>
+                    </td>
+                    <td className="py-2.5 pr-3 text-right tabular-nums text-charcoal">
+                      {formatMXN(a.abonado)}
+                    </td>
+                    <td className="py-2.5 pr-3 text-right">
+                      <MoneyInput
+                        aria-label={`Abono para la fecha ${a.fechaEvento.slice(0, 10)}`}
+                        value={raw}
+                        onValue={(v) => setMontosApartado((m) => ({ ...m, [a.id]: v }))}
+                        placeholder="0"
+                        className={`w-28 text-right ${monto == null ? 'border-wine' : ''}`}
+                      />
+                      {monto == null && (
+                        <span className="mt-1 block text-[0.7rem] text-wine">Pesos enteros</span>
+                      )}
+                    </td>
+                    <td className="py-2.5 text-right">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        className="px-2 py-1 text-xs"
+                        disabled={remanente <= 0}
+                        onClick={() =>
+                          setMontosApartado((m) => ({
+                            ...m,
+                            [a.id]: String((parseMonto(m[a.id] ?? '') ?? 0) + Math.max(0, remanente)),
+                          }))
+                        }
+                      >
+                        El resto
+                      </Button>
+                    </td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>

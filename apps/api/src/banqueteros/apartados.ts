@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import type { PrismaClient } from '@hsa/database';
 import { hoyCivilMexico } from '@hsa/shared';
+import { INCLUDE_ABONOS, totalAbonado } from './abonos.js';
 import { QuoteError, createQuote, type Actor } from '../quotes/service.js';
 import { getAvailability } from '../availability/service.js';
 import { registerPayment } from '../payments/service.js';
@@ -59,6 +60,7 @@ const INCLUDE = {
   banquetero: { select: { id: true, nombre: true, telefono: true } },
   priceList: { select: { id: true, nombre: true, anio: true } },
   quote: { select: { id: true, codigo: true, total: true, status: true } },
+  ...INCLUDE_ABONOS,
 } as const;
 
 /** ¿Este apartado sigue bloqueando su fecha? Pura, para que el "hoy" se pueda fijar. */
@@ -116,12 +118,28 @@ export async function crearApartado(
       fechaEvento: dia(input.fechaEvento),
       spaceIds: input.spaceIds,
       priceListId: input.priceListId ?? null,
-      deposito: input.deposito,
-      depositoMetodo: input.depositoMetodo ?? null,
-      depositoFecha: input.depositoFecha ? dia(input.depositoFecha) : null,
       vence: dia(input.vence),
       nota: input.nota ?? null,
       createdById: actor.id,
+      // El depósito que se deja AL APARTAR es simplemente el primer abono. Se
+      // captura junto con la fecha porque así llega ("apártame el 15 y te dejo
+      // veinte mil"), pero se guarda como lo que es: una entrada de dinero más,
+      // con su propia fecha de recepción.
+      ...(input.deposito > 0 && input.depositoMetodo && input.depositoFecha
+        ? {
+            abonos: {
+              create: [
+                {
+                  monto: input.deposito,
+                  metodo: input.depositoMetodo,
+                  fecha: dia(input.depositoFecha),
+                  referencia: 'Depósito al apartar',
+                  registradoById: actor.id,
+                },
+              ],
+            },
+          }
+        : {}),
     },
     include: INCLUDE,
   });
@@ -142,6 +160,9 @@ export async function listarApartados(
   const hoy = opts.hoy ?? hoyCivilMexico();
   return apartados.map((a) => ({
     ...a,
+    // Lo que lleva juntado esta fecha. NO es un saldo pendiente: un apartado no
+    // tiene precio, así que no hay contra qué restarlo.
+    abonado: totalAbonado(a.abonos),
     vivo: apartadoVivo(a, hoy),
     vencido: a.canceladoAt == null && a.quoteId == null && a.vence.getTime() < hoy.getTime(),
   }));
@@ -192,19 +213,13 @@ export async function convertirApartado(
   rawInput: unknown,
   actor: Actor,
 ) {
-  const apartado = await db.apartadoFecha.findUnique({ where: { id: apartadoId } });
+  const apartado = await db.apartadoFecha.findUnique({
+    where: { id: apartadoId },
+    include: { abonos: { orderBy: { fecha: 'asc' } } },
+  });
   if (!apartado) throw new QuoteError(404, 'Apartado no encontrado');
   if (apartado.quoteId) throw new QuoteError(409, 'Este apartado ya se convirtió en cotización.');
   if (apartado.canceladoAt) throw new QuoteError(409, 'El apartado está cancelado.');
-  // Un depósito sin forma de pago o sin fecha de recepción no se puede convertir en
-  // `Payment`: se para aquí en vez de crear la cotización y perder el pago en
-  // silencio. El esquema de captura ya los exige; esto cubre las filas viejas.
-  if (apartado.deposito > 0 && (!apartado.depositoMetodo || !apartado.depositoFecha)) {
-    throw new QuoteError(
-      409,
-      'El depósito del apartado no tiene forma de pago o fecha de recepción: complétalos antes de convertir.',
-    );
-  }
 
   const banquetero = await db.banquetero.findUniqueOrThrow({
     where: { id: apartado.banqueteroId },
@@ -256,24 +271,56 @@ export async function convertirApartado(
 
   await db.apartadoFecha.update({ where: { id: apartadoId }, data: { quoteId: quote.id } });
 
-  let pago = null;
-  if (apartado.deposito > 0 && apartado.depositoMetodo && apartado.depositoFecha) {
+  /**
+   * Cada abono vivo se vuelve un pago de la cotización, **con su propia fecha de
+   * recepción**.
+   *
+   * Uno por uno y no sumados: tres abonos de 2027, 2028 y 2029 son tres ingresos
+   * de tres meses distintos, y el SAT exige facturar cada uno en el suyo. Un solo
+   * pago por la suma, con una sola fecha, facturaría dos de ellos fuera de mes —
+   * el mismo error que este proyecto ya corrigió dos veces.
+   *
+   * El abono queda apuntando a su pago: a partir de ahí el que cuenta contra el
+   * saldo del depósito es el pago, no el abono, o el dinero se restaría dos veces.
+   */
+  const pagos = [];
+  for (const abono of apartado.abonos.filter((a) => a.anuladoAt == null)) {
     const res = await registerPayment(
       db,
       storage,
       quote.id,
       {
-        monto: apartado.deposito,
-        metodo: apartado.depositoMetodo,
+        monto: abono.monto,
+        metodo: abono.metodo,
         concepto: 'aCuenta',
-        // La fecha del DEPÓSITO, no la de la conversión.
-        fecha: apartado.depositoFecha.toISOString().slice(0, 10),
-        referencia: `Apartado ${apartado.id}`,
+        fecha: abono.fecha.toISOString().slice(0, 10),
+        referencia: abono.referencia ?? `Apartado ${apartado.id}`,
       },
       actor,
+      undefined,
+      {
+        // Si el abono salió de un depósito, el pago hereda esa liga: el rastro
+        // del dinero no se corta al convertir.
+        ...(abono.pagoBanqueteroId ? { pagoBanqueteroId: abono.pagoBanqueteroId } : {}),
+        // Y su comprobante viaja con él, en vez de quedarse huérfano en el abono.
+        comprobanteKey: abono.comprobanteKey,
+        comprobanteMime: abono.comprobanteMime,
+      },
     );
-    pago = { id: res.payment.id, folio: res.payment.folio, monto: res.payment.monto, fecha: res.payment.fecha };
+    await db.abonoApartado.update({
+      where: { id: abono.id },
+      data: { paymentId: res.payment.id },
+    });
+    pagos.push({
+      id: res.payment.id,
+      folio: res.payment.folio,
+      monto: res.payment.monto,
+      fecha: res.payment.fecha,
+    });
   }
+  // Se conserva `pago` en singular por compatibilidad de la respuesta: es el
+  // primero, y `pagos` trae todos.
+  const pago = pagos[0] ?? null;
 
   const actualizado = await db.apartadoFecha.findUniqueOrThrow({
     where: { id: apartadoId },
