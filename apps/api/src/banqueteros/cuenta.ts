@@ -3,6 +3,7 @@ import type { PrismaClient } from '@hsa/database';
 import { QuoteError, ownershipWhere, assertNotTrashed, type Actor } from '../quotes/service.js';
 import { registerPayment, anularPayment } from '../payments/service.js';
 import type { ComprobanteStorage } from '../payments/storage.js';
+import { abonarDesdeDeposito } from './abonos.js';
 
 /**
  * La cuenta corriente del banquetero.
@@ -34,17 +35,32 @@ export const depositoSchema = z.object({
   referencia: z.string().max(120).optional(),
 });
 
-export const asignarSchema = z.object({
-  /**
-   * El reparto completo en una sola instrucción, que es como llega de verdad:
-   * "55,000 al evento A, 55,000 al B, el resto al C". Se valida TODO antes de
-   * escribir nada: un reparto que se pasa del saldo no debe dejar dos pagos
-   * hechos y el tercero rechazado.
-   */
-  asignaciones: z
-    .array(z.object({ quoteId: z.string().min(1), monto: montoCapturado }))
-    .min(1),
-});
+export const asignarSchema = z
+  .object({
+    /**
+     * El reparto completo en una sola instrucción, que es como llega de verdad:
+     * "55,000 al evento A, 55,000 al B, el resto al C". Se valida TODO antes de
+     * escribir nada: un reparto que se pasa del saldo no debe dejar dos pagos
+     * hechos y el tercero rechazado.
+     */
+    asignaciones: z
+      .array(z.object({ quoteId: z.string().min(1), monto: montoCapturado }))
+      .default([]),
+    /**
+     * Y a sus fechas apartadas, que todavía no son eventos.
+     *
+     * Van en la MISMA instrucción y no en una ruta aparte porque son el mismo
+     * dinero repartiéndose: un banquetero dice "de esos 300 mil, 100 al evento de
+     * mayo y 200 a la fecha de 2029". Dos pantallas para eso serían dos maneras
+     * de gastarse el mismo saldo sin que ninguna vea a la otra.
+     */
+    apartados: z
+      .array(z.object({ apartadoId: z.string().min(1), monto: montoCapturado }))
+      .default([]),
+  })
+  .refine((d) => d.asignaciones.length + d.apartados.length > 0, {
+    message: 'El reparto tiene que llevar al menos un destino.',
+  });
 
 export const anularDepositoSchema = z.object({ motivo: z.string().min(3) });
 
@@ -65,13 +81,37 @@ export interface MovimientoLite {
 export function saldoSinAsignar(
   deposito: { monto: number; anuladoAt: Date | null },
   asignaciones: MovimientoLite[],
+  /**
+   * Los abonos a fechas apartadas que salieron de este depósito.
+   *
+   * Solo cuentan los que **todavía no se convirtieron en pago**: al convertir el
+   * apartado, el abono se vuelve un `Payment` que ya aparece en `asignaciones`.
+   * Contar los dos restaría el mismo dinero dos veces y el saldo saldría corto.
+   */
+  abonosApartado: (MovimientoLite & { paymentId?: string | null })[] = [],
 ): number {
   if (deposito.anuladoAt) return 0;
   const asignado = asignaciones.filter((a) => a.anuladoAt == null).reduce((s, a) => s + a.monto, 0);
-  return deposito.monto - asignado;
+  const abonado = abonosApartado
+    .filter((a) => a.anuladoAt == null && a.paymentId == null)
+    .reduce((s, a) => s + a.monto, 0);
+  return deposito.monto - asignado - abonado;
 }
 
 const CON_ASIGNACIONES = {
+  // Los abonos a fechas apartadas que salieron de este depósito: cuentan contra
+  // su saldo igual que las asignaciones a eventos.
+  abonosApartado: {
+    select: {
+      id: true,
+      monto: true,
+      anuladoAt: true,
+      paymentId: true,
+      fecha: true,
+      apartadoId: true,
+      apartado: { select: { fechaEvento: true, spaceIds: true } },
+    },
+  },
   asignaciones: {
     select: {
       id: true,
@@ -98,8 +138,15 @@ async function cargarDeposito(db: PrismaClient, depositoId: string) {
 }
 
 /** El depósito con su saldo ya calculado, que es lo que la interfaz consume. */
-function conSaldo<T extends { monto: number; anuladoAt: Date | null; asignaciones: MovimientoLite[] }>(d: T) {
-  return { ...d, saldoSinAsignar: saldoSinAsignar(d, d.asignaciones) };
+function conSaldo<
+  T extends {
+    monto: number;
+    anuladoAt: Date | null;
+    asignaciones: MovimientoLite[];
+    abonosApartado?: (MovimientoLite & { paymentId?: string | null })[];
+  },
+>(d: T) {
+  return { ...d, saldoSinAsignar: saldoSinAsignar(d, d.asignaciones, d.abonosApartado ?? []) };
 }
 
 /**
@@ -171,8 +218,10 @@ export async function asignarDeposito(
 
   // Todo se valida ANTES de escribir: un reparto que se pasa del saldo no debe
   // dejar los primeros pagos hechos y el último rechazado.
-  const disponible = saldoSinAsignar(deposito, deposito.asignaciones);
-  const pedido = input.asignaciones.reduce((s, a) => s + a.monto, 0);
+  const disponible = saldoSinAsignar(deposito, deposito.asignaciones, deposito.abonosApartado);
+  const pedido =
+    input.asignaciones.reduce((s, a) => s + a.monto, 0) +
+    input.apartados.reduce((s, a) => s + a.monto, 0);
   if (pedido > disponible) {
     throw new QuoteError(
       409,
@@ -182,6 +231,37 @@ export async function asignarDeposito(
 
   const repetido = input.asignaciones.map((a) => a.quoteId).find((id, i, arr) => arr.indexOf(id) !== i);
   if (repetido) throw new QuoteError(400, 'Un mismo evento aparece dos veces en el reparto.');
+  const apartadoRepetido = input.apartados
+    .map((a) => a.apartadoId)
+    .find((id, i, arr) => arr.indexOf(id) !== i);
+  if (apartadoRepetido) {
+    throw new QuoteError(400, 'Una misma fecha apartada aparece dos veces en el reparto.');
+  }
+
+  // Las fechas apartadas se validan igual que los eventos, y ANTES de escribir:
+  // que existan, que sean de ESTE banquetero y que todavía puedan recibir dinero.
+  for (const a of input.apartados) {
+    const apartado = await db.apartadoFecha.findUnique({
+      where: { id: a.apartadoId },
+      select: { id: true, banqueteroId: true, quoteId: true, canceladoAt: true },
+    });
+    if (!apartado) throw new QuoteError(404, 'Fecha apartada no encontrada');
+    if (apartado.banqueteroId !== deposito.banqueteroId) {
+      throw new QuoteError(
+        409,
+        'Esa fecha apartada no es de este banquetero: su depósito no puede abonarla.',
+      );
+    }
+    if (apartado.canceladoAt) {
+      throw new QuoteError(409, 'Esa fecha apartada está cancelada: ya se liberó.');
+    }
+    if (apartado.quoteId) {
+      throw new QuoteError(
+        409,
+        'Esa fecha apartada ya es una cotización: repártele como evento, no como apartado.',
+      );
+    }
+  }
 
   for (const a of input.asignaciones) {
     // `ownershipWhere`: una vendedora reparte sobre lo suyo; el admin sobre todo.
@@ -235,7 +315,23 @@ export async function asignarDeposito(
     });
   }
 
-  return { deposito: conSaldo(await cargarDeposito(db, depositoId)), pagos };
+  // Y los abonos a fechas apartadas. Van DESPUÉS de los pagos y con la misma
+  // fecha del depósito: son el mismo dinero, solo que a un destino que todavía
+  // no tiene precio.
+  const abonos = [];
+  for (const a of input.apartados) {
+    const abono = await abonarDesdeDeposito(db, {
+      apartadoId: a.apartadoId,
+      depositoId: deposito.id,
+      monto: a.monto,
+      metodo: deposito.metodo,
+      fechaDeposito: deposito.fecha,
+      actorId: actor.id,
+    });
+    abonos.push({ apartadoId: a.apartadoId, abonoId: abono.id, monto: abono.monto, fecha: abono.fecha });
+  }
+
+  return { deposito: conSaldo(await cargarDeposito(db, depositoId)), pagos, abonos };
 }
 
 /**

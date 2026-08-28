@@ -12,6 +12,7 @@ import {
   loadComprobanteDeposito,
 } from './cuenta.js';
 import { crearApartado, listarApartados, cancelarApartado, convertirApartado } from './apartados.js';
+import { anularAbono, loadComprobanteAbono, registrarAbono } from './abonos.js';
 import { estadoCuentaBanquetero, estadoCuentaPublico } from './estadoCuenta.js';
 import { resumenBanqueteros } from './resumen.js';
 
@@ -210,6 +211,83 @@ export async function banqueteroRoutes(app: FastifyInstance): Promise<void> {
         if (e instanceof QuoteError) return reply.code(e.status).send({ error: e.message });
         throw e;
       }
+    },
+  );
+
+  // --- Abonos sobre una fecha apartada ---
+  //
+  // El apartado NO tiene precio, así que esto no abona a una deuda: junta dinero a
+  // favor de esa fecha. Al convertirla en cotización, cada abono se vuelve un pago
+  // con la fecha en que entró.
+
+  app.post<{ Params: { apartadoId: string } }>(
+    '/banqueteros/apartados/:apartadoId/abonos',
+    { preHandler: requireAdmin },
+    async (req, reply) => {
+      // Multipart (foto del comprobante desde la tablet) o JSON, igual que los
+      // pagos y los depósitos.
+      let rawInput: Record<string, unknown>;
+      let file: { data: Buffer; mime: string } | undefined;
+
+      if (req.isMultipart()) {
+        const fields: Record<string, string> = {};
+        for await (const part of req.parts()) {
+          if (part.type === 'file') {
+            const buf = await part.toBuffer();
+            if (part.fieldname === 'comprobante' && buf.length > 0) {
+              file = { data: buf, mime: part.mimetype };
+            }
+          } else {
+            fields[part.fieldname] = String(part.value);
+          }
+        }
+        rawInput = {
+          monto: fields.monto != null ? Number(fields.monto) : undefined,
+          metodo: fields.metodo,
+          fecha: fields.fecha,
+          referencia: fields.referencia || undefined,
+        };
+      } else {
+        rawInput = (req.body ?? {}) as Record<string, unknown>;
+      }
+
+      try {
+        const abono = await registrarAbono(
+          app.prisma,
+          storage,
+          req.params.apartadoId,
+          rawInput,
+          req.user as Actor,
+          file,
+        );
+        return reply.code(201).send({ abono });
+      } catch (e) {
+        if (e instanceof QuoteError) return reply.code(e.status).send({ error: e.message });
+        throw e;
+      }
+    },
+  );
+
+  app.patch<{ Params: { abonoId: string } }>(
+    '/banqueteros/abonos/:abonoId/anular',
+    { preHandler: requireAdmin },
+    async (req, reply) => {
+      try {
+        return { abono: await anularAbono(app.prisma, req.params.abonoId, req.body, req.user as Actor) };
+      } catch (e) {
+        if (e instanceof QuoteError) return reply.code(e.status).send({ error: e.message });
+        throw e;
+      }
+    },
+  );
+
+  app.get<{ Params: { abonoId: string } }>(
+    '/banqueteros/abonos/:abonoId/comprobante',
+    { preHandler: requireAuth },
+    async (req, reply) => {
+      const c = await loadComprobanteAbono(app.prisma, storage, req.params.abonoId);
+      if (!c) return reply.code(404).send({ error: 'Comprobante no encontrado' });
+      return reply.type(c.mime).send(c.data);
     },
   );
 

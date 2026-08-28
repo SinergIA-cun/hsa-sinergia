@@ -226,8 +226,8 @@ model Banquetero {
 /// facturación y el API del BI siguen funcionando sin cambiar una línea. Lo único
 /// que gana el `Payment` es `pagoBanqueteroId`, la liga al depósito madre.
 model PagoBanquetero {
-  id              String        @id @default(cuid())
-  banquetero      Banquetero    @relation(fields: [banqueteroId], references: [id])
+  id              String          @id @default(cuid())
+  banquetero      Banquetero      @relation(fields: [banqueteroId], references: [id])
   banqueteroId    String
   monto           Int
   metodo          PaymentMethod
@@ -239,18 +239,21 @@ model PagoBanquetero {
   referencia      String?
   comprobanteKey  String?
   comprobanteMime String?
-  registradoBy    User?         @relation("PagoBanqueteroRegistradoBy", fields: [registradoById], references: [id])
+  registradoBy    User?           @relation("PagoBanqueteroRegistradoBy", fields: [registradoById], references: [id])
   registradoById  String?
   anuladoAt       DateTime?
   /// Quién lo anuló. No estaba en el diseño y se agregó por simetría con
   /// `Payment`: anular un depósito es un movimiento de dinero de admin y sin esto
   /// quedaba el motivo pero no el responsable.
-  anuladoBy       User?         @relation("PagoBanqueteroAnuladoBy", fields: [anuladoById], references: [id])
+  anuladoBy       User?           @relation("PagoBanqueteroAnuladoBy", fields: [anuladoById], references: [id])
   anuladoById     String?
   motivoAnulacion String?
-  createdAt       DateTime      @default(now())
+  createdAt       DateTime        @default(now())
   /// Los pagos por evento que salieron de este depósito.
   asignaciones    Payment[]
+  /// Y los abonos a fechas apartadas que salieron de él. Cuentan contra el saldo
+  /// sin asignar igual que las asignaciones, hasta que el apartado se convierte.
+  abonosApartado  AbonoApartado[]
 
   @@index([banqueteroId, fecha])
 }
@@ -266,23 +269,23 @@ model PagoBanquetero {
 /// sobre una fecha— pero NO tiene total: no es una venta cerrada y no debe entrar
 /// a ningún reporte de ingreso comprometido.
 model ApartadoFecha {
-  id                String         @id @default(cuid())
-  banquetero        Banquetero     @relation(fields: [banqueteroId], references: [id])
+  id                String          @id @default(cuid())
+  banquetero        Banquetero      @relation(fields: [banqueteroId], references: [id])
   banqueteroId      String
   fechaEvento       DateTime
   spaceIds          String[]
   /// Catálogo al que se le garantizó el precio, si se negoció uno. Es el tramo 1
   /// del Plan E cobrando: se clona 2027 con el incremento negociado y se amarra el
   /// apartado a ese catálogo, así el banquetero no paga a ciegas.
-  priceList         PriceList?     @relation(fields: [priceListId], references: [id])
+  priceList         PriceList?      @relation(fields: [priceListId], references: [id])
   priceListId       String?
-  deposito          Int            @default(0)
-  /// Método y fecha del depósito. NO estaban en el diseño y sin ellos el pago que
-  /// nace al convertir no tendría ni forma de pago ni fecha de recepción: llevaría
-  /// la de la conversión, que es el MISMO bug fiscal que la Task 1 arregló en las
-  /// asignaciones. Obligatorios cuando `deposito > 0`.
-  depositoMetodo    PaymentMethod?
-  depositoFecha     DateTime?
+  /// El dinero que ha entrado a esta fecha, abono por abono.
+  ///
+  /// Antes era UNA columna `deposito` con su método y su fecha. Un solo número no
+  /// aguanta lo que hace un banquetero: pedir 2029 y abonar de a poco durante dos
+  /// años. O se pisaba el monto anterior —y con él la fecha en que entró cada
+  /// peso, que es lo que el SAT mira— o no se registraba.
+  abonos            AbonoApartado[]
   /// Vence. Sin esto apartan 2029 gratis y se pierde inventario de fechas buenas.
   vence             DateTime
   nota              String?
@@ -290,18 +293,18 @@ model ApartadoFecha {
   /// el apartado es lo que bloquea la fecha; en cuanto existe, la que bloquea es
   /// la cotización y el apartado deja de contar (si no, se contaría doble y el
   /// evento convertido choocaría con su propio apartado).
-  quote             Quote?         @relation(fields: [quoteId], references: [id])
-  quoteId           String?        @unique
+  quote             Quote?          @relation(fields: [quoteId], references: [id])
+  quoteId           String?         @unique
   /// Quién lo apartó y quién lo canceló. No estaban en el diseño: `ActivityLog`
   /// exige `quoteId` y un apartado no pertenece a ninguna cotización, así que la
   /// fila es su propia bitácora y sin el actor no sirve de rastro.
-  createdBy         User?          @relation("ApartadoCreatedBy", fields: [createdById], references: [id])
+  createdBy         User?           @relation("ApartadoCreatedBy", fields: [createdById], references: [id])
   createdById       String?
   canceladoAt       DateTime?
-  canceladoBy       User?          @relation("ApartadoCanceladoBy", fields: [canceladoById], references: [id])
+  canceladoBy       User?           @relation("ApartadoCanceladoBy", fields: [canceladoById], references: [id])
   canceladoById     String?
   motivoCancelacion String?
-  createdAt         DateTime       @default(now())
+  createdAt         DateTime        @default(now())
 
   @@index([fechaEvento])
   @@index([banqueteroId])
@@ -309,6 +312,49 @@ model ApartadoFecha {
 
 // Personal HSA: catálogo de empleados y cuadrillas (grupos) para armar la hoja
 // operativa de cada evento eligiendo una cuadrilla y ajustando horarios.
+/// Una entrada de dinero sobre una fecha apartada.
+///
+/// Un apartado NO tiene precio —2029 no tiene catálogo, ni PAX, ni tipo de
+/// evento— así que esto no es "abonar a una deuda": es dinero a favor de esa
+/// fecha. El total aparece cuando el apartado se vuelve cotización, y entonces
+/// cada abono se convierte en un `Payment` **con su propia fecha de recepción**.
+model AbonoApartado {
+  id               String          @id @default(cuid())
+  /// Cascade: el abono no significa nada sin su apartado.
+  apartado         ApartadoFecha   @relation(fields: [apartadoId], references: [id], onDelete: Cascade)
+  apartadoId       String
+  monto            Int
+  metodo           PaymentMethod
+  /// Cuándo se RECIBIÓ el dinero, no cuándo se capturó ni cuándo se convierte.
+  /// Es la fecha que hereda el `Payment` al convertir: el ingreso se factura en el
+  /// mes en que entró.
+  fecha            DateTime
+  referencia       String?
+  comprobanteKey   String?
+  comprobanteMime  String?
+  /// Si salió del saldo a favor del banquetero, de qué depósito. `null` = pago
+  /// directo a esta fecha.
+  pagoBanquetero   PagoBanquetero? @relation(fields: [pagoBanqueteroId], references: [id])
+  pagoBanqueteroId String?
+  /// El pago que nació de este abono al convertir el apartado.
+  ///
+  /// No es decorativo: mientras es `null`, el abono cuenta contra el saldo sin
+  /// asignar de su depósito; en cuanto existe, el que cuenta es el `Payment`. Sin
+  /// este puntero el mismo dinero se restaría dos veces.
+  payment          Payment?        @relation(fields: [paymentId], references: [id])
+  paymentId        String?         @unique
+  registradoBy     User?           @relation("AbonoApartadoRegistradoBy", fields: [registradoById], references: [id])
+  registradoById   String?
+  anuladoAt        DateTime?
+  anuladoBy        User?           @relation("AbonoApartadoAnuladoBy", fields: [anuladoById], references: [id])
+  anuladoById      String?
+  motivoAnulacion  String?
+  createdAt        DateTime        @default(now())
+
+  @@index([apartadoId])
+  @@index([pagoBanqueteroId])
+}
+
 model Empleado {
   id         String             @id @default(cuid())
   nombre     String
@@ -570,6 +616,8 @@ model Payment {
   /// camino de siempre.
   pagoBanquetero   PagoBanquetero? @relation(fields: [pagoBanqueteroId], references: [id])
   pagoBanqueteroId String?
+  /// El abono de un apartado del que nació este pago, si nació de uno.
+  abonoApartado    AbonoApartado?
   createdAt        DateTime        @default(now())
 
   @@index([quoteId])
@@ -591,29 +639,31 @@ model ActivityLog {
 }
 
 model User {
-  id                   String           @id @default(cuid())
-  nombre               String
-  email                String           @unique
-  passwordHash         String
-  role                 UserRole         @default(ventas)
-  activo               Boolean          @default(true)
-  createdAt            DateTime         @default(now())
+  id                        String           @id @default(cuid())
+  nombre                    String
+  email                     String           @unique
+  passwordHash              String
+  role                      UserRole         @default(ventas)
+  activo                    Boolean          @default(true)
+  createdAt                 DateTime         @default(now())
   /// Última vez que ESTE usuario abrió la papelera. El contador rojo son las
   /// cotizaciones que él puede ver con `deletedAt` posterior a este sello.
   /// Va en el usuario y no en la cotización a propósito: "sin ver" es una
   /// propiedad de quien mira, no de la cotización — dos personas pueden tener
   /// pendiente de ver la misma, y una la ve sin que la otra deje de verla.
   /// `null` = nunca la ha abierto: toda su papelera cuenta.
-  papeleraVistaAt      DateTime?
-  quotesCreated        Quote[]          @relation("QuoteCreatedBy")
-  paymentsRegistrados  Payment[]        @relation("PaymentRegistradoBy")
-  paymentsAnulados     Payment[]        @relation("PaymentAnuladoBy")
-  depositosRegistrados PagoBanquetero[] @relation("PagoBanqueteroRegistradoBy")
-  depositosAnulados    PagoBanquetero[] @relation("PagoBanqueteroAnuladoBy")
-  apartadosCreados     ApartadoFecha[]  @relation("ApartadoCreatedBy")
-  apartadosCancelados  ApartadoFecha[]  @relation("ApartadoCanceladoBy")
-  actividades          ActivityLog[]    @relation("ActivityActor")
-  priceListAudits      PriceListAudit[] @relation("PriceListAuditActor")
+  papeleraVistaAt           DateTime?
+  quotesCreated             Quote[]          @relation("QuoteCreatedBy")
+  paymentsRegistrados       Payment[]        @relation("PaymentRegistradoBy")
+  paymentsAnulados          Payment[]        @relation("PaymentAnuladoBy")
+  abonosApartadoRegistrados AbonoApartado[]  @relation("AbonoApartadoRegistradoBy")
+  abonosApartadoAnulados    AbonoApartado[]  @relation("AbonoApartadoAnuladoBy")
+  depositosRegistrados      PagoBanquetero[] @relation("PagoBanqueteroRegistradoBy")
+  depositosAnulados         PagoBanquetero[] @relation("PagoBanqueteroAnuladoBy")
+  apartadosCreados          ApartadoFecha[]  @relation("ApartadoCreatedBy")
+  apartadosCancelados       ApartadoFecha[]  @relation("ApartadoCanceladoBy")
+  actividades               ActivityLog[]    @relation("ActivityActor")
+  priceListAudits           PriceListAudit[] @relation("PriceListAuditActor")
 }
 
 /// La bitácora forense: quién tocó qué fila, con el contenido antes y después.

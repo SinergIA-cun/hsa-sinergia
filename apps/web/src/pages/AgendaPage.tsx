@@ -497,7 +497,7 @@ function ChipApartado({
       type="button"
       onClick={onClick}
       title={`Fecha apartada · ${espacio || 'espacio'} · ${a.banquetero} · vence ${vence}${
-        a.deposito > 0 ? ` · depósito $${a.deposito.toLocaleString('es-MX')}` : ' · sin depósito'
+        a.abonado > 0 ? ` · abonado $${a.abonado.toLocaleString('es-MX')}` : ' · sin abonos'
       }${a.nota ? ` · ${a.nota}` : ''} · sin precio todavía`}
       className="block w-full rounded border border-dashed border-gold bg-gold/15 px-1.5 py-1 text-left text-[0.7rem] leading-tight text-gold transition-colors hover:bg-gold/25"
     >

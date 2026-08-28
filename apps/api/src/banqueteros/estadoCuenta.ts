@@ -165,7 +165,7 @@ export async function estadoCuentaPublico(db: PrismaClient, token: string) {
       .map((a) => ({
         fechaEventoISO: a.fechaEvento.toISOString(),
         spaceIds: a.spaceIds,
-        deposito: a.deposito,
+        abonado: a.abonado,
         venceISO: a.vence.toISOString(),
         catalogo: a.priceList?.nombre ?? null,
       })),

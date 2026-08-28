@@ -1,4 +1,5 @@
 import type { PrismaClient, Prisma } from '@hsa/database';
+import { totalAbonado } from '../banqueteros/abonos.js';
 import { hoyCivilMexico } from '@hsa/shared';
 
 export type AvailabilityLevel = 'libre' | 'cotizaciones' | 'bloqueada';
@@ -12,7 +13,8 @@ export interface ApartadoBloqueo {
   apartadoId: string;
   banquetero: string;
   venceISO: string;
-  deposito: number;
+  /** Lo que lleva juntado esa fecha, sumando sus abonos vivos. */
+  abonado: number;
 }
 
 export interface SpaceAvailability {
@@ -129,7 +131,7 @@ export async function getAvailability(
         ...apartadosVivos(hoy),
         ...(opts.excludeApartadoId ? { id: { not: opts.excludeApartadoId } } : {}),
       },
-      include: { banquetero: { select: { nombre: true } } },
+      include: { banquetero: { select: { nombre: true } }, abonos: { select: { monto: true, anuladoAt: true } } },
     }),
   ]);
 
@@ -166,7 +168,9 @@ export async function getAvailability(
         apartadoId: a.id,
         banquetero: a.banquetero?.nombre ?? 'Banquetero',
         venceISO: a.vence.toISOString(),
-        deposito: a.deposito,
+        // Lo que lleva juntado esa fecha, no un depósito único: un apartado se
+        // paga de a poco.
+        abonado: totalAbonado(a.abonos),
       })),
     };
   });
@@ -205,7 +209,8 @@ export interface AgendaApartado {
   fechaEvento: string;
   spaceIds: string[];
   venceISO: string;
-  deposito: number;
+  /** Lo que lleva juntado esa fecha, sumando sus abonos vivos. */
+  abonado: number;
   nota: string | null;
 }
 
@@ -228,7 +233,7 @@ export async function getAgenda(
     }),
     db.apartadoFecha.findMany({
       where: { fechaEvento: { gte, lt }, ...apartadosVivos(hoy) },
-      include: { banquetero: { select: { nombre: true } } },
+      include: { banquetero: { select: { nombre: true } }, abonos: { select: { monto: true, anuladoAt: true } } },
       orderBy: { fechaEvento: 'asc' },
     }),
   ]);
@@ -249,7 +254,7 @@ export async function getAgenda(
       fechaEvento: a.fechaEvento.toISOString(),
       spaceIds: a.spaceIds,
       venceISO: a.vence.toISOString(),
-      deposito: a.deposito,
+      abonado: totalAbonado(a.abonos),
       nota: a.nota,
     })),
   };

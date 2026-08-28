@@ -56,13 +56,11 @@ export function ConvertirApartadoModal({
     retry: false,
   });
 
-  // Los dos motivos por los que convertir fallaría, dichos ANTES de intentarlo.
-  const faltaDeposito =
-    apartado.deposito > 0 && (!apartado.depositoMetodo || !apartado.depositoFecha);
+  // El único motivo por el que convertir fallaría, dicho ANTES de intentarlo.
   const faltaCatalogo = catalogQ.isError;
+  const abonosVivos = apartado.abonos.filter((a) => a.anuladoAt == null);
 
   const listo =
-    !faltaDeposito &&
     !faltaCatalogo &&
     Boolean(eventTypeId) &&
     Number(invitados) > 0;
@@ -148,22 +146,23 @@ export function ConvertirApartadoModal({
           </p>
         </div>
 
-        {apartado.deposito > 0 && !faltaDeposito && (
-          <p className="mt-3 rounded-lg border border-gold/30 bg-gold/5 p-3 text-xs text-charcoal-soft">
-            Su depósito de <strong className="text-ink">{formatMXN(apartado.deposito)}</strong> se
-            acreditará como pago de la cotización nueva{' '}
-            <strong className="text-ink">
-              con la fecha en que se recibió ({formatEventDate(apartado.depositoFecha!)})
-            </strong>
-            , no con la de hoy: el ingreso se factura en el mes en que entró.
-          </p>
-        )}
-
-        {faltaDeposito && (
-          <p className="mt-3 rounded-lg border border-wine/30 bg-wine/5 p-3 text-xs text-wine">
-            Este apartado tiene un depósito de {formatMXN(apartado.deposito)} sin forma de pago o
-            sin fecha de recepción. Complétalos antes de convertir, o el pago se perdería.
-          </p>
+        {abonosVivos.length > 0 && (
+          <div className="mt-3 rounded-lg border border-gold/30 bg-gold/5 p-3 text-xs text-charcoal-soft">
+            <p>
+              Sus <strong className="text-ink">{formatMXN(apartado.abonado)}</strong> abonados se
+              acreditarán como {abonosVivos.length === 1 ? 'un pago' : `${abonosVivos.length} pagos`}{' '}
+              de la cotización nueva,{' '}
+              <strong className="text-ink">cada uno con la fecha en que se recibió</strong> — no con
+              la de hoy: el ingreso se factura en el mes en que entró.
+            </p>
+            <ul className="mt-2 space-y-0.5">
+              {abonosVivos.map((a) => (
+                <li key={a.id} className="tabular-nums">
+                  {formatEventDate(a.fecha)} · {formatMXN(a.monto)}
+                </li>
+              ))}
+            </ul>
+          </div>
         )}
 
         {faltaCatalogo && (

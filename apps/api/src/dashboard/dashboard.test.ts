@@ -219,7 +219,7 @@ describe('getDashboard · lo que el tablero grita', () => {
     expect(mio).toBeDefined();
     expect(mio!.banqueteroId).toBe(b.id);
     expect(mio!.diasParaVencer).toBeLessThanOrEqual(10);
-    expect(mio!.deposito).toBe(20_000);
+    expect(mio!.abonado).toBe(20_000);
     expect(d.banqueteros.porVencer).toBeGreaterThanOrEqual(1);
   });
 });

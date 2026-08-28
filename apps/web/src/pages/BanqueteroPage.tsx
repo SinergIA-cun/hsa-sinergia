@@ -251,6 +251,8 @@ export function BanqueteroPage() {
           // repartió parte, el modal tiene que abrir con el saldo de verdad.
           deposito={depositos.find((d) => d.id === repartir.id) ?? repartir}
           eventos={eventos}
+          // Solo las fechas VIVAS: a una cancelada o ya convertida no se le abona.
+          apartados={apartados.filter((a) => a.vivo)}
           onCancel={() => setRepartir(null)}
           onSaved={async (pagos) => {
             setRepartir(null);
