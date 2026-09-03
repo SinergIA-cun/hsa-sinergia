@@ -6,6 +6,7 @@ import { api } from '../lib/api.ts';
 import { formatMXNCents, formatPctFraccion } from '../lib/money.ts';
 import { formatEventDate } from '../lib/date.ts';
 import type { QuoteDetail, Catalog } from '../lib/types.ts';
+import { MARCA } from '../lib/marca.ts';
 
 const MESES = [
   'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
@@ -14,7 +15,7 @@ const MESES = [
 
 const BLANK = '________________';
 
-/** Contrato pre-llenado de Hacienda San Andrés (9 páginas), vista de impresión. */
+/** Contrato pre-llenado del salón (9 páginas), vista de impresión. */
 export function ContratoPage() {
   const { id } = useParams<{ id: string }>();
   const { data, isLoading, isError } = useQuery({
@@ -161,7 +162,7 @@ export function ContratoPage() {
       <div className="doc">
         {/* PÁGINA 1 */}
         <section className="doc-page">
-          <div className="marca">Hacienda San Andrés<small>1894</small></div>
+          <div className="marca">{MARCA.nombre}<small>{MARCA.anio}</small></div>
           {/* El código de evento va en la primera página: es el identificador que
               alguien va a copiar del contrato al recibo o al correo. */}
           <div className="folio">
@@ -169,7 +170,7 @@ export function ContratoPage() {
           </div>
           <p>
             Contrato de Prestación de Servicios y Renta de Instalaciones que celebran por una parte{' '}
-            <b>Hacienda San Andrés Atoto, S.A.</b> y por la otra parte{' '}
+            <b>{MARCA.razonSocial}</b> y por la otra parte{' '}
             <span className="fill">{quote.client?.nombre}</span> (<span className="fill">{correo}</span>) a
             quien en lo sucesivo se le denominará <b>El Contratante</b> sujetándose ambas partes a las siguientes:
           </p>
@@ -276,16 +277,15 @@ export function ContratoPage() {
             evento. Por cada hora extra de duración del evento se cobrará el 5% del precio de renta.
           </p>
           <p>
-            <b>E)</b> Hacienda San Andrés Atoto S. A. se compromete a que las instalaciones se encuentren en buenas
+            <b>E)</b> {MARCA.razonSocial} se compromete a que las instalaciones se encuentren en buenas
             condiciones para su utilización el día del evento.
           </p>
           <p>
             <b>F)</b> El Contratante se compromete a reparar o pagar el valor comercial de cualquier daño o deterioro
-            en las instalaciones de Hacienda San Andrés Atoto, S.A. que se llegasen a ocasionar como producto de
+            en las instalaciones de {MARCA.razonSocial} que se llegasen a ocasionar como producto de
             situaciones inherentes al desarrollo normal del evento como son: destrucción de macetas, vidrios, plantas,
             adornos, mobiliario o cualquier otro daño similar. A la conclusión del Evento, El Contratante devolverá las
-            instalaciones a Hacienda San Andrés Atoto, S.A. en presencia de un representante de la misma. Hacienda San
-            Andrés Atoto, S.A. no se responsabiliza de los daños o desaparición que pueda sufrir cualquier tipo de
+            instalaciones a {MARCA.razonSocial} en presencia de un representante de la misma. {MARCA.razonSocial} no se responsabiliza de los daños o desaparición que pueda sufrir cualquier tipo de
             equipo o bienes que sean dejados en las instalaciones; antes, durante y después del Evento, ni por daños en
             equipos derivados de alteraciones de energía eléctrica o por robos o conductas vandálicas; no adquiriendo en
             virtud de éste contrato ninguna de las responsabilidades que el Código Civil para la Ciudad de México prevé
@@ -308,7 +308,7 @@ export function ContratoPage() {
           {estadoCuenta.planPendiente || !plan ? (
             <p style={{ fontStyle: 'italic' }}>
               El plan de pagos de este espacio se define por separado. Anticipo, complemento y finiquito conforme a lo
-              acordado con Hacienda San Andrés Atoto, S.A.
+              acordado con {MARCA.razonSocial}
             </p>
           ) : (
             <>
@@ -365,8 +365,7 @@ export function ContratoPage() {
           <p>
             Si no está liquidado El Evento en su totalidad para la fecha contratada, no se les permitirá el acceso al
             inmueble a ningún organizador, proveedor o invitado. Si algún cheque fuera devuelto por el banco El
-            Contratante pagará a Hacienda San Andrés Atoto, S.A. el 20% del monto del mismo, y en este caso Hacienda San
-            Andrés Atoto, S.A. se reserva el derecho de dar por cancelado el presente contrato, o exigir el cumplimiento
+            Contratante pagará a {MARCA.razonSocial} el 20% del monto del mismo, y en este caso {MARCA.razonSocial} se reserva el derecho de dar por cancelado el presente contrato, o exigir el cumplimiento
             del mismo.
           </p>
           <p>
@@ -378,7 +377,7 @@ export function ContratoPage() {
             <li>Si avisa faltando entre 120 y 91 días, la parte que incumpla pierde el 75% del costo total.</li>
             <li>
               Si avisa faltando más de 120 días, la parte que incumpla pierde el 50% o el primer depósito del costo
-              total, y en este único caso, si Hacienda San Andrés Atoto, S.A. lograra rentar la fecha a otra persona
+              total, y en este único caso, si {MARCA.razonSocial} lograra rentar la fecha a otra persona
               interesada, reintegrará a El Contratante dicho 50% de anticipo.
             </li>
           </ol>
@@ -393,7 +392,7 @@ export function ContratoPage() {
               No se permiten cambios de fechas a menos que sea para adelantarla o en caso de cierre de actividades
               solicitado por las autoridades de seguridad o salud pública. No obstante, las partes acuerdan reagendar el
               evento sin penalización en caso de fuerza mayor debidamente acreditada, esto sujeto a disponibilidad de las
-              fechas de Hacienda San Andrés Atoto S.A. Se entenderá como causa de fuerza mayor a cualquier acontecimiento
+              fechas de {MARCA.razonSocial} Se entenderá como causa de fuerza mayor a cualquier acontecimiento
               extraordinario, imprevisible o inevitable que imposibilite o haga irrazonablemente gravosa la celebración
               del evento en la fecha programada, incluyendo de manera enunciativa mas no limitativa: fallecimiento de
               alguno de los padres de los contratantes o hermanos; pandemias; emergencias o restricciones sanitarias
@@ -413,19 +412,19 @@ export function ContratoPage() {
               un mes antes de la fecha del evento.
             </li>
             <li>
-              No se permiten cambios de espacios a menos que sea hacia un jardín o salón de Hacienda San Andrés Atoto
+              No se permiten cambios de espacios a menos que sea hacia un jardín o salón de {MARCA.razonSocial}
               S.A. de mayor capacidad o por causas de fuerza mayor debidamente acreditadas.
             </li>
           </ol>
           <p>
             <b>NOTA:</b> Todos los avisos deben ser hechos por escrito o mediante correo electrónico y con acuse de
-            recibo de Hacienda San Andrés Atoto, S.A.
+            recibo de {MARCA.razonSocial}
           </p>
           <p>
             <b>J)</b> El Contratante se obliga a notificar a sus clientes e invitados que serán responsables de los
             actos, omisiones y daños ocasionados por ellos mismos o por los proveedores contratados directamente por los
             contratantes para la realización del evento. Será únicamente responsabilidad del propio contratante y de
-            ninguna manera de Hacienda San Andrés Atoto, S.A., cuya responsabilidad se limita a tener las instalaciones
+            ninguna manera de {MARCA.razonSocial}, cuya responsabilidad se limita a tener las instalaciones
             en buenas condiciones de funcionamiento para El Evento de El Contratante.
           </p>
           <Foot />
@@ -441,16 +440,15 @@ export function ContratoPage() {
             <li>Del grupo musical, planta de luz y equipo de luces y sonido que se emplee para amenizar el evento.</li>
             <li>De los aparatos, juegos, objetos que se usen para amenizar el evento. Queda prohibido el uso de cualquier tipo de pirotecnia o globo de cantoya.</li>
             <li>En caso de activar pirotecnia o globos de cantoya, se deberá pagar al momento una multa de $10,000 por cada vez que se accione la pirotecnia o se lance un globo de cantoya.</li>
-            <li>De la conducta de todos y cada uno de sus invitados o de toda persona que por cualquier razón asista al Evento o se encuentre en las instalaciones de Hacienda San Andrés Atoto, S.A. durante el desarrollo de éste.</li>
+            <li>De la conducta de todos y cada uno de sus invitados o de toda persona que por cualquier razón asista al Evento o se encuentre en las instalaciones de {MARCA.razonSocial} durante el desarrollo de éste.</li>
           </ol>
           <p>
-            Por lo que El Contratante se compromete a sacar en paz y a salvo a Hacienda San Andrés Atoto, S.A. de
+            Por lo que El Contratante se compromete a sacar en paz y a salvo a {MARCA.razonSocial} de
             cualquier denuncia, demanda, reclamación, multa o infracción que se deriven de lo anterior.
           </p>
           <p>
-            <b>K)</b> El Contratante acepta que su evento sea atendido por un Valet Parking designado por Hacienda San
-            Andrés Atoto, S.A., lo cual es conveniente por conocer los alrededores, políticas y reglas del lugar; y por
-            simplificar el manejo de los lugares de estacionamiento, sobre todo cuando Hacienda San Andrés Atoto, S.A.
+            <b>K)</b> El Contratante acepta que su evento sea atendido por un Valet Parking designado por {MARCA.razonSocial}, lo cual es conveniente por conocer los alrededores, políticas y reglas del lugar; y por
+            simplificar el manejo de los lugares de estacionamiento, sobre todo cuando {MARCA.razonSocial}
             tenga 2 (dos) o más eventos ese mismo día. Costo por automóvil $100.00 (cien pesos) y El Contratante contará
             con dos cortesías de Valet Parking.
           </p>
@@ -466,7 +464,7 @@ export function ContratoPage() {
           <div className="folio">-6-</div>
           <p>
             <b>L)</b> El incumplimiento de cualquiera de las cláusulas comprendidas en este contrato será causa de la
-            anulación del mismo, y en este caso Hacienda San Andrés Atoto, S.A. se reserva el derecho de rentar las
+            anulación del mismo, y en este caso {MARCA.razonSocial} se reserva el derecho de rentar las
             instalaciones a otro posible cliente.
           </p>
           <p>
@@ -489,7 +487,7 @@ export function ContratoPage() {
             </div>
             <div className="firma">
               {vendedor || ' '}
-              <div style={{ fontSize: '0.8rem', color: '#777' }}>Vendedor · Hacienda San Andrés Atoto S. A.</div>
+              <div style={{ fontSize: '0.8rem', color: '#777' }}>Vendedor · {MARCA.razonSocial}</div>
             </div>
           </div>
           <Foot />
@@ -535,9 +533,9 @@ export function ContratoPage() {
             <li>c) Bases: $500 por bases por día.</li>
           </ul>
           <ol start={5}>
-            <li>Hacienda San Andrés no se hace responsable de equipo dañado o perdido durante los días que no se haya recogido; al tercer día después del evento las piezas abandonadas serán desechadas.</li>
+            <li>{MARCA.nombre} no se hace responsable de equipo dañado o perdido durante los días que no se haya recogido; al tercer día después del evento las piezas abandonadas serán desechadas.</li>
             <li>No se permite montar equipo en pasillos y accesos.</li>
-            <li>Está prohibido martillar, clavar y pegar cinta en árboles, paredes y mobiliario de Hacienda San Andrés.</li>
+            <li>Está prohibido martillar, clavar y pegar cinta en árboles, paredes y mobiliario de {MARCA.nombre}.</li>
           </ol>
           <p><b>Audio y Ambientación</b></p>
           <ol>
@@ -547,10 +545,10 @@ export function ContratoPage() {
             <li>El proveedor debe retirar los alambres o piolas utilizadas para colgar cualquier tipo de decoración.</li>
           </ol>
           <p><b>Inflables.</b> No se permite ningún tipo de juego inflable en el Jardín del Caballo.</p>
-          <p><b>Daños a instalaciones.</b> Habrá sanción económica sobre valor factura a quien dañe cualquier instalación y/o equipo de Hacienda San Andrés.</p>
+          <p><b>Daños a instalaciones.</b> Habrá sanción económica sobre valor factura a quien dañe cualquier instalación y/o equipo de {MARCA.nombre}.</p>
           <p><b>Fotos y Video</b></p>
           <ol>
-            <li>No se permite la entrada a fotógrafos de banqueteros o clientes ajenos a los autorizados por Hacienda San Andrés, para la venta de fotografía "de riesgo".</li>
+            <li>No se permite la entrada a fotógrafos de banqueteros o clientes ajenos a los autorizados por {MARCA.nombre}, para la venta de fotografía "de riesgo".</li>
             <li>El uso de drones es responsabilidad del Cliente, quien se hará responsable de los daños causados a las personas o a las instalaciones.</li>
           </ol>
           <p><b>Degustaciones</b></p>
@@ -607,9 +605,9 @@ export function ContratoPage() {
 function Foot() {
   return (
     <div className="foot">
-      Atlacomulco No. 1, Col. San Esteban, Naucalpan de Juárez, Estado de México. Tel 5357 1986 y 5357 2833
+      {MARCA.direccion}. Tel {MARCA.telefono} y 5357 2833
       <br />
-      www.haciendasanandres.com.mx
+      {MARCA.sitio}
     </div>
   );
 }

@@ -4,6 +4,7 @@ import { useAuth } from '../auth/auth.tsx';
 import { Logo } from '../components/Logo.tsx';
 import { Button, Field, TextInput } from '../components/ui.tsx';
 import { ApiError } from '../lib/api.ts';
+import { MARCA } from '../lib/marca.ts';
 
 function loginErrorMessage(err: unknown): string {
   if (err instanceof ApiError) {
@@ -61,7 +62,7 @@ export function LoginPage() {
               Un oasis dentro de la ciudad. Cotizador interno para el equipo de ventas.
             </p>
           </div>
-          <p className="text-xs text-cream/40">Atlacomulco No. 1, Naucalpan, Estado de México</p>
+          <p className="text-xs text-cream/40">{MARCA.direccionCorta}</p>
         </div>
       </div>
 
@@ -81,7 +82,7 @@ export function LoginPage() {
                 autoComplete="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="tu@haciendasanandres.com.mx"
+                placeholder={`tu@${MARCA.dominioCorreo}`}
                 required
               />
             </Field>

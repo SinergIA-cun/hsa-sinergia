@@ -256,6 +256,52 @@ la instancia del cliente.**
 > quieres que el demo se vea sin marca (o con otra), hay que sacarla a
 > configuración — pídemelo y lo hago aparte.
 
+## La instancia de DEMO (para vender a clientes nuevos)
+
+Es un despliegue aparte: **su propia base**, sus propios servicios y su propio
+dominio. Nunca comparte base con la del cliente.
+
+**1. Base de datos.** Un servicio Postgres nuevo, con su base propia
+(`hsa_demo`). Verifica el nombre con el ensayo de la purga, como arriba.
+
+**2. Servicios api y web.** Mismas imágenes y mismas variables que la instalación
+normal, apuntando a la base del demo. Al servicio **web** se le agregan éstas,
+que le cambian la identidad a toda la app —encabezado, recibo y las nueve
+páginas del contrato:
+
+```
+VITE_MARCA_NOMBRE=Hacienda Los Encinos
+VITE_MARCA_ANIO=1902
+VITE_MARCA_RAZON_SOCIAL=Eventos Los Encinos, S.A. de C.V.
+VITE_MARCA_DIRECCION=Camino Real 240, Col. Centro, Metepec, Estado de México
+VITE_MARCA_DIRECCION_CORTA=Camino Real 240, Metepec, Estado de México
+VITE_MARCA_TELEFONO=722 555 0140
+VITE_MARCA_SITIO=www.haciendalosencinos.mx
+VITE_MARCA_DOMINIO_CORREO=haciendalosencinos.mx
+```
+
+Son de build: el web hay que reconstruirlo para que tomen. Sin ellas, la app
+dice Hacienda San Andrés, que es justo lo que no debe ver un prospecto.
+
+**3. Sembrar el demo.** En la consola del servicio api del DEMO:
+
+```bash
+pnpm --filter @hsa/api exec tsx src/scripts/seed-demo.ts --confirmo=hsa_demo
+```
+
+Vacía la base COMPLETA —catálogo incluido— y siembra una hacienda ficticia con
+~30 eventos repartidos contra la fecha de hoy, para que el tablero y la agenda se
+vean vivos. Se vuelve a correr cada vez que un prospecto deje el demo sucio.
+
+Usuarios: `demo@haciendademo.mx` y `ventas@haciendademo.mx`, con la contraseña de
+`DEMO_PASSWORD` (o `demo-hsa-2027` si no se define).
+
+> **Lo que el demo NO cambia:** el TEXTO de las cláusulas del contrato sigue
+> siendo el de Hacienda San Andrés —sus porcentajes de cancelación, sus reglas de
+> responsabilidad—. Cambia quién firma, no lo que se firma. Alcanza para enseñar
+> que el sistema imprime el contrato ya llenado; si la demo va a leer las
+> cláusulas a detalle, hay que escribir unas neutras.
+
 ## Entregar la app a un cliente (vaciar los datos de prueba)
 
 En la consola del servicio **api**. El ensayo no borra nada:

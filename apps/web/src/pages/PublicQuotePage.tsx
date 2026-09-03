@@ -7,6 +7,7 @@ import { formatEventDate } from '../lib/date.ts';
 import { Logo } from '../components/Logo.tsx';
 import { BreakdownGrouped } from '../components/BreakdownGrouped.tsx';
 import type { Quote, EstadoCuenta, Milestone } from '../lib/types.ts';
+import { MARCA } from '../lib/marca.ts';
 
 interface PublicPago {
   id: string;
@@ -259,9 +260,9 @@ export function PublicQuotePage() {
         <footer className="mt-12 text-center text-xs text-charcoal-soft">
           <div className="mb-2 inline-flex items-center gap-1.5">
             <MapPin size={13} className="text-gold" />
-            Atlacomulco No. 1, Col. San Esteban, Naucalpan, Estado de México
+            {MARCA.direccion}
           </div>
-          <p>Hacienda San Andrés · Precios con vigencia de 30 días.</p>
+          <p>{MARCA.nombre} · Precios con vigencia de 30 días.</p>
         </footer>
       </main>
     </div>

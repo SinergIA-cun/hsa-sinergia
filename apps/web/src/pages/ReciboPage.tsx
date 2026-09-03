@@ -5,6 +5,7 @@ import { api } from '../lib/api.ts';
 import { formatMXN } from '../lib/money.ts';
 import { formatEventDate } from '../lib/date.ts';
 import type { Quote, EstadoCuenta } from '../lib/types.ts';
+import { MARCA } from '../lib/marca.ts';
 
 interface PublicPago {
   id: string;
@@ -86,7 +87,7 @@ export function ReciboPage() {
       </div>
 
       <div className="recibo-doc">
-        <div className="marca">Hacienda San Andrés<small>1894</small></div>
+        <div className="marca">{MARCA.nombre}<small>{MARCA.anio}</small></div>
         <div className="recibo-title">Recibo de pago</div>
         <div className="recibo-folio">N.º {pago.folio}</div>
 
@@ -115,9 +116,9 @@ export function ReciboPage() {
         )}
 
         <div className="recibo-foot">
-          Emitido el {formatEventDate(hoy.toISOString().slice(0, 10), 'long')} · Hacienda San Andrés Atoto, S.A.
+          Emitido el {formatEventDate(hoy.toISOString().slice(0, 10), 'long')} · {MARCA.razonSocial}
           <br />
-          Atlacomulco No. 1, Col. San Esteban, Naucalpan de Juárez, Estado de México.
+          {MARCA.direccion}.
         </div>
       </div>
     </div>

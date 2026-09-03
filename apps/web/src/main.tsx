@@ -9,6 +9,12 @@ import './index.css';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './App.tsx';
+import { MARCA } from './lib/marca.ts';
+
+// El título se pone aquí y no en `index.html`: el HTML no puede leer una
+// variable con valor por omisión, y el demo necesita cambiar el nombre sin
+// tocar el archivo.
+document.title = `${MARCA.nombre} · Cotizador`;
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
