@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { prisma } from '@hsa/database';
+import { hoyCivilMexico } from '@hsa/shared';
 import { buildServer } from '../server.js';
 import { loadConfig } from '../config.js';
 import { hashPassword } from '../auth/password.js';
@@ -211,17 +212,24 @@ describe('estado de cuenta del banquetero', () => {
   it('trae los apartados y los que vencen en los próximos 30 días', async () => {
     const b = await prisma.banquetero.create({ data: { nombre: `Vence ${randomUUID().slice(0, 6)}` } });
     banqueteros.push(b.id);
-    const hoy = new Date(Date.UTC(2026, 7, 19)); // 19-ago-2026
+    // Las fechas salen del reloj y NO de constantes: `crearApartado` rechaza un
+    // vencimiento pasado contra el día real, así que un `vence` fijo convierte
+    // la prueba en una bomba de tiempo que truena sola al llegar esa fecha.
+    const hoy = hoyCivilMexico();
+    const enDias = (n: number): string =>
+      new Date(hoy.getTime() + n * 86_400_000).toISOString().slice(0, 10);
+    const cerca = enDias(10); // dentro de la ventana de 30 días
+    const lejos = enDias(300); // fuera de la ventana
 
-    await crearApartado(prisma, b.id, { fechaEvento: siguienteSabado(), spaceIds: [arcosId], vence: '2026-09-01' }, actor);
-    await crearApartado(prisma, b.id, { fechaEvento: siguienteSabado(), spaceIds: [arcosId], vence: '2027-06-01' }, actor);
+    await crearApartado(prisma, b.id, { fechaEvento: siguienteSabado(), spaceIds: [arcosId], vence: cerca }, actor);
+    await crearApartado(prisma, b.id, { fechaEvento: siguienteSabado(), spaceIds: [arcosId], vence: lejos }, actor);
 
     const ec = await estadoCuentaBanquetero(prisma, b.id, { hoy });
     expect(ec.apartados).toHaveLength(2);
     expect(ec.totales.apartadosVivos).toBe(2);
-    // Solo el de septiembre entra en la ventana de 30 días.
+    // Solo el cercano entra en la ventana de 30 días.
     expect(ec.totales.apartadosPorVencer).toBe(1);
-    expect(ec.apartadosPorVencer[0]!.vence.toISOString()).toBe('2026-09-01T00:00:00.000Z');
+    expect(ec.apartadosPorVencer[0]!.vence.toISOString()).toBe(`${cerca}T00:00:00.000Z`);
     // Y el apartado NO suma a la renta comprometida: no tiene total.
     expect(ec.totales.rentaTotal).toBe(0);
   });

@@ -1,15 +1,18 @@
 /**
  * Código de evento: la identidad legible de un evento, del formato que pidió el
- * dueño — `17ENE-CBOLADO-CUPULA`: día, mes abreviado, inicial del nombre +
- * apellido, y el espacio abreviado.
+ * dueño — `17ENE27-CBOLADO-CUPULA`: día, mes abreviado, los dos dígitos del
+ * año, inicial del nombre + apellido, y el espacio abreviado.
  *
  * Función PURA: no toca la base ni resuelve colisiones. La unicidad (el sufijo
  * `-2`, `-3`) y el congelado al formalizar viven en el servicio, porque
  * necesitan la base de datos.
  *
  * Reglas fijadas (los tests son la especificación):
- * - **Día**: los dos dígitos del ISO, tal cual (`04JUL`, no `4JUL`).
+ * - **Día**: los dos dígitos del ISO, tal cual (`04JUL27`, no `4JUL27`).
  * - **Mes**: abreviatura en español de tres letras.
+ * - **Año**: los DOS últimos dígitos, pegados al mes. Sin ellos el código se
+ *   repetía cada año —`29OCT-CBARRERA-CUPULA` era el de 2027, el de 2028 y el
+ *   de 2029— y solo quedaba el sufijo `-2`, que no dice de qué año habla.
  * - **Cliente**: con dos o más palabras, la inicial de la primera + la ÚLTIMA
  *   palabra (el apellido). Con una sola palabra, esa palabra completa.
  * - **Espacio**: la última palabra con contenido del PRIMER espacio, ignorando
@@ -91,5 +94,8 @@ export function codigoEvento({ fechaISO, cliente, espacios }: CodigoEventoInput)
   if (mes < 1 || mes > 12 || dia < 1 || dia > 31) {
     throw new Error(`Fecha inválida para el código de evento: ${fechaISO}`);
   }
-  return `${m[3]}${MESES[mes - 1]}-${parteCliente(cliente)}-${parteEspacio(espacios)}`;
+  // Los dos últimos dígitos del año: `2027` → `27`. Un evento a 100 años vista
+  // volvería a chocar, y eso está bien: no es el negocio de nadie.
+  const anio = m[1]!.slice(2);
+  return `${m[3]}${MESES[mes - 1]}${anio}-${parteCliente(cliente)}-${parteEspacio(espacios)}`;
 }

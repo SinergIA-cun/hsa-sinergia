@@ -259,7 +259,7 @@ export interface Quote {
   total: number;
   rentaTotal: number;
   status: QuoteStatus;
-  /** Código de evento (`17ENE-CBOLADO-CUPULA`). Es la identidad legible del
+  /** Código de evento (`17ENE27-CBOLADO-CUPULA`). Es la identidad legible del
    *  evento: se congela al formalizar y se imprime donde alguien la va a copiar.
    *  `null` solo en cotizaciones que el backfill todavía no alcanzó. */
   codigo?: string | null;
