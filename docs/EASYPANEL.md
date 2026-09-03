@@ -50,7 +50,7 @@ Dentro del proyecto `hsa` → **+ Service → Postgres** (plantilla oficial de E
 
 **Variables de entorno** (pestaña Environment):
 ```
-DATABASE_URL=postgresql://<usuario>:<password>@<host-interno-postgres>:5432/<db>?schema=public
+DATABASE_URL=postgresql://USUARIO:PASSWORD@HOST_INTERNO:5432/BASE?schema=public
 JWT_SECRET=<genera un valor largo y aleatorio, ej. openssl rand -hex 32>
 PORT=3001
 HOST=0.0.0.0
@@ -59,6 +59,20 @@ COOKIE_SECURE=true
 COOKIE_SAME_SITE=lax
 COMPROBANTES_DIR=/app/data/comprobantes
 ```
+
+> **Sustituye las CUATRO mayúsculas** de `DATABASE_URL` con lo que copiaste de la
+> pestaña Connect. El 3-sep-2026 se desplegó con el marcador `<db>` sin sustituir
+> y quedó una base llamada `%3Cdb%3E` (el `<` y el `>` percent-encodeados): la app
+> funciona igual, pero cada `psql` y cada `pg_dump` cargan con ese nombre.
+> Verifícalo en la consola del servicio api en cuanto arranque:
+>
+> ```bash
+> pnpm --filter @hsa/api exec tsx src/scripts/purgar-datos.ts | head -1
+> ```
+>
+> Debe imprimir `Base conectada:` con el nombre que elegiste. Sin bandera ese
+> guion no borra nada.
+
 
 Opcional — solo si quieres el API de solo lectura del BI en línea:
 ```
