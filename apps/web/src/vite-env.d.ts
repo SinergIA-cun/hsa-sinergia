@@ -12,6 +12,9 @@ interface ImportMetaEnv {
   readonly VITE_MARCA_TELEFONO?: string;
   readonly VITE_MARCA_SITIO?: string;
   readonly VITE_MARCA_DOMINIO_CORREO?: string;
+  readonly VITE_MARCA_TELEFONO_2?: string;
+  /** `neutro` imprime el clausulado del demo en vez del de Hacienda San Andrés. */
+  readonly VITE_MARCA_CONTRATO?: string;
 }
 
 interface ImportMeta {
