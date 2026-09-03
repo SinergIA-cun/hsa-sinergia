@@ -31,7 +31,18 @@ export const MARCA = {
   direccionCorta:
     import.meta.env.VITE_MARCA_DIRECCION_CORTA || 'Atlacomulco No. 1, Naucalpan, Estado de México',
   telefono: import.meta.env.VITE_MARCA_TELEFONO || '5357 1986',
+  /** Un segundo teléfono, opcional. Vacío lo esconde del pie del contrato. */
+  telefono2: import.meta.env.VITE_MARCA_TELEFONO_2 ?? '5357 2833',
   sitio: import.meta.env.VITE_MARCA_SITIO || 'www.haciendasanandres.com.mx',
   /** Solo para los ejemplos de los campos de correo. */
   dominioCorreo: import.meta.env.VITE_MARCA_DOMINIO_CORREO || 'haciendasanandres.com.mx',
+  /**
+   * Qué clausulado imprime el contrato.
+   *
+   * `hsa` es el de verdad, el que se firma. `neutro` es el del demo: cubre lo
+   * mismo con términos genéricos, para no enseñarle a un prospecto los
+   * porcentajes de cancelación ni el reglamento de proveedores de Hacienda San
+   * Andrés. Ver `pages/contrato/ClausulasNeutras.tsx`.
+   */
+  contrato: import.meta.env.VITE_MARCA_CONTRATO === 'neutro' ? 'neutro' : 'hsa',
 } as const;

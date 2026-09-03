@@ -276,9 +276,16 @@ VITE_MARCA_RAZON_SOCIAL=Eventos Los Encinos, S.A. de C.V.
 VITE_MARCA_DIRECCION=Camino Real 240, Col. Centro, Metepec, Estado de México
 VITE_MARCA_DIRECCION_CORTA=Camino Real 240, Metepec, Estado de México
 VITE_MARCA_TELEFONO=722 555 0140
+VITE_MARCA_TELEFONO_2=
 VITE_MARCA_SITIO=www.haciendalosencinos.mx
 VITE_MARCA_DOMINIO_CORREO=haciendalosencinos.mx
+VITE_MARCA_CONTRATO=neutro
 ```
+
+`VITE_MARCA_CONTRATO=neutro` es la que cambia el clausulado: imprime términos
+genéricos en vez de los de Hacienda San Andrés. Sin ella el contrato del demo
+traería su tabulador de cancelación, su multa por pirotecnia, su tarifa de valet
+y su reglamento de proveedores.
 
 Son de build: el web hay que reconstruirlo para que tomen. Sin ellas, la app
 dice Hacienda San Andrés, que es justo lo que no debe ver un prospecto.
@@ -296,11 +303,11 @@ vean vivos. Se vuelve a correr cada vez que un prospecto deje el demo sucio.
 Usuarios: `demo@haciendademo.mx` y `ventas@haciendademo.mx`, con la contraseña de
 `DEMO_PASSWORD` (o `demo-hsa-2027` si no se define).
 
-> **Lo que el demo NO cambia:** el TEXTO de las cláusulas del contrato sigue
-> siendo el de Hacienda San Andrés —sus porcentajes de cancelación, sus reglas de
-> responsabilidad—. Cambia quién firma, no lo que se firma. Alcanza para enseñar
-> que el sistema imprime el contrato ya llenado; si la demo va a leer las
-> cláusulas a detalle, hay que escribir unas neutras.
+> **El clausulado neutro es texto de demostración**, no revisado por un abogado:
+> cubre el mismo terreno que el de verdad —pagos, cancelación, daños,
+> responsabilidades, proveedores, firma— con condiciones inventadas y redondas, y
+> lo dice en el propio documento. La tabla del plan de pagos sí es la de verdad,
+> calculada por el sistema, que es justo lo que la demo quiere lucir.
 
 ## Entregar la app a un cliente (vaciar los datos de prueba)
 
