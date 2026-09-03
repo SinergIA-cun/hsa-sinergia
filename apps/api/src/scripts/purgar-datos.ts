@@ -24,10 +24,11 @@ import { censo, purgar, TABLAS_CATALOGO, TABLAS_MOVIMIENTO } from './lib/purga.j
  * Uso (consola del servicio api en EasyPanel):
  *   # 1. Ver qué hay, sin tocar nada:
  *   pnpm --filter @hsa/api exec tsx src/scripts/purgar-datos.ts
- *   # 2. Respaldar (desde la consola del servicio de Postgres):
- *   pg_dump -U hsa hsa > /tmp/hsa-antes-de-la-purga.sql
+ *   # 2. Respaldar (desde la consola del servicio de Postgres). El propio
+ *   #    ensayo imprime este comando con el usuario y la base de verdad:
+ *   pg_dump -U USUARIO 'BASE' > /tmp/respaldo-antes-de-la-purga.sql
  *   # 3. Vaciar:
- *   pnpm --filter @hsa/api exec tsx src/scripts/purgar-datos.ts --confirmo=hsa
+ *   pnpm --filter @hsa/api exec tsx src/scripts/purgar-datos.ts --confirmo='BASE'
  */
 
 const BANDERA = '--confirmo=';
@@ -89,11 +90,13 @@ async function reportarLoQueQueda(): Promise<void> {
 }
 
 async function main(): Promise<void> {
-  const conectada = await prisma.$queryRaw<{ base: string }[]>`SELECT current_database() AS base`;
+  const conectada = await prisma.$queryRaw<{ base: string; usuario: string }[]>`
+    SELECT current_database() AS base, current_user AS usuario`;
   const base = conectada[0]!.base;
+  const usuario = conectada[0]!.usuario;
   const confirmo = arg(BANDERA);
 
-  console.log(`Base conectada: ${base}\n`);
+  console.log(`Base conectada: ${base}  (usuario ${usuario})\n`);
   console.log('── Lo que se BORRARÍA ───────────────────────────────────');
   tabla(await censo(prisma, [...TABLAS_MOVIMIENTO, 'AuditoriaDb']));
   console.log('\n── Lo que se CONSERVA ───────────────────────────────────');
@@ -109,9 +112,9 @@ async function main(): Promise<void> {
     console.log(
       '\nEsto no se puede deshacer. Respalda primero, desde la consola del\n' +
         'servicio de Postgres:\n' +
-        `\n  pg_dump -U hsa ${base} > /tmp/${base}-antes-de-la-purga.sql\n` +
+        `\n  pg_dump -U ${usuario} '${base}' > /tmp/respaldo-antes-de-la-purga.sql\n` +
         '\nY cuando el respaldo esté hecho, vacía con:\n' +
-        `\n  pnpm --filter @hsa/api exec tsx src/scripts/purgar-datos.ts ${BANDERA}${base}\n`,
+        `\n  pnpm --filter @hsa/api exec tsx src/scripts/purgar-datos.ts ${BANDERA}'${base}'\n`,
     );
     return;
   }
