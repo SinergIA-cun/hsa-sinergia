@@ -5,6 +5,7 @@ import { api } from '../lib/api.ts';
 import { formatMXN } from '../lib/money.ts';
 import { formatEventDate } from '../lib/date.ts';
 import type { QuoteDetail } from '../lib/types.ts';
+import { MARCA } from '../lib/marca.ts';
 
 const si = (v?: boolean) => (v ? 'SÍ' : 'NO');
 const dash = (v?: string | number | null) => (v == null || v === '' ? '—' : String(v));
@@ -66,7 +67,7 @@ export function HojaOperativaPage() {
       </div>
 
       <div className="ho-doc">
-        <h1>Hacienda San Andrés<small>1894</small></h1>
+        <h1>{MARCA.nombre}<small>{MARCA.anio}</small></h1>
         <div className="ho-title">Hoja operativa</div>
 
         <table>

@@ -5,6 +5,7 @@ import { api, ApiError } from '../../lib/api.ts';
 import { Button, Card, Field, TextInput, SelectInput } from '../ui.tsx';
 import type { User } from '../../lib/types.ts';
 import { apiErrorMessage, ConfirmDelete } from './shared.tsx';
+import { MARCA } from '../../lib/marca.ts';
 
 const ROLE_LABEL: Record<User['role'], string> = { admin: 'Admin', ventas: 'Ventas' };
 
@@ -99,7 +100,7 @@ export function UsersSection() {
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="correo@haciendasanandres.com.mx"
+                placeholder={`correo@${MARCA.dominioCorreo}`}
               />
             </Field>
             <Field label="Contraseña" hint="Mínimo 8 caracteres">

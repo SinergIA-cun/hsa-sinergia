@@ -1,5 +1,6 @@
 import type { QuoteBreakdown, QuoteLine } from '@hsa/shared';
 import { formatMXN, formatMXNCents } from '../lib/money.ts';
+import { MARCA } from '../lib/marca.ts';
 
 interface Props {
   breakdown: QuoteBreakdown;
@@ -106,7 +107,7 @@ export function BreakdownGrouped({ breakdown, lineLabel = (l) => l.concepto }: P
   return (
     <div className="space-y-5 text-sm">
       <Bloque
-        titulo="Renta · Hacienda San Andrés"
+        titulo={`Renta · ${MARCA.nombre}`}
         nota="La cobra la Hacienda"
         lines={renta}
         subtotal={breakdown.rentaSubtotal}

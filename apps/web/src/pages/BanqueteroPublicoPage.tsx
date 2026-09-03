@@ -6,6 +6,7 @@ import { formatEventDate } from '../lib/date.ts';
 import { Logo } from '../components/Logo.tsx';
 import { STATUS_LABEL } from '../lib/status.ts';
 import { useEstadoCuentaPublico } from '../lib/banqueteros.ts';
+import { MARCA } from '../lib/marca.ts';
 
 /**
  * El estado de cuenta del banquetero por enlace de solo lectura.
@@ -218,9 +219,9 @@ export function BanqueteroPublicoPage() {
         <footer className="mt-12 text-center text-xs text-charcoal-soft">
           <div className="mb-2 inline-flex items-center gap-1.5">
             <MapPin size={13} className="text-gold" />
-            Atlacomulco No. 1, Col. San Esteban, Naucalpan, Estado de México
+            {MARCA.direccion}
           </div>
-          <p>Hacienda San Andrés · Precios con vigencia de 30 días.</p>
+          <p>{MARCA.nombre} · Precios con vigencia de 30 días.</p>
         </footer>
       </main>
     </div>
