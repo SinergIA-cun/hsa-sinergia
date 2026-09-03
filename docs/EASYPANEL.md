@@ -256,6 +256,40 @@ la instancia del cliente.**
 > quieres que el demo se vea sin marca (o con otra), hay que sacarla a
 > configuración — pídemelo y lo hago aparte.
 
+## Entregar la app a un cliente (vaciar los datos de prueba)
+
+En la consola del servicio **api**. El ensayo no borra nada:
+
+```bash
+pnpm --filter @hsa/api exec tsx src/scripts/purgar-datos.ts
+```
+
+Imprime contra qué base está conectado, qué se borraría y qué se conserva
+(catálogo, banqueteros, personal, usuarios). Para vaciar de verdad hay que
+teclear el nombre de la base:
+
+```bash
+pnpm --filter @hsa/api exec tsx src/scripts/purgar-datos.ts --confirmo=NOMBRE_DE_LA_BASE
+```
+
+Antes de vaciar **respalda solo**: copia el movimiento y la bitácora forense a un
+esquema `respaldo_AAAAMMDDHHMM` dentro de la misma base, e imprime cómo
+devolverlo. No usa `pg_dump` — **ese binario no existe en el contenedor de la
+api** (`node:24-slim`), y buscarlo en las consolas de EasyPanel es una pérdida de
+tiempo.
+
+```bash
+pnpm --filter @hsa/api exec tsx src/scripts/purgar-datos.ts --respaldos            # listar
+pnpm --filter @hsa/api exec tsx src/scripts/purgar-datos.ts --restaurar=respaldo_… # devolver
+```
+
+Ese respaldo cubre "vacié y me arrepentí". **No** cubre que se muera el disco,
+porque vive en la misma base: para una copia fuera del servidor está la pestaña
+Backups del servicio de Postgres.
+
+Y lo último antes de entregar: **cambiar la contraseña del admin**, que el seed
+deja en `admin1234` y está en el repositorio.
+
 ## Gotchas (heredados de la experiencia con Motipreca en este mismo EasyPanel)
 
 - **Proxy de dominio siempre en `http://` interno**, nunca `https://` (ver arriba).
