@@ -205,6 +205,43 @@ idempotentes y no pierden nada si corren de más; esto pierde todo.
 Después de vaciar, **cambia la contraseña del admin**: el seed la deja en
 `admin1234`, que está en el repositorio.
 
+## La instancia de DEMO (para vender a clientes nuevos)
+
+Una copia aparte, con una hacienda ficticia adentro, para enseñarle el sistema a
+prospectos sin tocar la del cliente.
+
+**Cómo se monta:** los mismos pasos 1 a 4 de arriba, en un proyecto nuevo de
+EasyPanel (p. ej. `hsa-demo`), con su propio Postgres y sus propios dominios
+(p. ej. `demo.somossinergia.com` y `demoapi.somossinergia.com` — subdominios del
+mismo dominio raíz, por la cookie). **No** corras el seed del paso 5; en su lugar:
+
+```bash
+pnpm --filter @hsa/api exec tsx src/scripts/seed-demo.ts --confirmo=<nombre-de-la-base>
+```
+
+Usuarios que deja: `demo@haciendademo.mx` y `ventas@haciendademo.mx`, los dos con
+la contraseña de `DEMO_PASSWORD` o `demo-hsa-2027` si no defines esa variable.
+
+**Qué siembra:** un catálogo inventado (3 espacios, 5 tipos de evento, 6
+banqueteros), 30 eventos repartidos entre el histórico y los próximos meses, 39
+pagos, un depósito de banquetero a medio repartir y 2 fechas apartadas. Nada de
+eso son datos de la hacienda: sus precios y sus banqueteros son información suya
+y el demo se le muestra a otros salones de eventos.
+
+**Todas las fechas cuelgan del reloj**, no son constantes: la agenda y el tablero
+se ven vivos hoy y seguirán viéndose vivos el año que entra.
+
+**Vuelve a correrlo cuando el demo se ensucie.** Es la manera de borrar las
+cotizaciones de "aaa" y "prueba 123" que deja un prospecto y regresar al estado
+de exhibición. Vacía la base COMPLETA antes de sembrar, así que exige la misma
+bandera `--confirmo=<nombre-de-la-base>` que la purga: **jamás lo corras contra
+la instancia del cliente.**
+
+> El demo sigue diciendo "Hacienda San Andrés" en el encabezado y su contrato es
+> el de la hacienda: la marca está escrita en el código, no en una variable. Si
+> quieres que el demo se vea sin marca (o con otra), hay que sacarla a
+> configuración — pídemelo y lo hago aparte.
+
 ## Gotchas (heredados de la experiencia con Motipreca en este mismo EasyPanel)
 
 - **Proxy de dominio siempre en `http://` interno**, nunca `https://` (ver arriba).
