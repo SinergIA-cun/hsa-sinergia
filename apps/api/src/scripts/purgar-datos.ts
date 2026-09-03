@@ -3,6 +3,16 @@ import { join } from 'node:path';
 import { prisma } from '@hsa/database';
 import { loadConfig } from '../config.js';
 import { censo, purgar, TABLAS_CATALOGO, TABLAS_MOVIMIENTO } from './lib/purga.js';
+import { crearRespaldo, listarRespaldos, restaurar } from './lib/respaldo.js';
+
+/**
+ * Lo que entra al respaldo: la bitácora forense y el movimiento.
+ *
+ * La bitácora va PRIMERO porque al restaurar el orden manda: restaurar el
+ * movimiento dispara los triggers que escriben en `AuditoriaDb`, y su secuencia
+ * tiene que estar ya por encima de los ids del respaldo. Ver `restaurar()`.
+ */
+const TABLAS_RESPALDO = ['AuditoriaDb', ...TABLAS_MOVIMIENTO] as const;
 
 /**
  * Entrega la app al cliente sin los datos de prueba.
@@ -21,14 +31,26 @@ import { censo, purgar, TABLAS_CATALOGO, TABLAS_MOVIMIENTO } from './lib/purga.j
  *  · exige `--confirmo=<nombre-de-la-base>`, que hay que teclear a propósito y
  *    obliga a mirar contra qué base se está corriendo.
  *
+ * RESPALDA SOLO. Antes de vaciar, copia el movimiento y la bitácora a un
+ * esquema `respaldo_AAAAMMDDHHMM` dentro de la misma base, y dice cómo
+ * devolverlo. No hace falta `pg_dump` —que no existe en la consola de este
+ * contenedor— ni salir del navegador.
+ *
+ * Ese respaldo protege de "vacié y me arrepentí", no de que se muera el disco:
+ * vive en la misma base. Para una copia FUERA del servidor está la pestaña
+ * Backups del servicio de Postgres.
+ *
  * Uso (consola del servicio api en EasyPanel):
  *   # 1. Ver qué hay, sin tocar nada:
  *   pnpm --filter @hsa/api exec tsx src/scripts/purgar-datos.ts
- *   # 2. Respaldar (desde la consola del servicio de Postgres). El propio
- *   #    ensayo imprime este comando con el usuario y la base de verdad:
- *   pg_dump -U USUARIO 'BASE' > /tmp/respaldo-antes-de-la-purga.sql
- *   # 3. Vaciar:
+ *   # 2. Respaldar y vaciar, en un solo paso:
  *   pnpm --filter @hsa/api exec tsx src/scripts/purgar-datos.ts --confirmo='BASE'
+ *   # 3. Si algo salió mal, devolver todo:
+ *   pnpm --filter @hsa/api exec tsx src/scripts/purgar-datos.ts --restaurar=respaldo_...
+ *
+ * Banderas:
+ *   --respaldos        lista los respaldos que hay en la base
+ *   --sin-respaldo     vacía sin copiar nada (no se recomienda)
  */
 
 const BANDERA = '--confirmo=';
@@ -90,6 +112,26 @@ async function reportarLoQueQueda(): Promise<void> {
 }
 
 async function main(): Promise<void> {
+  if (process.argv.includes('--respaldos')) {
+    const rs = await listarRespaldos(prisma);
+    if (rs.length === 0) {
+      console.log('No hay respaldos en esta base.');
+      return;
+    }
+    console.log('Respaldos (del más nuevo al más viejo):');
+    for (const r of rs) console.log(`  ${r.esquema}  ${r.tablas} tabla(s)`);
+    return;
+  }
+
+  const aRestaurar = arg('--restaurar=');
+  if (aRestaurar !== undefined) {
+    console.log(`Restaurando desde ${aRestaurar}…`);
+    const filas = await restaurar(prisma, aRestaurar, TABLAS_RESPALDO);
+    console.log(`${filas} fila(s) devueltas. Los folios quedaron por encima de lo restaurado.`);
+    tabla(await censo(prisma, TABLAS_RESPALDO));
+    return;
+  }
+
   const conectada = await prisma.$queryRaw<{ base: string; usuario: string }[]>`
     SELECT current_database() AS base, current_user AS usuario`;
   const base = conectada[0]!.base;
@@ -110,16 +152,32 @@ async function main(): Promise<void> {
       console.log(`NO se borró nada: --confirmo=${confirmo} no es la base conectada (${base}).`);
     }
     console.log(
-      '\nEsto no se puede deshacer. Respalda primero, desde la consola del\n' +
-        'servicio de Postgres:\n' +
-        `\n  pg_dump -U ${usuario} '${base}' > /tmp/respaldo-antes-de-la-purga.sql\n` +
-        '\nY cuando el respaldo esté hecho, vacía con:\n' +
+      `\nAl vaciar, PRIMERO se respalda: el movimiento y la bitácora se copian a un\n` +
+        `esquema de esta misma base, y el guion imprime cómo devolverlos. No hace\n` +
+        `falta pg_dump.\n` +
+        `\nEse respaldo cubre "vacié y me arrepentí". NO cubre que se muera el disco,\n` +
+        `porque vive en la misma base: para eso está la pestaña Backups del servicio\n` +
+        `de Postgres.\n` +
+        `\nCuando quieras, con usuario ${usuario}:\n` +
         `\n  pnpm --filter @hsa/api exec tsx src/scripts/purgar-datos.ts ${BANDERA}'${base}'\n`,
     );
     return;
   }
 
-  console.log('\n── Vaciando ─────────────────────────────────────────────');
+  const sinRespaldo = process.argv.includes('--sin-respaldo');
+  if (sinRespaldo) {
+    console.log('\n── Sin respaldo, porque lo pediste ──────────────────────');
+  } else {
+    console.log('\n── Respaldando ──────────────────────────────────────────');
+    const resp = await crearRespaldo(prisma, TABLAS_RESPALDO);
+    console.log(`  ${resp.filas} fila(s) copiadas al esquema ${resp.esquema}`);
+    console.log('  Para devolverlas, si algo sale mal:');
+    console.log(
+      `\n    pnpm --filter @hsa/api exec tsx src/scripts/purgar-datos.ts --restaurar=${resp.esquema}\n`,
+    );
+  }
+
+  console.log('── Vaciando ─────────────────────────────────────────────');
   const r = await purgar(prisma, { motivo: `Entrega al cliente: purga de datos de prueba en ${base}` });
   console.log(`  ${r.borradas} fila(s) de movimiento`);
   console.log(`  ${r.auditoriaBorrada} fila(s) de bitácora forense`);
@@ -144,7 +202,9 @@ async function main(): Promise<void> {
       'adentro, eso es la puerta abierta.\n' +
       '\nLa bitácora forense quedó con un solo renglón: el de esta purga, con el\n' +
       'censo de lo que se fue. Del día del cliente en adelante, todo lo que pase\n' +
-      'queda registrado ahí.\n',
+      'queda registrado ahí.\n' +
+      '\nEl respaldo sigue en la base, en su esquema. Cuando ya no lo quieras,\n' +
+      '`--respaldos` te los lista y se borran con DROP SCHEMA … CASCADE.\n',
   );
 }
 

@@ -1,6 +1,10 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import { prisma } from '@hsa/database';
 import { censo, purgar, SECUENCIAS, TABLAS_CATALOGO, TABLAS_MOVIMIENTO } from './purga.js';
+import { borrarRespaldo, crearRespaldo, listarRespaldos, restaurar } from './respaldo.js';
+
+/** Lo mismo que respalda `purgar-datos.ts`: la bitácora PRIMERO. */
+const TABLAS_RESPALDO = ['AuditoriaDb', ...TABLAS_MOVIMIENTO] as const;
 
 /**
  * La purga borra todo, así que esta prueba NO puede correr contra la base de
@@ -166,5 +170,82 @@ describe.runIf(process.env.DATABASE_URL?.includes('_lab'))('purga', () => {
     await expect(prisma.$executeRaw`DELETE FROM "AuditoriaDb"`).rejects.toThrow(
       /no se edita ni se borra/,
     );
+  });
+
+  // ── Respaldo dentro de la misma base ──────────────────────────────────────
+  // Existe porque `pg_dump` no está en la consola del contenedor de la API, así
+  // que "respalda antes de vaciar" no se podía seguir. Las dos pruebas de abajo
+  // cubren los dos errores que encontró la primera corrida contra una base real.
+
+  it('el respaldo se copia entero y aparece en la lista', async () => {
+    await desdeCero();
+    const antes = await censo(prisma, TABLAS_RESPALDO);
+    const r = await crearRespaldo(prisma, TABLAS_RESPALDO);
+
+    expect(r.filas).toBe(antes.reduce((s, c) => s + c.filas, 0));
+    expect((await listarRespaldos(prisma)).map((x) => x.esquema)).toContain(r.esquema);
+    await borrarRespaldo(prisma, r.esquema);
+  });
+
+  it('purgar y restaurar devuelve exactamente lo que había', async () => {
+    await desdeCero();
+    const antes = await censo(prisma, TABLAS_MOVIMIENTO);
+    const r = await crearRespaldo(prisma, TABLAS_RESPALDO);
+
+    await purgar(prisma, { motivo: 'prueba' });
+    expect((await censo(prisma, TABLAS_MOVIMIENTO)).filter((c) => c.filas > 0)).toEqual([]);
+
+    // Aquí tronaba: insertaba hijos antes que padres y violaba las llaves
+    // foráneas. La lista de tablas ahora va de padres a hijos.
+    await restaurar(prisma, r.esquema, TABLAS_RESPALDO);
+    expect(await censo(prisma, TABLAS_MOVIMIENTO)).toEqual(antes);
+    await borrarRespaldo(prisma, r.esquema);
+  });
+
+  it('al restaurar, el siguiente folio queda POR ENCIMA del último devuelto', async () => {
+    await desdeCero();
+    const r = await crearRespaldo(prisma, TABLAS_RESPALDO);
+    const pagoAntes = await prisma.payment.findFirstOrThrow({ select: { folio: true } });
+
+    await purgar(prisma, { motivo: 'prueba' });
+    await restaurar(prisma, r.esquema, TABLAS_RESPALDO);
+
+    const siguiente = await prisma.$queryRawUnsafe<{ v: bigint }[]>(
+      `SELECT nextval('"recibo_folio_seq"')::bigint AS v`,
+    );
+    // Sin esto el siguiente recibo reestrenaría un folio ya impreso.
+    expect(Number(siguiente[0]!.v)).toBeGreaterThan(pagoAntes.folio);
+    await borrarRespaldo(prisma, r.esquema);
+  });
+
+  it('la bitácora restaurada no chooca con los renglones que deja el propio TRUNCATE', async () => {
+    // El otro error de la primera corrida: el TRUNCATE dispara los triggers de
+    // la bitácora, cada tabla truncada deja su renglón, y esos renglones se
+    // quedaban con los ids 1, 2, 3… los mismos que traía el respaldo.
+    await desdeCero();
+    const bitacoraAntes = await censo(prisma, ['AuditoriaDb']);
+    const r = await crearRespaldo(prisma, TABLAS_RESPALDO);
+
+    await purgar(prisma, { motivo: 'prueba' });
+    await expect(restaurar(prisma, r.esquema, TABLAS_RESPALDO)).resolves.toBeGreaterThan(0);
+
+    // Vuelven los renglones del respaldo; los que agrega la restauración misma
+    // son de más, no de menos.
+    const despues = await censo(prisma, ['AuditoriaDb']);
+    expect(despues[0]!.filas).toBeGreaterThanOrEqual(bitacoraAntes[0]!.filas);
+    await borrarRespaldo(prisma, r.esquema);
+  });
+
+  it('un respaldo que no existe truena sin tocar las tablas', async () => {
+    await desdeCero();
+    const antes = await censo(prisma, TABLAS_MOVIMIENTO);
+    await expect(restaurar(prisma, 'respaldo_no_existe', TABLAS_RESPALDO)).rejects.toThrow(
+      /No existe el respaldo/,
+    );
+    expect(await censo(prisma, TABLAS_MOVIMIENTO)).toEqual(antes);
+  });
+
+  it('borrarRespaldo se niega con un esquema que no es de respaldo', async () => {
+    await expect(borrarRespaldo(prisma, 'public')).rejects.toThrow(/no parece un esquema de respaldo/);
   });
 });

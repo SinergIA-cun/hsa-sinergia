@@ -15,46 +15,52 @@ import type { PrismaClient } from '@hsa/database';
  */
 
 /**
- * Las tablas de MOVIMIENTO, en un orden que no importa: van todas en un solo
- * `TRUNCATE`, y Postgres no exige orden cuando el conjunto es cerrado —si
- * faltara una tabla que referencia a otra de la lista, truena en vez de
- * dejar filas huérfanas, que es exactamente la falla que se quiere.
+ * Las tablas de MOVIMIENTO, de PADRES a HIJOS.
+ *
+ * Al vaciar el orden da igual —van todas en un solo `TRUNCATE`, y si faltara
+ * una tabla que referencia a otra de la lista Postgres truena en vez de dejar
+ * filas huérfanas, que es justo la falla que se quiere—. Pero al RESTAURAR el
+ * orden lo es todo: insertar un `Payment` antes de su `Quote` viola la llave
+ * foránea. Una sola lista en el orden que sirve para las dos cosas, en vez de
+ * dos listas que se desincronizan.
+ *
+ * Si se agrega una tabla, va DESPUÉS de todas las que referencia.
  */
 export const TABLAS_MOVIMIENTO = [
-  'AbonoApartado',
-  'ApartadoFecha',
-  'PagoBanquetero',
-  'Payment',
+  'Client',
+  'PriceListAudit',
+  'Quote',
   'QuoteExtra',
   'ActivityLog',
   'EventoHistorico',
-  'Quote',
-  'Client',
-  'PriceListAudit',
+  'PagoBanquetero',
+  'Payment',
+  'ApartadoFecha',
+  'AbonoApartado',
 ] as const;
 
 /**
  * El CATÁLOGO y la gente. Lo que el cliente ya cargó de su operación real y no
  * se toca al entregar. `seed-demo.ts` sí las vacía, con `incluirCatalogo`.
  *
- * En orden de hijos a padres: aquí el orden SÍ importa, porque se vacían en un
- * `TRUNCATE` aparte del de movimiento.
+ * Mismo criterio que arriba: de PADRES a HIJOS, para que un día se puedan
+ * restaurar sin pelearse con las llaves foráneas.
  */
 export const TABLAS_CATALOGO = [
-  'CuadrillaMiembro',
-  'Cuadrilla',
+  'PriceList',
+  'Space',
+  'EventType',
+  'Banquetero',
   'Empleado',
-  'SpacePaymentRule',
+  'User',
+  'FoodPackage',
   'RentalPrice',
   'FoodPackagePrice',
   'AddOn',
   'DjHoraExtraPrice',
-  'FoodPackage',
-  'EventType',
-  'Space',
-  'Banquetero',
-  'PriceList',
-  'User',
+  'SpacePaymentRule',
+  'Cuadrilla',
+  'CuadrillaMiembro',
 ] as const;
 
 /**
