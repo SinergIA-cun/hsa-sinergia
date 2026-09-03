@@ -170,6 +170,41 @@ En la app: el selector de espacios debe permitir hasta 3 salones con colores de
 disponibilidad, y el contrato debe imprimir el complemento como `pct × renta = monto`
 por salón.
 
+## Entregar la app al cliente (vaciar los datos de prueba)
+
+Cuando el cliente va a empezar a usarla de verdad, hay que sacarle los datos con
+los que se probó. `purgar-datos.ts` borra el **movimiento** —cotizaciones,
+clientes, pagos y recibos, depósitos y apartados de banqueteros, bitácora,
+histórico y auditoría— y conserva lo que el cliente ya cargó de su operación:
+catálogo y precios, banqueteros, personal y cuadrillas, reglas de pago por salón
+y usuarios. Los folios de recibo y las referencias de cliente vuelven a 1.
+
+Tres pasos, en la consola del servicio **api** (el segundo va en la del servicio
+de **Postgres**):
+
+```bash
+# 1. Ensayo: enseña qué se borraría y qué se conserva, sin tocar nada.
+pnpm --filter @hsa/api exec tsx src/scripts/purgar-datos.ts
+
+# 2. Respaldo (consola de Postgres). No te lo brinques.
+pg_dump -U hsa hsa > /tmp/hsa-antes-de-la-purga.sql
+
+# 3. Vaciar. La bandera tiene que traer el nombre de la base, a propósito.
+pnpm --filter @hsa/api exec tsx src/scripts/purgar-datos.ts --confirmo=hsa
+```
+
+Sin la bandera **no borra nada**: imprime el censo y el comando que falta. Si la
+bandera no coincide con la base conectada, tampoco.
+
+Al final el guion lista los banqueteros, usuarios y catálogos que quedaron en
+pie, para borrar a mano desde la app los que hayan nacido de una prueba.
+
+**Esto NO va en la cadena de arranque del contenedor.** Los backfills son
+idempotentes y no pierden nada si corren de más; esto pierde todo.
+
+Después de vaciar, **cambia la contraseña del admin**: el seed la deja en
+`admin1234`, que está en el repositorio.
+
 ## Gotchas (heredados de la experiencia con Motipreca en este mismo EasyPanel)
 
 - **Proxy de dominio siempre en `http://` interno**, nunca `https://` (ver arriba).
