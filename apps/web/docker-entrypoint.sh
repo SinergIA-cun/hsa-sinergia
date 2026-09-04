@@ -47,6 +47,16 @@ printf '};\n' >> "$CONFIG"
 
 echo "config.js: $(cat "$CONFIG")"
 
+# Un aviso en los logos del despliegue vale más que un 502 sin explicación.
+# Con VITE_API_URL vacío la app pide /api al MISMO dominio, y ahí nginx intenta
+# resolver el host `api` de la red de docker-compose: en EasyPanel, donde la API
+# vive en otro dominio, eso responde 502 y nadie sabe por qué.
+if [ -z "${VITE_API_URL:-}" ]; then
+  echo "AVISO: VITE_API_URL no está definida."
+  echo "       Correcto SOLO si la API se sirve en este mismo dominio (modo docker-compose)."
+  echo "       Con dominios separados (EasyPanel), /api responderá 502 hasta que la definas."
+fi
+
 # `HSA_SOLO_CONFIG` lo usa la prueba: escribe el archivo y no levanta nginx.
 [ -n "${HSA_SOLO_CONFIG:-}" ] && exit 0
 
