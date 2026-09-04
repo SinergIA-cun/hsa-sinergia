@@ -1,3 +1,5 @@
+import { config } from './config.ts';
+
 /**
  * La identidad del salón de eventos: cómo se llama y con qué razón social firma.
  *
@@ -18,24 +20,27 @@
  */
 export const MARCA = {
   /** El nombre que se lee en el encabezado, el recibo y el contrato. */
-  nombre: import.meta.env.VITE_MARCA_NOMBRE || 'Hacienda San Andrés',
+  nombre: config('marcaNombre', import.meta.env.VITE_MARCA_NOMBRE) || 'Hacienda San Andrés',
   /** El año bajo el logo. Vacío lo esconde. */
-  anio: import.meta.env.VITE_MARCA_ANIO ?? '1894',
+  anio: config('marcaAnio', import.meta.env.VITE_MARCA_ANIO) ?? '1894',
   /** Con quién se firma el contrato: la razón social completa. */
-  razonSocial: import.meta.env.VITE_MARCA_RAZON_SOCIAL || 'Hacienda San Andrés Atoto, S.A.',
+  razonSocial: config('marcaRazonSocial', import.meta.env.VITE_MARCA_RAZON_SOCIAL) ||
+    'Hacienda San Andrés Atoto, S.A.',
   /** Domicilio completo: recibo, contrato y las vistas públicas. */
   direccion:
-    import.meta.env.VITE_MARCA_DIRECCION ||
+    config('marcaDireccion', import.meta.env.VITE_MARCA_DIRECCION) ||
     'Atlacomulco No. 1, Col. San Esteban, Naucalpan de Juárez, Estado de México',
   /** El mismo, recortado para el pie del login. */
   direccionCorta:
-    import.meta.env.VITE_MARCA_DIRECCION_CORTA || 'Atlacomulco No. 1, Naucalpan, Estado de México',
-  telefono: import.meta.env.VITE_MARCA_TELEFONO || '5357 1986',
+    config('marcaDireccionCorta', import.meta.env.VITE_MARCA_DIRECCION_CORTA) ||
+    'Atlacomulco No. 1, Naucalpan, Estado de México',
+  telefono: config('marcaTelefono', import.meta.env.VITE_MARCA_TELEFONO) || '5357 1986',
   /** Un segundo teléfono, opcional. Vacío lo esconde del pie del contrato. */
-  telefono2: import.meta.env.VITE_MARCA_TELEFONO_2 ?? '5357 2833',
-  sitio: import.meta.env.VITE_MARCA_SITIO || 'www.haciendasanandres.com.mx',
+  telefono2: config('marcaTelefono2', import.meta.env.VITE_MARCA_TELEFONO_2) ?? '5357 2833',
+  sitio: config('marcaSitio', import.meta.env.VITE_MARCA_SITIO) || 'www.haciendasanandres.com.mx',
   /** Solo para los ejemplos de los campos de correo. */
-  dominioCorreo: import.meta.env.VITE_MARCA_DOMINIO_CORREO || 'haciendasanandres.com.mx',
+  dominioCorreo: config('marcaDominioCorreo', import.meta.env.VITE_MARCA_DOMINIO_CORREO) ||
+    'haciendasanandres.com.mx',
   /**
    * Qué clausulado imprime el contrato.
    *
@@ -44,5 +49,5 @@ export const MARCA = {
    * porcentajes de cancelación ni el reglamento de proveedores de Hacienda San
    * Andrés. Ver `pages/contrato/ClausulasNeutras.tsx`.
    */
-  contrato: import.meta.env.VITE_MARCA_CONTRATO === 'neutro' ? 'neutro' : 'hsa',
+  contrato: config('marcaContrato', import.meta.env.VITE_MARCA_CONTRATO) === 'neutro' ? 'neutro' : 'hsa',
 } as const;

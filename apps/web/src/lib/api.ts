@@ -1,3 +1,5 @@
+import { config } from './config.ts';
+
 export class ApiError extends Error {
   status: number;
   /**
@@ -16,10 +18,14 @@ export class ApiError extends Error {
   }
 }
 
-// Si la API vive en su propio dominio (p.ej. hsapi.somossinergia.com), se
-// hornea en build time con VITE_API_URL. Vacío por defecto => rutas relativas
-// (mismo dominio, útil con el proxy /api de nginx en el compose de VPS).
-const API_BASE = (import.meta.env.VITE_API_URL ?? '').replace(/\/$/, '');
+// Si la API vive en su propio dominio (p.ej. hsaapi.somossinergia.com), lo dice
+// el entorno del contenedor AL ARRANCAR. Vacío => rutas relativas (mismo
+// dominio, útil con el proxy /api de nginx en el compose de VPS).
+//
+// Se lee al arrancar y ya no al compilar: horneado, el valor por omisión de la
+// imagen apuntaba a la API de producción, y una segunda instancia construida
+// del mismo repo le pegaba a la base del cliente sin avisar. Ver `config.ts`.
+const API_BASE = (config('apiUrl', import.meta.env.VITE_API_URL) ?? '').replace(/\/$/, '');
 
 function resolveUrl(url: string): string {
   return url.startsWith('/api') || url.startsWith('/health') ? `${API_BASE}${url}` : url;

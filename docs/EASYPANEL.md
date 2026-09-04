@@ -114,17 +114,20 @@ luego `API HSA escuchando en http://0.0.0.0:3001`.
 - Puerto del contenedor: `80`.
 - Nombre del servicio: `web`.
 
-**Build Arg** — si EasyPanel expone "Build Args" en la UI, define:
+**Variables de entorno** (pestaña Environment, como en cualquier otro servicio):
 ```
 VITE_API_URL=https://hsaapi.somossinergia.com
 ```
-Si tu versión de EasyPanel **no** expone Build Args (como pasó con Motipreca), edita
-directamente el default en `apps/web/Dockerfile`:
-```dockerfile
-ARG VITE_API_URL="https://hsaapi.somossinergia.com"
-```
-commitea y vuelve a desplegar. `VITE_API_URL` queda **horneado en el JS** en build-time
-(no es una env var runtime) — si cambia el dominio de la API, hay que reconstruir la imagen.
+
+Se leen **al arrancar el contenedor**, no al compilar: el entrypoint escribe
+`/config.js` con lo que traiga el entorno y la app lo lee de ahí. No hacen falta Build
+Args —que esta versión de EasyPanel no siempre expone— y cambiar el dominio de la API es
+reiniciar, no reconstruir.
+
+> Antes esto se horneaba en el JS, con el dominio de la API de producción como valor por
+> omisión de la imagen. Una segunda instancia construida del mismo repo sin build arg
+> servía una app que le pegaba a **la base del cliente**, y nada en la pantalla lo
+> delataba. Si ves una instalación vieja, revisa que tenga su `VITE_API_URL`.
 
 **Dominio**: pestaña Domains → agrega `hsa.somossinergia.com` → puerto `80`.
 Mismo gotcha del proxy: destino `http://`, no `https://`.
@@ -287,8 +290,18 @@ genéricos en vez de los de Hacienda San Andrés. Sin ella el contrato del demo
 traería su tabulador de cancelación, su multa por pirotecnia, su tarifa de valet
 y su reglamento de proveedores.
 
-Son de build: el web hay que reconstruirlo para que tomen. Sin ellas, la app
-dice Hacienda San Andrés, que es justo lo que no debe ver un prospecto.
+Son de arranque: basta reiniciar el servicio web para que tomen, sin reconstruir. Sin
+ellas la app dice Hacienda San Andrés, que es justo lo que no debe ver un prospecto.
+
+**Y la más importante del demo:**
+
+```
+VITE_API_URL=https://<el dominio de la API DEL DEMO>
+```
+
+Sin ella el web del demo le pega a la API que tenga configurada por omisión. Verifícalo
+en el navegador antes de enseñárselo a nadie: abre la consola del navegador en el demo y
+escribe `window.__HSA_CONFIG__` — debe listar el dominio del demo, no el del cliente.
 
 **3. Sembrar el demo.** En la consola del servicio api del DEMO:
 
