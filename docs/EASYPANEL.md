@@ -61,10 +61,14 @@ COMPROBANTES_DIR=/app/data/comprobantes
 ```
 
 > **Sustituye las CUATRO mayúsculas** de `DATABASE_URL` con lo que copiaste de la
-> pestaña Connect. El 3-sep-2026 se desplegó con el marcador `<db>` sin sustituir
-> y quedó una base llamada `%3Cdb%3E` (el `<` y el `>` percent-encodeados): la app
-> funciona igual, pero cada `psql` y cada `pg_dump` cargan con ese nombre.
-> Verifícalo en la consola del servicio api en cuanto arranque:
+> pestaña Connect. Esto ya falló dos veces: el 3-sep-2026 se coló el marcador
+> `<db>` y quedó una base llamada `%3Cdb%3E`; el 5-sep-2026 se pegó la línea
+> completa sin tocar y la API se cicló con un `P1001: Can't reach database server
+> at HOST_INTERNO:5432`, que suena a problema de red y no lo es.
+>
+> Desde entonces el contenedor **se niega a arrancar** si detecta un marcador sin
+> sustituir, y lo dice en los logs con el nombre del que falta. Verifícalo de
+> todos modos en la consola del servicio api:
 >
 > ```bash
 > pnpm --filter @hsa/api exec tsx src/scripts/purgar-datos.ts | head -1
