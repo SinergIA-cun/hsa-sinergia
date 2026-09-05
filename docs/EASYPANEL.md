@@ -128,6 +128,12 @@ Se leen **al arrancar el contenedor**, no al compilar: el entrypoint escribe
 Args —que esta versión de EasyPanel no siempre expone— y cambiar el dominio de la API es
 reiniciar, no reconstruir.
 
+`VITE_API_URL` es **obligatoria**: sin ella el contenedor no arranca y lo dice en los
+logs. Es a propósito — el 5-sep-2026 se reconstruyó producción sin agregarla y la app
+del cliente se quedó pidiéndole `/api` a su propio dominio, con un 502 que en pantalla
+se lee "No se pudo conectar con el servidor". Solo el modo de un dominio
+(docker-compose, con el proxy `/api` de nginx) la lleva definida pero **vacía**.
+
 > Antes esto se horneaba en el JS, con el dominio de la API de producción como valor por
 > omisión de la imagen. Una segunda instancia construida del mismo repo sin build arg
 > servía una app que le pegaba a **la base del cliente**, y nada en la pantalla lo

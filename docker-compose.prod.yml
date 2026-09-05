@@ -42,6 +42,14 @@ services:
     build:
       context: .
       dockerfile: apps/web/Dockerfile
+    environment:
+      # VACÍA A PROPÓSITO: en este modo la API se sirve en el MISMO dominio y
+      # nginx hace proxy de /api al contenedor `api` (ver apps/web/nginx.conf).
+      #
+      # Tiene que estar definida aunque sea vacía: el arranque del web distingue
+      # "no definida" —nadie decidió, y se detiene— de "definida vacía", que es
+      # esta decisión. Con dominios separados (EasyPanel) va la URL pública.
+      VITE_API_URL: ''
     restart: unless-stopped
     ports:
       - '${WEB_PORT:-8080}:80'

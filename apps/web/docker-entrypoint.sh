@@ -47,14 +47,39 @@ printf '};\n' >> "$CONFIG"
 
 echo "config.js: $(cat "$CONFIG")"
 
-# Un aviso en los logos del despliegue vale más que un 502 sin explicación.
-# Con VITE_API_URL vacío la app pide /api al MISMO dominio, y ahí nginx intenta
-# resolver el host `api` de la red de docker-compose: en EasyPanel, donde la API
-# vive en otro dominio, eso responde 502 y nadie sabe por qué.
-if [ -z "${VITE_API_URL:-}" ]; then
-  echo "AVISO: VITE_API_URL no está definida."
-  echo "       Correcto SOLO si la API se sirve en este mismo dominio (modo docker-compose)."
-  echo "       Con dominios separados (EasyPanel), /api responderá 502 hasta que la definas."
+# Sin `VITE_API_URL` la app pide /api a su PROPIO dominio, y ahí nginx intenta
+# resolver el host `api` de la red de docker-compose. En EasyPanel, donde la API
+# vive en otro dominio, eso es un 502 y la pantalla dice "No se pudo conectar con
+# el servidor": suena a problema de red y es un ajuste que falta.
+#
+# Pasó de verdad. El 5-sep-2026 la configuración dejó de hornearse en la imagen y
+# pasó a leerse al arrancar; al reconstruir producción sin agregar la variable, la
+# app del cliente se quedó sin API. Un aviso en los logs no sirvió de nada, porque
+# nadie mira los logs de un contenedor que arrancó bien.
+#
+# Se distingue NO DEFINIDA de DEFINIDA VACÍA:
+#   · no definida  = nadie decidió → se detiene y lo dice;
+#   · vacía        = decisión explícita de servir la API en el mismo dominio, que
+#                    es el modo docker-compose con el proxy /api de nginx.
+if [ -z "${VITE_API_URL+definida}" ]; then
+  echo ""
+  echo "═══════════════════════════════════════════════════════════════"
+  echo "  FALTA VITE_API_URL — no se arrancó nada"
+  echo "═══════════════════════════════════════════════════════════════"
+  echo ""
+  echo "  Sin ella la app le pide /api a su propio dominio, y responde 502."
+  echo "  En pantalla se ve como \"No se pudo conectar con el servidor\"."
+  echo ""
+  echo "  Dónde: EasyPanel → servicio web → pestaña Environment."
+  echo ""
+  echo "    VITE_API_URL=https://el-dominio-de-tu-api"
+  echo ""
+  echo "  Si de verdad sirves la API en ESTE mismo dominio (docker-compose con"
+  echo "  el proxy /api de nginx), déjala definida pero VACÍA:"
+  echo ""
+  echo "    VITE_API_URL="
+  echo ""
+  exit 1
 fi
 
 # `HSA_SOLO_CONFIG` lo usa la prueba: escribe el archivo y no levanta nginx.
