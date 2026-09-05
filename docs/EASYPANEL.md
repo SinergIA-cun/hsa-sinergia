@@ -138,16 +138,24 @@ Mismo gotcha del proxy: destino `http://`, no `https://`.
 
 Deploy.
 
-## 5. Sembrar el catálogo + usuario admin
+## 5. El catálogo + usuario admin: ya se sembraron solos
 
-En la consola del servicio **api** (EasyPanel → servicio api → Console):
+**No hay que hacer nada aquí.** El contenedor corre el seed al arrancar, antes de
+los backfills. En los logs del primer arranque verás `Seed HSA completado.`; en
+los siguientes, `Catálogo ya sembrado (N espacios) — se omite.`
+
+Va en el arranque porque tenerlo como paso manual era un huevo-y-gallina: los
+backfills parchan datos que ya existen, así que en una base nueva `backfill:fase6`
+moría con *"No hay catálogo (PriceList) activo"*, la cadena se caía y el
+contenedor se reciclaba sin dejar llegar nunca a una consola desde la cual
+sembrar. Le pasó a la instancia del demo el 5-sep-2026.
+
+Si alguna vez hace falta correrlo a mano:
 ```bash
 pnpm --filter @hsa/database exec tsx prisma/seed.ts
 ```
 (No uses `run seed`, que trae un `dotenv -e ../../.env` que no existe dentro del
 contenedor — igual que en Motipreca.)
-
-Debe imprimir `Seed HSA 2027 completado.`
 
 ## 6. Verificar
 
