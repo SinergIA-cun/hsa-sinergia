@@ -107,9 +107,9 @@ export function PublicQuotePage() {
 
           {/* El código de evento: la referencia que el cliente cita en un correo
               o una transferencia. Es el mismo que sale en el contrato y el recibo. */}
-          {quote.codigo && (
+          {quote.folio && (
             <p className="mt-5 text-xs uppercase tracking-[0.2em] text-gold-200">
-              Evento <span className="font-semibold text-cream">{quote.codigo}</span>
+              Evento <span className="font-semibold text-cream">{quote.folio}</span>
             </p>
           )}
         </div>

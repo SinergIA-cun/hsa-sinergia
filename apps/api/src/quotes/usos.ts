@@ -3,7 +3,10 @@ import type { PrismaClient, Prisma } from '@hsa/database';
 /** Un contrato que impide borrar algo, con lo justo para poder encontrarlo. */
 export interface ContratoQueUsa {
   id: string;
-  codigo: string | null;
+  /** El folio, que es por lo que se busca un contrato. */
+  folio: string;
+  /** Y cómo se describe hoy, para reconocerlo sin abrirlo. */
+  etiqueta: string | null;
   cliente: string;
   fechaEventoISO: string;
   status: string;
@@ -47,7 +50,8 @@ export async function contratosQueUsan(
       take: TOPE_MUESTRA,
       select: {
         id: true,
-        codigo: true,
+        folio: true,
+        etiqueta: true,
         fechaEvento: true,
         status: true,
         deletedAt: true,
@@ -60,7 +64,8 @@ export async function contratosQueUsan(
     total,
     muestra: filas.map((q) => ({
       id: q.id,
-      codigo: q.codigo,
+      folio: q.folio,
+      etiqueta: q.etiqueta,
       cliente: q.client?.nombre ?? 'Cliente',
       fechaEventoISO: q.fechaEvento.toISOString(),
       status: q.status,

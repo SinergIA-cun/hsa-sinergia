@@ -122,7 +122,7 @@ const CON_ASIGNACIONES = {
       concepto: true,
       anuladoAt: true,
       motivoAnulacion: true,
-      quote: { select: { id: true, codigo: true, client: { select: { nombre: true } } } },
+      quote: { select: { id: true, folio: true, etiqueta: true, client: { select: { nombre: true } } } },
     },
     orderBy: { folio: 'asc' },
   },

@@ -138,7 +138,7 @@ function ApartadoRow({
                 to={`/cotizaciones/${a.quote.id}`}
                 className="font-medium text-gold hover:underline"
               >
-                {a.quote.codigo ?? 'Ver la cotización'}
+                {a.quote.folio ?? 'Ver la cotización'}
               </Link>
             </p>
           )}

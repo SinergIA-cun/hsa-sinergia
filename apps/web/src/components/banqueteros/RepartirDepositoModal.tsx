@@ -147,11 +147,11 @@ export function RepartirDepositoModal({ deposito, eventos, apartados, onCancel, 
                     <tr key={e.quoteId}>
                       <td className="py-2.5 pr-3">
                         <span className="block font-medium text-ink">
-                          {e.codigo ?? e.festejado ?? 'Evento'}
+                          {e.folio ?? e.festejado ?? 'Evento'}
                         </span>
                         <span className="block text-xs text-charcoal-soft">
                           {formatEventDate(e.fechaEventoISO)} · {STATUS_LABEL[e.status]}
-                          {e.festejado && e.codigo ? ` · ${e.festejado}` : ''}
+                          {e.festejado && e.folio ? ` · ${e.festejado}` : ''}
                         </span>
                       </td>
                       <td className="py-2.5 pr-3 text-right tabular-nums text-charcoal">
@@ -159,7 +159,7 @@ export function RepartirDepositoModal({ deposito, eventos, apartados, onCancel, 
                       </td>
                       <td className="py-2.5 pr-3 text-right">
                         <MoneyInput
-                          aria-label={`Monto para ${e.codigo ?? e.festejado ?? 'el evento'}`}
+                          aria-label={`Monto para ${e.folio ?? e.festejado ?? 'el evento'}`}
                           value={raw}
                           onValue={(v) => setMontos((m) => ({ ...m, [e.quoteId]: v }))}
                           placeholder="0"

@@ -39,7 +39,8 @@ export async function estadoCuentaBanquetero(
       where: { banqueteroId, deletedAt: null },
       select: {
         id: true,
-        codigo: true,
+        folio: true,
+        etiqueta: true,
         fechaEvento: true,
         status: true,
         total: true,
@@ -65,7 +66,8 @@ export async function estadoCuentaBanquetero(
     const ec = ecs.get(q.id);
     return {
       quoteId: q.id,
-      codigo: q.codigo,
+      folio: q.folio,
+      etiqueta: q.etiqueta,
       fechaEventoISO: q.fechaEvento.toISOString(),
       status: q.status,
       cliente: q.client?.nombre ?? null,
@@ -135,7 +137,8 @@ export async function estadoCuentaPublico(db: PrismaClient, token: string) {
   return {
     banquetero: { nombre: ec.banquetero.nombre, telefono: ec.banquetero.telefono },
     eventos: ec.eventos.map((e) => ({
-      codigo: e.codigo,
+      folio: e.folio,
+      etiqueta: e.etiqueta,
       fechaEventoISO: e.fechaEventoISO,
       status: e.status,
       festejado: e.festejado,
@@ -155,9 +158,13 @@ export async function estadoCuentaPublico(db: PrismaClient, token: string) {
         asignaciones: d.asignaciones
           .filter((a) => a.anuladoAt == null)
           .map((a) => ({
+            // Dos folios distintos en el mismo renglón: el del RECIBO, que ya
+            // existía, y el del EVENTO al que se asignó. Se nombran completos
+            // porque "folio" a secas aquí no significa nada.
             folio: a.folio,
             monto: a.monto,
-            codigo: a.quote?.codigo ?? null,
+            folioEvento: a.quote?.folio ?? null,
+            etiqueta: a.quote?.etiqueta ?? null,
           })),
       })),
     apartados: ec.apartados

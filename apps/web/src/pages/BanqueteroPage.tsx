@@ -187,7 +187,12 @@ export function BanqueteroPage() {
                     className="cursor-pointer transition-colors hover:bg-cream-50"
                     onClick={() => navigate(`/cotizaciones/${e.quoteId}`)}
                   >
-                    <td className="px-4 py-2.5 font-medium text-ink">{e.codigo ?? '—'}</td>
+                    <td className="px-4 py-2.5 text-ink">
+                      <span className="block font-mono font-semibold">{e.folio ?? '—'}</span>
+                      {e.etiqueta && (
+                        <span className="block font-mono text-[0.68rem] text-charcoal-soft">{e.etiqueta}</span>
+                      )}
+                    </td>
                     <td className="px-4 py-2.5 text-charcoal">{formatEventDate(e.fechaEventoISO)}</td>
                     <td className="px-4 py-2.5 text-charcoal-soft">{e.festejado ?? '—'}</td>
                     <td className="px-4 py-2.5 text-right tabular-nums text-charcoal">

@@ -43,7 +43,7 @@ function Renglon({ c }: { c: ContratoQueUsa }) {
         <span className="min-w-0">
           <span className="block truncate text-xs font-medium text-ink">{c.cliente}</span>
           <span className="block font-mono text-[0.65rem] text-charcoal-soft">
-            {c.codigo ?? formatEventDate(c.fechaEventoISO)}
+            {c.folio ?? formatEventDate(c.fechaEventoISO)}
           </span>
         </span>
         <span className="flex shrink-0 items-center gap-1.5">

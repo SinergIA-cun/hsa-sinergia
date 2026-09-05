@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import type { PrismaClient, Prisma } from '@hsa/database';
 import {
-  codigoEvento,
+  etiquetaEvento,
   computeQuote,
   quoteSelectionSchema,
   estadoFacturaPago,
@@ -122,61 +122,27 @@ const includeRels = {
 // las ediciones en esos estatus quedan registradas en la bitácora de actividad.
 const EDITABLE_STATUSES = new Set(['borrador', 'formalizada', 'complementada']);
 
-// --- Código de evento ---------------------------------------------------------
+// --- Etiqueta del evento ------------------------------------------------------
 
 /**
- * Estatus que ya APARTAN la fecha (hay compromiso de pago). Son los mismos que
- * bloquean el espacio en `availability/service.ts`, y son la frontera del
- * congelado: mientras la cotización no aparta, su código sigue a la fecha, al
- * cliente y al espacio; en cuanto aparta, queda fijo — a partir de ahí el código
- * ya está impreso en recibos y contratos, y regenerarlo cambiaría un
- * identificador que alguien ya copió.
- */
-const STATUSES_QUE_APARTAN = new Set(['formalizada', 'complementada', 'liquidada']);
-
-/** Un choque del índice único de `Quote.codigo` (y no de cualquier otro campo). */
-function esColisionDeCodigo(e: unknown): boolean {
-  if (typeof e !== 'object' || e === null) return false;
-  const err = e as { code?: unknown; meta?: { target?: unknown } };
-  if (err.code !== 'P2002') return false;
-  const target = err.meta?.target;
-  const texto = Array.isArray(target) ? target.join(',') : String(target ?? '');
-  return texto.includes('codigo');
-}
-
-/**
- * El código libre a partir del base: `base`, o `base-2`, `base-3`… Dos eventos
- * del mismo cliente, la misma fecha y el mismo salón son raros pero posibles, y
- * no pueden romper el guardado.
- */
-async function codigoLibre(db: PrismaClient, base: string, excludeQuoteId?: string): Promise<string> {
-  const usados = await db.quote.findMany({
-    where: {
-      // El `-` del prefijo evita que `…-CUPULA` se coma a `…-CUPULANORTE`.
-      OR: [{ codigo: base }, { codigo: { startsWith: `${base}-` } }],
-      ...(excludeQuoteId ? { id: { not: excludeQuoteId } } : {}),
-    },
-    select: { codigo: true },
-  });
-  const tomados = new Set(usados.map((q) => q.codigo));
-  if (!tomados.has(base)) return base;
-  for (let n = 2; n <= 999; n++) {
-    const candidato = `${base}-${n}`;
-    if (!tomados.has(candidato)) return candidato;
-  }
-  throw new QuoteError(409, `No hay sufijo libre para el código de evento ${base}`);
-}
-
-/**
- * El código de evento de una cotización, ya resuelto contra la base.
+ * La etiqueta de una cotización: cómo se describe HOY.
+ *
+ * Ya no resuelve colisiones ni se congela. Quien identifica es `Quote.folio`
+ * (`27-0184`), que lo asigna Postgres al insertar y no cambia nunca; la etiqueta
+ * solo describe, así que dos eventos pueden compartirla sin consecuencia y
+ * recalcularla en cada guardado es exactamente lo que se quiere.
+ *
+ * Antes esto eran ~70 líneas: un índice único, sufijos `-2`/`-3`, un reintento
+ * por si otra sesión se quedaba con la base entre el cálculo y la escritura, y
+ * una regla de congelado por estatus. Todo eso existía para sostener un
+ * identificador hecho de datos que cambian. Con el folio aparte, sobra.
  *
  * Los nombres de los espacios se leen EN EL ORDEN de `spaceIds`: `findMany` no
- * garantiza orden, y de eso depende cuál espacio manda en el código.
+ * garantiza orden, y de eso depende cuál espacio manda en la etiqueta.
  */
-async function generarCodigo(
+async function generarEtiqueta(
   db: PrismaClient,
   datos: { fecha: string; cliente: string; spaceIds: string[] },
-  excludeQuoteId?: string,
 ): Promise<string> {
   const spaces = await db.space.findMany({
     where: { id: { in: datos.spaceIds } },
@@ -184,29 +150,7 @@ async function generarCodigo(
   });
   const nombreById = new Map(spaces.map((sp) => [sp.id, sp.nombre]));
   const espacios = datos.spaceIds.map((id) => nombreById.get(id) ?? '');
-  const base = codigoEvento({ fechaISO: datos.fecha, cliente: datos.cliente, espacios });
-  return codigoLibre(db, base, excludeQuoteId);
-}
-
-/**
- * Escribe la cotización con su código, reintentando si otra sesión se quedó con
- * el mismo entre el cálculo y la escritura. `codigoLibre` resuelve las colisiones
- * conocidas; esto cubre la carrera, que el índice único convertiría en un 500.
- */
-async function conCodigoUnico<T>(
-  db: PrismaClient,
-  datos: { fecha: string; cliente: string; spaceIds: string[] },
-  escribir: (codigo: string) => Promise<T>,
-  excludeQuoteId?: string,
-): Promise<T> {
-  for (let intento = 0; ; intento++) {
-    const codigo = await generarCodigo(db, datos, excludeQuoteId);
-    try {
-      return await escribir(codigo);
-    } catch (e) {
-      if (intento >= 3 || !esColisionDeCodigo(e)) throw e;
-    }
-  }
+  return etiquetaEvento({ fechaISO: datos.fecha, cliente: datos.cliente, espacios });
 }
 
 /**
@@ -693,13 +637,16 @@ export async function createQuote(
     (await db.client.findUnique({ where: { id: clientId! }, select: { nombre: true } }))?.nombre ??
     '';
 
-  const created = await conCodigoUnico(
-    db,
-    { fecha: input.fecha, cliente: nombreCliente, spaceIds: input.spaceIds },
-    (codigo) =>
-      db.quote.create({
+  // El folio lo pone Postgres al insertar; aquí solo va la etiqueta.
+  const etiqueta = await generarEtiqueta(db, {
+    fecha: input.fecha,
+    cliente: nombreCliente,
+    spaceIds: input.spaceIds,
+  });
+
+  const created = await db.quote.create({
         data: {
-          codigo,
+          etiqueta,
           clientId: clientId!,
           eventTypeId: input.eventTypeId,
           fechaEvento: new Date(`${input.fecha}T00:00:00.000Z`),
@@ -732,8 +679,7 @@ export async function createQuote(
           priceListId: catalogo.id,
         },
         include: includeRels,
-      }),
-  );
+      });
   await logActivity(db, { quoteId: created.id, tipo: 'creada', descripcion: 'Cotización creada', actorId: actor.id });
   return created;
 }
@@ -753,20 +699,19 @@ export async function duplicateQuote(db: PrismaClient, id: string, actor: Actor)
   });
   if (!src) throw new QuoteError(404, 'Cotización no encontrada');
 
-  // La copia NO hereda el código: es otro evento. Con el mismo cliente, fecha y
-  // salón que el original, su base choca y le toca sufijo — que es justamente el
-  // camino por el que la colisión aparece en la vida real.
-  const created = await conCodigoUnico(
-    db,
-    {
-      fecha: src.fechaEvento.toISOString().slice(0, 10),
-      cliente: src.client?.nombre ?? '',
-      spaceIds: src.spaceIds,
-    },
-    (codigo) =>
-      db.quote.create({
+  // La copia nace con SU PROPIO folio —lo asigna Postgres, es otro evento— y con
+  // la misma etiqueta que el original, que es correcto: describe un evento con
+  // el mismo cliente, la misma fecha y el mismo salón. Antes había que darle
+  // sufijo `-2` porque la etiqueta era el identificador; ya no lo es.
+  const etiqueta = await generarEtiqueta(db, {
+    fecha: src.fechaEvento.toISOString().slice(0, 10),
+    cliente: src.client?.nombre ?? '',
+    spaceIds: src.spaceIds,
+  });
+
+  const created = await db.quote.create({
         data: {
-          codigo,
+          etiqueta,
           clientId: src.clientId,
           eventTypeId: src.eventTypeId,
           fechaEvento: src.fechaEvento,
@@ -799,8 +744,7 @@ export async function duplicateQuote(db: PrismaClient, id: string, actor: Actor)
           priceListId: src.priceListId,
         },
         include: includeRels,
-      }),
-  );
+      });
   await logActivity(db, {
     quoteId: created.id,
     tipo: 'creada',
@@ -912,24 +856,25 @@ export async function updateQuote(db: PrismaClient, id: string, rawInput: unknow
     await db.client.update({ where: { id: existing.clientId }, data: input.client });
   }
 
-  // El código se regenera mientras la cotización NO aparte la fecha: en borrador
-  // sigue a la fecha, al cliente y al espacio. Con compromiso de pago queda
-  // congelado —`codigo: undefined` deja la columna intacta—, porque a partir de
-  // ahí ya está impreso en recibos y contratos. Y si por lo que sea la columna
-  // viene vacía (cotización anterior al campo que se formalizó sin backfill), se
-  // genera aunque ya aparte: un evento sin código no tiene identidad que romper.
-  const debeRegenerar = !STATUSES_QUE_APARTAN.has(existing.status) || existing.codigo == null;
-  const nombreCliente = debeRegenerar
-    ? input.client?.nombre ??
-      (await db.client.findUnique({ where: { id: existing.clientId }, select: { nombre: true } }))?.nombre ??
-      ''
-    : '';
+  // La etiqueta se regenera SIEMPRE, también con el evento ya formalizado: es una
+  // descripción, y una descripción vieja es una descripción equivocada. Lo que no
+  // cambia —lo que está impreso en el recibo que el cliente tiene— es el folio, y
+  // ese no se toca aquí ni en ningún otro lado.
+  const nombreCliente =
+    input.client?.nombre ??
+    (await db.client.findUnique({ where: { id: existing.clientId }, select: { nombre: true } }))?.nombre ??
+    '';
+  const etiqueta = await generarEtiqueta(db, {
+    fecha: input.fecha,
+    cliente: nombreCliente,
+    spaceIds: input.spaceIds,
+  });
 
-  const escribir = (codigo: string | undefined) =>
+  const escribir = (etiqueta: string) =>
     db.quote.update({
       where: { id },
       data: {
-        codigo,
+        etiqueta,
         eventTypeId: input.eventTypeId,
         fechaEvento: new Date(`${input.fecha}T00:00:00.000Z`),
         horasEvento: input.horasEvento ?? null,
@@ -958,17 +903,7 @@ export async function updateQuote(db: PrismaClient, id: string, rawInput: unknow
       include: includeRels,
     });
 
-  const updated = debeRegenerar
-    ? await conCodigoUnico(
-        db,
-        { fecha: input.fecha, cliente: nombreCliente, spaceIds: input.spaceIds },
-        escribir,
-        // Se excluye a sí misma: si el código base no cambió, la cotización se
-        // quedaría chocando consigo misma y se auto-bumpearía a `-2` en cada
-        // guardado, cambiando el identificador sin que nadie lo pidiera.
-        id,
-      )
-    : await escribir(undefined);
+  const updated = await escribir(etiqueta);
 
   // Todo cambio de datos fiscales se registra, esté o no congelado el candado:
   // el RFC con el que se timbra es información que hay que poder auditar hacia

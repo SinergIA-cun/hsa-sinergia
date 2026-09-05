@@ -59,7 +59,7 @@ const dia = (iso: string) => new Date(`${iso}T00:00:00.000Z`);
 const INCLUDE = {
   banquetero: { select: { id: true, nombre: true, telefono: true } },
   priceList: { select: { id: true, nombre: true, anio: true } },
-  quote: { select: { id: true, codigo: true, total: true, status: true } },
+  quote: { select: { id: true, folio: true, etiqueta: true, total: true, status: true } },
   ...INCLUDE_ABONOS,
 } as const;
 

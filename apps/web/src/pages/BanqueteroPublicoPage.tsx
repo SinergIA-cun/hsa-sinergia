@@ -113,9 +113,12 @@ export function BanqueteroPublicoPage() {
                 </thead>
                 <tbody className="divide-y divide-cream-200">
                   {eventos.map((e) => (
-                    <tr key={`${e.codigo ?? ''}${e.fechaEventoISO}`}>
+                    <tr key={`${e.folio ?? ''}${e.fechaEventoISO}`}>
                       <td className="py-2.5 pr-3">
-                        <span className="block font-medium text-ink">{e.codigo ?? 'Evento'}</span>
+                        <span className="block font-medium text-ink">{e.folio ?? 'Evento'}</span>
+                        {e.etiqueta && (
+                          <span className="block font-mono text-[0.68rem] text-charcoal-soft">{e.etiqueta}</span>
+                        )}
                         <span className="block text-xs text-charcoal-soft">
                           {e.festejado ? `${e.festejado} · ` : ''}
                           {STATUS_LABEL[e.status]}
@@ -162,7 +165,7 @@ export function BanqueteroPublicoPage() {
                       {d.asignaciones.map((a) => (
                         <li key={a.folio} className="flex justify-between gap-4 text-sm text-charcoal">
                           <span>
-                            {a.codigo ?? 'Evento'}{' '}
+                            {a.folio ?? 'Evento'}{' '}
                             <span className="text-xs text-charcoal-soft">recibo #{a.folio}</span>
                           </span>
                           <span className="tabular-nums">{formatMXN(a.monto)}</span>

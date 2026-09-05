@@ -26,7 +26,10 @@ export interface PagoFoto {
  */
 export interface FotoEvento {
   tomadaEnISO: string;
-  codigo: string | null;
+  /** El folio del evento: la liga estable entre todas sus fotos. */
+  folio: string;
+  /** Cómo se describía el evento el día en que se tomó ESTA foto. */
+  etiqueta: string | null;
   fechaEventoISO: string;
   status: string;
   /** ¿Llegó a apartar la fecha? `false` = quedó en borrador y el evento no se dio. */
@@ -157,7 +160,8 @@ export async function armarFoto(
   }));
 
   const foto: Omit<FotoEvento, 'tomadaEnISO'> = {
-    codigo: quote.codigo,
+    folio: quote.folio,
+    etiqueta: quote.etiqueta,
     fechaEventoISO: quote.fechaEvento.toISOString(),
     status: quote.status,
     seRealizo,
@@ -219,7 +223,7 @@ export async function armarFoto(
     seRealizo,
     liquidado,
     busqueda: normalizaTexto(
-      [quote.client.nombre, quote.codigo, banquetero, quote.festejado, ...espacios, quote.eventType.nombre]
+      [quote.client.nombre, quote.folio, quote.etiqueta, banquetero, quote.festejado, ...espacios, quote.eventType.nombre]
         .filter(Boolean)
         .join(' '),
     ),
