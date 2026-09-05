@@ -24,5 +24,9 @@ COPY apps/api ./apps/api
 # Generar el cliente Prisma dentro de la imagen
 RUN pnpm --filter @hsa/database run generate
 EXPOSE 3001
-# Aplica migraciones, siembra el catálogo 2027 (idempotente) y arranca la API.
-CMD ["sh", "-c", "pnpm --filter @hsa/database run migrate:deploy && pnpm --filter @hsa/database run backfill:fase6 && pnpm --filter @hsa/database run backfill:fase7 && pnpm --filter @hsa/database run backfill:fase8 && pnpm --filter @hsa/database run backfill:fase9 && pnpm --filter @hsa/database run backfill:fase11 && pnpm --filter @hsa/database run backfill:fase12 && pnpm --filter @hsa/database run backfill:fase13 && pnpm --filter @hsa/database run backfill:fase14 && pnpm --filter @hsa/api exec tsx src/scripts/reconcile-statuses.ts && pnpm --filter @hsa/api exec tsx src/index.ts"]
+# El arranque vive en su propio guion: revisa el entorno ANTES de tocar la base,
+# aplica migraciones, corre los backfills y levanta la API. Ver el guion para por
+# qué la revisión existe.
+COPY apps/api/docker-entrypoint.sh /docker-entrypoint-hsa.sh
+RUN chmod +x /docker-entrypoint-hsa.sh
+CMD ["/docker-entrypoint-hsa.sh"]
