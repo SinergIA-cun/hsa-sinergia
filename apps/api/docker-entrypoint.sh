@@ -71,6 +71,21 @@ echo "Entorno verificado. Base: $(echo "$DATABASE_URL" | sed -E 's#.*@([^/]+)/([
 
 cd /app
 pnpm --filter @hsa/database run migrate:deploy
+
+# El seed va ANTES de los backfills, y esto no es cosmético.
+#
+# Un backfill parcha datos que ya existen. En una base recién creada no hay
+# catálogo que parchar, así que `backfill:fase6` moría con "No hay catálogo
+# (PriceList) activo", la cadena se caía con `&&`, el contenedor se reciclaba… y
+# nunca se llegaba a una consola desde la cual sembrar. Un huevo-y-gallina que
+# solo aparece en una instalación NUEVA: el 5-sep-2026 dejó la instancia del demo
+# en ciclo hasta que se corrigió esto.
+#
+# El seed es idempotente: si ya hay espacios, informa y se salta. Así que en una
+# base con datos no hace nada, y en una vacía deja el catálogo listo para que los
+# backfills tengan sobre qué trabajar.
+pnpm --filter @hsa/database exec tsx prisma/seed.ts
+
 for fase in 6 7 8 9 11 12 13 14; do
   pnpm --filter @hsa/database run "backfill:fase$fase"
 done
