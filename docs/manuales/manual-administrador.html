@@ -1,0 +1,323 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<title>Manual del administrador · Hacienda San Andrés</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Archivo:wght@400;500;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="estilo.css" />
+</head>
+<body>
+
+<section class="portada">
+  <div class="marca">
+    <div class="nombre">Hacienda San Andrés</div>
+    <div class="anio">1894</div>
+  </div>
+  <div class="tipo">Manual de uso</div>
+  <h1>Dirección</h1>
+  <p class="bajada">Precios, usuarios, dinero de banqueteros y el rastro de todo lo que pasa.</p>
+  <div class="pie">Cotizador interno · Septiembre de 2026</div>
+</section>
+
+<section class="indice">
+  <div class="kicker">Contenido</div>
+  <h2>Lo que vas a encontrar</h2>
+  <ol>
+    <li>Lo que puedes tú y ventas no<small>La tabla que conviene tener a la mano.</small></li>
+    <li>Usuarios<small>Altas, roles, contraseñas y bajas.</small></li>
+    <li>Catálogos: el precio de la casa<small>El tema más delicado del sistema.</small></li>
+    <li>Personal y cuadrillas<small>Quién trabaja cada evento.</small></li>
+    <li>Banqueteros y su dinero<small>Depósitos, reparto, apartados y abonos.</small></li>
+    <li>Corregir dinero<small>Anular pagos y depósitos sin perder el rastro.</small></li>
+    <li>Facturación<small>El candado del corte de mes.</small></li>
+    <li>La bitácora forense<small>Qué cambió, quién lo cambió y de dónde vino.</small></li>
+    <li>Papelera e histórico<small>Lo que se borra y lo que se archiva.</small></li>
+    <li>Lo que se congela y por qué<small>Las reglas que evitan que el pasado se mueva.</small></li>
+    <li>Higiene de la instalación<small>Contraseñas, respaldos y entregas.</small></li>
+  </ol>
+</section>
+
+<!-- 1 ─────────────────────────────────────────────────────────────────── -->
+<section class="seccion">
+  <div class="kicker">Sección 1</div>
+  <h2><span class="num">1</span>Lo que puedes tú y ventas no</h2>
+  <p class="intro">Hay dos perfiles: <strong>ventas</strong> y <strong>admin</strong>. Todo lo que toca precios, dinero de terceros o el rastro de auditoría es exclusivo tuyo.</p>
+
+  <table>
+    <thead><tr><th style="width:52%">Acción</th><th style="width:24%">Ventas</th><th style="width:24%">Admin</th></tr></thead>
+    <tbody>
+      <tr><td>Ver contratos</td><td>Solo los suyos</td><td><strong>Los de todos</strong></td></tr>
+      <tr><td>Crear, editar y eliminar contratos</td><td>Sí</td><td>Sí</td></tr>
+      <tr><td>Registrar pagos</td><td>Sí</td><td>Sí</td></tr>
+      <tr><td>Apartar una fecha a un banquetero</td><td>Sí</td><td>Sí</td></tr>
+      <tr><td>Anular un pago</td><td>No</td><td><strong>Sí</strong></td></tr>
+      <tr><td>Marcar un pago como facturado</td><td>No</td><td><strong>Sí</strong></td></tr>
+      <tr><td>Desbloquear datos fiscales de un pago facturado</td><td>No</td><td><strong>Sí</strong></td></tr>
+      <tr><td>Alta, edición y baja de banqueteros</td><td>No</td><td><strong>Sí</strong></td></tr>
+      <tr><td>Registrar y repartir depósitos</td><td>No</td><td><strong>Sí</strong></td></tr>
+      <tr><td>Abonar a una fecha apartada · cancelar un apartado</td><td>No</td><td><strong>Sí</strong></td></tr>
+      <tr><td>Catálogos y precios</td><td>No</td><td><strong>Sí</strong></td></tr>
+      <tr><td>Usuarios, personal y cuadrillas</td><td>No</td><td><strong>Sí</strong></td></tr>
+      <tr><td>Bitácora forense</td><td>No</td><td><strong>Sí</strong></td></tr>
+    </tbody>
+  </table>
+
+  <p>El menú <span class="ui">Admin</span> solo aparece si entras con perfil de administrador. Todo lo demás del manual de ventas aplica igual para ti.</p>
+</section>
+
+<!-- 2 ─────────────────────────────────────────────────────────────────── -->
+<section class="seccion">
+  <div class="kicker">Sección 2</div>
+  <h2><span class="num">2</span>Usuarios</h2>
+  <p class="intro">En <span class="ui">Admin → Usuarios</span>. Cada persona del equipo debe tener su propia cuenta: es lo que hace que la bitácora sirva de algo.</p>
+
+  <h3>Dar de alta</h3>
+  <ol class="pasos">
+    <li>Captura <strong>nombre</strong> y <strong>correo</strong>.</li>
+    <li>Pon una <strong>contraseña</strong> de mínimo 8 caracteres y entrégasela en persona.</li>
+    <li>Elige el <strong>rol</strong>: Ventas o Admin.</li>
+    <li><span class="ui">Crear usuario</span>.</li>
+  </ol>
+
+  <h3>Cambiar una contraseña</h3>
+  <p>Toca <span class="ui">Editar</span> en el usuario y escribe la nueva en el campo de contraseña. Si lo dejas vacío, la contraseña no se toca.</p>
+
+  <h3>Desactivar contra borrar</h3>
+  <ul>
+    <li><span class="ui">Desactivar</span> — no puede entrar, pero sus contratos y su rastro se conservan. <strong>Es lo que quieres casi siempre.</strong></li>
+    <li><span class="ui">Borrar</span> — solo para una cuenta creada por error que nunca capturó nada.</li>
+  </ul>
+
+  <div class="caja ojo">
+    <div class="titulo">Cuando alguien deja la hacienda</div>
+    <p>Desactívalo el mismo día. No reutilices su cuenta para la persona que llega: dale la suya. Si dos personas comparten una cuenta, la bitácora deja de poder decir quién hizo qué, que es justo para lo que existe.</p>
+  </div>
+</section>
+
+<!-- 3 ─────────────────────────────────────────────────────────────────── -->
+<section class="seccion">
+  <div class="kicker">Sección 3</div>
+  <h2><span class="num">3</span>Catálogos: el precio de la casa</h2>
+  <p class="intro">Un catálogo es el año completo de precios: renta por rango de invitados, servicios, paquetes de alimentos, DJ y los parámetros (IVA, hora extra, descuento por alimentos).</p>
+
+  <div class="caja">
+    <div class="titulo">La regla que hay que entender antes de tocar nada</div>
+    <p>Cada cotización queda <strong>casada al catálogo con el que se coteó</strong> y recalcula siempre contra él. Por eso crear el catálogo del año que viene —o activarlo— <strong>nunca</strong> cambia el precio de lo ya cotizado.</p>
+  </div>
+
+  <h3>Crear el catálogo del año siguiente</h3>
+  <ol class="pasos">
+    <li>En <span class="ui">Admin → Catálogos</span>, ve a <span class="ui">Nuevo catálogo</span>.</li>
+    <li>Ponle <strong>nombre</strong> y <strong>año</strong>.</li>
+    <li>En <strong>Clonar de</strong>, elige el catálogo actual — o «empezar vacío» si vas a capturar todo de nuevo.</li>
+    <li>Escribe el <strong>incremento en por ciento</strong>. Se aplica a la renta, los servicios y los paquetes de alimentos.</li>
+    <li><span class="ui">Crear catálogo</span>. Nace <strong>inactivo</strong>.</li>
+    <li>Actívalo el día en que quieras que las cotizaciones nuevas empiecen a usarlo.</li>
+  </ol>
+
+  <p>El incremento <strong>no</strong> se aplica a la tarifa de capilla en sábado, al IVA, a la hora extra ni al descuento por alimentos: ésos se copian tal cual.</p>
+
+  <h3>Editar precios de un catálogo</h3>
+  <p><span class="ui">Editar</span> abre renta, servicios, paquetes, DJ y parámetros. Antes de guardar, la pantalla te dice <strong>cuántas cotizaciones están casadas a ese catálogo</strong> y cuántas de ellas ya tienen dinero encima.</p>
+  <p>Eso no significa que sus totales vayan a cambiar solos —los guardados quedan congelados—, sino que si alguien <strong>reedita</strong> una de ellas después, recalculará con los precios nuevos. Es la medida real de lo que estás poniendo en riesgo.</p>
+
+  <div class="caja ojo">
+    <div class="titulo">Los rangos de invitados no se agregan ni se quitan</div>
+    <p>Solo se editan los cuatro precios de cada renglón. Un hueco entre rangos hace que el motor no encuentre precio para cierto número de invitados, y eso aparece meses después, enfrente de un cliente.</p>
+  </div>
+
+  <h3>Mover un evento de catálogo</h3>
+  <p>Desde el contrato, <span class="ui">Mover de catálogo</span>. Es para casos concretos —un cliente que reagenda al año siguiente y acepta los precios nuevos— y queda registrado en la bitácora del evento.</p>
+
+  <h3>Precio garantizado a un banquetero</h3>
+  <p>Al apartarle una fecha se le puede congelar un catálogo. La cotización que nazca de ese apartado lo hereda, aunque para entonces el activo sea otro. Sirve para negociar 2029 con precios de hoy.</p>
+</section>
+
+<!-- 4 ─────────────────────────────────────────────────────────────────── -->
+<section class="seccion">
+  <div class="kicker">Sección 4</div>
+  <h2><span class="num">4</span>Personal y cuadrillas</h2>
+  <p class="intro">En <span class="ui">Admin → Personal y cuadrillas</span>. Alimenta la hoja operativa de cada evento.</p>
+
+  <ul>
+    <li><strong>Empleados</strong> — nombre y, si aplica, su rol (jefe de área, suplente, comodín).</li>
+    <li><strong>Cuadrillas</strong> — grupos armados con esos empleados. Al llenar la hoja operativa se elige una cuadrilla completa y luego se ajustan horarios uno por uno, en vez de capturar a cada persona desde cero.</li>
+  </ul>
+
+  <p>Igual que con los usuarios: <span class="ui">Desactivar</span> conserva el historial, <span class="ui">Borrar</span> solo para un alta equivocada.</p>
+</section>
+
+<!-- 5 ─────────────────────────────────────────────────────────────────── -->
+<section class="seccion">
+  <div class="kicker">Sección 5</div>
+  <h2><span class="num">5</span>Banqueteros y su dinero</h2>
+  <p class="intro">Es la parte del sistema donde más fácil se pierde dinero si se captura mal, y por eso casi todo aquí es exclusivo de administrador.</p>
+
+  <h3>5.1 La cuenta corriente</h3>
+  <p>La ficha de cada banquetero muestra cuatro cifras:</p>
+  <table>
+    <thead><tr><th style="width:30%">Cifra</th><th>Qué es</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Depositado</strong></td><td>Todo lo que ha entregado.</td></tr>
+      <tr><td><strong>Ya repartido</strong></td><td>Lo que ya se asignó a eventos concretos.</td></tr>
+      <tr><td><strong>Sin asignar</strong></td><td>Dinero recibido sin destino. <strong>No cuenta como pagado en ningún evento.</strong></td></tr>
+      <tr><td><strong>Saldo de sus eventos</strong></td><td>Lo que deben sus eventos contra lo que ya pagaron. En negativo, tiene saldo a favor.</td></tr>
+    </tbody>
+  </table>
+
+  <h3>5.2 Registrar un depósito</h3>
+  <p>Entra completo a su cuenta aunque todavía no se sepa a qué eventos va.</p>
+  <ol class="pasos">
+    <li><strong>Monto</strong> en pesos enteros.</li>
+    <li><strong>Forma de pago</strong>: transferencia, efectivo o tarjeta.</li>
+    <li><strong>Fecha en que se recibió</strong> — es la fecha fiscal que heredarán todos los pagos del reparto.</li>
+    <li><strong>Referencia</strong> y <strong>ficha del banco</strong> (foto o PDF), opcionales pero muy recomendables.</li>
+  </ol>
+
+  <div class="caja ojo">
+    <div class="titulo">La fecha del depósito manda sobre todo el reparto</div>
+    <p>Un depósito de marzo repartido en mayo sigue siendo ingreso <strong>de marzo</strong>. Si pones mal la fecha, los pagos que salgan de ese depósito nacerán con el mes equivocado y la factura saldrá mal.</p>
+  </div>
+
+  <h3>5.3 Repartirlo</h3>
+  <p>Botón <span class="ui">Repartir</span>. Se elige a qué eventos va y cuánto a cada uno. Cada asignación genera un <strong>pago real</strong> en esa cotización, con su folio de recibo, heredando la fecha del depósito.</p>
+  <p>También se puede repartir hacia <strong>fechas apartadas</strong> que todavía no tienen cotización.</p>
+
+  <h3>5.4 Fechas apartadas</h3>
+  <p>Bloquean una fecha sin cotización ni precio. Se captura fecha, espacios (hasta tres), vencimiento, opcionalmente un catálogo garantizado, un depósito inicial y una nota.</p>
+  <p>Un apartado se puede ir abonando durante años. Al convertirlo en cotización, <strong>cada abono se convierte en un pago con su fecha original</strong> — tres abonos de tres años son tres ingresos de tres meses distintos, y el SAT los quiere facturados cada uno en el suyo.</p>
+
+  <div class="caja">
+    <div class="titulo">Los apartados vencen a propósito</div>
+    <p>Si nadie lo convierte antes de su vencimiento, la fecha se libera sola y se puede volver a vender. El panel de inicio avisa de los que vencen en 30 días. Sin ese vencimiento se apartaría 2029 gratis y se perdería inventario de fechas buenas.</p>
+  </div>
+
+  <h3>5.5 El estado de cuenta compartible</h3>
+  <p>Con <span class="ui">QR / enlace</span> le mandas una página de solo lectura con sus eventos, sus depósitos y cómo se repartieron. Se actualiza sola. Es lo que evita el hilo interminable de WhatsApp preguntando cuánto debe.</p>
+</section>
+
+<!-- 6 ─────────────────────────────────────────────────────────────────── -->
+<section class="seccion">
+  <div class="kicker">Sección 6</div>
+  <h2><span class="num">6</span>Corregir dinero</h2>
+  <p class="intro">Nada de dinero se borra. Se <strong>anula</strong>, y la anulación queda con su motivo, su fecha y su responsable.</p>
+
+  <table>
+    <thead><tr><th style="width:34%">Qué</th><th>Cómo</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Un pago mal capturado</strong></td><td>Anularlo desde el panel de pagos del contrato y volver a registrarlo bien.</td></tr>
+      <tr><td><strong>Una asignación de depósito</strong></td><td><span class="ui">Anular</span> en el renglón del reparto. El dinero regresa a «sin asignar».</td></tr>
+      <tr><td><strong>Un depósito completo</strong></td><td><span class="ui">Anular depósito</span>. Solo si todavía no se repartió.</td></tr>
+      <tr><td><strong>Un apartado</strong></td><td>Cancelarlo desde la cuenta del banquetero, con su motivo.</td></tr>
+    </tbody>
+  </table>
+
+  <p>Un recibo ya impreso no se puede «desimprimir». Por eso la anulación deja rastro en vez de hacer desaparecer el renglón: cuando el cliente llegue con su papel, tiene que poder explicarse qué pasó.</p>
+</section>
+
+<!-- 7 ─────────────────────────────────────────────────────────────────── -->
+<section class="seccion">
+  <div class="kicker">Sección 7</div>
+  <h2><span class="num">7</span>Facturación</h2>
+  <p class="intro">El sistema no timbra facturas, pero sí cuida que los datos con los que se timbran no cambien después.</p>
+
+  <h3>Marcar un pago como facturado</h3>
+  <p>Desde el panel de pagos. Al hacerlo, los <strong>datos fiscales del cliente quedan bloqueados</strong> para ese evento: no se pueden editar, porque el RFC con el que ya se timbró tiene que seguir siendo el mismo.</p>
+
+  <h3>Desbloquear</h3>
+  <p>Si de verdad hay que corregir un dato fiscal después de facturar, un administrador puede desbloquearlo. Queda marcado en la bitácora como <em>desbloqueo de admin</em>, con los campos que se tocaron.</p>
+
+  <div class="caja">
+    <div class="titulo">El corte de mes</div>
+    <p>El ingreso se factura en el mes en que se recibió. Por eso el sistema insiste tanto con la <strong>fecha del pago</strong> y no con la de captura: es lo único que hace que el corte cuadre.</p>
+  </div>
+</section>
+
+<!-- 8 ─────────────────────────────────────────────────────────────────── -->
+<section class="seccion">
+  <div class="kicker">Sección 8</div>
+  <h2><span class="num">8</span>La bitácora forense</h2>
+  <p class="intro">En <span class="ui">Admin → Bitácora forense</span>. Registra qué fila cambió, cómo estaba antes y de dónde vino el cambio.</p>
+
+  <p>La escriben los <strong>disparadores de la base de datos</strong>, no la aplicación. Eso significa que capta el cambio venga de donde venga: de la app, de una consola de SQL, de una migración. Guarda la fila completa antes y después.</p>
+
+  <h3>Los tres orígenes</h3>
+  <table>
+    <thead><tr><th style="width:34%">Origen</th><th>Qué significa</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Una persona en la app</strong></td><td>Lo normal. Trae el nombre de quién lo hizo.</td></tr>
+      <tr><td><strong>Procesos del sistema</strong></td><td>Migraciones, archivado automático, tareas de arranque.</td></tr>
+      <tr><td><strong>Fuera de la aplicación</strong></td><td><strong>Alguien tocó la base directamente.</strong> Si aparece algo aquí que tú no hiciste, hay que investigarlo.</td></tr>
+    </tbody>
+  </table>
+
+  <p>Se filtra por tabla, por operación (INSERT, UPDATE, DELETE, TRUNCATE) y por origen. La contraseña de los usuarios nunca se copia a la bitácora, pero <strong>sí queda registrado que cambió</strong>.</p>
+
+  <div class="caja">
+    <div class="titulo">La bitácora no se edita ni se borra</div>
+    <p>La base la protege: un intento de modificarla se rechaza. La promesa honesta no es «imposible de burlar» —quien tiene las llaves del servidor puede tirar el disparador— sino que manipular algo a propósito deja de ser un descuido y se vuelve un acto deliberado y visible.</p>
+  </div>
+</section>
+
+<!-- 9 ─────────────────────────────────────────────────────────────────── -->
+<section class="seccion">
+  <div class="kicker">Sección 9</div>
+  <h2><span class="num">9</span>Papelera e histórico</h2>
+
+  <h3>Papelera</h3>
+  <p>Un contrato eliminado se conserva <strong>30 días</strong> y después se borra definitivamente. En ese plazo se puede restaurar completo, con sus pagos y su bitácora.</p>
+
+  <h3>Histórico</h3>
+  <p>Cuando un evento pasa, sale de la lista de contratos y entra al histórico con una <strong>foto</strong> de ese día: nombres, desglose, pagos y hoja operativa quedan copiados. La foto se lee sola aunque el catálogo haya cambiado o el cliente ya no exista.</p>
+  <p>Un evento puede tener varias versiones de foto: cada vez que se le registra algo después de pasado, se vuelve a retratar. El botón <span class="ui">Archivar lo pendiente</span> fuerza el barrido, que además corre solo al arrancar el sistema.</p>
+  <p>El filtro <strong>solo eventos que quedaron debiendo</strong> es el que sirve para cobranza vieja.</p>
+</section>
+
+<!-- 10 ────────────────────────────────────────────────────────────────── -->
+<section class="seccion">
+  <div class="kicker">Sección 10</div>
+  <h2><span class="num">10</span>Lo que se congela, y por qué</h2>
+  <p class="intro">Varias cosas dejan de moverse a propósito. Si alguna vez te parece que el sistema «no guardó» un cambio, probablemente sea una de éstas.</p>
+
+  <table>
+    <thead><tr><th style="width:34%">Se congela</th><th>Cuándo</th><th style="width:34%">Por qué</th></tr></thead>
+    <tbody>
+      <tr><td>El precio de un evento</td><td>Cuando el evento ya pasó</td><td>Para que el histórico no se altere al reeditar algo viejo. El cambio queda anotado en la bitácora del evento.</td></tr>
+      <tr><td>Los datos fiscales</td><td>Al marcar un pago como facturado</td><td>El RFC con el que se timbró no puede cambiar. Un admin puede desbloquearlo, y queda marcado.</td></tr>
+      <tr><td>El catálogo de una cotización</td><td>Siempre</td><td>Recalcula contra el catálogo con el que nació, aunque el activo ya sea otro.</td></tr>
+      <tr><td>El folio del evento</td><td>Siempre</td><td>Está impreso en el recibo que el cliente tiene en la mano.</td></tr>
+    </tbody>
+  </table>
+
+  <p>Lo que <strong>no</strong> se congela nunca es la etiqueta descriptiva: sigue a la fecha, al cliente y al salón, incluso con el evento formalizado. Es a propósito — una descripción vieja es una descripción equivocada.</p>
+</section>
+
+<!-- 11 ────────────────────────────────────────────────────────────────── -->
+<section class="seccion">
+  <div class="kicker">Sección 11</div>
+  <h2><span class="num">11</span>Higiene de la instalación</h2>
+
+  <h3>Contraseñas</h3>
+  <p>La instalación nace con un usuario administrador y una contraseña genérica. <strong>Cámbiala antes de capturar el primer evento real</strong> — se hace desde <span class="ui">Admin → Usuarios → Editar</span>. Y dale cuenta propia a cada persona, en vez de repartir la misma.</p>
+
+  <h3>Respaldos</h3>
+  <p>El servidor tiene su propio respaldo, pero conviene que alguien de la hacienda sepa que existe y con qué frecuencia corre. Pregúntaselo a quien administra el servidor y anótalo.</p>
+
+  <h3>Cuando algo no cuadra</h3>
+  <ol class="pasos">
+    <li>Busca el evento por su <strong>folio</strong>.</li>
+    <li>Revisa su bitácora: quién lo tocó y cuándo.</li>
+    <li>Si el movimiento es de dinero, revisa también la cuenta del banquetero — el reparto de un depósito toca dos lugares a la vez.</li>
+    <li>Si en la bitácora forense aparece algo con origen <strong>fuera de la aplicación</strong> que nadie reconoce, avisa de inmediato a quien administra el servidor.</li>
+  </ol>
+
+  <div class="pieDoc">
+    Hacienda San Andrés Atoto, S.A. · Atlacomulco No. 1, Col. San Esteban, Naucalpan de Juárez, Estado de México · Tel 5357 1986<br />
+    Manual del administrador · versión de septiembre de 2026. Cubre los perfiles de ventas y admin; cuando se habiliten más tipos de usuario, este manual se amplía.
+  </div>
+</section>
+
+</body>
+</html>
