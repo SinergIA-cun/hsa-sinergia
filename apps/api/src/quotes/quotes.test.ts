@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 import { randomUUID } from 'node:crypto';
 import { prisma } from '@hsa/database';
+import { hoyCivilMexico } from '@hsa/shared';
 import { buildServer } from '../server.js';
 import { loadConfig } from '../config.js';
 import { hashPassword } from '../auth/password.js';
@@ -1867,16 +1868,23 @@ describe('arrastrar en la agenda no pierde el descuento ni los extras', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Código de evento (punto 5 del Plan G): `17ENE27-CBOLADO-CUPULA`. La función pura
-// y su formato están fijados en `packages/shared/src/codigoEvento.test.ts`; aquí
-// se prueba lo que necesita la base: unicidad, generación y CONGELADO.
+// Folio y etiqueta.
+//
+// Son DOS cosas con trabajos opuestos y por eso viven separadas:
+//   · el FOLIO (`27SEP-0184`) identifica y no cambia nunca;
+//   · la ETIQUETA (`17ENE27-CBOLADO-CUPULA`) describe y cambia siempre.
+//
+// El formato de la etiqueta está fijado en `packages/shared/src/etiquetaEvento.test.ts`.
+// Aquí se prueba lo que necesita la base: que el folio aguante todo lo que le
+// pase al evento, y que la etiqueta no se quede atrás de nada.
 // ---------------------------------------------------------------------------
-describe('código de evento', () => {
-  it('createQuote lo genera con el formato pedido por el dueño', async () => {
+describe('folio y etiqueta', () => {
+  it('el folio lo pone la base, con año y mes de CONTRATACIÓN y un consecutivo', async () => {
     const { eventTypeId, cupulaId } = await ids();
     const q = await createQuote(
       prisma,
       {
+        // Un evento de 2034: el folio NO habla de esta fecha, habla de hoy.
         fecha: '2034-01-17',
         invitados: 250,
         spaceIds: [cupulaId],
@@ -1887,28 +1895,36 @@ describe('código de evento', () => {
     );
     createdQuoteIds.push(q.id);
     createdClientIds.push(q.clientId);
-    expect(q.codigo).toBe('17ENE34-CBOLADO-CUPULA');
+
+    const hoy = hoyCivilMexico();
+    const MESES = ['ENE', 'FEB', 'MAR', 'ABR', 'MAY', 'JUN', 'JUL', 'AGO', 'SEP', 'OCT', 'NOV', 'DIC'];
+    const esperado = `${String(hoy.getUTCFullYear()).slice(2)}${MESES[hoy.getUTCMonth()]}`;
+    expect(q.folio).toMatch(new RegExp(`^${esperado}-\\d{4}$`));
+    // Y la etiqueta sí describe el evento.
+    expect(q.etiqueta).toBe('17ENE34-CBOLADO-CUPULA');
   });
 
-  it('dos eventos del mismo cliente, misma fecha y mismo salón: sufijo, y el guardado no truena', async () => {
+  it('dos eventos seguidos toman folios distintos y consecutivos', async () => {
     const { eventTypeId, cupulaId } = await ids();
     const base = { fecha: '2034-02-20', invitados: 250, spaceIds: [cupulaId], eventTypeId };
     const uno = await createQuote(prisma, { ...base, client: { nombre: 'Colisión Exacta' } }, actor);
     createdQuoteIds.push(uno.id);
     createdClientIds.push(uno.clientId);
-    // El MISMO cliente, la MISMA fecha y el MISMO salón: raro, pero posible.
+    // MISMO cliente, MISMA fecha, MISMO salón: antes esto obligaba a un sufijo
+    // `-2` en el identificador. Ahora comparten etiqueta —que es correcto,
+    // describen lo mismo— y se distinguen por folio, que es lo que identifica.
     const dos = await createQuote(prisma, { ...base, clientId: uno.clientId }, actor);
     createdQuoteIds.push(dos.id);
-    const tres = await createQuote(prisma, { ...base, clientId: uno.clientId }, actor);
-    createdQuoteIds.push(tres.id);
 
-    expect(uno.codigo).toBe('20FEB34-CEXACTA-CUPULA');
-    expect(dos.codigo).toBe('20FEB34-CEXACTA-CUPULA-2');
-    expect(tres.codigo).toBe('20FEB34-CEXACTA-CUPULA-3');
+    expect(uno.etiqueta).toBe('20FEB34-CEXACTA-CUPULA');
+    expect(dos.etiqueta).toBe('20FEB34-CEXACTA-CUPULA');
+    expect(dos.folio).not.toBe(uno.folio);
+    const numero = (folio: string): number => Number(folio.split('-')[1]);
+    expect(numero(dos.folio)).toBe(numero(uno.folio) + 1);
   });
 
-  it('el código se CONGELA al formalizar: cambiar la fecha ya no lo mueve', async () => {
-    const { eventTypeId, cupulaId } = await ids();
+  it('EL PUNTO DEL CAMBIO: el folio sobrevive a la fecha, al salón y al PAX', async () => {
+    const { eventTypeId, cupulaId, arcosId } = await ids();
     const q = await createQuote(
       prisma,
       {
@@ -1922,36 +1938,34 @@ describe('código de evento', () => {
     );
     createdQuoteIds.push(q.id);
     createdClientIds.push(q.clientId);
-    expect(q.codigo).toBe('14MAR34-FCONGELADA-CUPULA');
+    const folio = q.folio;
+    expect(q.etiqueta).toBe('14MAR34-FCONGELADA-CUPULA');
 
-    // En borrador todavía se regenera: el código sigue a la fecha.
+    // Se formaliza: a partir de aquí el folio ya está impreso en un recibo.
+    await updateStatus(prisma, q.id, 'formalizada', actor);
+
+    // Y ahora le pasa TODO lo que le pasa a un evento real: se mueve de fecha,
+    // se cambia de salón y le cambia el PAX, semanas antes.
     const movida = await updateQuote(
       prisma,
       q.id,
-      { fecha: '2034-03-21', invitados: 250, spaceIds: [cupulaId], eventTypeId },
+      { fecha: '2034-05-09', invitados: 380, spaceIds: [arcosId], eventTypeId },
       actor,
     );
-    expect(movida.codigo).toBe('21MAR34-FCONGELADA-CUPULA');
+    expect(movida.folio).toBe(folio);
+    // La etiqueta SÍ se movió, aunque el evento ya esté formalizado. Antes se
+    // congelaba aquí y a partir de este punto decía marzo y CÚPULA para un
+    // evento que era de mayo y en ARCOS.
+    expect(movida.etiqueta).toBe('09MAY34-FCONGELADA-ARCOS');
 
-    // Con compromiso de pago queda fijo: ya está impreso en recibos y contratos.
-    await updateStatus(prisma, q.id, 'formalizada', actor);
-    const editada = await updateQuote(
-      prisma,
-      q.id,
-      { fecha: '2034-04-11', invitados: 250, spaceIds: [cupulaId], eventTypeId },
-      actor,
-    );
-    expect(editada.fechaEvento.toISOString().slice(0, 10)).toBe('2034-04-11');
-    expect(editada.codigo).toBe('21MAR34-FCONGELADA-CUPULA');
-
-    // Y tampoco lo mueve el arrastre en la agenda, que es el otro camino a la fecha.
-    const arrastrada = await moveQuoteDate(prisma, q.id, '2034-05-09', actor);
-    expect(arrastrada.fechaEvento.toISOString().slice(0, 10)).toBe('2034-05-09');
-    expect(arrastrada.codigo).toBe('21MAR34-FCONGELADA-CUPULA');
+    // El arrastre en la agenda es el otro camino a la fecha, y hace lo mismo.
+    const arrastrada = await moveQuoteDate(prisma, q.id, '2034-06-13', actor);
+    expect(arrastrada.folio).toBe(folio);
+    expect(arrastrada.etiqueta).toBe('13JUN34-FCONGELADA-ARCOS');
   });
 
-  it('en borrador, cambiar el cliente o el espacio también mueve el código', async () => {
-    const { eventTypeId, cupulaId, arcosId } = await ids();
+  it('cambiar el nombre del cliente también mueve la etiqueta, nunca el folio', async () => {
+    const { eventTypeId, cupulaId } = await ids();
     const q = await createQuote(
       prisma,
       {
@@ -1965,15 +1979,7 @@ describe('código de evento', () => {
     );
     createdQuoteIds.push(q.id);
     createdClientIds.push(q.clientId);
-    expect(q.codigo).toBe('13JUN34-AMOVIBLE-CUPULA');
-
-    const otroEspacio = await updateQuote(
-      prisma,
-      q.id,
-      { fecha: '2034-06-13', invitados: 250, spaceIds: [arcosId], eventTypeId },
-      actor,
-    );
-    expect(otroEspacio.codigo).toBe('13JUN34-AMOVIBLE-ARCOS');
+    expect(q.etiqueta).toBe('13JUN34-AMOVIBLE-CUPULA');
 
     const otroNombre = await updateQuote(
       prisma,
@@ -1981,16 +1987,17 @@ describe('código de evento', () => {
       {
         fecha: '2034-06-13',
         invitados: 250,
-        spaceIds: [arcosId],
+        spaceIds: [cupulaId],
         eventTypeId,
         client: { nombre: 'Ana Recapturada' },
       },
       actor,
     );
-    expect(otroNombre.codigo).toBe('13JUN34-ARECAPTURADA-ARCOS');
+    expect(otroNombre.etiqueta).toBe('13JUN34-ARECAPTURADA-CUPULA');
+    expect(otroNombre.folio).toBe(q.folio);
   });
 
-  it('el duplicado nace con su propio código, no con el del original', async () => {
+  it('el duplicado nace con su propio folio y hereda la etiqueta', async () => {
     const { eventTypeId, cupulaId } = await ids();
     const q = await createQuote(
       prisma,
@@ -2008,8 +2015,12 @@ describe('código de evento', () => {
     const dup = await duplicateQuote(prisma, q.id, actor);
     createdQuoteIds.push(dup.id);
 
-    expect(q.codigo).toBe('11JUL34-DDUPLICADO-CUPULA');
-    expect(dup.codigo).toBe('11JUL34-DDUPLICADO-CUPULA-2');
+    expect(dup.folio).not.toBe(q.folio);
+    // La misma etiqueta es lo correcto: describen un evento con el mismo
+    // cliente, la misma fecha y el mismo salón. Son eventos distintos, y eso lo
+    // dice el folio.
+    expect(dup.etiqueta).toBe('11JUL34-DDUPLICADO-CUPULA');
+    expect(q.etiqueta).toBe('11JUL34-DDUPLICADO-CUPULA');
   });
 });
 

@@ -161,7 +161,7 @@ describe('borrar algo que un contrato usa', () => {
         breakdown: { lines: [], total: 0, rentaTotal: 0 },
         total: 0,
         rentaTotal: 0,
-        codigo: `10SEP-CBLOQUEA-ARCOS-${randomUUID().slice(0, 4)}`,
+        etiqueta: `10SEP-CBLOQUEA-ARCOS-${randomUUID().slice(0, 4)}`,
         publicToken: randomUUID(),
       },
     });
@@ -180,7 +180,7 @@ describe('borrar algo que un contrato usa', () => {
     expect(body.enUso.muestra[0].id).toBe(q.id);
     expect(body.enUso.muestra[0].cliente).toBe('Cliente que bloquea el borrado');
     expect(body.enUso.muestra[0].enPapelera).toBe(false);
-    expect(body.enUso.muestra[0].codigo).toBe(q.codigo);
+    expect(body.enUso.muestra[0].etiqueta).toBe(q.etiqueta);
 
   });
 });

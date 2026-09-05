@@ -66,7 +66,7 @@ describe.runIf(process.env.DATABASE_URL?.includes('_lab'))('purga', () => {
         rentaTotal: 100_000,
         breakdown: [],
         addOns: [],
-        codigo: '08MAY27-CLAB-LAB',
+        etiqueta: '08MAY27-CLAB-LAB',
         publicToken: 'lab'.padEnd(32, '0'),
         status: 'formalizada',
       },
@@ -88,7 +88,7 @@ describe.runIf(process.env.DATABASE_URL?.includes('_lab'))('purga', () => {
     await prisma.eventoHistorico.create({
       data: {
         quoteId: quote.id, version: 1, motivo: 'archivado', fechaEvento: quote.fechaEvento,
-        codigo: quote.codigo, foto: {}, cliente: 'Cliente Lab', eventoTipo: 'Boda Lab',
+        etiqueta: quote.etiqueta, foto: {}, cliente: 'Cliente Lab', eventoTipo: 'Boda Lab',
         espacios: ['Salón Lab'], total: 100_000, pagado: 30_000, saldo: 70_000,
         seRealizo: true, liquidado: false, busqueda: 'cliente lab',
       },

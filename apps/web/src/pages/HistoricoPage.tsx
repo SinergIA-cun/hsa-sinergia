@@ -207,9 +207,9 @@ function Renglon({
           <span className="mt-0.5 block text-xs uppercase tracking-wide text-gold">
             {f.eventoTipo}
           </span>
-          {f.codigo && (
+          {f.folio && (
             <span className="mt-0.5 block font-mono text-[0.7rem] tracking-tight text-charcoal-soft">
-              {f.codigo}
+              {f.folio}
             </span>
           )}
         </span>

@@ -136,7 +136,7 @@ function DepositoCard({
                   to={`/cotizaciones/${a.quoteId}`}
                   className="font-medium text-ink hover:text-gold hover:underline"
                 >
-                  {a.quote?.codigo ?? 'Evento'}
+                  {a.quote?.folio ?? 'Evento'}
                 </Link>
                 <span className="ml-2 text-xs text-charcoal-soft">
                   recibo #{a.folio} · {a.concepto}

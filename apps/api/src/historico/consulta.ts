@@ -32,7 +32,8 @@ export interface RenglonHistorico {
   /** Cuántas versiones tiene en total: >1 significa que se corrigió después. */
   versiones: number;
   fechaEventoISO: string;
-  codigo: string | null;
+  folio: string | null;
+  etiqueta: string | null;
   cliente: string;
   banquetero: string | null;
   eventoTipo: string;
@@ -122,7 +123,8 @@ export async function listarHistorico(
       version: f.version,
       versiones: versionesPorQuote.get(f.quoteId) ?? 1,
       fechaEventoISO: f.fechaEvento.toISOString(),
-      codigo: f.codigo,
+      folio: f.folio,
+      etiqueta: f.etiqueta,
       cliente: f.cliente,
       banquetero: f.banquetero,
       eventoTipo: f.eventoTipo,

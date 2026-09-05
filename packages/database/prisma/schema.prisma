@@ -428,16 +428,32 @@ model Quote {
   /// cliente y el espacio abreviado. Es la identidad legible del evento, la que
   /// se copia en recibos y contratos.
   ///
-  /// Único: si el código base ya existe se le pone sufijo (`-2`, `-3`). Dos
-  /// eventos del mismo cliente, misma fecha y mismo salón son raros pero
-  /// posibles, y no pueden romper el guardado.
+  /// **El folio: la identidad que no cambia.** `27SEP-0184` — año y mes en que se
+  /// contrató, más un consecutivo.
   ///
-  /// Se regenera mientras la cotización es borrador (cambiar fecha, cliente o
-  /// espacio lo cambia) y **se congela en cuanto el estatus aparta la fecha**:
-  /// a partir de ahí ya está impreso en cosas.
+  /// Un evento cambia de fecha, de salón y sobre todo de PAX; las condiciones se
+  /// terminan de pulir semanas antes. El identificador tiene que sobrevivir a
+  /// todo eso, porque ya está impreso en un recibo que el cliente tiene en la
+  /// mano. Por eso NO codifica nada que pueda cambiar: el año y el mes son los de
+  /// la CONTRATACIÓN —hechos históricos— y no los del evento, que se mueve. Un
+  /// evento cambia de mes con más frecuencia todavía que de año.
   ///
-  /// Nullable: las cotizaciones anteriores nacen sin él y las llena el backfill.
-  codigo            String?           @unique
+  /// Lo asigna POSTGRES y no la aplicación, igual que `Banquetero.publicToken`:
+  /// una fila sin folio no puede existir, y `nextval` es atómico, así que dos
+  /// altas simultáneas no pueden chocar. La app nunca lo escribe ni lo cambia.
+  folio             String            @unique @default(dbgenerated("folio_evento()"))
+  /// **La etiqueta: la descripción viva.** `29OCT27-CBARRERA-CUPULA`.
+  ///
+  /// Se recalcula SIEMPRE que cambia la fecha, el cliente o el espacio, incluso
+  /// con el evento ya formalizado. No se congela y no es única: no identifica
+  /// nada, describe. Antes hacía los dos trabajos, y por eso se congelaba al
+  /// formalizar —para no romper los recibos— y desde ese momento mentía: un
+  /// evento movido a mayo seguía diciendo marzo.
+  ///
+  /// Va impresa AL LADO del folio, nunca en su lugar. En el recibo es la foto de
+  /// cómo estaba el evento el día que se imprimió, y por eso los recibos de un
+  /// mismo folio cuentan solos cómo fue cambiando.
+  etiqueta          String?
   publicToken       String            @unique
   vigenciaHasta     DateTime?
   usaCapilla        Boolean           @default(false) // cortesía; $5,000 en sábado. Varios eventos pueden usarla el mismo día.
@@ -723,7 +739,10 @@ model EventoHistorico {
   /// Por qué se tomó: `archivado` (la primera) o `actualizada`.
   motivo      String
   fechaEvento DateTime
-  codigo      String?
+  /// El folio del evento retratado. Es la liga estable entre todas sus fotos.
+  folio       String?
+  /// Cómo se describía el evento cuando se tomó ESTA foto.
+  etiqueta    String?
   /// Todo lo demás, aplanado. Ver `FotoEvento` en `apps/api/src/historico/foto.ts`.
   foto        Json
   // --- Campos desnormalizados: existen para BUSCAR y ORDENAR sin abrir el json ---

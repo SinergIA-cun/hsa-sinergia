@@ -259,10 +259,15 @@ export interface Quote {
   total: number;
   rentaTotal: number;
   status: QuoteStatus;
-  /** Código de evento (`17ENE27-CBOLADO-CUPULA`). Es la identidad legible del
-   *  evento: se congela al formalizar y se imprime donde alguien la va a copiar.
-   *  `null` solo en cotizaciones que el backfill todavía no alcanzó. */
-  codigo?: string | null;
+  /** **El folio** (`27SEP-0184`): año y mes de contratación más consecutivo. Es
+   *  la identidad del evento y NO cambia nunca — ni al moverlo de fecha, ni al
+   *  cambiarle el salón, ni al ajustar el PAX. Es lo que va impreso donde alguien
+   *  lo va a copiar. */
+  folio: string;
+  /** **La etiqueta** (`29OCT27-CBARRERA-CUPULA`): cómo se describe el evento HOY.
+   *  Se recalcula en cada guardado, así que siempre dice la verdad. Va al lado del
+   *  folio, nunca en su lugar. */
+  etiqueta?: string | null;
   publicToken: string;
   createdAt: string;
   deletedAt?: string | null;
@@ -447,7 +452,7 @@ export interface AsignacionDeposito {
   concepto: PaymentConcept;
   anuladoAt: string | null;
   motivoAnulacion: string | null;
-  quote: { id: string; codigo: string | null; client: { nombre: string } | null } | null;
+  quote: { id: string; folio: string; etiqueta: string | null; client: { nombre: string } | null } | null;
 }
 
 /** Un depósito del banquetero, con su reparto y lo que sigue sin destino. */
@@ -513,7 +518,7 @@ export interface ApartadoFecha {
   createdAt: string;
   banquetero?: { id: string; nombre: string; telefono: string | null };
   priceList?: { id: string; nombre: string; anio: number } | null;
-  quote?: { id: string; codigo: string | null; total: number; status: QuoteStatus } | null;
+  quote?: { id: string; folio: string; etiqueta: string | null; total: number; status: QuoteStatus } | null;
   /** Sigue bloqueando su fecha: ni cancelado, ni convertido, ni vencido. */
   vivo: boolean;
   /** Se le pasó el vencimiento sin convertirse: ya no bloquea nada. */
@@ -522,7 +527,8 @@ export interface ApartadoFecha {
 
 export interface EventoBanquetero {
   quoteId: string;
-  codigo: string | null;
+  folio: string | null;
+  etiqueta: string | null;
   fechaEventoISO: string;
   status: QuoteStatus;
   cliente: string | null;
@@ -572,7 +578,8 @@ export interface EstadoCuentaBanquetero {
 export interface EstadoCuentaPublico {
   banquetero: { nombre: string; telefono: string | null };
   eventos: {
-    codigo: string | null;
+    folio: string | null;
+  etiqueta: string | null;
     fechaEventoISO: string;
     status: QuoteStatus;
     festejado: string | null;
@@ -587,7 +594,8 @@ export interface EstadoCuentaPublico {
     metodo: PaymentMethod;
     referencia: string | null;
     saldoSinAsignar: number;
-    asignaciones: { folio: number; monto: number; codigo: string | null }[];
+    /** `folio` es el del RECIBO; `folioEvento`, el del evento al que se asignó. */
+    asignaciones: { folio: number; monto: number; folioEvento: string | null; etiqueta: string | null }[];
   }[];
   apartados: {
     fechaEventoISO: string;
@@ -889,7 +897,8 @@ export interface PagoFoto {
  */
 export interface FotoEvento {
   tomadaEnISO: string;
-  codigo: string | null;
+  folio: string | null;
+  etiqueta: string | null;
   fechaEventoISO: string;
   status: string;
   seRealizo: boolean;
@@ -942,7 +951,8 @@ export interface RenglonHistorico {
   version: number;
   versiones: number;
   fechaEventoISO: string;
-  codigo: string | null;
+  folio: string | null;
+  etiqueta: string | null;
   cliente: string;
   banquetero: string | null;
   eventoTipo: string;
@@ -976,7 +986,8 @@ export interface DetalleHistorico {
 /** Un contrato que impide borrar algo, con lo justo para poder abrirlo. */
 export interface ContratoQueUsa {
   id: string;
-  codigo: string | null;
+  folio: string | null;
+  etiqueta: string | null;
   cliente: string;
   fechaEventoISO: string;
   status: string;

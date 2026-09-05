@@ -391,7 +391,7 @@ describe('servicios del catálogo', () => {
             {
               id: q.id,
               cliente: cliente.nombre,
-              codigo: q.codigo,
+              etiqueta: q.etiqueta,
               enPapelera: false,
             },
           ],
