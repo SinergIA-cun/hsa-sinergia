@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { etiquetaEvento, ETIQUETA_MAX_PARTE } from './etiquetaEvento.js';
+import { etiquetaEvento, nombreCortoEspacio, ETIQUETA_MAX_PARTE } from './etiquetaEvento.js';
 
 describe('etiquetaEvento', () => {
   it('el formato pedido por el dueño: 17ENE27-CBOLADO-CUPULA', () => {
@@ -110,5 +110,28 @@ describe('etiquetaEvento', () => {
   it('una fecha que no es YYYY-MM-DD se rechaza en vez de inventar un código', () => {
     expect(() => etiquetaEvento({ fechaISO: '13/11/2027', cliente: 'Ana Ruiz', espacios: ['Salón Los Arcos'] })).toThrow();
     expect(() => etiquetaEvento({ fechaISO: '2027-13-01', cliente: 'Ana Ruiz', espacios: ['Salón Los Arcos'] })).toThrow();
+  });
+});
+
+describe('nombreCortoEspacio', () => {
+  it('se queda con la palabra que distingue, sin artículos', () => {
+    expect(nombreCortoEspacio('Jardín La Cúpula')).toBe('Cúpula');
+    expect(nombreCortoEspacio('Jardín Los Campos')).toBe('Campos');
+    expect(nombreCortoEspacio('Salón Los Arcos')).toBe('Arcos');
+    expect(nombreCortoEspacio('Salón Los Balcones')).toBe('Balcones');
+  });
+
+  it('conserva acentos y mayúsculas: esto se LEE, no se codifica', () => {
+    // La etiqueta del evento diría CUPULA; aquí no.
+    expect(nombreCortoEspacio('Jardín La Cúpula')).not.toBe('CUPULA');
+  });
+
+  it('un nombre de una sola palabra se queda igual', () => {
+    expect(nombreCortoEspacio('Terraza')).toBe('Terraza');
+  });
+
+  it('si todo son artículos, devuelve el nombre completo en vez de una celda vacía', () => {
+    expect(nombreCortoEspacio('La De Los')).toBe('La De Los');
+    expect(nombreCortoEspacio('')).toBe('');
   });
 });

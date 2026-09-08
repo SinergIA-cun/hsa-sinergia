@@ -45,6 +45,27 @@ const MESES = ['ENE', 'FEB', 'MAR', 'ABR', 'MAY', 'JUN', 'JUL', 'AGO', 'SEP', 'O
 /** Artículos y preposiciones que no distinguen a un espacio de otro. */
 const VACIAS = new Set(['DE', 'DEL', 'LA', 'LAS', 'EL', 'LOS', 'Y', 'A']);
 
+/**
+ * El nombre corto de un espacio, para leerlo de un vistazo: "Jardín La Cúpula"
+ * → "Cúpula", "Salón Los Arcos" → "Arcos".
+ *
+ * Es la MISMA regla que usa la etiqueta del evento —la última palabra con
+ * contenido, ignorando artículos y preposiciones— pero conservando acentos y
+ * mayúsculas, porque esto se lee en pantalla y aquello se compone dentro de un
+ * código. Viven juntas a propósito: si algún día "Jardín" dejara de ser
+ * prescindible, hay un solo lugar que cambiar.
+ *
+ * Si el nombre se queda sin palabras útiles, se devuelve completo: es mejor un
+ * nombre largo que una celda vacía.
+ */
+export function nombreCortoEspacio(nombre: string): string {
+  const palabras = nombre.split(/\s+/).filter((p) => p.length > 0);
+  for (let i = palabras.length - 1; i >= 0; i--) {
+    if (!VACIAS.has(normalizar(palabras[i]!))) return palabras[i]!;
+  }
+  return nombre;
+}
+
 export interface EtiquetaEventoInput {
   /** Fecha del evento en `YYYY-MM-DD`. */
   fechaISO: string;
