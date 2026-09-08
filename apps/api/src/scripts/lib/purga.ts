@@ -134,6 +134,16 @@ export async function purgar(db: PrismaClient, opts: OpcionesPurga): Promise<Res
     incluyoCatalogo: opts.incluirCatalogo === true,
     filasPorTabla: Object.fromEntries(antes.map((c) => [c.tabla, c.filas])),
   };
+  // `$transaction([...])` en ARREGLO es correcto AQUÍ y solo aquí: este guion
+  // corre sin contexto de actor —lo invoca una persona en una consola, no una
+  // petición—, así que la extensión de auditoría no envuelve nada y el arreglo
+  // sí se ejecuta como una transacción. Es lo que hace que el `set_config` viva
+  // en la misma transacción que el DELETE, que es lo único que permite borrar la
+  // bitácora.
+  //
+  // Si esto alguna vez se llamara desde una ruta, hay que pasarlo a
+  // `enTransaccionConActor`: con actor, cada operación del arreglo abre su
+  // propia transacción y compiten. Ver su documentación.
   const [, auditoriaBorrada] = await db.$transaction([
     db.$executeRaw`SELECT set_config('app.purga_auditoria', 'si', TRUE)`,
     db.$executeRaw`DELETE FROM "AuditoriaDb"`,

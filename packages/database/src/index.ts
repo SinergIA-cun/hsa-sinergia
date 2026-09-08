@@ -93,16 +93,29 @@ export const prisma = base.$extends({
 /**
  * Abre una transacción con el actor ya sellado.
  *
- * Hoy no hay ninguna, pero en cuanto exista una —el reparto de un depósito es
- * la candidata— tiene que usar esto y no `prisma.$transaction` a secas: la
- * bandera `enTransaccion` es lo que evita que cada escritura de adentro abra su
- * propia transacción y se salga de la de afuera.
+ * **Toda transacción de varias escrituras tiene que usar esto.** No es una
+ * recomendación de estilo: `$transaction([...])` en forma de ARREGLO con el
+ * cliente extendido está roto, porque cada operación del arreglo pasa por la
+ * extensión y abre SU PROPIA transacción antes de que el arreglo se arme. Las
+ * escrituras terminan compitiendo entre sí y el orden no está garantizado.
+ *
+ * Pasó de verdad: `activarCatalogo` hacía `updateMany(activa:false)` y
+ * `update(activa:true)` en un arreglo, y una de cada cinco veces la primera
+ * ganaba la carrera y dejaba la base SIN NINGÚN catálogo activo — con lo cual
+ * nadie podía cotizar—, mientras la pantalla decía que todo salió bien. No lo
+ * cachó ninguna prueba porque sin contexto de actor la extensión no se activa,
+ * y las pruebas llaman a la función directamente.
+ *
+ * La bandera `enTransaccion` es lo que evita que cada escritura de adentro abra
+ * su propia transacción y se salga de la de afuera.
  */
 export async function enTransaccionConActor<T>(
   fn: (tx: Prisma.TransactionClient) => Promise<T>,
+  /** El cliente sobre el que abrir la transacción. Por omisión, el singleton. */
+  cliente: PrismaClient = prisma,
 ): Promise<T> {
   const ctx = contextoActor();
-  return prisma.$transaction(async (tx) => {
+  return cliente.$transaction(async (tx) => {
     if (ctx?.actorId) {
       await tx.$executeRaw`SELECT set_config('app.actor_id', ${ctx.actorId}, TRUE)`;
       ctx.enTransaccion = true;
