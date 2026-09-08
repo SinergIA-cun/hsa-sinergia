@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { PrismaClient } from '@hsa/database';
+import { enTransaccionConActor, type PrismaClient } from '@hsa/database';
 import { QuoteError } from '../quotes/service.js';
 import { contratosQueUsan, mensajeEnUso } from '../quotes/usos.js';
 
@@ -154,16 +154,22 @@ export async function clonarCatalogo(db: PrismaClient, rawInput: unknown) {
 /**
  * Deja UN solo catálogo activo. Solo afecta a las cotizaciones NUEVAS: las que
  * ya existen quedaron casadas a su catálogo al crearse y no se represian.
+ *
+ * Las dos escrituras van en UNA transacción de verdad, con `enTransaccionConActor`
+ * y no con `$transaction([...])`. Con el arreglo, cada operación pasaba por la
+ * extensión de auditoría y abría su propia transacción: competían, y una de cada
+ * cinco veces `activa:false` ganaba la carrera y la base quedaba SIN NINGÚN
+ * catálogo activo —nadie podía cotizar— mientras la pantalla decía que todo
+ * salió bien.
  */
 export async function activarCatalogo(db: PrismaClient, id: string) {
   const existe = await db.priceList.findUnique({ where: { id }, select: { id: true } });
   if (!existe) throw new QuoteError(404, `El catálogo ${id} no existe`);
 
-  const [, activado] = await db.$transaction([
-    db.priceList.updateMany({ data: { activa: false } }),
-    db.priceList.update({ where: { id }, data: { activa: true } }),
-  ]);
-  return activado;
+  return enTransaccionConActor(async (tx) => {
+    await tx.priceList.updateMany({ where: { activa: true }, data: { activa: false } });
+    return tx.priceList.update({ where: { id }, data: { activa: true } });
+  }, db);
 }
 
 /**

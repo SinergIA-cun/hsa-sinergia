@@ -32,6 +32,10 @@ export async function mantenimientoAuditoria(
   // La bitácora es de solo escritura: un trigger rechaza cualquier DELETE que no
   // venga anunciado. La purga tiene que decirlo en voz alta, y `SET LOCAL` solo
   // existe dentro de una transacción — de ahí el lote.
+  // Igual que en `scripts/lib/purga.ts`: el arreglo es correcto porque esto corre
+  // en el ARRANQUE del contenedor, sin contexto de actor, así que la extensión de
+  // auditoría no lo envuelve y el `set_config` comparte transacción con el
+  // DELETE. Desde una ruta habría que usar `enTransaccionConActor`.
   const [, purgados] = await db.$transaction([
     db.$executeRaw`SELECT set_config('app.purga_auditoria', 'si', TRUE)`,
     // El `::int` no sobra: Prisma manda los números como bigint y

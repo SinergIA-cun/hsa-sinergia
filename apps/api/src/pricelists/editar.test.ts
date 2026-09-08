@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 import { randomUUID } from 'node:crypto';
-import { prisma } from '@hsa/database';
+import { prisma, conContextoActor } from '@hsa/database';
 import { buildServer } from '../server.js';
 import { loadConfig } from '../config.js';
 import { hashPassword } from '../auth/password.js';
@@ -1043,5 +1043,44 @@ describe('borrar un catálogo', () => {
     });
     expect(res.statusCode).toBe(403);
     expect(await prisma.priceList.findUnique({ where: { id: cat.id } })).not.toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Activar un catálogo, CON contexto de actor.
+//
+// Esta prueba existe por un error que ninguna de las otras podía ver. Las
+// pruebas llaman a las funciones directamente, sin actor, y sin actor la
+// extensión de auditoría no se activa. En una petición HTTP sí hay actor, la
+// extensión envuelve cada escritura en su propia transacción, y las dos
+// escrituras de `activarCatalogo` competían: una de cada cinco veces la base
+// quedaba SIN NINGÚN catálogo activo, con lo que nadie podía cotizar.
+//
+// Por eso el `conContextoActor` de aquí no es decoración: es lo único que
+// reproduce el camino real.
+// ---------------------------------------------------------------------------
+describe('activar un catálogo con contexto de actor', () => {
+  it('deja EXACTAMENTE uno activo, cada vez', async () => {
+    const a = await catalogoDePrueba('activar-carrera-a', 2050);
+    const b = await catalogoDePrueba('activar-carrera-b', 2051);
+
+    try {
+      // La carrera fallaba 1 de cada 5 veces, así que una sola vuelta no prueba
+      // nada. Ocho alternando entre dos catálogos la cachan de sobra.
+      for (let i = 0; i < 8; i++) {
+        const objetivo = i % 2 === 0 ? a.id : b.id;
+        await conContextoActor({ actorId: actor.id }, () => activarCatalogo(prisma, objetivo));
+
+        const activos = await prisma.priceList.findMany({
+          where: { activa: true },
+          select: { id: true },
+        });
+        // Ni cero —la app se queda sin poder cotizar— ni dos.
+        expect(activos).toHaveLength(1);
+        expect(activos[0]!.id).toBe(objetivo);
+      }
+    } finally {
+      await activarCatalogo(prisma, activoOriginalId);
+    }
   });
 });
