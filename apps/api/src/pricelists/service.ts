@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import type { PrismaClient } from '@hsa/database';
 import { QuoteError } from '../quotes/service.js';
+import { contratosQueUsan, mensajeEnUso } from '../quotes/usos.js';
 
 export const clonarCatalogoSchema = z.object({
   nombre: z.string().min(1).max(60),
@@ -163,6 +164,102 @@ export async function activarCatalogo(db: PrismaClient, id: string) {
     db.priceList.update({ where: { id }, data: { activa: true } }),
   ]);
   return activado;
+}
+
+/**
+ * Borra un catálogo completo, con su contenido.
+ *
+ * Existe porque un catálogo creado por error no se podía quitar: quedaba en la
+ * lista para siempre, y lo único que se podía hacer era editarlo.
+ *
+ * Se lleva lo que le PERTENECE —renta, servicios, paquetes con sus rangos, DJ y
+ * su propia bitácora de cambios— y se niega si algo de AFUERA lo necesita. La
+ * diferencia importa: su contenido no significa nada sin él, mientras que una
+ * cotización casada a este catálogo recalcula contra sus precios y sin ellos se
+ * queda sin poder reeditarse.
+ *
+ * El acto de borrarlo sí queda registrado: la bitácora forense lo escribe con
+ * disparadores de la base, así que el rastro sobrevive aunque la bitácora del
+ * catálogo se vaya con él.
+ */
+export async function borrarCatalogo(db: PrismaClient, id: string) {
+  return db.$transaction(async (tx) => {
+    const cat = await tx.priceList.findUnique({
+      where: { id },
+      select: { id: true, nombre: true, anio: true, activa: true },
+    });
+    if (!cat) throw new QuoteError(404, `El catálogo ${id} no existe`);
+
+    // 1. El activo, no. Sin catálogo activo no se puede cotizar nada, y el
+    //    borrado dejaría la aplicación sin poder crear un solo contrato.
+    if (cat.activa) {
+      throw new QuoteError(
+        409,
+        'No se puede borrar el catálogo activo. Activa otro y vuelve a intentarlo.',
+      );
+    }
+
+    // 2. Las cotizaciones lo bloquean, y el mensaje dice CUÁLES.
+    //
+    //    Se busca por dos caminos: las casadas al catálogo y las que apuntan a
+    //    uno de sus paquetes de alimentos. `Quote.foodPackageId` es una columna
+    //    suelta y no una llave foránea, así que nada en la base impediría
+    //    dejarla apuntando al vacío; el segundo camino no debería encontrar
+    //    nada que el primero no traiga, y está por si acaso.
+    const paquetes = await tx.foodPackage.findMany({
+      where: { priceListId: id },
+      select: { id: true },
+    });
+    const uso = await contratosQueUsan(tx, {
+      OR: [
+        { priceListId: id },
+        ...(paquetes.length > 0 ? [{ foodPackageId: { in: paquetes.map((f) => f.id) } }] : []),
+      ],
+    });
+    if (uso.total > 0) {
+      throw new QuoteError(409, mensajeEnUso(uso, false), { enUso: uso });
+    }
+
+    // 3. Y las fechas apartadas con precio garantizado. Un banquetero negoció
+    //    2029 contra ESTOS precios; borrarlos le quitaría lo que se le prometió.
+    const apartados = await tx.apartadoFecha.findMany({
+      where: { priceListId: id, canceladoAt: null },
+      orderBy: { fechaEvento: 'asc' },
+      take: 5,
+      select: {
+        fechaEvento: true,
+        banquetero: { select: { nombre: true } },
+      },
+    });
+    if (apartados.length > 0) {
+      const lista = apartados
+        .map(
+          (a) =>
+            `${a.banquetero?.nombre ?? 'Banquetero'} (${a.fechaEvento.toISOString().slice(0, 10)})`,
+        )
+        .join(', ');
+      throw new QuoteError(
+        409,
+        `No se puede borrar: hay ${apartados.length} fecha(s) apartada(s) con este catálogo como precio garantizado — ${lista}.`,
+      );
+    }
+
+    // De hijos a padres. `FoodPackagePrice` no borra en cascada, así que sus
+    // rangos se van primero o la transacción truena en la llave foránea.
+    if (paquetes.length > 0) {
+      await tx.foodPackagePrice.deleteMany({
+        where: { packageId: { in: paquetes.map((f) => f.id) } },
+      });
+    }
+    await tx.foodPackage.deleteMany({ where: { priceListId: id } });
+    await tx.rentalPrice.deleteMany({ where: { priceListId: id } });
+    await tx.djHoraExtraPrice.deleteMany({ where: { priceListId: id } });
+    await tx.addOn.deleteMany({ where: { priceListId: id } });
+    await tx.priceListAudit.deleteMany({ where: { priceListId: id } });
+    await tx.priceList.delete({ where: { id } });
+
+    return { borrado: id, nombre: cat.nombre, anio: cat.anio };
+  });
 }
 
 /**

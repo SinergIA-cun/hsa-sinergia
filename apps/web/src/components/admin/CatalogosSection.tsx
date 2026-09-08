@@ -6,7 +6,7 @@ import { PRICE_LISTS_KEY, usePriceLists } from '../../lib/catalogos.ts';
 import { formatPctFraccion } from '../../lib/money.ts';
 import { Button, Card, Field, TextInput, SelectInput } from '../ui.tsx';
 import type { PriceList } from '../../lib/types.ts';
-import { apiErrorMessage } from './shared.tsx';
+import { apiErrorMessage, ConfirmDelete } from './shared.tsx';
 import { CatalogoEditor } from './catalogo/CatalogoEditor.tsx';
 
 export function CatalogosSection() {
@@ -34,6 +34,15 @@ export function CatalogosSection() {
 
   const activar = useMutation({
     mutationFn: (id: string) => api.post<{ priceList: PriceList }>(`/api/admin/price-lists/${id}/activar`),
+    onSuccess: invalidate,
+  });
+
+  // Borrar un catálogo creado por error. El servidor se niega si es el activo, si
+  // alguna cotización está casada a él o si un banquetero tiene una fecha
+  // apartada con sus precios garantizados; `ConfirmDelete` muestra ese motivo
+  // —con la lista de contratos, cuando la trae— junto al botón.
+  const borrar = useMutation({
+    mutationFn: (id: string) => api.del<{ borrado: string }>(`/api/admin/price-lists/${id}`),
     onSuccess: invalidate,
   });
 
@@ -66,7 +75,8 @@ export function CatalogosSection() {
                     priceList={pl}
                     onActivar={() => activar.mutateAsync(pl.id)}
                     onEditar={() => setEditandoId(pl.id)}
-                    busy={activar.isPending}
+                    onBorrar={() => borrar.mutateAsync(pl.id)}
+                    busy={activar.isPending || borrar.isPending}
                   />
                 ))}
               </ul>
@@ -84,11 +94,13 @@ function CatalogoRow({
   priceList: pl,
   onActivar,
   onEditar,
+  onBorrar,
   busy,
 }: {
   priceList: PriceList;
   onActivar: () => Promise<unknown>;
   onEditar: () => void;
+  onBorrar: () => Promise<unknown>;
   busy: boolean;
 }) {
   const [armed, setArmed] = useState(false);
@@ -145,6 +157,9 @@ function CatalogoRow({
               <Check size={13} /> Activar
             </Button>
           )}
+          {/* El activo no ofrece borrado: el servidor lo rechazaría, y un botón
+              que solo sirve para dar un error no es un botón. */}
+          {!pl.activa && !armed && <ConfirmDelete onConfirm={onBorrar} disabled={busy} />}
         </div>
       </div>
 

@@ -2,7 +2,9 @@ import type { FastifyInstance, FastifyReply } from 'fastify';
 import { requireAdmin } from '../auth/plugin.js';
 import { QuoteError } from '../quotes/service.js';
 import type { Actor } from '../quotes/service.js';
-import { activarCatalogo, clonarCatalogo, listarCatalogos } from './service.js';
+import { activarCatalogo, clonarCatalogo, listarCatalogos,
+  borrarCatalogo,
+} from './service.js';
 import {
   borrarPaquete,
   borrarServicio,
@@ -49,6 +51,15 @@ export async function priceListRoutes(app: FastifyInstance): Promise<void> {
       const priceList = await clonarCatalogo(app.prisma, req.body);
       return reply.code(201).send({ priceList });
     }),
+  );
+
+  // Borrar un catálogo completo. Se niega si es el activo, si alguna cotización
+  // está casada a él o si un banquetero tiene una fecha apartada con sus precios
+  // garantizados. Ver `borrarCatalogo`.
+  app.delete<{ Params: { id: string } }>(
+    '/admin/price-lists/:id',
+    { preHandler: requireAdmin },
+    async (req, reply) => conErrores(reply, async () => borrarCatalogo(app.prisma, req.params.id)),
   );
 
   app.post<{ Params: { id: string } }>(

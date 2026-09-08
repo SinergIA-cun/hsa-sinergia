@@ -7,7 +7,7 @@ import { loadConfig } from '../config.js';
 import { hashPassword } from '../auth/password.js';
 import { createQuote, type Actor } from '../quotes/service.js';
 import { loadCatalog } from '../catalog/loader.js';
-import { activarCatalogo, clonarCatalogo } from './service.js';
+import { activarCatalogo, borrarCatalogo, clonarCatalogo } from './service.js';
 import {
   borrarPaquete,
   borrarServicio,
@@ -895,5 +895,153 @@ describe('impacto y bitácora por HTTP', () => {
       });
       expect(res.statusCode).toBe(404);
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Borrar un catálogo completo.
+//
+// Un catálogo creado por error no se podía quitar: quedaba en la lista para
+// siempre. Se lleva lo que le pertenece y se niega si algo de afuera lo
+// necesita; estas pruebas son esos tres candados.
+// ---------------------------------------------------------------------------
+describe('borrar un catálogo', () => {
+  it('se lleva su contenido: renta, servicios, paquetes con sus rangos, DJ y bitácora', async () => {
+    const cat = await catalogoDePrueba('borrar-limpio', 2044);
+    // Un clon nace con todo el contenido del catálogo original.
+    const antes = {
+      renta: await prisma.rentalPrice.count({ where: { priceListId: cat.id } }),
+      paquetes: await prisma.foodPackage.count({ where: { priceListId: cat.id } }),
+      rangos: await prisma.foodPackagePrice.count({ where: { package: { priceListId: cat.id } } }),
+      servicios: await prisma.addOn.count({ where: { priceListId: cat.id } }),
+      dj: await prisma.djHoraExtraPrice.count({ where: { priceListId: cat.id } }),
+    };
+    expect(antes.renta).toBeGreaterThan(0);
+    expect(antes.rangos).toBeGreaterThan(0);
+
+    const r = await borrarCatalogo(prisma, cat.id);
+    expect(r.borrado).toBe(cat.id);
+
+    expect(await prisma.priceList.findUnique({ where: { id: cat.id } })).toBeNull();
+    expect(await prisma.rentalPrice.count({ where: { priceListId: cat.id } })).toBe(0);
+    expect(await prisma.foodPackage.count({ where: { priceListId: cat.id } })).toBe(0);
+    // Los rangos no borran en cascada: si el orden estuviera mal, aquí quedarían
+    // huérfanos o la transacción habría tronado.
+    expect(await prisma.foodPackagePrice.count({ where: { packageId: { in: [] } } })).toBe(0);
+    expect(await prisma.addOn.count({ where: { priceListId: cat.id } })).toBe(0);
+    expect(await prisma.djHoraExtraPrice.count({ where: { priceListId: cat.id } })).toBe(0);
+    expect(await prisma.priceListAudit.count({ where: { priceListId: cat.id } })).toBe(0);
+
+    // Ya no hay nada que limpiar en el afterAll.
+    creados.splice(creados.indexOf(cat.id), 1);
+  });
+
+  it('el catálogo ACTIVO no se borra: dejaría la app sin poder cotizar', async () => {
+    const cat = await catalogoDePrueba('borrar-activo', 2045);
+    await conCatalogoActivo(cat.id, async () => {
+      await expect(borrarCatalogo(prisma, cat.id)).rejects.toMatchObject({
+        status: 409,
+        message: expect.stringContaining('catálogo activo'),
+      });
+    });
+    // Y sigue ahí, intacto.
+    expect(await prisma.priceList.findUnique({ where: { id: cat.id } })).not.toBeNull();
+  });
+
+  it('una cotización lo bloquea, y el error dice CUÁL', async () => {
+    const cat = await catalogoDePrueba('borrar-en-uso', 2046);
+    const q = await cotizacionEn(cat.id, '2046-05-12');
+
+    await expect(borrarCatalogo(prisma, cat.id)).rejects.toMatchObject({
+      status: 409,
+      // Sin la lista, encontrar ese contrato entre cientos es a mano.
+      detalle: {
+        enUso: {
+          total: 1,
+          muestra: [expect.objectContaining({ id: q.id, folio: q.folio })],
+        },
+      },
+    });
+    expect(await prisma.priceList.findUnique({ where: { id: cat.id } })).not.toBeNull();
+  });
+
+  it('una fecha apartada con precio garantizado también lo bloquea', async () => {
+    const cat = await catalogoDePrueba('borrar-apartado', 2047);
+    const arcos = await prisma.space.findFirstOrThrow({ where: { nombre: 'Salón Los Arcos' } });
+    const banquetero = await prisma.banquetero.create({
+      data: { nombre: `Banquetero borrar-cat ${SUF}`, telefono: '9990001122' },
+    });
+    const apartado = await prisma.apartadoFecha.create({
+      data: {
+        banqueteroId: banquetero.id,
+        fechaEvento: new Date('2047-08-21T00:00:00.000Z'),
+        spaceIds: [arcos.id],
+        vence: new Date('2046-08-21T00:00:00.000Z'),
+        priceListId: cat.id,
+      },
+    });
+
+    await expect(borrarCatalogo(prisma, cat.id)).rejects.toMatchObject({
+      status: 409,
+      // El mensaje nombra al banquetero: es a quien hay que llamarle.
+      message: expect.stringContaining(banquetero.nombre),
+    });
+    expect(await prisma.priceList.findUnique({ where: { id: cat.id } })).not.toBeNull();
+
+    await prisma.apartadoFecha.delete({ where: { id: apartado.id } });
+    await prisma.banquetero.delete({ where: { id: banquetero.id } });
+  });
+
+  it('un apartado CANCELADO ya no bloquea', async () => {
+    const cat = await catalogoDePrueba('borrar-apartado-cancelado', 2048);
+    const arcos = await prisma.space.findFirstOrThrow({ where: { nombre: 'Salón Los Arcos' } });
+    const banquetero = await prisma.banquetero.create({
+      data: { nombre: `Banquetero cancelado ${SUF}`, telefono: '9990001133' },
+    });
+    await prisma.apartadoFecha.create({
+      data: {
+        banqueteroId: banquetero.id,
+        fechaEvento: new Date('2048-08-21T00:00:00.000Z'),
+        spaceIds: [arcos.id],
+        vence: new Date('2047-08-21T00:00:00.000Z'),
+        priceListId: cat.id,
+        canceladoAt: new Date(),
+        motivoCancelacion: 'prueba',
+      },
+    });
+
+    // Un apartado cancelado ya no le prometió nada a nadie, así que no bloquea.
+    await expect(borrarCatalogo(prisma, cat.id)).resolves.toMatchObject({ borrado: cat.id });
+    creados.splice(creados.indexOf(cat.id), 1);
+
+    // Y su fila sobrevive sin catálogo: la relación es OPCIONAL, así que la base
+    // pone la llave en `null` al borrar (ON DELETE SET NULL) en vez de impedir el
+    // borrado. Vale la pena fijarlo: si algún día la relación se volviera
+    // obligatoria, este borrado empezaría a tronar con un error de llave foránea
+    // y nadie sabría por qué.
+    const sobreviviente = await prisma.apartadoFecha.findFirstOrThrow({
+      where: { banqueteroId: banquetero.id },
+      select: { priceListId: true, canceladoAt: true },
+    });
+    expect(sobreviviente.priceListId).toBeNull();
+    expect(sobreviviente.canceladoAt).not.toBeNull();
+
+    await prisma.apartadoFecha.deleteMany({ where: { banqueteroId: banquetero.id } });
+    await prisma.banquetero.delete({ where: { id: banquetero.id } });
+  });
+
+  it('un catálogo que no existe da 404', async () => {
+    await expect(borrarCatalogo(prisma, 'no-existe')).rejects.toMatchObject({ status: 404 });
+  });
+
+  it('DELETE /admin/price-lists/:id exige admin', async () => {
+    const cat = await catalogoDePrueba('borrar-permisos', 2049);
+    const res = await app.inject({
+      method: 'DELETE',
+      url: `/api/admin/price-lists/${cat.id}`,
+      cookies: await ventasCookies(),
+    });
+    expect(res.statusCode).toBe(403);
+    expect(await prisma.priceList.findUnique({ where: { id: cat.id } })).not.toBeNull();
   });
 });
