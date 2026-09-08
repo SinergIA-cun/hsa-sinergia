@@ -3,6 +3,8 @@ import { formatMXN } from '../../../lib/money.ts';
 import { MoneyInput } from '../../ui.tsx';
 import type { RentaRenglon } from '../../../lib/types.ts';
 import { BarraGuardar, useGuardar } from './guardado.tsx';
+import { nombreCortoEspacio } from '@hsa/shared';
+import { colorEspacio } from '../../../lib/coloresEspacio.ts';
 
 const CAMPOS = ['viernes', 'viernesEspecial', 'sabado', 'domAJue'] as const;
 type Campo = (typeof CAMPOS)[number];
@@ -209,9 +211,26 @@ function Renglon({
   const desigual =
     renglon.tipo === 'plano' && new Set(CAMPOS.map((c) => valores[c])).size > 1;
 
+  // El color agrupa los renglones del mismo salón; el nombre corto los nombra.
+  // Juntos convierten "¿en cuál estoy escribiendo?" en algo que se resuelve con
+  // la periferia del ojo, sin leer.
+  const color = colorEspacio(renglon.spaceId);
+
   return (
     <tr className={`border-b border-cream-200/70 ${tocado ? 'bg-gold/5' : ''}`}>
-      <td className="py-1.5 pr-3 text-ink">{renglon.espacio}</td>
+      <td className="py-0 pr-3">
+        <span className="flex items-stretch gap-2">
+          <span className={`w-1 shrink-0 rounded-full ${color.barra}`} aria-hidden="true" />
+          <span
+            className={`my-1 rounded px-2 py-0.5 font-medium text-ink ${color.fondo}`}
+            /* El nombre completo se conserva al pasar el cursor: la abreviación
+               es para leer rápido, no para esconder cuál es el salón. */
+            title={renglon.espacio}
+          >
+            {nombreCortoEspacio(renglon.espacio)}
+          </span>
+        </span>
+      </td>
       <td className="py-1.5 pr-3 text-charcoal-soft">
         {rango(renglon)}
         {desigual && (
