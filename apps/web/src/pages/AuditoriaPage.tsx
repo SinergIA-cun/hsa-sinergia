@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { ArrowLeft, Cog, ShieldAlert, Terminal, UserCircle } from 'lucide-react';
+import { ArrowLeft, ChevronRight, Cog, ShieldAlert, Terminal, UserCircle } from 'lucide-react';
+import { agruparPorTransaccion, seMuestraSinRuido, type GrupoAuditoria } from '@hsa/shared';
 import { api } from '../lib/api.ts';
 import { formatFechaHora } from '../lib/date.ts';
 import { ArrowDivider, Button, Card, SelectInput } from '../components/ui.tsx';
@@ -16,11 +17,27 @@ const ORIGENES: { valor: OrigenAuditoria; etiqueta: string }[] = [
   { valor: 'sistema', etiqueta: 'Procesos del sistema' },
 ];
 
-const ESTILO_OPERACION: Record<string, string> = {
-  INSERT: 'bg-emerald-600/10 text-emerald-700',
-  UPDATE: 'bg-gold/20 text-gold',
-  DELETE: 'bg-wine/10 text-wine',
-  TRUNCATE: 'bg-wine text-white',
+/**
+ * La operación ya no se escribe: se pinta.
+ *
+ * Antes cada renglón traía la palabra INSERT o DELETE en una etiqueta ancha. Con
+ * la frase adelante —"Borró una lista de precios"— la palabra sobraba y le
+ * quitaba lugar justo a lo que hay que leer. Queda el color, que es lo que sirve
+ * para barrer la lista con la vista, y el nombre técnico en el `title` para
+ * quien lo necesite.
+ */
+const COLOR_OPERACION: Record<string, string> = {
+  INSERT: 'bg-emerald-600',
+  UPDATE: 'bg-gold',
+  DELETE: 'bg-wine',
+  TRUNCATE: 'bg-wine',
+};
+
+const NOMBRE_OPERACION: Record<string, string> = {
+  INSERT: 'Alta de un registro (INSERT)',
+  UPDATE: 'Cambio en un registro (UPDATE)',
+  DELETE: 'Baja de un registro (DELETE)',
+  TRUNCATE: 'Vaciado de una tabla completa (TRUNCATE)',
 };
 
 /**
@@ -39,6 +56,22 @@ export function AuditoriaPage() {
   const [operacion, setOperacion] = useState('');
   const [origen, setOrigen] = useState<'' | OrigenAuditoria>('');
   const [abierto, setAbierto] = useState<string | null>(null);
+  /** Grupos cuyos renglones de consecuencia están a la vista. */
+  const [desplegados, setDesplegados] = useState<Set<string>>(new Set());
+  /**
+   * Ver también los renglones que la base escribe sola.
+   *
+   * Apagado por omisión. Cada cambio de un contrato escribe además su bitácora,
+   * y esos renglones llegaron a ser la mitad de la pantalla diciendo "anotó un
+   * movimiento en la bitácora" — cierto, y sin ninguna información: el
+   * movimiento que lo causó está en el renglón de al lado.
+   *
+   * Se oculta, no se borra: el contador dice cuántos son y el interruptor los
+   * trae de vuelta. Y NUNCA se oculta lo que entró por fuera de la aplicación,
+   * pase lo que pase: es la única pregunta que esta pantalla existe para
+   * contestar, y un filtro de comodidad no puede taparla.
+   */
+  const [verAutomaticos, setVerAutomaticos] = useState(false);
   const [paginas, setPaginas] = useState<string[]>([]);
 
   const antesDe = paginas[paginas.length - 1];
@@ -58,9 +91,20 @@ export function AuditoriaPage() {
     cambio();
     setPaginas([]);
     setAbierto(null);
+    setDesplegados(new Set());
   }
 
-  const filas = data?.filas ?? [];
+  function alternarDesplegado(id: string) {
+    setDesplegados((previos) => {
+      const siguiente = new Set(previos);
+      if (!siguiente.delete(id)) siguiente.add(id);
+      return siguiente;
+    });
+  }
+
+  const todas = data?.filas ?? [];
+  const filas = verAutomaticos ? todas : todas.filter(seMuestraSinRuido);
+  const ocultos = todas.length - filas.length;
   const externos = data?.externosRecientes ?? 0;
 
   return (
@@ -78,7 +122,8 @@ export function AuditoriaPage() {
         <p className="mt-1 max-w-2xl text-sm text-charcoal-soft">
           La escriben los triggers de la base de datos, no la aplicación. Registra el cambio venga
           de donde venga —la app, una consola de SQL, una migración— y guarda la fila completa
-          antes y después.
+          antes y después. Cada renglón dice qué pasó en palabras; abajo, en chico, va la tabla y
+          la columna exactas.
         </p>
       </div>
 
@@ -148,6 +193,24 @@ export function AuditoriaPage() {
         </label>
       </Card>
 
+      {(ocultos > 0 || verAutomaticos) && (
+        <label className="mb-4 flex cursor-pointer items-center gap-2 text-xs text-charcoal-soft">
+          <input
+            type="checkbox"
+            checked={verAutomaticos}
+            onChange={(e) => {
+              setVerAutomaticos(e.target.checked);
+              setAbierto(null);
+              setDesplegados(new Set());
+            }}
+            className="h-3.5 w-3.5 accent-gold"
+          />
+          {verAutomaticos
+            ? 'Se están mostrando los renglones que la base escribe sola'
+            : `Mostrar ${ocultos} ${ocultos === 1 ? 'renglón' : 'renglones'} que la base escribió sola en esta página`}
+        </label>
+      )}
+
       {isLoading && <p className="text-charcoal-soft">Cargando…</p>}
 
       {!isLoading && filas.length === 0 && (
@@ -156,7 +219,9 @@ export function AuditoriaPage() {
           <p className="mt-2 text-sm text-charcoal-soft">
             {origen === 'externo'
               ? 'Nada entró por fuera de la aplicación. Es la respuesta que se quiere.'
-              : 'Ningún cambio cae en estos filtros.'}
+              : ocultos > 0
+                ? 'Lo único de esta página son renglones que la base escribió sola. Marca la casilla de arriba para verlos.'
+                : 'Ningún cambio cae en estos filtros.'}
           </p>
         </Card>
       )}
@@ -164,12 +229,14 @@ export function AuditoriaPage() {
       {filas.length > 0 && (
         <Card className="p-0">
           <ul className="divide-y divide-cream-200">
-            {filas.map((f) => (
-              <Renglon
-                key={f.id}
-                f={f}
-                abierto={abierto === f.id}
-                onAbrir={() => setAbierto(abierto === f.id ? null : f.id)}
+            {agruparPorTransaccion(filas).map((g) => (
+              <Movimiento
+                key={g.id}
+                g={g}
+                abierto={abierto}
+                onAbrir={(id) => setAbierto(abierto === id ? null : id)}
+                desplegado={desplegados.has(g.id)}
+                onDesplegar={() => alternarDesplegado(g.id)}
               />
             ))}
           </ul>
@@ -196,6 +263,7 @@ export function AuditoriaPage() {
             onClick={() => {
               setPaginas((p) => [...p, data.siguienteCursor!]);
               setAbierto(null);
+              setDesplegados(new Set());
             }}
           >
             Siguientes
@@ -235,6 +303,77 @@ function SelloOrigen({ f }: { f: RenglonAuditoria }) {
   );
 }
 
+/**
+ * Un movimiento: el renglón que lo explica, y lo que la base escribió con él.
+ *
+ * Una sola acción deja varios renglones —el cambio, la bitácora del contrato, la
+ * foto del histórico—, y borrar una lista de precios deja decenas. Sin agrupar,
+ * la pantalla contaba renglones de disparador; ahora cuenta movimientos, y el
+ * resto queda a un clic para quien esté auditando de verdad.
+ */
+function Movimiento({
+  g,
+  abierto,
+  onAbrir,
+  desplegado,
+  onDesplegar,
+}: {
+  g: GrupoAuditoria<RenglonAuditoria>;
+  abierto: string | null;
+  onAbrir: (id: string) => void;
+  desplegado: boolean;
+  onDesplegar: () => void;
+}) {
+  const cuantos = g.resto.length;
+  return (
+    <li className={g.lider.origen === 'externo' ? 'bg-wine/[0.04]' : undefined}>
+      <Renglon f={g.lider} abierto={abierto === g.lider.id} onAbrir={() => onAbrir(g.lider.id)} />
+      {abierto === g.lider.id && <AuditoriaDetalle id={g.lider.id} />}
+
+      {cuantos > 0 && (
+        <button
+          type="button"
+          onClick={onDesplegar}
+          aria-expanded={desplegado}
+          className="flex w-full items-center gap-1 px-4 pb-2.5 text-left text-xs text-charcoal-soft hover:text-ink sm:pl-[13.5rem]"
+        >
+          <ChevronRight
+            size={13}
+            className={`shrink-0 transition-transform ${desplegado ? 'rotate-90' : ''}`}
+          />
+          {/* "de este mismo movimiento" y no "que la base escribió sola":
+              en un borrado en cascada los otros renglones son bajas de verdad
+              —cinco clientes borrados de un jalón—, no anotaciones automáticas.
+              Lo único que se puede afirmar de todos es que fueron el mismo acto. */}
+          {desplegado
+            ? 'Ocultar los demás renglones'
+            : `${cuantos} ${cuantos === 1 ? 'renglón' : 'renglones'} más de este mismo movimiento`}
+        </button>
+      )}
+
+      {desplegado && (
+        <ul className="divide-y divide-cream-200 border-t border-cream-200 bg-cream-100/40">
+          {g.resto.map((f) => (
+            <li key={f.id}>
+              <Renglon f={f} abierto={abierto === f.id} onAbrir={() => onAbrir(f.id)} />
+              {abierto === f.id && <AuditoriaDetalle id={f.id} />}
+            </li>
+          ))}
+        </ul>
+      )}
+    </li>
+  );
+}
+
+/**
+ * Un renglón.
+ *
+ * La frase va primero y en el color del texto normal; la tabla y la columna
+ * bajan a la línea de abajo, en chico. No se quitan —son la prueba, y quien
+ * audita las necesita— pero dejan de ser lo primero que se lee. El nombre del
+ * registro va aparte, en monoespaciada: casi siempre es un folio, y es lo que
+ * alguien viene a buscar.
+ */
 function Renglon({
   f,
   abierto,
@@ -244,40 +383,31 @@ function Renglon({
   abierto: boolean;
   onAbrir: () => void;
 }) {
+  const tecnico = f.campos.length > 0 ? `${f.tabla} · ${f.campos.join(', ')}` : f.tabla;
   return (
-    <li className={f.origen === 'externo' ? 'bg-wine/[0.04]' : undefined}>
-      <button
-        type="button"
-        onClick={onAbrir}
-        className="flex w-full flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3 text-left hover:bg-cream-100/70"
-        aria-expanded={abierto}
-      >
-        <span className="w-44 shrink-0 text-xs tabular-nums text-charcoal-soft">
-          {formatFechaHora(f.createdAt)}
+    <button
+      type="button"
+      onClick={onAbrir}
+      className="flex w-full flex-wrap items-start gap-x-4 gap-y-1.5 px-4 py-3 text-left hover:bg-cream-100/70"
+      aria-expanded={abierto}
+    >
+      <span className="w-40 shrink-0 pt-0.5 text-xs tabular-nums text-charcoal-soft">
+        {formatFechaHora(f.createdAt)}
+      </span>
+      <span
+        className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${COLOR_OPERACION[f.operacion] ?? 'bg-ink/30'}`}
+        title={NOMBRE_OPERACION[f.operacion] ?? f.operacion}
+        aria-hidden
+      />
+      <span className="min-w-[12rem] flex-1">
+        <span className="text-ink">{f.frase}</span>
+        {f.etiqueta && <span className="ml-2 font-mono text-[0.8rem] text-ink">{f.etiqueta}</span>}
+        <span className="mt-0.5 block text-[0.7rem] text-charcoal-soft">
+          {tecnico}
+          {f.registroId && <span className="font-mono"> · {f.registroId.slice(-8)}</span>}
         </span>
-        <span
-          className={`inline-block w-24 shrink-0 rounded px-2 py-0.5 text-center text-[0.65rem] font-semibold uppercase tracking-wide ${
-            ESTILO_OPERACION[f.operacion] ?? 'bg-ink/10 text-ink'
-          }`}
-        >
-          {f.operacion}
-        </span>
-        <span className="min-w-[8rem] flex-1">
-          <span className="font-medium text-ink">{f.tabla}</span>
-          {f.registroId && (
-            <span className="ml-2 font-mono text-[0.7rem] text-charcoal-soft">
-              {f.registroId.slice(-8)}
-            </span>
-          )}
-          {f.campos.length > 0 && (
-            <span className="mt-0.5 block text-xs text-charcoal-soft">
-              {f.campos.join(', ')}
-            </span>
-          )}
-        </span>
-        <SelloOrigen f={f} />
-      </button>
-      {abierto && <AuditoriaDetalle id={f.id} />}
-    </li>
+      </span>
+      <SelloOrigen f={f} />
+    </button>
   );
 }

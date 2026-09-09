@@ -857,10 +857,17 @@ export interface RenglonAuditoria {
   createdAt: string;
   /** Campos que cambiaron (solo en UPDATE). */
   campos: string[];
+  /** Qué pasó, en español. Lo arma la API; es lo que se lee primero. */
+  frase: string;
+  /** A cuál registro le pasó: el folio, el nombre, el número de recibo. */
+  etiqueta: string | null;
+  /** `secundario` es una consecuencia automática, no una acción de nadie. */
+  relevancia: 'principal' | 'secundario';
+  /** La transacción que lo escribió: es lo que permite juntar un movimiento. */
+  txid: string;
 }
 
 export interface DetalleAuditoria extends RenglonAuditoria {
-  txid: string;
   antes: Record<string, unknown> | null;
   despues: Record<string, unknown> | null;
 }

@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { NOMBRE_APP, type PrismaClient, type Prisma } from '@hsa/database';
+import { traducir } from './lenguaje.js';
 
 /** Cuántos renglones devuelve una página. */
 const POR_PAGINA = 50;
@@ -65,6 +66,23 @@ export interface RenglonAuditoria {
   createdAt: string;
   /** Qué campos cambiaron (solo en UPDATE), para leer la lista sin abrir cada uno. */
   campos: string[];
+  /**
+   * Qué pasó, en español. La tabla y la columna siguen viajando arriba para
+   * quien las necesite, pero esto es lo que se lee primero.
+   */
+  frase: string;
+  /** A cuál registro le pasó: el folio, el nombre, el número de recibo. */
+  etiqueta: string | null;
+  /** `secundario` es una consecuencia automática, no una acción de nadie. */
+  relevancia: 'principal' | 'secundario';
+  /**
+   * La transacción que escribió el renglón.
+   *
+   * Viaja en la lista —no solo en el detalle— porque un solo acto escribe
+   * varios renglones y comparten txid: es lo que permite juntarlos en la
+   * pantalla en vez de mostrar el mismo movimiento cinco veces.
+   */
+  txid: string;
 }
 
 /**
@@ -96,6 +114,59 @@ async function nombresDeActores(
     select: { id: true, nombre: true },
   });
   return new Map(users.map((u) => [u.id, u.nombre]));
+}
+
+/** Lo que la bitácora guarda de una fila, sea de la lista o del detalle. */
+type FilaCruda = {
+  id: bigint;
+  tabla: string;
+  operacion: string;
+  registroId: string | null;
+  actorId: string | null;
+  usuarioDb: string;
+  aplicacion: string | null;
+  direccionIp: string | null;
+  createdAt: Date;
+  txid: string;
+  antes: unknown;
+  despues: unknown;
+};
+
+/**
+ * Arma el renglón que ve la pantalla.
+ *
+ * Uno solo para la lista y para el detalle: cuando eran dos, la traducción
+ * habría tenido que escribirse dos veces y las dos pantallas podrían haber
+ * acabado diciendo cosas distintas del mismo movimiento.
+ */
+function renglon(f: FilaCruda, nombres: Map<string, string>): RenglonAuditoria {
+  const campos = f.operacion === 'UPDATE' ? camposCambiados(f.antes, f.despues) : [];
+  const t = traducir({
+    tabla: f.tabla,
+    operacion: f.operacion,
+    campos,
+    antes: f.antes,
+    despues: f.despues,
+  });
+  return {
+    // `id` es bigint y el serializador de JSON no lo sabe mandar: viaja como texto.
+    id: String(f.id),
+    tabla: f.tabla,
+    operacion: f.operacion,
+    registroId: f.registroId,
+    actorId: f.actorId,
+    actorNombre: f.actorId ? (nombres.get(f.actorId) ?? 'Usuario borrado') : null,
+    origen: origenDe(f),
+    usuarioDb: f.usuarioDb,
+    aplicacion: f.aplicacion,
+    direccionIp: f.direccionIp,
+    createdAt: f.createdAt.toISOString(),
+    campos,
+    frase: t.frase,
+    etiqueta: t.etiqueta,
+    relevancia: t.relevancia,
+    txid: f.txid,
+  };
 }
 
 export async function listarAuditoria(
@@ -133,21 +204,7 @@ export async function listarAuditoria(
   const nombres = await nombresDeActores(db, pagina.map((f) => f.actorId));
 
   return {
-    filas: pagina.map((f) => ({
-      // `id` es bigint y el serializador de JSON no lo sabe mandar: viaja como texto.
-      id: String(f.id),
-      tabla: f.tabla,
-      operacion: f.operacion,
-      registroId: f.registroId,
-      actorId: f.actorId,
-      actorNombre: f.actorId ? (nombres.get(f.actorId) ?? 'Usuario borrado') : null,
-      origen: origenDe(f),
-      usuarioDb: f.usuarioDb,
-      aplicacion: f.aplicacion,
-      direccionIp: f.direccionIp,
-      createdAt: f.createdAt.toISOString(),
-      campos: f.operacion === 'UPDATE' ? camposCambiados(f.antes, f.despues) : [],
-    })),
+    filas: pagina.map((f) => renglon(f, nombres)),
     siguienteCursor: hayMas ? String(pagina[pagina.length - 1]?.id) : null,
     externosRecientes,
     tablas: agrupadas.map((g) => g.tabla),
@@ -155,7 +212,6 @@ export async function listarAuditoria(
 }
 
 export interface DetalleAuditoria extends RenglonAuditoria {
-  txid: string;
   antes: unknown;
   despues: unknown;
 }
@@ -167,21 +223,5 @@ export async function detalleAuditoria(
   const f = await db.auditoriaDb.findUnique({ where: { id } });
   if (!f) return null;
   const nombres = await nombresDeActores(db, [f.actorId]);
-  return {
-    id: String(f.id),
-    tabla: f.tabla,
-    operacion: f.operacion,
-    registroId: f.registroId,
-    actorId: f.actorId,
-    actorNombre: f.actorId ? (nombres.get(f.actorId) ?? 'Usuario borrado') : null,
-    origen: origenDe(f),
-    usuarioDb: f.usuarioDb,
-    aplicacion: f.aplicacion,
-    direccionIp: f.direccionIp,
-    createdAt: f.createdAt.toISOString(),
-    campos: f.operacion === 'UPDATE' ? camposCambiados(f.antes, f.despues) : [],
-    txid: f.txid,
-    antes: f.antes,
-    despues: f.despues,
-  };
+  return { ...renglon(f, nombres), antes: f.antes, despues: f.despues };
 }

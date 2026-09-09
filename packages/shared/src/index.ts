@@ -11,3 +11,4 @@ export * from './facturacion/catalogos.js';
 export * from './facturacion/requisitos.js';
 export * from './facturacion/candado.js';
 export * from './pagos/concepto.js';
+export * from './auditoria/agrupar.js';
