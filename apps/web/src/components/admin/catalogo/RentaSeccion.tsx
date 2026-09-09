@@ -4,7 +4,7 @@ import { MoneyInput } from '../../ui.tsx';
 import type { RentaRenglon } from '../../../lib/types.ts';
 import { BarraGuardar, useGuardar } from './guardado.tsx';
 import { nombreCortoEspacio } from '@hsa/shared';
-import { colorEspacio } from '../../../lib/coloresEspacio.ts';
+import { bandasDeGrupo } from '../../../lib/bandasDeGrupo.ts';
 
 const CAMPOS = ['viernes', 'viernesEspecial', 'sabado', 'domAJue'] as const;
 type Campo = (typeof CAMPOS)[number];
@@ -164,15 +164,24 @@ export function RentaSeccion({
                 </tr>
               </thead>
               <tbody>
-                {g.renglones.map((r) => (
-                  <Renglon
-                    key={r.id}
-                    renglon={r}
-                    valores={borrador[r.id] ?? deRenglon(r)}
-                    tocado={borrador[r.id] !== undefined}
-                    onEditar={(campo, valor) => editar(r, campo, valor)}
-                  />
-                ))}
+                {/* Las bandas se calculan por tabla y no de una vez sobre toda
+                    la renta: cada tabla arranca su propio conteo, para que la
+                    de renta plana no herede el color con el que quedó la de
+                    arriba. */}
+                {(() => {
+                  const bandas = bandasDeGrupo(g.renglones.map((r) => r.spaceId));
+                  return g.renglones.map((r, i) => (
+                    <Renglon
+                      key={r.id}
+                      renglon={r}
+                      valores={borrador[r.id] ?? deRenglon(r)}
+                      tocado={borrador[r.id] !== undefined}
+                      banda={bandas[i]!}
+                      primeroDelGrupo={r.spaceId !== g.renglones[i - 1]?.spaceId}
+                      onEditar={(campo, valor) => editar(r, campo, valor)}
+                    />
+                  ));
+                })()}
               </tbody>
             </table>
           </div>
@@ -201,34 +210,45 @@ function Renglon({
   renglon,
   valores,
   tocado,
+  banda,
+  primeroDelGrupo,
   onEditar,
 }: {
   renglon: RentaRenglon;
   valores: Record<Campo, string>;
   tocado: boolean;
+  banda: boolean;
+  primeroDelGrupo: boolean;
   onEditar: (campo: Campo, valor: string) => void;
 }) {
   const desigual =
     renglon.tipo === 'plano' && new Set(CAMPOS.map((c) => valores[c])).size > 1;
 
-  // El color agrupa los renglones del mismo salón; el nombre corto los nombra.
-  // Juntos convierten "¿en cuál estoy escribiendo?" en algo que se resuelve con
-  // la periferia del ojo, sin leer.
-  const color = colorEspacio(renglon.spaceId);
+  /*
+   * El fondo del renglón, en orden de prioridad.
+   *
+   * Un renglón TOCADO gana siempre: es dinero sin guardar, y perder de vista
+   * cuál se movió es peor que perder de vista en qué bloque va. Por eso el
+   * dorado es más fuerte que la banda y se pinta encima de las dos.
+   */
+  const fondo = tocado ? 'bg-gold/15' : banda ? 'bg-cream-200/55' : '';
 
   return (
-    <tr className={`border-b border-cream-200/70 ${tocado ? 'bg-gold/5' : ''}`}>
-      <td className="py-0 pr-3">
-        <span className="flex items-stretch gap-2">
-          <span className={`w-1 shrink-0 rounded-full ${color.barra}`} aria-hidden="true" />
-          <span
-            className={`my-1 rounded px-2 py-0.5 font-medium text-ink ${color.fondo}`}
-            /* El nombre completo se conserva al pasar el cursor: la abreviación
-               es para leer rápido, no para esconder cuál es el salón. */
-            title={renglon.espacio}
-          >
-            {nombreCortoEspacio(renglon.espacio)}
-          </span>
+    <tr
+      className={`${fondo} ${
+        // Una línea más marcada donde empieza otro salón: el corte entre bloques
+        // se ve aunque dos bloques seguidos caigan en el mismo tono.
+        primeroDelGrupo ? 'border-t border-cream-300' : ''
+      } border-b border-cream-200/70`}
+    >
+      <td className="py-1.5 pr-3">
+        <span
+          className="font-medium text-ink"
+          /* El nombre completo se conserva al pasar el cursor: la abreviación es
+             para leer rápido, no para esconder cuál es el salón. */
+          title={renglon.espacio}
+        >
+          {nombreCortoEspacio(renglon.espacio)}
         </span>
       </td>
       <td className="py-1.5 pr-3 text-charcoal-soft">
