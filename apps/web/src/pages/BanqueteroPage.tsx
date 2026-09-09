@@ -184,7 +184,11 @@ export function BanqueteroPage() {
                 {eventos.map((e) => (
                   <tr
                     key={e.quoteId}
-                    className="cursor-pointer transition-colors hover:bg-cream-50"
+                    /* cream-100/70 y no cream-50: este renglón ABRE el contrato
+                       al tocarlo, y con el lavado más tenue no se alcanzaba a
+                       ver cuál ibas a abrir. Es el mismo tono que usan los
+                       renglones cliqueables del histórico y de la bitácora. */
+                    className="cursor-pointer transition-colors hover:bg-cream-100/70"
                     onClick={() => navigate(`/cotizaciones/${e.quoteId}`)}
                   >
                     <td className="px-4 py-2.5 text-ink">

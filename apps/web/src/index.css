@@ -12,7 +12,17 @@
   --color-ink-500: #3a5f83;
   --color-ink-300: #7d99b4;
 
+  /* El lavado más tenue: celdas vacías del calendario y encabezados de ficha.
+     Tres lugares lo usaban sin que existiera. Va entre el blanco y --color-cream
+     porque su trabajo es apenas insinuar, no separar. */
+  --color-cream-50: #fbf8f2;
   --color-cream: #f7f2e8; /* marfil de fondo */
+  /* Tinte sobre tarjeta blanca: hovers, encabezados de tabla y paneles de
+     formulario. Catorce lugares ya lo usaban sin que existiera, así que Tailwind
+     no generaba la utilidad y el fondo no se pintaba. Va en el punto medio entre
+     --color-cream y --color-cream-200: la tarjeta es bg-white/80 sobre la página
+     crema (≈#fdfcfa), y contra ese blanco tibio éste se ve sin gritar. */
+  --color-cream-100: #f3ede0;
   --color-cream-200: #efe7d6;
   --color-cream-300: #e4d9c2;
 
