@@ -250,6 +250,20 @@ export async function convertirApartado(
   const resto: Record<string, unknown> = { ...((rawInput ?? {}) as Record<string, unknown>) };
   delete resto.client;
   delete resto.clientId;
+
+  /**
+   * El catálogo: manda el GARANTIZADO del apartado; si no tiene, el que elija
+   * quien convierte; y si tampoco, el activo.
+   *
+   * El garantizado gana siempre porque es una promesa hecha al banquetero —"te
+   * congelo 2027 más ocho por ciento"— y dejar que se sobreescriba desde el
+   * cuerpo sería perderla en silencio. Pero cuando NO hay promesa, quien
+   * convierte tiene que poder elegir por el año del evento, igual que en el
+   * cotizador: un apartado de 2029 convertido en 2026 no debe cotizarse con los
+   * precios de 2026.
+   */
+  const elegido = typeof resto.priceListId === 'string' ? resto.priceListId : undefined;
+  delete resto.priceListId;
   const quote = await createQuote(
     db,
     {
@@ -263,7 +277,7 @@ export async function convertirApartado(
     },
     actor,
     {
-      priceListId: apartado.priceListId ?? undefined,
+      priceListId: apartado.priceListId ?? elegido,
       // Su propio apartado no puede bloquearle la fecha.
       excludeApartadoId: apartado.id,
     },

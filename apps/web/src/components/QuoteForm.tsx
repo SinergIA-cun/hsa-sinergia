@@ -129,6 +129,17 @@ interface Props {
   errorMsg?: string;
   /** Al editar, excluye la propia cotización del chequeo de disponibilidad. */
   excludeQuoteId?: string;
+  /**
+   * El apartado que se está convirtiendo. Sin esta salida, sus propios espacios
+   * se pintarían como APARTADOS —lo están, por él mismo— y parecería que la
+   * fecha no se puede usar.
+   */
+  excludeApartadoId?: string;
+  /**
+   * Lo que viene de un apartado y no se toca aquí: la fecha, los espacios y el
+   * banquetero son lo que se apartó y lo que se pagó. Se muestran, no se editan.
+   */
+  bloqueado?: { fecha?: boolean; espacios?: boolean; banquetero?: boolean };
   /** Habilita el buscador de clientes existentes (solo al crear). */
   enableClientSearch?: boolean;
   /**
@@ -150,6 +161,8 @@ export function QuoteForm({
   onSubmit,
   errorMsg,
   excludeQuoteId,
+  excludeApartadoId,
+  bloqueado,
   enableClientSearch = false,
   fiscalEditable,
   isAdmin = false,
@@ -404,11 +417,12 @@ export function QuoteForm({
   // sin que haya que hacer clic para descubrir que un salón está ocupado.
   const todosLosEspacios = espaciosVisibles.map((s) => s.id).join(',');
   const { data: availability } = useQuery({
-    queryKey: ['availability', fecha, todosLosEspacios, excludeQuoteId],
+    queryKey: ['availability', fecha, todosLosEspacios, excludeQuoteId, excludeApartadoId],
     queryFn: () =>
       api.get<Availability>(
         `/api/availability?fecha=${fecha}&spaceIds=${todosLosEspacios}` +
-          (excludeQuoteId ? `&excludeQuoteId=${excludeQuoteId}` : ''),
+          (excludeQuoteId ? `&excludeQuoteId=${excludeQuoteId}` : '') +
+          (excludeApartadoId ? `&excludeApartadoId=${excludeApartadoId}` : ''),
       ),
     enabled: Boolean(fecha && todosLosEspacios),
   });
@@ -503,14 +517,31 @@ export function QuoteForm({
           {/* ¿Para quién es este evento? Con banquetero, ÉL es el cliente de la
               hacienda: firma él y se le factura a él. El festejado (el cliente
               final) es dato operativo y no entra al contrato. */}
-          <BanqueteroPicker
-            banqueteros={banqueteros}
-            value={banqueteroId}
-            nombreActual={banqueteros.find((b) => b.id === banqueteroId)?.nombre ?? nombre}
-            onChange={elegirBanquetero}
-            modo={modoVenta}
-            onModo={setModoVenta}
-          />
+          {bloqueado?.banquetero ? (
+            /* Al convertir un apartado, el banquetero es quien lo apartó y quien
+               ya abonó. Ofrecer el interruptor invitaría a cambiarlo y a crear un
+               cliente paralelo del mismo señor. */
+            <div className="rounded-lg border border-ink/10 bg-ink/[0.03] px-3 py-2.5">
+              <p className="text-[0.7rem] font-semibold uppercase tracking-wide text-charcoal-soft">
+                Banquetero
+              </p>
+              <p className="mt-0.5 text-sm text-ink">
+                {banqueteros.find((b) => b.id === banqueteroId)?.nombre ?? nombre}
+              </p>
+              <p className="mt-1 text-xs text-charcoal-soft">
+                Es quien apartó la fecha. Él firma y se le factura a él.
+              </p>
+            </div>
+          ) : (
+            <BanqueteroPicker
+              banqueteros={banqueteros}
+              value={banqueteroId}
+              nombreActual={banqueteros.find((b) => b.id === banqueteroId)?.nombre ?? nombre}
+              onChange={elegirBanquetero}
+              modo={modoVenta}
+              onModo={setModoVenta}
+            />
+          )}
 
           {esDeBanquetero && (
             <p className="rounded-lg bg-cream-200/70 px-3 py-2 text-sm text-ink">
@@ -625,8 +656,16 @@ export function QuoteForm({
                 ))}
               </SelectInput>
             </Field>
-            <Field label="Fecha del evento">
-              <TextInput type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} />
+            <Field
+              label="Fecha del evento"
+              hint={bloqueado?.fecha ? 'Es la fecha que se apartó.' : undefined}
+            >
+              <TextInput
+                type="date"
+                value={fecha}
+                onChange={(e) => setFecha(e.target.value)}
+                disabled={bloqueado?.fecha}
+              />
             </Field>
             {catalogos && catalogos.length > 0 && (
               <Field
@@ -665,10 +704,14 @@ export function QuoteForm({
         <Card className="space-y-3 p-6">
           <h2 className="font-display text-xl text-ink">Espacio</h2>
           <p className="-mt-1 text-xs text-charcoal-soft">
-            Hasta {MAX_ESPACIOS} espacios por evento. {fecha ? 'El color indica la disponibilidad.' : 'Elige la fecha para ver disponibilidad.'}
+            {bloqueado?.espacios
+              ? 'Son los espacios que se apartaron. No se cambian aquí.'
+              : `Hasta ${MAX_ESPACIOS} espacios por evento. ${fecha ? 'El color indica la disponibilidad.' : 'Elige la fecha para ver disponibilidad.'}`}
           </p>
           <div className="grid gap-2 sm:grid-cols-2">
-            {espaciosVisibles.map((s) => {
+            {/* Con los espacios bloqueados solo se muestran los del apartado: los
+                demás no son una opción, y ofrecerlos apagados es ruido. */}
+            {(bloqueado?.espacios ? espaciosVisibles.filter((s) => spaceIds.includes(s.id)) : espaciosVisibles).map((s) => {
               const active = spaceIds.includes(s.id);
               const av = fecha ? availBySpace.get(s.id) : undefined;
               const ocupado = av?.level === 'bloqueada';
@@ -686,7 +729,7 @@ export function QuoteForm({
                 <button
                   key={s.id}
                   type="button"
-                  disabled={ocupado || topeAlcanzado}
+                  disabled={ocupado || topeAlcanzado || bloqueado?.espacios}
                   onClick={() => toggleSpace(s.id)}
                   title={
                     ocupado
