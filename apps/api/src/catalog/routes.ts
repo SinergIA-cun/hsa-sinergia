@@ -7,6 +7,23 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
   //  - `engine`: el Catalog de @hsa/shared (con matriz de renta) para calcular
   //    el desglose EN VIVO en el navegador con el mismo motor.
   //  - metadata para etiquetas (nombres de espacios, tipos de evento, add-ons).
+  /**
+   * Los catálogos entre los que se puede cotizar, con lo justo para elegir uno.
+   *
+   * Existe porque quien cotiza es VENTAS y `GET /admin/price-lists` es de admin.
+   * Y hace falta elegir: la operación no cotiza con "el catálogo activo hoy",
+   * cotiza con el del AÑO DEL EVENTO —alguien que pide 2028 en septiembre de
+   * 2026 tiene que ver precios de 2028—. Devuelve solo nombre, año y cuál es el
+   * activo: para escoger no hacen falta los precios, y los precios de un
+   * catálogo son información de la dirección.
+   */
+  app.get('/price-lists', { preHandler: requireAuth }, async () => ({
+    priceLists: await app.prisma.priceList.findMany({
+      orderBy: [{ anio: 'asc' }, { nombre: 'asc' }],
+      select: { id: true, nombre: true, anio: true, activa: true },
+    }),
+  }));
+
   app.get<{ Querystring: { priceListId?: string } }>('/catalog', { preHandler: requireAuth }, async (req) => {
     const { priceListId } = req.query;
     // El catálogo pedido, o el activo. Con el invariante de "un solo activo",
