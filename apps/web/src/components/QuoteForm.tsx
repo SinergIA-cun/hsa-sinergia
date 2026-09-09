@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   capacidadTotal,
@@ -75,6 +75,9 @@ export interface QuoteFormInitial {
 }
 
 export interface QuotePayload {
+  /** El catálogo con el que se cotiza. Solo lo manda la pantalla de nuevo
+   *  contrato; al editar, el catálogo ya quedó casado y no viaja. */
+  priceListId?: string;
   fecha: string;
   invitados: number;
   spaceIds: string[];
@@ -108,6 +111,17 @@ export interface QuotePayload {
 }
 
 interface Props {
+  /**
+   * Los catálogos entre los que se puede cotizar. Solo lo manda la pantalla de
+   * NUEVO contrato: al editar, el catálogo ya quedó casado y se cambia desde
+   * "Mover de catálogo", que avisa del impacto.
+   */
+  catalogos?: { id: string; nombre: string; anio: number; activa: boolean }[];
+  /** El catálogo con el que se está cotizando ahora mismo. */
+  priceListId?: string;
+  /** Pide a la pantalla que cargue otro catálogo. */
+  onPriceListChange?: (id: string) => void;
+
   catalog: Catalog;
   initial?: Partial<QuoteFormInitial>;
   submitLabel: string;
@@ -128,6 +142,9 @@ interface Props {
 
 export function QuoteForm({
   catalog,
+  catalogos,
+  priceListId,
+  onPriceListChange,
   initial,
   submitLabel,
   onSubmit,
@@ -243,6 +260,42 @@ export function QuoteForm({
   );
   const [descuentoMotivo, setDescuentoMotivo] = useState(initial?.descuentoMotivo ?? '');
   const [busy, setBusy] = useState(false);
+
+  // ── El catálogo con el que se cotiza ──────────────────────────────────────
+  //
+  // La operación no cotiza con "el catálogo activo hoy": cotiza con el del AÑO
+  // DEL EVENTO. Alguien que en septiembre de 2026 pide una boda de 2028 tiene
+  // que ver precios de 2028. Por eso la fecha SUGIERE el catálogo.
+  //
+  // Sugiere, no impone: en cuanto el vendedor elige uno a mano, esa elección
+  // manda y la fecha deja de moverlo. Hay negociaciones que se cierran con el
+  // catálogo del año pasado, y el sistema no tiene por qué pelearse con eso.
+  const [catalogoManual, setCatalogoManual] = useState(false);
+
+  const sugerido = useMemo(() => {
+    if (!catalogos || !fecha) return undefined;
+    const anio = Number(fecha.slice(0, 4));
+    const delAnio = catalogos.filter((c) => c.anio === anio);
+    // Con dos catálogos del mismo año —"2028" y "Bodas 2028"— no hay forma de
+    // adivinar cuál: se deja el que esté y que elija la persona.
+    return delAnio.length === 1 ? delAnio[0] : undefined;
+  }, [catalogos, fecha]);
+
+  useEffect(() => {
+    if (catalogoManual || !sugerido || !onPriceListChange) return;
+    if (sugerido.id !== priceListId) onPriceListChange(sugerido.id);
+  }, [sugerido, catalogoManual, priceListId, onPriceListChange]);
+
+  // Al cambiar de catálogo, lo que se eligió del anterior deja de existir: los
+  // paquetes de alimentos y los servicios son SUYOS. Se limpian en vez de dejar
+  // ids que el catálogo nuevo no puede resolver.
+  const catalogoPrevio = useRef(priceListId);
+  useEffect(() => {
+    if (catalogoPrevio.current === priceListId) return;
+    catalogoPrevio.current = priceListId;
+    setFoodPackageId('');
+    setAddOns({});
+  }, [priceListId]);
 
   const eventType = catalog.eventTypes.find((e) => e.id === eventTypeId);
   const foodPackages = eventType?.foodPackages ?? [];
@@ -407,6 +460,7 @@ export function QuoteForm({
     try {
       await onSubmit({
         fecha,
+        priceListId,
         invitados,
         spaceIds,
         horasExtra,
@@ -574,6 +628,31 @@ export function QuoteForm({
             <Field label="Fecha del evento">
               <TextInput type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} />
             </Field>
+            {catalogos && catalogos.length > 0 && (
+              <Field
+                label="Lista de precios"
+                hint={
+                  catalogoManual
+                    ? 'Elegida a mano. La fecha ya no la cambia.'
+                    : 'Se propone por el año del evento. Puedes cambiarla.'
+                }
+              >
+                <SelectInput
+                  value={priceListId ?? ''}
+                  onChange={(e) => {
+                    setCatalogoManual(true);
+                    onPriceListChange?.(e.target.value);
+                  }}
+                >
+                  {catalogos.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.nombre}
+                      {c.activa ? ' · en uso hoy' : ''}
+                    </option>
+                  ))}
+                </SelectInput>
+              </Field>
+            )}
             <Field label="Invitados">
               <TextInput type="number" min={1} value={invitados} onChange={(e) => setInvitados(Number(e.target.value))} />
             </Field>

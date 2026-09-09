@@ -1084,3 +1084,79 @@ describe('activar un catálogo con contexto de actor', () => {
     }
   });
 });
+
+// ---------------------------------------------------------------------------
+// Elegir el catálogo AL CREAR el contrato.
+//
+// La operación no cotiza con "el catálogo activo hoy": cotiza con el del año
+// del evento. Alguien que en 2026 pide una boda de 2028 tiene que ver precios
+// de 2028, no los de 2026 para corregirlos después.
+// ---------------------------------------------------------------------------
+describe('el catálogo se elige al crear el contrato', () => {
+  async function crearPorHttp(cuerpo: Record<string, unknown>) {
+    const eventType = await prisma.eventType.findFirstOrThrow({ where: { slug: 'boda' } });
+    const arcos = await prisma.space.findFirstOrThrow({ where: { nombre: 'Salón Los Arcos' } });
+    return app.inject({
+      method: 'POST',
+      url: '/api/quotes',
+      cookies: await adminCookies(),
+      payload: {
+        fecha: '2052-05-08',
+        invitados: 250,
+        spaceIds: [arcos.id],
+        eventTypeId: eventType.id,
+        client: { nombre: `Cliente catálogo ${randomUUID().slice(0, 6)}` },
+        ...cuerpo,
+      },
+    });
+  }
+
+  it('POST /quotes casa la cotización al catálogo que se le manda, no al activo', async () => {
+    const futuro = await catalogoDePrueba('elegido-al-crear', 2052);
+    // El activo sigue siendo el original: si el catálogo no viajara, la
+    // cotización nacería casada a ÉL y esta prueba lo cacharía.
+    const activo = await prisma.priceList.findFirstOrThrow({ where: { activa: true } });
+    expect(activo.id).not.toBe(futuro.id);
+
+    const res = await crearPorHttp({ priceListId: futuro.id });
+    expect(res.statusCode).toBe(201);
+    const quote = res.json().quote as { id: string; priceListId: string; clientId: string };
+    createdQuoteIds.push(quote.id);
+    createdClientIds.push(quote.clientId);
+
+    expect(quote.priceListId).toBe(futuro.id);
+  });
+
+  it('sin catálogo en el cuerpo sigue usando el activo, como antes', async () => {
+    const activo = await prisma.priceList.findFirstOrThrow({ where: { activa: true } });
+    const res = await crearPorHttp({});
+    expect(res.statusCode).toBe(201);
+    const quote = res.json().quote as { id: string; priceListId: string; clientId: string };
+    createdQuoteIds.push(quote.id);
+    createdClientIds.push(quote.clientId);
+
+    expect(quote.priceListId).toBe(activo.id);
+  });
+
+  it('un catálogo que no existe se rechaza en vez de caer al activo en silencio', async () => {
+    const res = await crearPorHttp({ priceListId: 'no-existe' });
+    // 409 y no 404: el mismo camino lo usa la conversión de un apartado cuyo
+    // catálogo garantizado fue borrado, y ahí el conflicto es la respuesta
+    // correcta. Lo que importa aquí es que NO caiga al activo en silencio.
+    expect(res.statusCode).toBe(409);
+    expect(res.json().error).toMatch(/no existe/i);
+  });
+
+  it('GET /price-lists lo puede ver VENTAS, y no expone precios', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/price-lists',
+      cookies: await ventasCookies(),
+    });
+    expect(res.statusCode).toBe(200);
+    const listas = res.json().priceLists as Record<string, unknown>[];
+    expect(listas.length).toBeGreaterThan(0);
+    // Lo justo para escoger: los precios son información de la dirección.
+    expect(Object.keys(listas[0]!).sort()).toEqual(['activa', 'anio', 'id', 'nombre']);
+  });
+});

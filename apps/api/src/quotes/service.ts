@@ -178,10 +178,17 @@ async function catalogoActivo(db: PrismaClient): Promise<{ id: string }> {
   return activo;
 }
 
-/** Un catálogo por id, o 409 si ya no existe (un apartado puede apuntar a uno borrado). */
+/**
+ * Un catálogo por id, o 409 si ya no existe.
+ *
+ * Dos caminos llegan aquí: el precio garantizado de un apartado, y el catálogo
+ * que el vendedor elige al crear el contrato. Por eso el mensaje ya no dice
+ * "garantizado" —era cierto solo para el primero— sino algo que se lee bien en
+ * los dos.
+ */
 async function catalogoPorId(db: PrismaClient, priceListId: string): Promise<{ id: string }> {
   const cat = await db.priceList.findUnique({ where: { id: priceListId }, select: { id: true } });
-  if (!cat) throw new QuoteError(409, 'El catálogo garantizado ya no existe.');
+  if (!cat) throw new QuoteError(409, 'El catálogo indicado ya no existe.');
   return cat;
 }
 

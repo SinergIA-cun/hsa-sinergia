@@ -29,7 +29,17 @@ import {
 export async function quoteRoutes(app: FastifyInstance): Promise<void> {
   app.post('/quotes', { preHandler: requireAuth }, async (req, reply) => {
     try {
-      const quote = await createQuote(app.prisma, req.body, req.user as Actor);
+      // El catálogo se elige AL CREAR, y va aparte del resto del cuerpo porque
+      // `createQuoteSchema` describe la selección del evento, no con qué precios
+      // se cotiza. Sin esto, quien vende un evento de 2028 en 2026 cotizaría con
+      // los precios de 2026 y tendría que corregirlo después. Si no viene, se usa
+      // el catálogo activo, que es como se comportaba antes.
+      const cuerpo = req.body as { priceListId?: unknown } | null;
+      const priceListId =
+        typeof cuerpo?.priceListId === 'string' && cuerpo.priceListId.length > 0
+          ? cuerpo.priceListId
+          : undefined;
+      const quote = await createQuote(app.prisma, req.body, req.user as Actor, { priceListId });
       return reply.code(201).send({ quote });
     } catch (e) {
       if (e instanceof QuoteError) return reply.code(e.status).send({ error: e.message });
