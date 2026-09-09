@@ -20,6 +20,7 @@ import { AdminPage } from './pages/AdminPage.tsx';
 import { AuditoriaPage } from './pages/AuditoriaPage.tsx';
 import { HistoricoPage } from './pages/HistoricoPage.tsx';
 import { PapeleraPage } from './pages/PapeleraPage.tsx';
+import { ConvertirApartadoPage } from './pages/ConvertirApartadoPage.tsx';
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { refetchOnWindowFocus: false } },
@@ -131,6 +132,17 @@ export function App() {
             />
             {/* El archivo lo consulta todo el equipo: saber qué se hizo el año
                 pasado en La Cúpula es trabajo de ventas tanto como de admin. */}
+            {/* Convertir una fecha apartada en contrato. Es una PANTALLA y no un
+                modal: convertir es armar un contrato completo, con su desglose
+                en vivo, y eso no cabe en una ventanita. */}
+            <Route
+              path="/banqueteros/:id/apartados/:apartadoId/convertir"
+              element={
+                <Protected>
+                  <ConvertirApartadoPage />
+                </Protected>
+              }
+            />
             <Route
               path="/historico"
               element={

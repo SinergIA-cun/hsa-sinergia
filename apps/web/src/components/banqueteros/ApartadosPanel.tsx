@@ -6,7 +6,6 @@ import { formatMXN } from '../../lib/money.ts';
 import { formatEventDate } from '../../lib/date.ts';
 import { Button, Card, Field, MoneyInput, SelectInput, TextInput } from '../ui.tsx';
 import { apiErrorMessage } from '../admin/shared.tsx';
-import { ConvertirApartadoModal } from './ConvertirApartadoModal.tsx';
 import { AbonosApartado } from './AbonosApartado.tsx';
 import type { ApartadoFecha, PaymentMethod, PriceList, Space } from '../../lib/types.ts';
 
@@ -14,7 +13,6 @@ const METODOS: PaymentMethod[] = ['transferencia', 'efectivo', 'tarjeta'];
 
 interface Props {
   banqueteroId: string;
-  banqueteroNombre: string;
   apartados: ApartadoFecha[];
   spaces: Space[];
   /** Catálogos para el precio garantizado. Vacío para ventas: el listado es de admin. */
@@ -41,7 +39,6 @@ function estado(a: ApartadoFecha): { label: string; clase: string } {
  */
 export function ApartadosPanel({
   banqueteroId,
-  banqueteroNombre,
   apartados,
   spaces,
   priceLists,
@@ -62,7 +59,7 @@ export function ApartadosPanel({
             <ApartadoRow
               key={a.id}
               apartado={a}
-              banqueteroNombre={banqueteroNombre}
+              banqueteroId={banqueteroId}
               nombreEspacio={nombreEspacio}
               isAdmin={isAdmin}
               onCambio={onCambio}
@@ -83,13 +80,13 @@ export function ApartadosPanel({
 
 function ApartadoRow({
   apartado: a,
-  banqueteroNombre,
+  banqueteroId,
   nombreEspacio,
   isAdmin,
   onCambio,
 }: {
   apartado: ApartadoFecha;
-  banqueteroNombre: string;
+  banqueteroId: string;
   nombreEspacio: (id: string) => string;
   isAdmin: boolean;
   onCambio: () => Promise<void>;
@@ -99,7 +96,6 @@ function ApartadoRow({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const e = estado(a);
-  const [convertir, setConvertir] = useState(false);
 
   async function cancelar() {
     setBusy(true);
@@ -151,13 +147,15 @@ function ApartadoRow({
             {e.label}
           </span>
           {a.vivo && !armado && (
-            <button
-              type="button"
+            /* Una PANTALLA y no un modal: convertir es armar el contrato
+               completo —tipo de evento, invitados, alimentos, servicios— con su
+               desglose en vivo, y eso no cabe en una ventanita. */
+            <Link
+              to={`/banqueteros/${banqueteroId}/apartados/${a.id}/convertir`}
               className="text-xs font-medium text-gold hover:underline"
-              onClick={() => setConvertir(true)}
             >
-              Convertir en cotización
-            </button>
+              Convertir en contrato
+            </Link>
           )}
           {isAdmin && a.vivo && !armado && (
             <button
@@ -172,16 +170,6 @@ function ApartadoRow({
       </div>
 
       <AbonosApartado apartado={a} onCambio={onCambio} />
-
-      {convertir && (
-        <ConvertirApartadoModal
-          apartado={a}
-          banqueteroNombre={banqueteroNombre}
-          nombreEspacio={nombreEspacio}
-          onListo={onCambio}
-          onCerrar={() => setConvertir(false)}
-        />
-      )}
 
       {armado && (
         <div className="mt-3 space-y-2 rounded-lg border border-wine/30 bg-wine/5 p-3">

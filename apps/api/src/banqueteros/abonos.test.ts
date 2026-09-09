@@ -338,3 +338,113 @@ describe('el acumulado (puro)', () => {
     ).toBe(125);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Convertir dejó de ser una ventanita de tres campos.
+//
+// El servidor SIEMPRE aceptó el contrato completo, pero la pantalla solo
+// ofrecía tipo de evento, invitados y festejado; el resto había que agregarlo
+// después editando el contrato recién creado. Estas pruebas fijan que lo demás
+// —alimentos, servicios, horas extra— entra desde la conversión, para que la
+// pantalla nueva se pueda apoyar en ello.
+// ---------------------------------------------------------------------------
+describe('al convertir se puede armar el contrato completo', () => {
+  it('los alimentos y las horas extra entran desde la conversión', async () => {
+    const apartado = await nuevoApartado();
+    const paquete = await prisma.foodPackage.findFirstOrThrow({
+      where: { eventTypeId, priceList: { activa: true } },
+      select: { id: true },
+    });
+
+    const { quote } = await convertirApartado(
+      prisma,
+      storage,
+      apartado.id,
+      { eventTypeId, invitados: 200, foodPackageId: paquete.id, horasExtra: 2 },
+      actor,
+    );
+    quotes.push(quote.id);
+    clients.push(quote.clientId);
+
+    expect(quote.foodPackageId).toBe(paquete.id);
+    expect(quote.horasExtra).toBe(2);
+    // Y el precio los tomó en cuenta: con alimentos hay descuento de renta, así
+    // que el desglose tiene más de un renglón.
+    const lineas = (quote.breakdown as { lines?: { concepto: string }[] }).lines ?? [];
+    expect(lineas.some((l) => /Alimentos/.test(l.concepto))).toBe(true);
+    expect(lineas.some((l) => /Horas extra/.test(l.concepto))).toBe(true);
+  });
+
+  it('sin precio garantizado, se puede elegir el catálogo al convertir', async () => {
+    // Un apartado SIN catálogo congelado: es el caso en el que la fecha del
+    // evento debe mandar, igual que al crear un contrato normal.
+    const apartado = await nuevoApartado();
+    expect(apartado.priceListId).toBeNull();
+
+    const otro = await prisma.priceList.create({
+      data: {
+        nombre: `Convertir-lab ${randomUUID().slice(0, 6)}`,
+        anio: 2039,
+        activa: false,
+        ivaRate: 0.16,
+        extraHourRate: 0.05,
+        foodDiscountRate: 0.05,
+        capillaSabado: 5000,
+        rentalPrices: {
+          create: [
+            { spaceId: arcosId, min: 1, max: 900, viernes: 1000, viernesEspecial: 500, sabado: 1200, domAJue: 900 },
+          ],
+        },
+      },
+      select: { id: true },
+    });
+
+    const { quote } = await convertirApartado(
+      prisma,
+      storage,
+      apartado.id,
+      { eventTypeId, invitados: 200, priceListId: otro.id },
+      actor,
+    );
+    quotes.push(quote.id);
+    clients.push(quote.clientId);
+
+    expect(quote.priceListId).toBe(otro.id);
+  });
+
+  it('CON precio garantizado, el del apartado gana sobre el que se mande', async () => {
+    const garantizado = await prisma.priceList.create({
+      data: {
+        nombre: `Garantizado ${randomUUID().slice(0, 6)}`,
+        anio: 2040,
+        activa: false,
+        ivaRate: 0.16,
+        extraHourRate: 0.05,
+        foodDiscountRate: 0.05,
+        capillaSabado: 5000,
+        rentalPrices: {
+          create: [
+            { spaceId: arcosId, min: 1, max: 900, viernes: 1000, viernesEspecial: 500, sabado: 1200, domAJue: 900 },
+          ],
+        },
+      },
+      select: { id: true },
+    });
+    const apartado = await nuevoApartado({ priceListId: garantizado.id });
+
+    const activo = await prisma.priceList.findFirstOrThrow({ where: { activa: true } });
+    const { quote } = await convertirApartado(
+      prisma,
+      storage,
+      apartado.id,
+      // Se manda OTRO a propósito: la promesa al banquetero no se sobreescribe
+      // desde el cuerpo, o se perdería en silencio.
+      { eventTypeId, invitados: 200, priceListId: activo.id },
+      actor,
+    );
+    quotes.push(quote.id);
+    clients.push(quote.clientId);
+
+    expect(quote.priceListId).toBe(garantizado.id);
+  });
+});
