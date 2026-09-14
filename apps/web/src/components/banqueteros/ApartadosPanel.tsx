@@ -6,6 +6,7 @@ import { formatMXN } from '../../lib/money.ts';
 import { formatEventDate } from '../../lib/date.ts';
 import { Button, Card, Field, MoneyInput, SelectInput, TextInput } from '../ui.tsx';
 import { apiErrorMessage } from '../admin/shared.tsx';
+import { hoyCivilMexico, vigenciaDeApartado } from '@hsa/shared';
 import { AbonosApartado } from './AbonosApartado.tsx';
 import type { ApartadoFecha, PaymentMethod, PriceList, Space } from '../../lib/types.ts';
 
@@ -112,6 +113,31 @@ function ApartadoRow({
     }
   }
 
+  /**
+   * Otros siete días hábiles. Si la fecha ya se comprometió mientras el apartado
+   * estaba vencido, la API contesta 409 y aquí se pregunta antes de insistir:
+   * revivirlo a ciegas volvería a bloquear una fecha que la casa ya vendió.
+   */
+  async function renovar(confirmar: boolean) {
+    setBusy(true);
+    setError('');
+    try {
+      await api.patch(`/api/banqueteros/apartados/${a.id}/renovar`, { confirmar });
+      await onCambio();
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 409 && !confirmar) {
+        if (window.confirm(`${apiErrorMessage(err, '')}\n\n¿Renovar de todos modos?`)) {
+          setBusy(false);
+          return renovar(true);
+        }
+      } else {
+        setError(apiErrorMessage(err, 'No se pudo renovar el apartado.'));
+      }
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <Card className={`p-4 ${a.vivo ? '' : 'opacity-70'}`}>
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -156,6 +182,23 @@ function ApartadoRow({
             >
               Convertir en contrato
             </Link>
+          )}
+          {/*
+            Renovar existe porque el plazo dejó de capturarse. Sin salida, un
+            "dame una semana más" solo se resolvía cancelando y volviendo a
+            apartar, y con eso se perdía el rastro del dinero que ya había
+            entrado a esa fecha. No pide fecha: da el plazo de la casa.
+            Aparece también en los VENCIDOS, que es cuando más se pide.
+          */}
+          {isAdmin && !a.quote && !a.canceladoAt && !armado && (
+            <button
+              type="button"
+              className="text-xs font-medium text-ink hover:underline disabled:opacity-50"
+              disabled={busy}
+              onClick={() => void renovar(false)}
+            >
+              {a.vivo ? 'Renovar 7 días hábiles' : 'Revivir 7 días hábiles'}
+            </button>
           )}
           {isAdmin && a.vivo && !armado && (
             <button
@@ -238,7 +281,6 @@ function CrearApartado({
 }) {
   const [fechaEvento, setFechaEvento] = useState('');
   const [spaceIds, setSpaceIds] = useState<string[]>([]);
-  const [vence, setVence] = useState('');
   const [priceListId, setPriceListId] = useState('');
   const [deposito, setDeposito] = useState('');
   const [depositoMetodo, setDepositoMetodo] = useState<PaymentMethod>('transferencia');
@@ -248,9 +290,16 @@ function CrearApartado({
   const [choque, setChoque] = useState('');
   const [busy, setBusy] = useState(false);
 
+  /*
+   * Lo que va a quedar al guardar. Se calcula con `vigenciaDeApartado`, la misma
+   * pieza que usa la API: si cada lado lo calculara por su cuenta, tarde o
+   * temprano la pantalla prometería un día y la base guardaría otro.
+   */
+  const venceCalculado = vigenciaDeApartado(hoyCivilMexico()).toISOString().slice(0, 10);
+
   const depositoNum = deposito.trim() === '' ? 0 : Number(deposito);
   const depositoValido = deposito.trim() === '' || /^\d+$/.test(deposito.trim());
-  const listo = fechaEvento !== '' && vence !== '' && spaceIds.length > 0 && depositoValido;
+  const listo = fechaEvento !== '' && spaceIds.length > 0 && depositoValido;
 
   function toggle(id: string) {
     setSpaceIds((ids) =>
@@ -265,7 +314,6 @@ function CrearApartado({
       await api.post(`/api/banqueteros/${banqueteroId}/apartados`, {
         fechaEvento,
         spaceIds,
-        vence,
         priceListId: priceListId || null,
         deposito: depositoNum,
         // La forma de pago y la fecha de RECEPCIÓN solo viajan si hay depósito:
@@ -278,7 +326,6 @@ function CrearApartado({
       });
       setFechaEvento('');
       setSpaceIds([]);
-      setVence('');
       setPriceListId('');
       setDeposito('');
       setNota('');
@@ -333,9 +380,25 @@ function CrearApartado({
             ))}
           </div>
         </Field>
-        <Field label="Vence el" hint="Después de esta fecha la disponibilidad se libera sola.">
-          <TextInput type="date" value={vence} onChange={(e) => setVence(e.target.value)} />
-        </Field>
+        {/*
+          El plazo ya no se captura.
+          Antes era un campo de fecha y un plazo que cada quien teclea no es un
+          plazo: era una negociación por apartado, imposible de sostener igual
+          para todos. Se calcula aquí con la MISMA función que usa el servidor al
+          guardar, para que lo que promete la pantalla y lo que queda en la base
+          no puedan decir cosas distintas.
+        */}
+        <div className="rounded-lg border border-cream-300 bg-cream-100 px-3.5 py-3 text-sm">
+          <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-charcoal-soft">
+            <CalendarClock size={13} /> Vence el
+          </p>
+          <p className="mt-1 font-medium capitalize text-ink">{formatEventDate(venceCalculado, 'long')}</p>
+          <p className="mt-1 text-xs text-charcoal-soft">
+            Siete días hábiles, contados solos. No cuentan sábados, domingos ni días de descanso
+            obligatorio. Después de esa fecha la disponibilidad se libera sola y lo que haya
+            abonado le queda como saldo a favor.
+          </p>
+        </div>
         {isAdmin && priceLists.length > 0 && (
           <Field
             label="Precio garantizado (opcional)"

@@ -13,7 +13,12 @@ import { MARCA } from '../lib/marca.ts';
  *
  * Decisión 2 del dueño: sin usuarios externos y sin contraseñas, igual que el
  * contrato del cliente en `/c/:token`. **Esto solo mata el hilo de WhatsApp**:
- * sus eventos, sus depósitos, cómo se repartieron y lo que trae sin repartir.
+ * lo que trae a favor, lo que le falta por cubrir y sus eventos.
+ *
+ * Los DEPÓSITOS no salen aquí. La lista completa deja ver de un vistazo cuánto
+ * factura la hacienda con este banquetero al año, y ése es un número de la casa;
+ * el reparto se lleva del lado de adentro. Tampoco viene en la respuesta del
+ * servidor: no es que se esconda al pintar.
  *
  * Lo que se pinta es la PROYECCIÓN del servidor, no el objeto interno: no hay
  * comprobantes, ni ids, ni motivos de anulación, ni un solo dato de otro
@@ -43,8 +48,7 @@ export function BanqueteroPublicoPage() {
     );
   }
 
-  const { banquetero, eventos, depositos, apartados, totales } = data;
-  const repartido = totales.depositado - totales.saldoSinAsignar;
+  const { banquetero, eventos, apartados, totales } = data;
 
   return (
     <div className="min-h-screen bg-paper">
@@ -71,29 +75,32 @@ export function BanqueteroPublicoPage() {
       </header>
 
       <main className="mx-auto max-w-3xl px-6 pb-16 pt-10">
-        {/* Los tres números de la cuenta. El sin asignar en negro: es el que se discute. */}
+        {/* Los dos números de la cuenta: lo que trae a favor y lo que le falta. */}
         <div className="rounded-[var(--radius-card)] border border-cream-300 bg-white shadow-[var(--shadow-card)]">
-          <div className="grid grid-cols-1 divide-y divide-cream-300 text-center sm:grid-cols-3 sm:divide-x sm:divide-y-0">
-            <div className="p-6">
-              <p className="text-xs uppercase tracking-wide text-charcoal-soft">Depositado</p>
-              <p className="mt-1 font-display text-2xl text-ink">{formatMXN(totales.depositado)}</p>
-            </div>
-            <div className="p-6">
-              <p className="text-xs uppercase tracking-wide text-charcoal-soft">Ya repartido</p>
-              <p className="mt-1 font-display text-2xl text-ink">{formatMXN(repartido)}</p>
-            </div>
+          <div className="grid grid-cols-1 divide-y divide-cream-300 text-center sm:grid-cols-2 sm:divide-x sm:divide-y-0">
             <div className="bg-ink p-6 text-cream">
               <p className="inline-flex items-center gap-1.5 text-xs uppercase tracking-wide text-gold-200">
-                <Coins size={13} /> Sin repartir
+                <Coins size={13} /> Saldo a favor
               </p>
-              <p className="mt-1 font-display text-2xl">{formatMXN(totales.saldoSinAsignar)}</p>
+              <p className="mt-1 font-display text-2xl">{formatMXN(totales.saldoAFavor)}</p>
+            </div>
+            <div className="p-6">
+              <p className="text-xs uppercase tracking-wide text-charcoal-soft">Saldo por cubrir</p>
+              <p
+                className={`mt-1 font-display text-2xl ${
+                  totales.saldoPorCubrir > 0 ? 'text-wine' : 'text-ink'
+                }`}
+              >
+                {formatMXN(totales.saldoPorCubrir)}
+              </p>
             </div>
           </div>
         </div>
 
         <p className="mt-3 text-center text-xs text-charcoal-soft">
-          Lo <strong>sin repartir</strong> es dinero recibido que todavía no se aplicó a ningún
-          evento. El plan de pagos corresponde a la <strong>renta</strong>.
+          El <strong>saldo a favor</strong> es dinero suyo que todavía no se aplica a ningún evento.
+          El <strong>saldo por cubrir</strong> es lo que falta de sus eventos, y el plan de pagos
+          corresponde a la <strong>renta</strong>.
         </p>
 
         <Seccion titulo="Sus eventos">
@@ -146,44 +153,6 @@ export function BanqueteroPublicoPage() {
           )}
         </Seccion>
 
-        <Seccion titulo="Sus depósitos">
-          {depositos.length === 0 ? (
-            <p className="text-sm text-charcoal-soft">Todavía no hay depósitos registrados.</p>
-          ) : (
-            <ul className="space-y-4">
-              {depositos.map((d) => (
-                <li key={`${d.fechaISO}${d.monto}${d.referencia ?? ''}`} className="border-b border-cream-200 pb-4 last:border-0 last:pb-0">
-                  <div className="flex flex-wrap items-baseline justify-between gap-2">
-                    <span className="font-display text-xl text-ink">{formatMXN(d.monto)}</span>
-                    <span className="text-xs text-charcoal-soft">
-                      {formatEventDate(d.fechaISO)} · {d.metodo}
-                      {d.referencia ? ` · ${d.referencia}` : ''}
-                    </span>
-                  </div>
-                  {d.asignaciones.length > 0 && (
-                    <ul className="mt-2 space-y-1">
-                      {d.asignaciones.map((a) => (
-                        <li key={a.folio} className="flex justify-between gap-4 text-sm text-charcoal">
-                          <span>
-                            {a.folio ?? 'Evento'}{' '}
-                            <span className="text-xs text-charcoal-soft">recibo #{a.folio}</span>
-                          </span>
-                          <span className="tabular-nums">{formatMXN(a.monto)}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                  {d.saldoSinAsignar > 0 && (
-                    <p className="mt-2 text-sm font-medium text-gold">
-                      Sin repartir de este depósito: {formatMXN(d.saldoSinAsignar)}
-                    </p>
-                  )}
-                </li>
-              ))}
-            </ul>
-          )}
-        </Seccion>
-
         {apartados.length > 0 && (
           <Seccion titulo="Fechas apartadas">
             <ul className="space-y-2">
@@ -204,8 +173,9 @@ export function BanqueteroPublicoPage() {
               ))}
             </ul>
             <p className="mt-3 text-xs text-charcoal-soft">
-              Una fecha apartada no tiene precio todavía. Si no se convierte en contrato antes de su
-              vencimiento, la fecha se libera.
+              Una fecha apartada no tiene precio todavía y dura <strong>siete días hábiles</strong>.
+              Si no se convierte en contrato antes de su vencimiento la fecha se libera, y lo que
+              haya abonado le queda como <strong>saldo a favor</strong> para su siguiente evento.
             </p>
           </Seccion>
         )}

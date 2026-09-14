@@ -1,7 +1,7 @@
 import type { PrismaClient } from '@hsa/database';
 import { hoyCivilMexico } from '@hsa/shared';
 import { QuoteError, loadEstadoCuentaBulk } from '../quotes/service.js';
-import { listarDepositos } from './cuenta.js';
+import { listarDepositos, saldoLiberadoPorApartados } from './cuenta.js';
 import { listarApartados } from './apartados.js';
 
 /**
@@ -90,6 +90,19 @@ export async function estadoCuentaBanquetero(
   const saldoSinAsignar = depositos.reduce((s, d) => s + d.saldoSinAsignar, 0);
   const depositado = depositos.filter((d) => d.anuladoAt == null).reduce((s, d) => s + d.monto, 0);
 
+  /*
+   * El dinero de las fechas que se soltaron.
+   *
+   * Un apartado que venció o se canceló ya no bloquea nada, así que lo que el
+   * banquetero le había abonado vuelve a ser suyo. Se calcula, NO se mueve: no
+   * se crea un depósito ni se reescribe el abono. El dinero entró el día que
+   * entró —y así se factura— y lo único que cambió es contra qué está apartado.
+   *
+   * Aquí solo entran los abonos DIRECTOS. Los que salieron de un depósito ya
+   * volvieron solos a su saldo, porque `saldoSinAsignar` dejó de descontarlos.
+   */
+  const saldoLiberado = saldoLiberadoPorApartados(apartados, hoy);
+
   const vivos = apartados.filter((a) => a.vivo);
   const limite = new Date(hoy);
   limite.setUTCDate(limite.getUTCDate() + DIAS_POR_VENCER);
@@ -112,6 +125,9 @@ export async function estadoCuentaBanquetero(
       saldo: eventos.reduce((s, e) => s + e.saldo, 0),
       depositado,
       saldoSinAsignar,
+      /** Lo que el banquetero trae a favor: sin repartir más lo que soltaron sus fechas. */
+      saldoAFavor: saldoSinAsignar + saldoLiberado,
+      saldoLiberado,
       apartadosVivos: vivos.length,
       apartadosPorVencer: porVencer.length,
     },
@@ -125,6 +141,13 @@ export async function estadoCuentaBanquetero(
  * puede ver. Devolver el objeto completo filtraría las llaves de los comprobantes,
  * los ids de quién registró cada cosa y el motivo de cada anulación — y cada
  * campo nuevo del interno se publicaría solo, sin que nadie lo decidiera.
+ *
+ * **Los depósitos NO salen de aquí.** Por decisión del dueño el banquetero ve su
+ * saldo a favor, su saldo por cubrir y sus eventos, y nada más: la lista de
+ * depósitos deja ver de un vistazo cuánto factura la hacienda con él al año, y
+ * ése es un número de la casa. Tampoco sale el TOTAL depositado, que diría lo
+ * mismo en una sola cifra — por eso `totales` se arma campo por campo en vez de
+ * pasarse entero, como estaba antes.
  *
  * `null` (y no un error) cuando el token no existe: quien llama responde 404 sin
  * distinguir "no existe" de "no es tuyo".
@@ -147,26 +170,6 @@ export async function estadoCuentaPublico(db: PrismaClient, token: string) {
       pagado: e.pagado,
       saldo: e.saldo,
     })),
-    depositos: ec.depositos
-      .filter((d) => d.anuladoAt == null)
-      .map((d) => ({
-        fechaISO: d.fecha.toISOString(),
-        monto: d.monto,
-        metodo: d.metodo,
-        referencia: d.referencia,
-        saldoSinAsignar: d.saldoSinAsignar,
-        asignaciones: d.asignaciones
-          .filter((a) => a.anuladoAt == null)
-          .map((a) => ({
-            // Dos folios distintos en el mismo renglón: el del RECIBO, que ya
-            // existía, y el del EVENTO al que se asignó. Se nombran completos
-            // porque "folio" a secas aquí no significa nada.
-            folio: a.folio,
-            monto: a.monto,
-            folioEvento: a.quote?.folio ?? null,
-            etiqueta: a.quote?.etiqueta ?? null,
-          })),
-      })),
     apartados: ec.apartados
       .filter((a) => a.vivo)
       .map((a) => ({
@@ -176,6 +179,13 @@ export async function estadoCuentaPublico(db: PrismaClient, token: string) {
         venceISO: a.vence.toISOString(),
         catalogo: a.priceList?.nombre ?? null,
       })),
-    totales: ec.totales,
+    totales: {
+      eventos: ec.totales.eventos,
+      /** Dinero suyo que todavía no se aplica a ningún evento. */
+      saldoAFavor: ec.totales.saldoAFavor,
+      /** Lo que falta por pagar de sus eventos. */
+      saldoPorCubrir: ec.totales.saldo,
+      apartadosVivos: ec.totales.apartadosVivos,
+    },
   };
 }

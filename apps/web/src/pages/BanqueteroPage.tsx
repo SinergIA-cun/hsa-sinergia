@@ -107,26 +107,40 @@ export function BanqueteroPage() {
           <p className="text-xs uppercase tracking-wide text-charcoal-soft">Ya repartido</p>
           <p className="mt-1 font-display text-2xl text-ink">{formatMXN(repartido)}</p>
         </Card>
+        {/*
+          El MISMO número que ve el banquetero en su portal, y por eso dice
+          "saldo a favor" y no "sin asignar": incluye lo que le devolvieron las
+          fechas que soltó. Cuando este renglón y el portal decían cifras
+          distintas, la discusión por WhatsApp volvía — que es justo lo que esta
+          pantalla vino a matar.
+        */}
         <div
           className={`rounded-[var(--radius-card)] p-5 shadow-[var(--shadow-card)] ${
-            totales.saldoSinAsignar > 0
+            totales.saldoAFavor > 0
               ? 'border-l-4 border-gold bg-gold/15'
               : 'border border-cream-300/80 bg-white/80'
           }`}
         >
           <p className="inline-flex items-center gap-1.5 text-xs uppercase tracking-wide text-charcoal-soft">
-            <Coins size={13} /> Sin asignar
+            <Coins size={13} /> Saldo a favor
           </p>
           <p
             className={`mt-1 font-display text-3xl ${
-              totales.saldoSinAsignar > 0 ? 'text-gold' : 'text-charcoal-soft'
+              totales.saldoAFavor > 0 ? 'text-gold' : 'text-charcoal-soft'
             }`}
           >
-            {formatMXN(totales.saldoSinAsignar)}
+            {formatMXN(totales.saldoAFavor)}
           </p>
-          {totales.saldoSinAsignar > 0 && (
+          {totales.saldoAFavor > 0 && (
             <p className="mt-1 text-[0.7rem] text-charcoal-soft">
               Dinero recibido sin destino. No cuenta como pagado en ningún evento.
+              {totales.saldoLiberado > 0 && (
+                <>
+                  {' '}
+                  Incluye <strong>{formatMXN(totales.saldoLiberado)}</strong> de fechas apartadas
+                  que vencieron o se cancelaron.
+                </>
+              )}
             </p>
           )}
         </div>

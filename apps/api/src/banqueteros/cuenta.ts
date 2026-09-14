@@ -1,9 +1,11 @@
 import { z } from 'zod';
 import type { PrismaClient } from '@hsa/database';
+import { hoyCivilMexico } from '@hsa/shared';
 import { QuoteError, ownershipWhere, assertNotTrashed, type Actor } from '../quotes/service.js';
 import { registerPayment, anularPayment } from '../payments/service.js';
 import type { ComprobanteStorage } from '../payments/storage.js';
 import { abonarDesdeDeposito } from './abonos.js';
+import { apartadoVivo } from './apartados.js';
 
 /**
  * La cuenta corriente del banquetero.
@@ -70,6 +72,16 @@ export interface MovimientoLite {
   anuladoAt: Date | null;
 }
 
+/** Un abono a una fecha apartada, visto por el cálculo del saldo del depósito. */
+export interface AbonoContraDeposito extends MovimientoLite {
+  paymentId?: string | null;
+  /**
+   * El apartado al que se abonó. Se necesita su estado —no solo su id— porque un
+   * apartado que ya soltó su fecha deja de tener derecho a retener el dinero.
+   */
+  apartado?: { canceladoAt: Date | null; quoteId: string | null; vence: Date } | null;
+}
+
 /**
  * Saldo sin asignar de un depósito: lo depositado menos lo repartido que sigue
  * vivo. Función pura para poder probarla sin base.
@@ -87,15 +99,59 @@ export function saldoSinAsignar(
    * Solo cuentan los que **todavía no se convirtieron en pago**: al convertir el
    * apartado, el abono se vuelve un `Payment` que ya aparece en `asignaciones`.
    * Contar los dos restaría el mismo dinero dos veces y el saldo saldría corto.
+   *
+   * Y solo mientras el apartado SIGA TENIENDO SU FECHA. Un apartado que venció o
+   * que se canceló ya no bloquea nada, así que retener el dinero del banquetero
+   * contra una fecha que se le quitó sería cobrarle por aire. En cuanto suelta la
+   * fecha, su dinero vuelve al saldo a favor.
    */
-  abonosApartado: (MovimientoLite & { paymentId?: string | null })[] = [],
+  abonosApartado: AbonoContraDeposito[] = [],
+  hoy: Date = hoyCivilMexico(),
 ): number {
   if (deposito.anuladoAt) return 0;
   const asignado = asignaciones.filter((a) => a.anuladoAt == null).reduce((s, a) => s + a.monto, 0);
   const abonado = abonosApartado
-    .filter((a) => a.anuladoAt == null && a.paymentId == null)
+    .filter(
+      (a) =>
+        a.anuladoAt == null &&
+        a.paymentId == null &&
+        // Sin el apartado a la mano se cuenta, que es el lado seguro: retener de
+        // más se corrige mirando; soltar dinero que no se debía soltar, no.
+        (a.apartado == null || apartadoVivo(a.apartado, hoy)),
+    )
     .reduce((s, a) => s + a.monto, 0);
   return deposito.monto - asignado - abonado;
+}
+
+/**
+ * El dinero que un apartado le devuelve al banquetero al soltar su fecha.
+ *
+ * Son los abonos que entraron DIRECTO a la fecha, sin pasar por un depósito. Los
+ * que salieron de un depósito no van aquí: ésos vuelven solos al saldo de su
+ * depósito —`saldoSinAsignar` deja de descontarlos— y contarlos en los dos lados
+ * duplicaría el dinero.
+ *
+ * Se excluyen los anulados y los que ya se volvieron pago de una cotización.
+ */
+export function saldoLiberadoPorApartados(
+  apartados: {
+    canceladoAt: Date | null;
+    quoteId: string | null;
+    vence: Date;
+    abonos: {
+      monto: number;
+      anuladoAt: Date | null;
+      paymentId: string | null;
+      pagoBanqueteroId: string | null;
+    }[];
+  }[],
+  hoy: Date = hoyCivilMexico(),
+): number {
+  return apartados
+    .filter((a) => !apartadoVivo(a, hoy) && a.quoteId == null)
+    .flatMap((a) => a.abonos)
+    .filter((ab) => ab.anuladoAt == null && ab.paymentId == null && ab.pagoBanqueteroId == null)
+    .reduce((s, ab) => s + ab.monto, 0);
 }
 
 const CON_ASIGNACIONES = {
@@ -109,7 +165,17 @@ const CON_ASIGNACIONES = {
       paymentId: true,
       fecha: true,
       apartadoId: true,
-      apartado: { select: { fechaEvento: true, spaceIds: true } },
+      // `canceladoAt`, `quoteId` y `vence` no son decorativos: son lo que decide
+      // si este abono todavía retiene dinero o ya lo devolvió.
+      apartado: {
+        select: {
+          fechaEvento: true,
+          spaceIds: true,
+          canceladoAt: true,
+          quoteId: true,
+          vence: true,
+        },
+      },
     },
   },
   asignaciones: {
@@ -143,7 +209,7 @@ function conSaldo<
     monto: number;
     anuladoAt: Date | null;
     asignaciones: MovimientoLite[];
-    abonosApartado?: (MovimientoLite & { paymentId?: string | null })[];
+    abonosApartado?: AbonoContraDeposito[];
   },
 >(d: T) {
   return { ...d, saldoSinAsignar: saldoSinAsignar(d, d.asignaciones, d.abonosApartado ?? []) };
