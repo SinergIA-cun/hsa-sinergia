@@ -11,7 +11,13 @@ import {
   listarDepositos,
   loadComprobanteDeposito,
 } from './cuenta.js';
-import { crearApartado, listarApartados, cancelarApartado, convertirApartado } from './apartados.js';
+import {
+  crearApartado,
+  listarApartados,
+  cancelarApartado,
+  convertirApartado,
+  renovarApartado,
+} from './apartados.js';
 import { anularAbono, loadComprobanteAbono, registrarAbono } from './abonos.js';
 import { estadoCuentaBanquetero, estadoCuentaPublico } from './estadoCuenta.js';
 import { resumenBanqueteros } from './resumen.js';
@@ -185,6 +191,20 @@ export async function banqueteroRoutes(app: FastifyInstance): Promise<void> {
     async (req, reply) => {
       try {
         return { apartado: await cancelarApartado(app.prisma, req.params.apartadoId, req.body, req.user as Actor) };
+      } catch (e) {
+        if (e instanceof QuoteError) return reply.code(e.status).send({ error: e.message });
+        throw e;
+      }
+    },
+  );
+
+  // Otros siete días hábiles. No recibe fecha: el plazo es el de la casa.
+  app.patch<{ Params: { apartadoId: string } }>(
+    '/banqueteros/apartados/:apartadoId/renovar',
+    { preHandler: requireAdmin },
+    async (req, reply) => {
+      try {
+        return { apartado: await renovarApartado(app.prisma, req.params.apartadoId, req.body, req.user as Actor) };
       } catch (e) {
         if (e instanceof QuoteError) return reply.code(e.status).send({ error: e.message });
         throw e;

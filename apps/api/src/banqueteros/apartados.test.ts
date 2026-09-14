@@ -1,3 +1,4 @@
+import { hoyCivilMexico, vigenciaDeApartado, esDiaHabil } from '@hsa/shared';
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 import { randomUUID } from 'node:crypto';
@@ -13,7 +14,7 @@ import { getAvailability, getAgenda } from '../availability/service.js';
 import { cotizacionesDesplazadas } from '../quotes/empalmes.js';
 import { biEventos } from '../bi/service.js';
 import { ServerStorage } from '../payments/storage.js';
-import { crearApartado, cancelarApartado, convertirApartado, listarApartados, apartadoVivo } from './apartados.js';
+import { renovarApartado, crearApartado, cancelarApartado, convertirApartado, listarApartados, apartadoVivo } from './apartados.js';
 
 const storage = new ServerStorage(join(tmpdir(), 'hsa-apartado-test-' + randomUUID()));
 
@@ -40,14 +41,17 @@ function siguienteSabado(): string {
   return fecha.toISOString().slice(0, 10);
 }
 
-/** Un vencimiento cómodamente en el futuro: los apartados de 2033 no vencen hoy. */
-const VENCE = '2032-12-01';
+/*
+ * `vence` ya no se captura: son siete días hábiles calculados por el servidor.
+ * Los apartados de estas pruebas nacen vivos siempre, así que las que necesitan
+ * uno vencido lo fuerzan en la base, como ya lo hacían.
+ */
 
 async function nuevoApartado(over: Record<string, unknown> = {}) {
   const { apartado, avisos } = await crearApartado(
     prisma,
     (over.banqueteroId as string) ?? banqueteroId,
-    { fechaEvento: siguienteSabado(), spaceIds: [arcosId], vence: VENCE, ...over },
+    { fechaEvento: siguienteSabado(), spaceIds: [arcosId], ...over },
     actor,
   );
   return { apartado, avisos };
@@ -121,7 +125,7 @@ describe('un apartado bloquea la fecha', () => {
     const { apartado } = await crearApartado(
       prisma,
       banqueteroId,
-      { fechaEvento: fecha, spaceIds: [arcosId], vence: VENCE, deposito: 30_000, depositoMetodo: 'transferencia', depositoFecha: '2026-03-05' },
+      { fechaEvento: fecha, spaceIds: [arcosId], deposito: 30_000, depositoMetodo: 'transferencia', depositoFecha: '2026-03-05' },
       actor,
     );
 
@@ -145,7 +149,7 @@ describe('un apartado bloquea la fecha', () => {
     const { apartado } = await crearApartado(
       prisma,
       banqueteroId,
-      { fechaEvento: fecha, spaceIds: [arcosId], vence: VENCE },
+      { fechaEvento: fecha, spaceIds: [arcosId] },
       actor,
     );
     expect((await getAvailability(prisma, fecha, [arcosId])).spaces[0]!.level).toBe('bloqueada');
@@ -165,7 +169,7 @@ describe('un apartado bloquea la fecha', () => {
     const { apartado } = await crearApartado(
       prisma,
       banqueteroId,
-      { fechaEvento: fecha, spaceIds: [arcosId], vence: VENCE },
+      { fechaEvento: fecha, spaceIds: [arcosId] },
       actor,
     );
     await cancelarApartado(prisma, apartado.id, { motivo: 'ya no lo quiso' }, actor);
@@ -186,7 +190,7 @@ describe('un apartado bloquea la fecha', () => {
     const { apartado } = await crearApartado(
       prisma,
       banqueteroId,
-      { fechaEvento: fecha, spaceIds: [arcosId], vence: VENCE, nota: 'graduación 2033' },
+      { fechaEvento: fecha, spaceIds: [arcosId], nota: 'graduación 2033' },
       actor,
     );
 
@@ -226,7 +230,7 @@ describe('un apartado bloquea la fecha', () => {
     quotes.push(borrador.id);
     clients.push(borrador.clientId);
 
-    await crearApartado(prisma, banqueteroId, { fechaEvento: fecha, spaceIds: [arcosId], vence: VENCE }, actor);
+    await crearApartado(prisma, banqueteroId, { fechaEvento: fecha, spaceIds: [arcosId] }, actor);
 
     const avisos = await cotizacionesDesplazadas(prisma, actor);
     expect(avisos.some((d) => d.id === borrador.id)).toBe(false);
@@ -243,7 +247,7 @@ describe('un apartado bloquea la fecha', () => {
     await crearApartado(
       prisma,
       banqueteroId,
-      { fechaEvento: fecha, spaceIds: [arcosId], vence: VENCE, deposito: 50_000, depositoMetodo: 'efectivo', depositoFecha: '2026-03-05' },
+      { fechaEvento: fecha, spaceIds: [arcosId], deposito: 50_000, depositoMetodo: 'efectivo', depositoFecha: '2026-03-05' },
       actor,
     );
     const despues = await biEventos(prisma, rango);
@@ -265,13 +269,13 @@ describe('apartar sobre una fecha comprometida: avisa, no bloquea', () => {
     await updateStatus(prisma, q.id, 'formalizada', actor);
 
     await expect(
-      crearApartado(prisma, banqueteroId, { fechaEvento: fecha, spaceIds: [arcosId], vence: VENCE }, actor),
+      crearApartado(prisma, banqueteroId, { fechaEvento: fecha, spaceIds: [arcosId] }, actor),
     ).rejects.toMatchObject({ status: 409 });
 
     const { apartado, avisos } = await crearApartado(
       prisma,
       banqueteroId,
-      { fechaEvento: fecha, spaceIds: [arcosId], vence: VENCE, confirmar: true },
+      { fechaEvento: fecha, spaceIds: [arcosId], confirmar: true },
       actor,
     );
     expect(apartado.id).toBeTruthy();
@@ -414,7 +418,7 @@ describe('convertir el apartado', () => {
     const { apartado } = await crearApartado(
       prisma,
       banqueteroId,
-      { fechaEvento: fecha, spaceIds: [arcosId], vence: VENCE },
+      { fechaEvento: fecha, spaceIds: [arcosId] },
       actor,
     );
     const { quote } = await convertirApartado(prisma, storage, apartado.id, cuerpo(), actor);
@@ -449,8 +453,24 @@ describe('validaciones y permisos', () => {
     ).rejects.toThrow();
   });
 
-  it('un vencimiento ya pasado se rechaza (nacería sin bloquear nada)', async () => {
-    await expect(nuevoApartado({ vence: '2020-01-01' })).rejects.toMatchObject({ status: 400 });
+  it('la vigencia se calcula sola: son siete días hábiles y no se capturan', async () => {
+    /*
+     * Antes `vence` era un campo del formulario. Zod ignora las llaves que no
+     * conoce, así que mandarlo no truena — simplemente no hace nada, y esta
+     * prueba es la que lo sostiene: quien intente fijar el plazo desde afuera
+     * (una pantalla vieja en caché, un curl) recibe el plazo de la casa.
+     */
+    const { apartado } = await nuevoApartado({ vence: '2032-12-01' });
+    const esperado = vigenciaDeApartado(hoyCivilMexico());
+    expect(apartado.vence.toISOString()).toBe(esperado.toISOString());
+  });
+
+  it('el plazo salta los fines de semana y los días de descanso obligatorio', async () => {
+    // El detalle del conteo se prueba en @hsa/shared; aquí solo se confirma que
+    // el apartado usa ESE cálculo y no otro inventado en la API.
+    const { apartado } = await nuevoApartado();
+    expect(esDiaHabil(apartado.vence)).toBe(true);
+    expect(apartado.vence.getTime()).toBeGreaterThan(hoyCivilMexico().getTime());
   });
 
   /**
@@ -474,7 +494,7 @@ describe('validaciones y permisos', () => {
     const { apartado } = await crearApartado(
       prisma,
       banqueteroId,
-      { fechaEvento: siguienteSabado(), spaceIds: [arcosId], vence: VENCE },
+      { fechaEvento: siguienteSabado(), spaceIds: [arcosId] },
       ventas,
     );
     expect(apartado.createdById).toBe(ventas.id);
@@ -516,7 +536,7 @@ describe('validaciones y permisos', () => {
     const ok = await app.inject({
       method: 'POST',
       url: `/api/banqueteros/${banqueteroId}/apartados`,
-      payload: { fechaEvento: fecha, spaceIds: [arcosId], vence: VENCE },
+      payload: { fechaEvento: fecha, spaceIds: [arcosId] },
       cookies,
     });
     expect(ok.statusCode).toBe(201);
@@ -524,10 +544,69 @@ describe('validaciones y permisos', () => {
     const choque = await app.inject({
       method: 'POST',
       url: `/api/banqueteros/${banqueteroId}/apartados`,
-      payload: { fechaEvento: fecha, spaceIds: [arcosId], vence: VENCE },
+      payload: { fechaEvento: fecha, spaceIds: [arcosId] },
       cookies,
     });
     expect(choque.statusCode).toBe(409);
     expect(choque.json().error).toContain('Salón Los Arcos');
+  });
+});
+
+describe('renovar un apartado', () => {
+  /*
+   * Existe porque el plazo dejó de capturarse. Con la vigencia automática y sin
+   * ninguna salida, un "dame una semana más" solo se resolvía cancelando y
+   * volviendo a apartar: se perdía la continuidad del registro y con ella el
+   * rastro del dinero que ya había entrado a esa fecha.
+   */
+  it('da otros siete días hábiles desde hoy, sin recibir fecha', async () => {
+    const { apartado } = await nuevoApartado();
+    await prisma.apartadoFecha.update({
+      where: { id: apartado.id },
+      data: { vence: new Date('2020-01-01T00:00:00.000Z') },
+    });
+
+    const renovado = await renovarApartado(prisma, apartado.id, { confirmar: true }, actor);
+    expect(renovado.vence.toISOString()).toBe(vigenciaDeApartado(hoyCivilMexico()).toISOString());
+    expect(apartadoVivo(renovado)).toBe(true);
+  });
+
+  it('solo un admin puede renovar', async () => {
+    const { apartado } = await nuevoApartado();
+    const vendedor: Actor = { ...actor, role: 'ventas' };
+    await expect(renovarApartado(prisma, apartado.id, {}, vendedor)).rejects.toMatchObject({ status: 403 });
+  });
+
+  it('no se renueva uno cancelado ni uno ya convertido', async () => {
+    const { apartado } = await nuevoApartado();
+    await cancelarApartado(prisma, apartado.id, { motivo: 'ya no lo quiso' }, actor);
+    await expect(renovarApartado(prisma, apartado.id, {}, actor)).rejects.toMatchObject({ status: 409 });
+  });
+
+  it('avisa si alguien más ya tomó la fecha, y no procede sin confirmar', async () => {
+    /*
+     * Renovar a ciegas volvería a bloquear una fecha que la casa ya vendió
+     * mientras el apartado estaba vencido. Mismo trato que apartar sobre una
+     * fecha comprometida: avisa, no bloquea.
+     */
+    const fecha = siguienteSabado();
+    const { apartado } = await crearApartado(prisma, banqueteroId, { fechaEvento: fecha, spaceIds: [arcosId] }, actor);
+    await prisma.apartadoFecha.update({
+      where: { id: apartado.id },
+      data: { vence: new Date('2020-01-01T00:00:00.000Z') },
+    });
+    // La fecha quedó libre y se vendió: ahora hay una cotización encima.
+    const q = await createQuote(
+      prisma,
+      { fecha, invitados: 200, spaceIds: [arcosId], eventTypeId, client: { nombre: 'Quien sí llegó' } },
+      actor,
+    );
+    quotes.push(q.id);
+    await updateStatus(prisma, q.id, 'formalizada', actor);
+
+    await expect(renovarApartado(prisma, apartado.id, {}, actor)).rejects.toMatchObject({ status: 409 });
+    // Con confirmar procede, y el empalme queda a la vista de todos.
+    const renovado = await renovarApartado(prisma, apartado.id, { confirmar: true }, actor);
+    expect(apartadoVivo(renovado)).toBe(true);
   });
 });

@@ -550,6 +550,13 @@ export interface TotalesBanquetero {
   saldo: number;
   depositado: number;
   saldoSinAsignar: number;
+  /**
+   * Lo que el banquetero trae a favor: lo sin repartir MÁS lo que le devolvieron
+   * las fechas que soltó. Es el número que se le enseña a él.
+   */
+  saldoAFavor: number;
+  /** De ese saldo, lo que venía de fechas apartadas que vencieron o se cancelaron. */
+  saldoLiberado: number;
   apartadosVivos: number;
   apartadosPorVencer: number;
 }
@@ -588,15 +595,12 @@ export interface EstadoCuentaPublico {
     pagado: number;
     saldo: number;
   }[];
-  depositos: {
-    fechaISO: string;
-    monto: number;
-    metodo: PaymentMethod;
-    referencia: string | null;
-    saldoSinAsignar: number;
-    /** `folio` es el del RECIBO; `folioEvento`, el del evento al que se asignó. */
-    asignaciones: { folio: number; monto: number; folioEvento: string | null; etiqueta: string | null }[];
-  }[];
+  /*
+   * Aquí NO hay depósitos, a propósito.
+   * El banquetero ve su saldo a favor, su saldo por cubrir y sus eventos. La
+   * lista de depósitos deja ver de un vistazo cuánto factura la hacienda con él
+   * al año, y ése es un número de la casa. El servidor tampoco los manda.
+   */
   apartados: {
     fechaEventoISO: string;
     spaceIds: string[];
@@ -605,7 +609,15 @@ export interface EstadoCuentaPublico {
     venceISO: string;
     catalogo: string | null;
   }[];
-  totales: TotalesBanquetero;
+  /** Recortados a mano: del interno solo sale lo que el dueño autorizó publicar. */
+  totales: {
+    eventos: number;
+    /** Dinero suyo que todavía no se aplica a ningún evento. */
+    saldoAFavor: number;
+    /** Lo que falta por pagar de sus eventos. */
+    saldoPorCubrir: number;
+    apartadosVivos: number;
+  };
 }
 
 /**

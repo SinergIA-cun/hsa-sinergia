@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import type { PrismaClient } from '@hsa/database';
-import { hoyCivilMexico } from '@hsa/shared';
+import { hoyCivilMexico, vigenciaDeApartado } from '@hsa/shared';
 import { INCLUDE_ABONOS, totalAbonado } from './abonos.js';
 import { QuoteError, createQuote, type Actor } from '../quotes/service.js';
 import { getAvailability } from '../availability/service.js';
@@ -38,7 +38,12 @@ export const apartadoSchema = z
     depositoMetodo: z.enum(['efectivo', 'transferencia', 'tarjeta']).nullish(),
     /** Cuándo se RECIBIÓ el depósito (no cuándo se capturó ni cuándo se convierte). */
     depositoFecha: fechaISO.nullish(),
-    vence: fechaISO,
+    /*
+     * `vence` NO se captura. Antes era un campo del formulario y un plazo que
+     * cada quien teclea no es un plazo: era una negociación por apartado,
+     * imposible de sostener igual para todos. Ahora son siete días hábiles,
+     * contados por `vigenciaDeApartado`, y quien aparta no puede moverlos.
+     */
     nota: z.string().max(500).nullish(),
     /**
      * Apartar sobre una fecha ya comprometida AVISA, no bloquea: el mismo trato
@@ -94,11 +99,11 @@ export async function crearApartado(
   }
 
   const hoy = hoyCivilMexico();
-  // Un apartado que nace vencido no bloquea nada: aceptarlo en silencio sería
-  // guardar un registro que no hace lo único que se le pide.
-  if (dia(input.vence).getTime() < hoy.getTime()) {
-    throw new QuoteError(400, 'El vencimiento del apartado ya pasó.');
-  }
+  /*
+   * Siete días hábiles desde hoy. Ya no hay guardia de "nace vencido": con el
+   * plazo calculado desde el día de hoy, nacer vencido dejó de ser posible.
+   */
+  const vence = vigenciaDeApartado(hoy);
 
   // Mismo trato que los empalmes: avisa, no bloquea. Sin `confirmar` no se
   // aparta a ciegas sobre una fecha comprometida; con él, procede.
@@ -118,7 +123,7 @@ export async function crearApartado(
       fechaEvento: dia(input.fechaEvento),
       spaceIds: input.spaceIds,
       priceListId: input.priceListId ?? null,
-      vence: dia(input.vence),
+      vence,
       nota: input.nota ?? null,
       createdById: actor.id,
       // El depósito que se deja AL APARTAR es simplemente el primer abono. Se
@@ -166,6 +171,61 @@ export async function listarApartados(
     vivo: apartadoVivo(a, hoy),
     vencido: a.canceladoAt == null && a.quoteId == null && a.vence.getTime() < hoy.getTime(),
   }));
+}
+
+export const renovarApartadoSchema = z.object({ confirmar: z.boolean().default(false) });
+
+/**
+ * Le da al apartado otros siete días hábiles, contados desde hoy.
+ *
+ * Existe porque el plazo dejó de capturarse. Con la vigencia automática y sin
+ * ninguna salida, un "dame una semana más" solo se podía resolver cancelando y
+ * volviendo a apartar: se perdía la continuidad del registro y, con ella, el
+ * rastro del dinero que ya había entrado a esa fecha.
+ *
+ * NO recibe una fecha. Renovar da el plazo de la casa, el mismo que todos, y por
+ * eso no hace falta guardar un motivo ni una columna nueva: qué se hizo lo dice
+ * la acción, y quién y cuándo ya lo guarda la bitácora forense con el antes y el
+ * después de `vence`.
+ *
+ * Si el apartado ya venció y alguien más tomó la fecha, avisa y no procede sin
+ * `confirmar` — el mismo trato que apartar sobre una fecha comprometida. Renovar
+ * a ciegas volvería a bloquear una fecha que la casa ya vendió.
+ */
+export async function renovarApartado(
+  db: PrismaClient,
+  apartadoId: string,
+  rawInput: unknown,
+  actor: Actor,
+) {
+  if (actor.role !== 'admin') throw new QuoteError(403, 'Solo un admin puede renovar un apartado.');
+  const { confirmar } = renovarApartadoSchema.parse(rawInput ?? {});
+  const apartado = await db.apartadoFecha.findUnique({ where: { id: apartadoId } });
+  if (!apartado) throw new QuoteError(404, 'Apartado no encontrado');
+  if (apartado.canceladoAt) throw new QuoteError(409, 'El apartado está cancelado.');
+  if (apartado.quoteId) {
+    throw new QuoteError(409, 'Este apartado ya se convirtió en cotización: no hay plazo que renovar.');
+  }
+
+  const hoy = hoyCivilMexico();
+  // La disponibilidad se mira SIEMPRE, no solo si venció: aunque siga vivo, su
+  // propia fecha puede haberse comprometido de otra forma mientras tanto.
+  const fecha = apartado.fechaEvento.toISOString().slice(0, 10);
+  const disp = await getAvailability(db, fecha, apartado.spaceIds);
+  const choques = disp.spaces.filter((s) => s.level === 'bloqueada');
+  if (choques.length > 0 && !confirmar) {
+    throw new QuoteError(
+      409,
+      `${choques.map((s) => s.nombre).join(', ')} ya está comprometido el ${fecha}. ` +
+        'Confirma si de todos modos quieres renovar este apartado.',
+    );
+  }
+
+  return db.apartadoFecha.update({
+    where: { id: apartadoId },
+    data: { vence: vigenciaDeApartado(hoy) },
+    include: INCLUDE,
+  });
 }
 
 /**

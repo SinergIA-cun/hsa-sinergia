@@ -11,7 +11,7 @@ import { hashPassword } from '../auth/password.js';
 import { createQuote, softDeleteQuote, type Actor } from '../quotes/service.js';
 import { ServerStorage } from '../payments/storage.js';
 import { registrarDeposito, asignarDeposito, anularAsignacion } from './cuenta.js';
-import { crearApartado } from './apartados.js';
+import { crearApartado, cancelarApartado, convertirApartado } from './apartados.js';
 import { estadoCuentaBanquetero, estadoCuentaPublico } from './estadoCuenta.js';
 
 const storage = new ServerStorage(join(tmpdir(), 'hsa-ecb-test-' + randomUUID()));
@@ -188,6 +188,8 @@ describe('estado de cuenta del banquetero', () => {
       saldo: 0,
       depositado: 0,
       saldoSinAsignar: 0,
+      saldoAFavor: 0,
+      saldoLiberado: 0,
       apartadosVivos: 0,
       apartadosPorVencer: 0,
     });
@@ -212,17 +214,25 @@ describe('estado de cuenta del banquetero', () => {
   it('trae los apartados y los que vencen en los próximos 30 días', async () => {
     const b = await prisma.banquetero.create({ data: { nombre: `Vence ${randomUUID().slice(0, 6)}` } });
     banqueteros.push(b.id);
-    // Las fechas salen del reloj y NO de constantes: `crearApartado` rechaza un
-    // vencimiento pasado contra el día real, así que un `vence` fijo convierte
-    // la prueba en una bomba de tiempo que truena sola al llegar esa fecha.
+    /*
+     * Las fechas salen del reloj y NO de constantes, para que la prueba no sea
+     * una bomba de tiempo que truene sola al llegar esa fecha.
+     *
+     * El plazo se escribe en la base porque `crearApartado` ya no lo recibe: son
+     * siete días hábiles y punto. Lo que se prueba aquí es la VENTANA de 30 días
+     * del estado de cuenta, que necesita un apartado dentro y otro fuera — y con
+     * el plazo de la casa los dos caerían dentro.
+     */
     const hoy = hoyCivilMexico();
     const enDias = (n: number): string =>
       new Date(hoy.getTime() + n * 86_400_000).toISOString().slice(0, 10);
     const cerca = enDias(10); // dentro de la ventana de 30 días
     const lejos = enDias(300); // fuera de la ventana
 
-    await crearApartado(prisma, b.id, { fechaEvento: siguienteSabado(), spaceIds: [arcosId], vence: cerca }, actor);
-    await crearApartado(prisma, b.id, { fechaEvento: siguienteSabado(), spaceIds: [arcosId], vence: lejos }, actor);
+    const a1 = await crearApartado(prisma, b.id, { fechaEvento: siguienteSabado(), spaceIds: [arcosId] }, actor);
+    const a2 = await crearApartado(prisma, b.id, { fechaEvento: siguienteSabado(), spaceIds: [arcosId] }, actor);
+    await prisma.apartadoFecha.update({ where: { id: a1.apartado.id }, data: { vence: new Date(`${cerca}T00:00:00.000Z`) } });
+    await prisma.apartadoFecha.update({ where: { id: a2.apartado.id }, data: { vence: new Date(`${lejos}T00:00:00.000Z`) } });
 
     const ec = await estadoCuentaBanquetero(prisma, b.id, { hoy });
     expect(ec.apartados).toHaveLength(2);
@@ -266,7 +276,11 @@ describe('el enlace compartible de solo lectura', () => {
     const body = res.json();
     expect(body.banquetero.nombre).toContain('Ramírez EC');
     expect(body.eventos).toHaveLength(3);
-    expect(body.totales.saldoSinAsignar).toBe(0);
+    // `saldoSinAsignar` dejó de publicarse: el portal habla de saldo A FAVOR,
+    // que es lo mismo visto desde el banquetero y sin contar depósitos.
+    expect(body.totales.saldoSinAsignar).toBeUndefined();
+    expect(body.totales.saldoAFavor).toBe(0);
+    expect(body.totales.saldoPorCubrir).toBe(body.eventos.reduce((s: number, e: { saldo: number }) => s + e.saldo, 0));
   });
 
   it('un token inválido da 404', async () => {
@@ -312,12 +326,13 @@ describe('el enlace compartible de solo lectura', () => {
     expect(json).not.toContain('registradoById');
     expect(json).not.toContain('motivo interno que no se publica');
     expect(json).not.toContain(actor.id);
-    // La asignación anulada no se publica; el saldo vuelve a estar completo.
-    expect(publico!.depositos[0]!.asignaciones).toHaveLength(0);
-    expect(publico!.depositos[0]!.saldoSinAsignar).toBe(50_000);
+    // El depósito completo dejó de publicarse: ni el monto, ni su referencia, ni
+    // cómo se repartió. El saldo a favor sí, porque es dinero suyo.
+    expect(json).not.toContain('depositos');
+    expect(publico!.totales.saldoAFavor).toBe(50_000);
   });
 
-  it('un depósito anulado no se publica', async () => {
+  it('un depósito anulado no le sube el saldo a favor a nadie', async () => {
     const b = await prisma.banquetero.create({ data: { nombre: `Anulado ${randomUUID().slice(0, 6)}` } });
     banqueteros.push(b.id);
     const dep = await registrarDeposito(prisma, storage, b.id, { monto: 10_000, metodo: 'efectivo', fecha: '2026-03-05' }, actor);
@@ -325,7 +340,163 @@ describe('el enlace compartible de solo lectura', () => {
 
     const token = (await prisma.banquetero.findUniqueOrThrow({ where: { id: b.id } })).publicToken;
     const publico = await estadoCuentaPublico(prisma, token);
-    expect(publico!.depositos).toHaveLength(0);
-    expect(publico!.totales.depositado).toBe(0);
+    expect(publico!.totales.saldoAFavor).toBe(0);
+  });
+
+  it('el portal NO deja ver cuánto deposita el banquetero al año', async () => {
+    /*
+     * Decisión del dueño, y es de confidencialidad, no de diseño: la lista de
+     * depósitos deja ver de un vistazo cuánto factura la hacienda con este
+     * banquetero, y ése es un número de la casa.
+     *
+     * Se revisa sobre el JSON COMPLETO y no sobre las llaves que se esperan:
+     * antes `totales` se pasaba entero desde el objeto interno, así que cualquier
+     * campo nuevo se publicaba solo. Lo que esta prueba cuida es que no vuelva a
+     * pasar — por eso también busca el monto suelto, no solo el nombre del campo.
+     */
+    const b = await prisma.banquetero.create({ data: { nombre: `Privado ${randomUUID().slice(0, 6)}` } });
+    banqueteros.push(b.id);
+    const q = await evento(b.id, 'Del privado');
+    const dep = await registrarDeposito(prisma, storage, b.id, { monto: 1_234_567, metodo: 'transferencia', fecha: '2026-03-05', referencia: 'SPEI-PRIVADO' }, actor);
+    await registrarDeposito(prisma, storage, b.id, { monto: 890_000, metodo: 'transferencia', fecha: '2026-04-05' }, actor);
+    // Parte ya repartida, que es el caso real: así el histórico depositado
+    // (2,124,567) y el saldo a favor (2,000,000) son números DISTINTOS y se
+    // puede afirmar que uno sale y el otro no.
+    await asignarDeposito(prisma, storage, dep.id, { asignaciones: [{ quoteId: q.id, monto: 124_567 }] }, actor);
+
+    const token = (await prisma.banquetero.findUniqueOrThrow({ where: { id: b.id } })).publicToken;
+    const publico = await estadoCuentaPublico(prisma, token);
+    const json = JSON.stringify(publico);
+
+    expect(json).not.toContain('depositos');
+    expect(json).not.toContain('depositado');
+    expect(json).not.toContain('SPEI-PRIVADO');
+    // Ni el total histórico ni ningún depósito por separado.
+    expect(json).not.toContain('2124567');
+    expect(json).not.toContain('1234567');
+    expect(json).not.toContain('890000');
+    // Su saldo a favor sí: es dinero suyo y es de lo que se discute.
+    expect(publico!.totales.saldoAFavor).toBe(2_000_000);
+  });
+});
+
+describe('el dinero de una fecha que se soltó vuelve como saldo a favor', () => {
+  /*
+   * Regla del dueño: "si le hiciste algún tipo de aportación se pasa como saldo
+   * a favor del banquetero".
+   *
+   * Un apartado que venció o que se canceló ya no bloquea nada. Retenerle el
+   * dinero contra una fecha que se le quitó sería cobrarle por aire. No se MUEVE
+   * nada —no se crea un depósito, no se reescribe el abono—: el dinero entró el
+   * día que entró y así se factura; lo único que cambia es contra qué está
+   * apartado, y eso se calcula.
+   */
+  async function apartadoVencido(banqueteroId: string, deposito: number) {
+    const { apartado } = await crearApartado(
+      prisma,
+      banqueteroId,
+      {
+        fechaEvento: siguienteSabado(),
+        spaceIds: [arcosId],
+        deposito,
+        depositoMetodo: 'efectivo',
+        depositoFecha: '2026-03-05',
+      },
+      actor,
+    );
+    await prisma.apartadoFecha.update({
+      where: { id: apartado.id },
+      data: { vence: new Date('2020-01-01T00:00:00.000Z') },
+    });
+    return apartado;
+  }
+
+  it('un abono DIRECTO a una fecha vencida se vuelve saldo a favor', async () => {
+    const b = await prisma.banquetero.create({ data: { nombre: `Vencio ${randomUUID().slice(0, 6)}` } });
+    banqueteros.push(b.id);
+
+    const apartado = await apartadoVencido(b.id, 30_000);
+    // Antes de vencer no era saldo a favor: estaba comprometido con esa fecha.
+    await prisma.apartadoFecha.update({
+      where: { id: apartado.id },
+      data: { vence: new Date('2035-01-01T00:00:00.000Z') },
+    });
+    expect((await estadoCuentaBanquetero(prisma, b.id)).totales.saldoAFavor).toBe(0);
+
+    await prisma.apartadoFecha.update({
+      where: { id: apartado.id },
+      data: { vence: new Date('2020-01-01T00:00:00.000Z') },
+    });
+    const ec = await estadoCuentaBanquetero(prisma, b.id);
+    expect(ec.totales.saldoLiberado).toBe(30_000);
+    expect(ec.totales.saldoAFavor).toBe(30_000);
+  });
+
+  it('cancelar la fecha libera el dinero igual que dejarla vencer', async () => {
+    const b = await prisma.banquetero.create({ data: { nombre: `Cancelo ${randomUUID().slice(0, 6)}` } });
+    banqueteros.push(b.id);
+    const { apartado } = await crearApartado(
+      prisma,
+      b.id,
+      { fechaEvento: siguienteSabado(), spaceIds: [arcosId], deposito: 25_000, depositoMetodo: 'efectivo', depositoFecha: '2026-03-05' },
+      actor,
+    );
+    expect((await estadoCuentaBanquetero(prisma, b.id)).totales.saldoAFavor).toBe(0);
+
+    await cancelarApartado(prisma, apartado.id, { motivo: 'ya no lo quiso' }, actor);
+    expect((await estadoCuentaBanquetero(prisma, b.id)).totales.saldoAFavor).toBe(25_000);
+  });
+
+  it('un abono que salió de un DEPÓSITO vuelve al saldo de su depósito, sin duplicarse', async () => {
+    /*
+     * Éste es el que se puede contar dos veces. El dinero ya estaba en un
+     * depósito, así que al soltarse la fecha NO nace saldo nuevo: simplemente el
+     * depósito vuelve a tenerlo sin repartir. Si además se contara como liberado,
+     * el banquetero aparecería con el doble de dinero del que dio.
+     */
+    const b = await prisma.banquetero.create({ data: { nombre: `Desde dep ${randomUUID().slice(0, 6)}` } });
+    banqueteros.push(b.id);
+    const dep = await registrarDeposito(prisma, storage, b.id, { monto: 100_000, metodo: 'transferencia', fecha: '2026-03-05' }, actor);
+    const { apartado } = await crearApartado(prisma, b.id, { fechaEvento: siguienteSabado(), spaceIds: [arcosId] }, actor);
+    await asignarDeposito(prisma, storage, dep.id, { apartados: [{ apartadoId: apartado.id, monto: 40_000 }] }, actor);
+
+    // Comprometido con la fecha: al banquetero le quedan 60 mil disponibles.
+    expect((await estadoCuentaBanquetero(prisma, b.id)).totales.saldoAFavor).toBe(60_000);
+
+    await prisma.apartadoFecha.update({
+      where: { id: apartado.id },
+      data: { vence: new Date('2020-01-01T00:00:00.000Z') },
+    });
+    const ec = await estadoCuentaBanquetero(prisma, b.id);
+    expect(ec.totales.saldoAFavor).toBe(100_000);
+    // Y NO se contó por los dos lados: lo liberado va en cero porque el dinero
+    // volvió por su depósito.
+    expect(ec.totales.saldoLiberado).toBe(0);
+    expect(ec.totales.saldoSinAsignar).toBe(100_000);
+  });
+
+  it('una fecha CONVERTIDA no libera nada: su dinero es del contrato', async () => {
+    // El apartado convertido tampoco está vivo, pero su dinero ya se volvió pago
+    // de la cotización. Contarlo como saldo a favor sería regalarlo dos veces.
+    const b = await prisma.banquetero.create({ data: { nombre: `Convertido ${randomUUID().slice(0, 6)}` } });
+    banqueteros.push(b.id);
+    const { apartado } = await crearApartado(
+      prisma,
+      b.id,
+      { fechaEvento: siguienteSabado(), spaceIds: [arcosId], deposito: 20_000, depositoMetodo: 'efectivo', depositoFecha: '2026-03-05' },
+      actor,
+    );
+    const { quote } = await convertirApartado(prisma, storage, apartado.id, {
+      invitados: 250,
+      eventTypeId,
+      client: { nombre: 'Cliente del convertido' },
+    }, actor);
+    quotes.push(quote.id);
+
+    const ec = await estadoCuentaBanquetero(prisma, b.id);
+    expect(ec.totales.saldoLiberado).toBe(0);
+    expect(ec.totales.saldoAFavor).toBe(0);
+    // El dinero está donde debe: pagado en su evento.
+    expect(ec.eventos.find((e) => e.quoteId === quote.id)!.pagado).toBe(20_000);
   });
 });

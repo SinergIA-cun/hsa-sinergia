@@ -48,6 +48,21 @@ function siguienteSabado(): string {
 
 /** El "hoy" de las pruebas del vencimiento: fijo, para que no dependan del reloj. */
 const HOY = new Date('2035-06-01T00:00:00.000Z');
+
+/**
+ * Fija el vencimiento de un apartado recién creado.
+ *
+ * `crearApartado` ya no recibe `vence`: son siete días hábiles desde hoy de
+ * verdad. Estas pruebas corren contra un HOY de 2035, así que necesitan poner el
+ * plazo donde lo quieren. Se escribe en la base a propósito — lo que se está
+ * probando es el CONTEO del resumen, no cómo nace el plazo.
+ */
+async function conVence(apartadoId: string, iso: string) {
+  await prisma.apartadoFecha.update({
+    where: { id: apartadoId },
+    data: { vence: new Date(`${iso}T00:00:00.000Z`) },
+  });
+}
 const dentroDeLaVentana = '2035-06-20'; // < 30 días de HOY
 const fueraDeLaVentana = '2035-12-01'; // > 30 días de HOY
 
@@ -143,15 +158,17 @@ describe('resumen de banqueteros', () => {
     const cerca = await crearApartado(
       prisma,
       apartadorId,
-      { fechaEvento: siguienteSabado(), spaceIds: [arcosId], vence: dentroDeLaVentana },
+      { fechaEvento: siguienteSabado(), spaceIds: [arcosId] },
       actor,
     );
-    await crearApartado(
+    await conVence(cerca.apartado.id, dentroDeLaVentana);
+    const lejos = await crearApartado(
       prisma,
       apartadorId,
-      { fechaEvento: siguienteSabado(), spaceIds: [arcosId], vence: fueraDeLaVentana },
+      { fechaEvento: siguienteSabado(), spaceIds: [arcosId] },
       actor,
     );
+    await conVence(lejos.apartado.id, fueraDeLaVentana);
 
     const r = await resumenBanqueteros(prisma, { hoy: HOY });
     const fila = mio(r, apartadorId);
@@ -169,9 +186,10 @@ describe('resumen de banqueteros', () => {
     const { apartado } = await crearApartado(
       prisma,
       apartadorId,
-      { fechaEvento: siguienteSabado(), spaceIds: [arcosId], vence: fueraDeLaVentana },
+      { fechaEvento: siguienteSabado(), spaceIds: [arcosId] },
       actor,
     );
+    await conVence(apartado.id, fueraDeLaVentana);
     const antes = mio(await resumenBanqueteros(prisma, { hoy: HOY }), apartadorId).apartadosVivos;
     await cancelarApartado(prisma, apartado.id, { motivo: 'ya no lo quiso' }, actor);
     const r = await resumenBanqueteros(prisma, { hoy: HOY });
@@ -183,9 +201,10 @@ describe('resumen de banqueteros', () => {
     const { apartado } = await crearApartado(
       prisma,
       apartadorId,
-      { fechaEvento: siguienteSabado(), spaceIds: [arcosId], vence: '2035-05-01' },
+      { fechaEvento: siguienteSabado(), spaceIds: [arcosId] },
       actor,
     );
+    await conVence(apartado.id, '2035-05-01');
     // Vence antes de HOY: sigue en la tabla pero ya no bloquea ni cuenta.
     const r = await resumenBanqueteros(prisma, { hoy: HOY });
     expect(r.apartados.some((a) => a.apartadoId === apartado.id)).toBe(false);
