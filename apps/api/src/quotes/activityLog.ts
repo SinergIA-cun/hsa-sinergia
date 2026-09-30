@@ -24,7 +24,11 @@ export type LogTipo =
   /** Se cargó algo a la cuenta del evento en el punto de venta (migración `punto_de_venta_cargos`). */
   | 'cargo'
   /** Se anuló un cargo del punto de venta. */
-  | 'cargoAnulado';
+  | 'cargoAnulado'
+  /** Se le devolvió dinero al cliente (migración `devoluciones`). */
+  | 'devolucion'
+  /** Se anuló una devolución. */
+  | 'devolucionAnulada';
 
 /** Escribe una entrada de bitácora. Nunca lanza: la bitácora no debe tumbar la operación. */
 export async function logActivity(

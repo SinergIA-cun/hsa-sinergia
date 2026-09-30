@@ -1,6 +1,6 @@
 import type { PrismaClient } from '@hsa/database';
 import { hoyCivilMexico } from '@hsa/shared';
-import { saldoSinAsignar } from './cuenta.js';
+import { saldoDeDeposito } from './cuenta.js';
 import { apartadoVivo } from './apartados.js';
 import { totalAbonado } from './abonos.js';
 import { DIAS_POR_VENCER } from './estadoCuenta.js';
@@ -71,6 +71,7 @@ export async function resumenBanqueteros(
         monto: true,
         anuladoAt: true,
         asignaciones: { select: { monto: true, anuladoAt: true } },
+        devoluciones: { select: { monto: true, anuladoAt: true } },
       },
     }),
     db.apartadoFecha.findMany({
@@ -123,7 +124,7 @@ export async function resumenBanqueteros(
       publicToken: b.publicToken,
       eventos: eventosPorBanquetero.get(b.id) ?? 0,
       depositado: suyos.filter((d) => d.anuladoAt == null).reduce((s, d) => s + d.monto, 0),
-      saldoSinAsignar: suyos.reduce((s, d) => s + saldoSinAsignar(d, d.asignaciones), 0),
+      saldoSinAsignar: suyos.reduce((s, d) => s + saldoDeDeposito(d), 0),
       apartadosVivos: misApartados.length,
       apartadosPorVencer: misApartados.filter((a) => a.vence.getTime() <= limite.getTime()).length,
       // `vivos` ya viene ordenado por `vence` asc desde la consulta.

@@ -94,6 +94,10 @@ enum ActivityType {
   cargo
   /// Se anuló un cargo del punto de venta.
   cargoAnulado
+  /// Se le devolvió dinero al cliente.
+  devolucion
+  /// Se anuló una devolución.
+  devolucionAnulada
 }
 
 /// El catálogo completo de un año: renta, servicios, alimentos y parámetros.
@@ -212,17 +216,17 @@ model DjHoraExtraPrice {
 // Banqueteros (proveedores de alimentos). Se elige uno en la hoja operativa para
 // llevar registro de ventas por banquetero.
 model Banquetero {
-  id          String           @id @default(cuid())
-  nombre      String
+  id           String           @id @default(cuid())
+  nombre       String
   /// OBLIGATORIO al dar de alta (lo exige el esquema de la API), pero la columna
   /// es nullable: a los banqueteros que ya existían sin teléfono no se les puede
   /// inventar uno, y rellenarlos sería peor —un teléfono falso se ve igual que
   /// uno real—. La ficha los marca como incompletos hasta que alguien capture el
   /// de verdad.
-  telefono    String?
+  telefono     String?
   /// Opcional. Sirve para mandarle su estado de cuenta sin depender de WhatsApp.
-  correo      String?
-  activo      Boolean          @default(true)
+  correo       String?
+  activo       Boolean          @default(true)
   /// Token del enlace de solo lectura de su estado de cuenta, mismo formato que
   /// `Quote.publicToken` (32 hex sin guiones). Es lo que mata el hilo de WhatsApp.
   ///
@@ -237,14 +241,16 @@ model Banquetero {
   /// `20260819190000_banquetero_public_token` dice lo contrario en un comentario:
   /// se escribió por precaución antes de comprobarlo y ya no se puede corregir
   /// sin invalidar su checksum en `_prisma_migrations`. Manda esto.
-  publicToken String           @unique @default(dbgenerated("replace((gen_random_uuid())::text, '-'::text, ''::text)"))
-  createdAt   DateTime         @default(now())
-  quotes      Quote[]
+  publicToken  String           @unique @default(dbgenerated("replace((gen_random_uuid())::text, '-'::text, ''::text)"))
+  createdAt    DateTime         @default(now())
+  quotes       Quote[]
   /// Los depósitos a cuenta que ha hecho. El dinero entra a su cuenta y DESPUÉS
   /// se reparte entre sus eventos (decisión 3 del dueño).
-  depositos   PagoBanquetero[]
+  depositos    PagoBanquetero[]
   /// Las fechas que tiene apartadas sin cotización todavía.
-  apartados   ApartadoFecha[]
+  apartados    ApartadoFecha[]
+  /// El saldo a favor que se le ha devuelto.
+  devoluciones Devolucion[]
 }
 
 /// Un depósito del banquetero a la hacienda, ANTES de saber a qué eventos va.
@@ -291,6 +297,8 @@ model PagoBanquetero {
   /// Y los abonos a fechas apartadas que salieron de él. Cuentan contra el saldo
   /// sin asignar igual que las asignaciones, hasta que el apartado se convierte.
   abonosApartado  AbonoApartado[]
+  /// Lo que se le devolvió al banquetero del saldo sin repartir de este depósito.
+  devoluciones    Devolucion[]
 
   @@index([banqueteroId, fecha])
 }
@@ -551,6 +559,8 @@ model Quote {
   extras            QuoteExtra[]
   /// La cuenta del punto de venta: lo que se agregó después de contratar.
   cargos            CargoEvento[]
+  /// El dinero que se le devolvió al cliente de este evento.
+  devoluciones      Devolucion[]
   /// El id del evento en el BI, si vino de ahí (o se ligó a uno). Es la llave de
   /// la importación: mandar el mismo evento dos veces no lo duplica.
   ///
@@ -751,6 +761,8 @@ model User {
   cambiosFolio              CambioFolio[]    @relation("CambioFolioActor")
   cargosRegistrados         CargoEvento[]    @relation("CargoRegistradoBy")
   cargosAnulados            CargoEvento[]    @relation("CargoAnuladoBy")
+  devolucionesRegistradas   Devolucion[]     @relation("DevolucionRegistradaBy")
+  devolucionesAnuladas      Devolucion[]     @relation("DevolucionAnuladaBy")
 }
 
 /// La bitácora forense: quién tocó qué fila, con el contenido antes y después.
@@ -887,5 +899,49 @@ model CargoEvento {
   createdAt       DateTime      @default(now())
 
   @@index([quoteId])
+  @@index([fecha])
+}
+
+/// Dinero que la hacienda DEVUELVE: "si un cliente pagó de más, poder devolverle
+/// y que se marque" (el dueño).
+///
+/// Es de uno de dos lados, nunca de los dos:
+///  - **De un evento** (`quoteId`): a la renta (`destino = evento`) o a la cuenta
+///    del punto de venta (`destino = cargos`). Resta de lo pagado de ese lado.
+///  - **De un banquetero** (`banqueteroId`): de su saldo a favor. Si sale del saldo
+///    sin repartir de un depósito, `pagoBanqueteroId` dice de cuál; si no, sale
+///    del saldo que le liberaron sus apartados vencidos o cancelados.
+///
+/// No lleva folio de la serie I: el folio numera el dinero que ENTRA. Si el pago
+/// devuelto ya se había facturado, la nota de crédito (CFDI de egreso) se anota
+/// en `notaCreditoUuid`.
+model Devolucion {
+  id               String          @id @default(cuid())
+  quote            Quote?          @relation(fields: [quoteId], references: [id], onDelete: Restrict)
+  quoteId          String?
+  destino          PaymentDestino?
+  banquetero       Banquetero?     @relation(fields: [banqueteroId], references: [id], onDelete: Restrict)
+  banqueteroId     String?
+  pagoBanquetero   PagoBanquetero? @relation(fields: [pagoBanqueteroId], references: [id], onDelete: Restrict)
+  pagoBanqueteroId String?
+  monto            Int
+  metodo           PaymentMethod
+  formas           Json?
+  /// Cuándo SALIÓ el dinero.
+  fecha            DateTime
+  motivo           String
+  referencia       String?
+  notaCreditoUuid  String?
+  registradoBy     User?           @relation("DevolucionRegistradaBy", fields: [registradoById], references: [id])
+  registradoById   String?
+  anuladoAt        DateTime?
+  anuladoBy        User?           @relation("DevolucionAnuladaBy", fields: [anuladoById], references: [id])
+  anuladoById      String?
+  motivoAnulacion  String?
+  createdAt        DateTime        @default(now())
+
+  @@index([quoteId])
+  @@index([banqueteroId])
+  @@index([pagoBanqueteroId])
   @@index([fecha])
 }

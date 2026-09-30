@@ -407,6 +407,27 @@ export interface QuoteDetail {
   /** La cuenta del punto de venta: lo cargado después de contratar. */
   cuenta: CuentaEvento;
   productosPuntoDeVenta: ProductoPuntoDeVenta[];
+  devoluciones: Devolucion[];
+}
+
+/** Dinero que la hacienda devolvió: a un cliente o a un banquetero. No lleva folio I. */
+export interface Devolucion {
+  id: string;
+  quoteId: string | null;
+  destino: 'evento' | 'cargos' | null;
+  banqueteroId: string | null;
+  pagoBanqueteroId: string | null;
+  pagoBanquetero?: { id: string; folio: number | null } | null;
+  monto: number;
+  metodo: PaymentMethod;
+  formas: PartePago[] | null;
+  fecha: string;
+  motivo: string;
+  referencia: string | null;
+  notaCreditoUuid: string | null;
+  registradoBy?: { nombre: string } | null;
+  anuladoAt: string | null;
+  motivoAnulacion: string | null;
 }
 
 /** Un renglón de la cuenta del evento en el punto de venta. */
@@ -612,6 +633,8 @@ export interface TotalesBanquetero {
   saldoAFavor: number;
   /** De ese saldo, lo que venía de fechas apartadas que vencieron o se cancelaron. */
   saldoLiberado: number;
+  /** Lo que ya se le devolvió de su saldo a favor. */
+  devuelto: number;
   apartadosVivos: number;
   apartadosPorVencer: number;
 }
@@ -629,6 +652,7 @@ export interface EstadoCuentaBanquetero {
   depositos: DepositoBanquetero[];
   apartados: ApartadoFecha[];
   apartadosPorVencer: ApartadoFecha[];
+  devoluciones: Devolucion[];
   totales: TotalesBanquetero;
 }
 

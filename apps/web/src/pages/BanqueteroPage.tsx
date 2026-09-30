@@ -17,6 +17,8 @@ import { ContactoBanquetero } from '../components/banqueteros/ContactoBanquetero
 import { useAuth } from '../auth/auth.tsx';
 import type { Catalog, DepositoBanquetero, PriceList } from '../lib/types.ts';
 import { formatFolio } from '@hsa/shared';
+import { DevolucionForm } from '../components/DevolucionForm.tsx';
+import { ListaDevoluciones } from '../components/DevolucionesPanel.tsx';
 
 /**
  * La ficha del banquetero: la contraparte con cuenta.
@@ -53,13 +55,14 @@ export function BanqueteroPage() {
   });
 
   const [repartir, setRepartir] = useState<DepositoBanquetero | null>(null);
+  const [devolviendoLiberado, setDevolviendoLiberado] = useState(false);
   const [compartir, setCompartir] = useState(false);
   const [avisoReparto, setAvisoReparto] = useState('');
 
   if (isLoading) return <p className="text-charcoal-soft">Cargando la cuenta…</p>;
   if (isError || !data) return <p className="text-wine">No se pudo cargar este banquetero.</p>;
 
-  const { banquetero, eventos, depositos, apartados, apartadosPorVencer, totales } = data;
+  const { banquetero, eventos, depositos, apartados, apartadosPorVencer, totales, devoluciones = [] } = data;
   const publicUrl = `${window.location.origin}/b/${banquetero.publicToken}`;
   const repartido = totales.depositado - totales.saldoSinAsignar;
 
@@ -143,6 +146,28 @@ export function BanqueteroPage() {
                 </>
               )}
             </p>
+          )}
+          {/* Lo liberado por apartados no está en ningún depósito, así que se
+              devuelve desde aquí; lo de un depósito, desde su tarjeta. */}
+          {isAdmin && totales.saldoLiberado > 0 && !devolviendoLiberado && (
+            <button
+              type="button"
+              onClick={() => setDevolviendoLiberado(true)}
+              className="mt-2 text-xs font-medium text-wine hover:underline"
+            >
+              Devolver el saldo liberado
+            </button>
+          )}
+          {devolviendoLiberado && (
+            <DevolucionForm
+              sugerido={totales.saldoLiberado}
+              maximo={totales.saldoLiberado}
+              onEnviar={async (cuerpo) => {
+                await api.post(`/api/banqueteros/${id}/devoluciones`, cuerpo);
+                await invalidar();
+              }}
+              onCerrar={() => setDevolviendoLiberado(false)}
+            />
           )}
         </div>
         <Card className="p-5">
@@ -254,6 +279,12 @@ export function BanqueteroPage() {
           }}
           onRepartir={(d) => setRepartir(d)}
         />
+        {devoluciones.length > 0 && (
+          <Card className="mt-6 p-5">
+            <h3 className="mb-2 font-display text-lg text-ink">Devoluciones de su saldo a favor</h3>
+            <ListaDevoluciones devoluciones={devoluciones} isAdmin={isAdmin} onCambio={invalidar} />
+          </Card>
+        )}
       </section>
 
       <section className="mt-10">

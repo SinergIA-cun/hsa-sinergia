@@ -37,14 +37,17 @@ export async function productosDelEvento(
 
 /** La cuenta completa: renglones, sus pagos y el saldo. */
 export async function cuentaDelEvento(db: PrismaClient, quoteId: string) {
-  const [cargos, pagos] = await Promise.all([
+  const [cargos, pagos, devoluciones] = await Promise.all([
     db.cargoEvento.findMany({
       where: { quoteId },
       orderBy: [{ fecha: 'asc' }, { createdAt: 'asc' }],
       include: { registradoBy: { select: { nombre: true } } },
     }),
     db.payment.findMany({ where: { quoteId, destino: 'cargos' }, orderBy: [{ fecha: 'asc' }, { createdAt: 'asc' }] }),
+    db.devolucion.findMany({ where: { quoteId, destino: 'cargos', anuladoAt: null }, select: { monto: true } }),
   ]);
-  return { cargos, pagos, ...saldoDeCargos(cargos, pagos) };
+  // Lo devuelto de la cuenta resta de lo cobrado.
+  const netos = [...pagos, ...devoluciones.map((d) => ({ monto: -d.monto, anuladoAt: null }))];
+  return { cargos, pagos, ...saldoDeCargos(cargos, netos) };
 }
 

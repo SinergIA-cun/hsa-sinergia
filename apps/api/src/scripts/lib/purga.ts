@@ -39,6 +39,8 @@ export const TABLAS_MOVIMIENTO = [
   'AbonoApartado',
   // La cuenta del punto de venta de cada evento: se va con su evento.
   'CargoEvento',
+  // Lo devuelto a clientes y banqueteros: referencia eventos, banqueteros y depósitos.
+  'Devolucion',
   // Los cambios del folio de arranque: con la purga el folio vuelve a empezar,
   // así que su historial ya no describe nada.
   'CambioFolio',

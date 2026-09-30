@@ -247,6 +247,19 @@ además `cargosAdicionales: { total, pagado, saldo }` en `/eventos`, y los cobro
 `producto` es uno de `horaExtra`, `djHoraExtra`, `invitadoExtra`, `danos`, `multa`,
 `gastoImprevisto`, `otro`. Los montos traen IVA incluido.
 
+### `GET /api/bi/devoluciones`
+
+**Dinero que salió**: devoluciones a clientes y a banqueteros. No llevan folio de la serie I
+(que numera lo que entra). Lo devuelto **ya viene descontado** de lo pagado en el estado de
+cuenta de la hacienda, pero `/pagos` e `/ingresos` siguen trayendo el pago original tal cual:
+para el neto, restar esto.
+
+- **Rango sobre:** `fecha` (cuándo salió el dinero). Incluye las anuladas, marcadas.
+- `de`: `evento` (de la renta), `cargos` (de la cuenta del punto de venta) o `banquetero`
+  (de su saldo a favor; `depositoFolio` dice de qué depósito, `null` = del saldo que le
+  liberaron sus apartados).
+- `notaCreditoUuid`: la nota de crédito (CFDI de egreso), si el pago ya estaba facturado.
+
 ### Formas de pago
 
 `metodo` es uno de `efectivo`, `cheque`, `transferencia`, `tarjetaDebito`,
