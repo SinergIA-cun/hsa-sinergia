@@ -1,5 +1,6 @@
 import type { PrismaClient } from '@hsa/database';
 import { ownershipWhere, type Actor } from './service.js';
+import { apartadoVivo } from '../banqueteros/apartados.js';
 
 /**
  * Estatus que ocupan la fecha de verdad. Debe seguir a `BLOQUEO` de
@@ -20,7 +21,12 @@ export interface Desplazada {
   clienteNombre: string;
   fechaEvento: Date;
   spaceIds: string[];
-  bloqueadaPor: { id: string; clienteNombre: string };
+  /**
+   * Quién ocupa la fecha: otro evento comprometido, o un APARTADO de banquetero.
+   * El apartado bloquea igual que un evento (es dinero sobre la fecha) pero no es
+   * una cotización: su `id` es el del apartado y su nombre, el del banquetero.
+   */
+  bloqueadaPor: { id: string; clienteNombre: string; tipo: 'evento' | 'apartado' };
 }
 
 /**
@@ -44,11 +50,34 @@ export async function cotizacionesDesplazadas(db: PrismaClient, actor: Actor): P
   if (vivas.length === 0) return [];
 
   const fechas = [...new Set(vivas.map((v) => v.fechaEvento.getTime()))].map((t) => new Date(t));
-  const bloqueantes = await db.quote.findMany({
-    where: { status: { in: [...BLOQUEANTES] }, deletedAt: null, fechaEvento: { in: fechas } },
-    select: { id: true, fechaEvento: true, spaceIds: true, client: { select: { nombre: true } } },
-    orderBy: { createdAt: 'asc' },
-  });
+  const [eventos, apartados] = await Promise.all([
+    db.quote.findMany({
+      where: { status: { in: [...BLOQUEANTES] }, deletedAt: null, fechaEvento: { in: fechas } },
+      select: { id: true, fechaEvento: true, spaceIds: true, client: { select: { nombre: true } } },
+      orderBy: { createdAt: 'asc' },
+    }),
+    // Los apartados de banquetero también desplazan: bloquean la fecha igual que
+    // un evento formalizado. Antes no se miraban, y un borrador cuya fecha se
+    // apartó seguía viéndose libre para quien lo cotizó.
+    db.apartadoFecha.findMany({
+      where: { fechaEvento: { in: fechas }, quoteId: null, canceladoAt: null },
+      select: {
+        id: true,
+        fechaEvento: true,
+        spaceIds: true,
+        canceladoAt: true,
+        quoteId: true,
+        vence: true,
+        banquetero: { select: { nombre: true } },
+      },
+      orderBy: { createdAt: 'asc' },
+    }),
+  ]);
+  const bloqueantes = [
+    ...eventos.map((e) => ({ ...e, nombre: e.client.nombre, tipo: 'evento' as const })),
+    // Un apartado vencido ya soltó la fecha (se libera solo, sin que nadie lo toque).
+    ...apartados.filter((a) => apartadoVivo(a)).map((a) => ({ ...a, nombre: a.banquetero.nombre, tipo: 'apartado' as const })),
+  ];
   if (bloqueantes.length === 0) return [];
 
   const out: Desplazada[] = [];
@@ -65,7 +94,7 @@ export async function cotizacionesDesplazadas(db: PrismaClient, actor: Actor): P
       clienteNombre: v.client.nombre,
       fechaEvento: v.fechaEvento,
       spaceIds: v.spaceIds,
-      bloqueadaPor: { id: choque.id, clienteNombre: choque.client.nombre },
+      bloqueadaPor: { id: choque.id, clienteNombre: choque.nombre, tipo: choque.tipo },
     });
   }
   return out;

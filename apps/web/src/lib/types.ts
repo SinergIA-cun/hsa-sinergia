@@ -821,7 +821,8 @@ export interface Desplazada {
   clienteNombre: string;
   fechaEvento: string;
   spaceIds: string[];
-  bloqueadaPor: { id: string; clienteNombre: string };
+  /** Otro evento comprometido, o un apartado de banquetero (su id y su nombre). */
+  bloqueadaPor: { id: string; clienteNombre: string; tipo: 'evento' | 'apartado' };
 }
 
 export type Semaforo = 'verde' | 'amarillo' | 'rojo';
