@@ -28,8 +28,8 @@ export function AvisoEmpalmes() {
           : `${items.length} cotizaciones perdieron su fecha`}
       </h2>
       <p className="mb-3 text-sm text-charcoal-soft">
-        El espacio ya quedó apartado por otro evento. Hay que moverlas de fecha o avisarle al
-        cliente y devolverle su dinero.
+        El espacio ya quedó apartado por otro evento o por un banquetero. Hay que moverlas de
+        fecha o avisarle al cliente y devolverle su dinero.
       </p>
       <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {items.map((d) => (
@@ -43,7 +43,9 @@ export function AvisoEmpalmes() {
                 Evento {formatEventDate(d.fechaEvento, 'long')}
               </p>
               <p className="mt-1 truncate text-[0.7rem] font-semibold text-wine">
-                Apartada por {d.bloqueadaPor.clienteNombre}
+                {d.bloqueadaPor.tipo === 'apartado'
+                  ? `Fecha apartada por el banquetero ${d.bloqueadaPor.clienteNombre}`
+                  : `Apartada por ${d.bloqueadaPor.clienteNombre}`}
               </p>
             </Link>
           </li>

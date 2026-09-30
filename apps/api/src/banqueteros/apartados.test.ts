@@ -209,18 +209,13 @@ describe('un apartado bloquea la fecha', () => {
   });
 
   /**
-   * Los avisos de empalme (`cotizacionesDesplazadas`) siguen mirando SOLO `Quote`.
-   * Es una divergencia a propósito y hay que fijarla: `BLOQUEANTES` de
-   * `empalmes.ts` dice "debe seguir a `BLOQUEO` de availability", y desde este
-   * plan availability bloquea por dos motivos —cotización comprometida y
-   * apartado— mientras el aviso solo conoce el primero. Sumarle los apartados
-   * cambiaría la forma de `Desplazada` (`bloqueadaPor` es una cotización, con id
-   * y cliente) y eso es interfaz, no API: queda para la Task 5.
+   * Los avisos de empalme (`cotizacionesDesplazadas`) miran también los apartados.
    *
-   * Mientras tanto el borrador desplazado por un apartado NO avisa, pero tampoco
-   * se puede guardar encima: `assertEspaciosDisponibles` lo rechaza con 409.
+   * Antes solo conocían `Quote` —divergencia documentada con availability, que sí
+   * bloquea por apartado—, y un borrador cuya fecha apartó un banquetero seguía
+   * viéndose libre para quien lo cotizó. Se cerró el 30-sep-2026.
    */
-  it('un apartado bloquea pero todavía NO produce aviso de empalme (divergencia documentada)', async () => {
+  it('un apartado desplaza al borrador y lo avisa; cancelado, deja de avisar', async () => {
     const fecha = siguienteSabado();
     const borrador = await createQuote(
       prisma,
@@ -230,10 +225,13 @@ describe('un apartado bloquea la fecha', () => {
     quotes.push(borrador.id);
     clients.push(borrador.clientId);
 
-    await crearApartado(prisma, banqueteroId, { fechaEvento: fecha, spaceIds: [arcosId] }, actor);
+    const { apartado } = await crearApartado(prisma, banqueteroId, { fechaEvento: fecha, spaceIds: [arcosId] }, actor);
 
-    const avisos = await cotizacionesDesplazadas(prisma, actor);
-    expect(avisos.some((d) => d.id === borrador.id)).toBe(false);
+    const aviso = (await cotizacionesDesplazadas(prisma, actor)).find((d) => d.id === borrador.id);
+    expect(aviso?.bloqueadaPor).toMatchObject({ id: apartado.id, tipo: 'apartado' });
+
+    await cancelarApartado(prisma, apartado.id, { motivo: 'ya no la quiere' }, actor);
+    expect((await cotizacionesDesplazadas(prisma, actor)).some((d) => d.id === borrador.id)).toBe(false);
   });
 
   it('NO suma a ningún reporte de ingreso comprometido: no tiene total', async () => {

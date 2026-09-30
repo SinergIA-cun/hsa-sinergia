@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { PrismaClient } from '@hsa/database';
+import { enTransaccionConActor, type PrismaClient } from '@hsa/database';
 import {
   hoyCivilMexico,
   metodoCapturaSchema,
@@ -315,16 +315,16 @@ export async function asignarDeposito(
   const deposito = await cargarDeposito(db, depositoId);
   if (deposito.anuladoAt) throw new QuoteError(409, 'El depósito está anulado: ya no se puede repartir.');
 
-  // Todo se valida ANTES de escribir: un reparto que se pasa del saldo no debe
-  // dejar los primeros pagos hechos y el último rechazado.
-  const disponible = saldoDeDeposito(deposito);
   const pedido =
     input.asignaciones.reduce((s, a) => s + a.monto, 0) +
     input.apartados.reduce((s, a) => s + a.monto, 0);
-  if (pedido > disponible) {
+  // Aviso temprano (sin bloquear nada): el tope que manda es el de adentro de la
+  // transacción, con la fila del depósito bloqueada.
+  const disponibleAntes = saldoDeDeposito(deposito);
+  if (pedido > disponibleAntes) {
     throw new QuoteError(
       409,
-      `El reparto ($${pedido}) se pasa del saldo sin asignar ($${disponible}) de este depósito.`,
+      `El reparto ($${pedido}) se pasa del saldo sin asignar ($${disponibleAntes}) de este depósito.`,
     );
   }
 
@@ -377,62 +377,91 @@ export async function asignarDeposito(
     }
   }
 
-  const fechaDeposito = deposito.fecha.toISOString().slice(0, 10);
-  const pagos = [];
-  for (const a of input.asignaciones) {
-    const { payment, nuevoEstatus } = await registerPayment(
-      db,
-      storage,
-      a.quoteId,
-      {
-        monto: a.monto,
-        // El concepto se DEDUCE del saldo del evento; 'aCuenta' es solo el
-        // respaldo para las cotizaciones sin plan de pagos.
-        concepto: 'aCuenta',
-        fecha: fechaDeposito,
-        referencia: deposito.referencia ?? undefined,
-      },
-      actor,
-      undefined,
-      {
-        pagoBanqueteroId: deposito.id,
-        // Repartir no es dinero nuevo: el pago lleva el folio del depósito, que
-        // es la hoja foliada que se llenó cuando el dinero entró.
-        folio: deposito.folio,
-        ...formaHeredada(deposito),
-        // El comprobante del depósito es el comprobante de cada recibo que sale
-        // de él: hay un solo movimiento bancario detrás de los tres pagos.
-        comprobanteKey: deposito.comprobanteKey,
-        comprobanteMime: deposito.comprobanteMime,
-      },
-    );
-    pagos.push({
-      quoteId: a.quoteId,
-      paymentId: payment.id,
-      folio: payment.folio,
-      monto: payment.monto,
-      fecha: payment.fecha,
-      concepto: payment.concepto,
-      nuevoEstatus,
-    });
-  }
+  /*
+   * Todo el reparto en UNA transacción: o quedan todos los pagos y abonos, o no
+   * queda ninguno. Antes se validaba al principio y se escribía en un ciclo: si
+   * la tercera asignación fallaba, las dos primeras ya estaban hechas.
+   *
+   * Y con la fila del depósito BLOQUEADA (`FOR UPDATE`): dos repartos del mismo
+   * depósito al mismo tiempo —dos tabletas— se forman en fila, y el segundo lee
+   * el saldo ya descontado por el primero. Sin el bloqueo los dos veían el saldo
+   * completo y juntos lo sobregiraban.
+   */
+  const { pagos, abonos } = await enTransaccionConActor(
+    async (tx) => {
+      // `registerPayment` pide un `PrismaClient`; el de la transacción lo es menos
+      // `$transaction`/`$connect`, que ese camino no usa (verificado).
+      const txDb = tx as unknown as PrismaClient;
+      await tx.$queryRaw`SELECT id FROM "PagoBanquetero" WHERE id = ${depositoId} FOR UPDATE`;
+      const disponible = saldoDeDeposito(await cargarDeposito(txDb, depositoId));
+      if (pedido > disponible) {
+        throw new QuoteError(
+          409,
+          `El reparto ($${pedido}) se pasa del saldo sin asignar ($${disponible}) de este depósito.`,
+        );
+      }
 
-  // Y los abonos a fechas apartadas. Van DESPUÉS de los pagos y con la misma
-  // fecha del depósito: son el mismo dinero, solo que a un destino que todavía
-  // no tiene precio.
-  const abonos = [];
-  for (const a of input.apartados) {
-    const abono = await abonarDesdeDeposito(db, {
-      apartadoId: a.apartadoId,
-      depositoId: deposito.id,
-      monto: a.monto,
-      metodo: formaHeredada(deposito).metodo,
-      folio: deposito.folio,
-      fechaDeposito: deposito.fecha,
-      actorId: actor.id,
-    });
-    abonos.push({ apartadoId: a.apartadoId, abonoId: abono.id, monto: abono.monto, fecha: abono.fecha });
-  }
+      const fechaDeposito = deposito.fecha.toISOString().slice(0, 10);
+      const pagos = [];
+      for (const a of input.asignaciones) {
+        const { payment, nuevoEstatus } = await registerPayment(
+          txDb,
+          storage,
+          a.quoteId,
+          {
+            monto: a.monto,
+            // El concepto se DEDUCE del saldo del evento; 'aCuenta' es solo el
+            // respaldo para las cotizaciones sin plan de pagos.
+            concepto: 'aCuenta',
+            fecha: fechaDeposito,
+            referencia: deposito.referencia ?? undefined,
+          },
+          actor,
+          undefined,
+          {
+            pagoBanqueteroId: deposito.id,
+            // Repartir no es dinero nuevo: el pago lleva el folio del depósito, que
+            // es la hoja foliada que se llenó cuando el dinero entró.
+            folio: deposito.folio,
+            ...formaHeredada(deposito),
+            // El comprobante del depósito es el comprobante de cada recibo que sale
+            // de él: hay un solo movimiento bancario detrás de los tres pagos.
+            comprobanteKey: deposito.comprobanteKey,
+            comprobanteMime: deposito.comprobanteMime,
+          },
+        );
+        pagos.push({
+          quoteId: a.quoteId,
+          paymentId: payment.id,
+          folio: payment.folio,
+          monto: payment.monto,
+          fecha: payment.fecha,
+          concepto: payment.concepto,
+          nuevoEstatus,
+        });
+      }
+
+      // Y los abonos a fechas apartadas. Van DESPUÉS de los pagos y con la misma
+      // fecha del depósito: son el mismo dinero, solo que a un destino que todavía
+      // no tiene precio.
+      const abonos = [];
+      for (const a of input.apartados) {
+        const abono = await abonarDesdeDeposito(tx, {
+          apartadoId: a.apartadoId,
+          depositoId: deposito.id,
+          monto: a.monto,
+          metodo: formaHeredada(deposito).metodo,
+          folio: deposito.folio,
+          fechaDeposito: deposito.fecha,
+          actorId: actor.id,
+        });
+        abonos.push({ apartadoId: a.apartadoId, abonoId: abono.id, monto: abono.monto, fecha: abono.fecha });
+      }
+      return { pagos, abonos };
+    },
+    db,
+    { timeout: 60_000 },
+  );
 
   return { deposito: conSaldo(await cargarDeposito(db, depositoId)), pagos, abonos };
 }

@@ -113,6 +113,12 @@ export async function enTransaccionConActor<T>(
   fn: (tx: Prisma.TransactionClient) => Promise<T>,
   /** El cliente sobre el que abrir la transacción. Por omisión, el singleton. */
   cliente: PrismaClient = prisma,
+  /**
+   * `timeout` en ms. El de Prisma es 5 s, y una transacción que registra varios
+   * pagos —cada uno reclasifica conceptos y actualiza la foto del histórico— lo
+   * puede pasar sin estar colgada.
+   */
+  opciones: { timeout?: number } = {},
 ): Promise<T> {
   const ctx = contextoActor();
   return cliente.$transaction(async (tx) => {
@@ -125,7 +131,7 @@ export async function enTransaccionConActor<T>(
     } finally {
       if (ctx) ctx.enTransaccion = false;
     }
-  });
+  }, opciones);
 }
 
 export type { ContextoActor };

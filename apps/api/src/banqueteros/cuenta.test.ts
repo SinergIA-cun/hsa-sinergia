@@ -484,3 +484,22 @@ describe('el pago que nace de una asignación lleva la fecha del DEPÓSITO', () 
     expect(pago.comprobanteKey).toBe(dep.comprobanteKey);
   });
 });
+
+describe('reparto transaccional', () => {
+  it('dos repartos simultáneos del mismo depósito por el total: pasa uno solo, sin sobregirar', async () => {
+    const dep = await nuevoDeposito(100_000);
+    const [a, b] = [await nuevoEvento(banqueteroId), await nuevoEvento(banqueteroId)];
+    const resultados = await Promise.allSettled([
+      asignarDeposito(prisma, storage, dep.id, { asignaciones: [{ quoteId: a.id, monto: 100_000 }] }, actor),
+      asignarDeposito(prisma, storage, dep.id, { asignaciones: [{ quoteId: b.id, monto: 100_000 }] }, actor),
+    ]);
+    expect(resultados.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
+    const rechazo = resultados.find((r) => r.status === 'rejected') as PromiseRejectedResult;
+    expect(rechazo.reason).toMatchObject({ status: 409 });
+    const aplicado = await prisma.payment.aggregate({
+      where: { pagoBanqueteroId: dep.id, anuladoAt: null },
+      _sum: { monto: true },
+    });
+    expect(aplicado._sum.monto).toBe(100_000);
+  });
+});
