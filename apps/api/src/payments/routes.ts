@@ -13,6 +13,22 @@ import {
   loadComprobantePublico,
 } from './service.js';
 import { ServerStorage } from './storage.js';
+import { estadoFolios, fijarSiguienteFolio } from './folios.js';
+
+/**
+ * Las partes de un pago dividido llegan en multipart como UN campo con JSON
+ * (`[{"forma":"tarjetaDebito","monto":6000},…]`): un formulario no sabe mandar
+ * arreglos de objetos. Un JSON roto se deja pasar como texto para que el esquema
+ * lo rechace con 400, en vez de ignorarlo y registrar el pago sin partes.
+ */
+export function formasDeMultipart(raw: string | undefined): unknown {
+  if (!raw) return undefined;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return raw;
+  }
+}
 
 export async function paymentRoutes(app: FastifyInstance): Promise<void> {
   const storage = new ServerStorage(app.config.COMPROBANTES_DIR);
@@ -37,7 +53,8 @@ export async function paymentRoutes(app: FastifyInstance): Promise<void> {
       }
       rawInput = {
         monto: fields.monto != null ? Number(fields.monto) : undefined,
-        metodo: fields.metodo,
+        metodo: fields.metodo || undefined,
+        formas: formasDeMultipart(fields.formas),
         concepto: fields.concepto,
         fecha: fields.fecha,
         referencia: fields.referencia || undefined,
@@ -118,6 +135,17 @@ export async function paymentRoutes(app: FastifyInstance): Promise<void> {
       }
     },
   );
+
+  // El folio con el que sigue la serie I de la hoja foliada (solo admin).
+  app.get('/admin/folios', { preHandler: requireAdmin }, async () => estadoFolios(app.prisma));
+  app.put('/admin/folios', { preHandler: requireAdmin }, async (req, reply) => {
+    try {
+      return await fijarSiguienteFolio(app.prisma, req.body, req.user as Actor);
+    } catch (e) {
+      if (e instanceof QuoteError) return reply.code(e.status).send({ error: e.message });
+      throw e; // ZodError → 400 vía el handler global
+    }
+  });
 
   // Proxy interno de la imagen del comprobante (vendedora/admin, con ownership).
   app.get<{ Params: { id: string; paymentId: string } }>(

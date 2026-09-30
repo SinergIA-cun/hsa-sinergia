@@ -3,6 +3,7 @@ import { requireAdmin, requireAuth } from '../auth/plugin.js';
 import { QuoteError, type Actor } from '../quotes/service.js';
 import { ServerStorage } from '../payments/storage.js';
 import { anularSchema } from '../payments/service.js';
+import { formasDeMultipart } from '../payments/routes.js';
 import {
   registrarDeposito,
   asignarDeposito,
@@ -65,7 +66,8 @@ export async function banqueteroRoutes(app: FastifyInstance): Promise<void> {
         }
         rawInput = {
           monto: fields.monto != null ? Number(fields.monto) : undefined,
-          metodo: fields.metodo,
+          metodo: fields.metodo || undefined,
+          formas: formasDeMultipart(fields.formas),
           fecha: fields.fecha,
           referencia: fields.referencia || undefined,
         };
@@ -263,7 +265,8 @@ export async function banqueteroRoutes(app: FastifyInstance): Promise<void> {
         }
         rawInput = {
           monto: fields.monto != null ? Number(fields.monto) : undefined,
-          metodo: fields.metodo,
+          metodo: fields.metodo || undefined,
+          formas: formasDeMultipart(fields.formas),
           fecha: fields.fecha,
           referencia: fields.referencia || undefined,
         };

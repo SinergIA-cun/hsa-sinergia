@@ -1546,6 +1546,9 @@ export async function getByToken(db: PrismaClient, token: string) {
       monto: p.monto,
       concepto: p.concepto,
       metodo: p.metodo,
+      // Las partes de un pago dividido, para que el recibo diga cuánto fue con
+      // cada tarjeta. No es dato sensible: el cliente es quien pagó.
+      formas: p.formas,
       fecha: p.fecha.toISOString(),
       tieneComprobante: Boolean(p.comprobanteKey),
     }));

@@ -4,11 +4,11 @@ import { Ban, FileImage, Paperclip, Split } from 'lucide-react';
 import { api } from '../../lib/api.ts';
 import { formatMXN } from '../../lib/money.ts';
 import { formatEventDate } from '../../lib/date.ts';
-import { Button, Card, Field, MoneyInput, SelectInput, TextInput } from '../ui.tsx';
+import { describirFormasPago, formatFolio } from '@hsa/shared';
+import { Button, Card, Field, MoneyInput, TextInput } from '../ui.tsx';
+import { FormasPagoCampo, errorFormas, formasEnFormData, formasIniciales } from '../FormasPagoCampo.tsx';
 import { apiErrorMessage } from '../admin/shared.tsx';
-import type { DepositoBanquetero, PaymentMethod } from '../../lib/types.ts';
-
-const METODOS: PaymentMethod[] = ['transferencia', 'efectivo', 'tarjeta'];
+import type { DepositoBanquetero } from '../../lib/types.ts';
 
 interface Props {
   banqueteroId: string;
@@ -99,7 +99,8 @@ function DepositoCard({
         <div className="min-w-0">
           <p className="font-display text-2xl text-ink">{formatMXN(d.monto)}</p>
           <p className="text-xs text-charcoal-soft">
-            Recibido {formatEventDate(d.fecha)} · {d.metodo}
+            <span className="font-semibold text-ink">{formatFolio(d.folio)}</span> · Recibido{' '}
+            {formatEventDate(d.fecha)} · {describirFormasPago(d)}
             {d.referencia ? ` · ${d.referencia}` : ''}
           </p>
           {d.anuladoAt && (
@@ -139,7 +140,7 @@ function DepositoCard({
                   {a.quote?.folio ?? 'Evento'}
                 </Link>
                 <span className="ml-2 text-xs text-charcoal-soft">
-                  recibo #{a.folio} · {a.concepto}
+                  {formatFolio(a.folio)} · {a.concepto}
                 </span>
               </span>
               <span className="flex items-center gap-3">
@@ -266,7 +267,7 @@ function RegistrarDeposito({
   onCambio: () => Promise<void>;
 }) {
   const [monto, setMonto] = useState('');
-  const [metodo, setMetodo] = useState<PaymentMethod>('transferencia');
+  const [formas, setFormas] = useState(() => formasIniciales());
   const [fecha, setFecha] = useState(() => new Date().toISOString().slice(0, 10));
   const [referencia, setReferencia] = useState('');
   const [comprobante, setComprobante] = useState<File | null>(null);
@@ -283,11 +284,16 @@ function RegistrarDeposito({
       setError('El monto va en pesos enteros, sin centavos.');
       return;
     }
+    const errorDeFormas = errorFormas(formas, Number(monto));
+    if (errorDeFormas) {
+      setError(errorDeFormas);
+      return;
+    }
     setBusy(true);
     try {
       const fd = new FormData();
       fd.set('monto', monto.trim());
-      fd.set('metodo', metodo);
+      formasEnFormData(fd, formas);
       fd.set('fecha', fecha);
       if (referencia.trim()) fd.set('referencia', referencia.trim());
       if (comprobante) fd.set('comprobante', comprobante);
@@ -303,6 +309,7 @@ function RegistrarDeposito({
       setMonto('');
       setReferencia('');
       setComprobante(null);
+      setFormas(formasIniciales());
       setFileKey((k) => k + 1);
       await onCambio();
     } catch (err) {
@@ -323,15 +330,7 @@ function RegistrarDeposito({
         <Field label="Monto (pesos enteros)">
           <MoneyInput value={monto} onValue={setMonto} placeholder="ej. 323,345" />
         </Field>
-        <Field label="Forma de pago">
-          <SelectInput value={metodo} onChange={(e) => setMetodo(e.target.value as PaymentMethod)}>
-            {METODOS.map((m) => (
-              <option key={m} value={m}>
-                {m}
-              </option>
-            ))}
-          </SelectInput>
-        </Field>
+        <FormasPagoCampo value={formas} onChange={setFormas} monto={Number(monto) || 0} />
         <Field label="Fecha en que se recibió" hint="Es la fecha fiscal de los pagos del reparto.">
           <TextInput type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} />
         </Field>

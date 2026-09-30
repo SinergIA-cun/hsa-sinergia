@@ -6,6 +6,7 @@ import { formatMXN } from '../lib/money.ts';
 import { formatEventDate } from '../lib/date.ts';
 import type { Quote, EstadoCuenta } from '../lib/types.ts';
 import { MARCA } from '../lib/marca.ts';
+import { FORMA_PAGO_LABEL, formatFolio, partesDePago, type MetodoPago } from '@hsa/shared';
 
 interface PublicPago {
   id: string;
@@ -13,6 +14,8 @@ interface PublicPago {
   monto: number;
   concepto: string;
   metodo: string;
+  /** Las partes si el pago vino dividido ("débito $6,000 · crédito $4,000"). */
+  formas: unknown;
   fecha: string;
   tieneComprobante: boolean;
 }
@@ -27,11 +30,6 @@ const CONCEPTO_LABEL: Record<string, string> = {
   complemento: 'Complemento',
   aCuenta: 'Abono a cuenta',
   finiquito: 'Finiquito',
-};
-const METODO_LABEL: Record<string, string> = {
-  efectivo: 'Efectivo',
-  transferencia: 'Transferencia',
-  tarjeta: 'Tarjeta',
 };
 
 /** Recibo imprimible de un pago, visible por el cliente (por token). */
@@ -89,13 +87,25 @@ export function ReciboPage() {
       <div className="recibo-doc">
         <div className="marca">{MARCA.nombre}<small>{MARCA.anio}</small></div>
         <div className="recibo-title">Recibo de pago</div>
-        <div className="recibo-folio">N.º {pago.folio}</div>
+        {/* La serie I de las hojas foliadas: el recibo sigue la misma numeración
+            que el papel, así que es el número que se busca en la carpeta. */}
+        <div className="recibo-folio">Folio {formatFolio(pago.folio)}</div>
 
         <div className="recibo-monto">{formatMXN(pago.monto)}</div>
 
         <div className="recibo-rows">
           <div className="recibo-row"><span>Concepto</span><span>{CONCEPTO_LABEL[pago.concepto] ?? pago.concepto}</span></div>
-          <div className="recibo-row"><span>Método</span><span>{METODO_LABEL[pago.metodo] ?? pago.metodo}</span></div>
+          {/* Un pago dividido lista cada forma con su monto: es lo que el cliente
+              coteja contra los dos vouchers de sus tarjetas. */}
+          {partesDePago(pago).map((p, i) => (
+            <div key={i} className="recibo-row">
+              <span>{i === 0 ? 'Forma de pago' : ''}</span>
+              <span>
+                {FORMA_PAGO_LABEL[p.forma as MetodoPago] ?? p.forma}
+                {partesDePago(pago).length > 1 ? ` · ${formatMXN(p.monto)}` : ''}
+              </span>
+            </div>
+          ))}
           <div className="recibo-row"><span>Fecha del pago</span><span>{formatEventDate(pago.fecha, 'long')}</span></div>
           <div className="recibo-row"><span>Cliente</span><span>{quote.client?.nombre}</span></div>
           {quote.client?.numeroReferencia != null && (

@@ -1,6 +1,18 @@
 import { z } from 'zod';
 import type { PrismaClient } from '@hsa/database';
-import { estadoFacturaPago, hoyCivilMexico, paymentConceptSchema } from '@hsa/shared';
+import {
+  estadoFacturaPago,
+  hoyCivilMexico,
+  paymentConceptSchema,
+  metodoCapturaSchema,
+  formasPagoSchema,
+  resolverFormasPago,
+  describirFormasPago,
+  formatFolio,
+  FormasPagoError,
+  type MetodoPago,
+  type PartePago,
+} from '@hsa/shared';
 import { QuoteError, ownershipWhere, loadEstadoCuenta, assertNotTrashed, type Actor } from '../quotes/service.js';
 import { logActivity } from '../quotes/activityLog.js';
 import { archivarEvento } from '../historico/archivar.js';
@@ -10,7 +22,17 @@ import type { ComprobanteStorage } from './storage.js';
 
 export const registerPaymentSchema = z.object({
   monto: z.number().int().positive(),
-  metodo: z.enum(['efectivo', 'transferencia', 'tarjeta']),
+  /**
+   * Una sola forma de pago. Sigue existiendo para los procesos que capturan un
+   * solo método (y para una pantalla vieja en caché). Si viene `formas`, manda
+   * `formas`.
+   */
+  metodo: metodoCapturaSchema.optional(),
+  /**
+   * El pago dividido: "toma mi débito y mi crédito". Es UN pago con UN folio; las
+   * partes tienen que sumar el monto.
+   */
+  formas: formasPagoSchema.optional(),
   /**
    * Lo que se capturó. Ya NO decide el concepto del pago: ese se deduce de dónde
    * deja el acumulado contra los hitos del plan. Sigue sirviendo de respaldo para
@@ -46,6 +68,41 @@ export interface OrigenDeposito {
   pagoBanqueteroId?: string;
   comprobanteKey?: string | null;
   comprobanteMime?: string | null;
+  /**
+   * El folio del dinero que entró. Un pago que sale de repartir un depósito (o de
+   * convertir un abono) NO es dinero nuevo: lleva el folio de la entrada de la
+   * que salió. `null`/ausente = gasta un folio nuevo de la secuencia (que es lo
+   * que pasa también con los depósitos y abonos viejos, que no tienen folio).
+   */
+  folio?: number | null;
+  /**
+   * La forma de pago heredada de la entrada madre. Un depósito dividido repartido
+   * en tres eventos no dice cuánto de cada forma le tocó a cada uno, así que el
+   * pago queda `mixto` sin partes y el detalle vive en el depósito.
+   */
+  metodo?: MetodoPago;
+  formas?: PartePago[] | null;
+}
+
+/** `resolverFormasPago` con el error convertido en un 400 legible. */
+export function resolverOError(
+  input: Parameters<typeof resolverFormasPago>[0],
+): { metodo: MetodoPago; formas: PartePago[] | null } {
+  try {
+    return resolverFormasPago(input);
+  } catch (e) {
+    if (e instanceof FormasPagoError) throw new QuoteError(400, e.message);
+    throw e;
+  }
+}
+
+/** La forma de pago que se guarda: la heredada si la hay, si no la capturada. */
+function formasAGuardar(
+  input: z.infer<typeof registerPaymentSchema>,
+  origen?: OrigenDeposito,
+): { metodo: MetodoPago; formas: PartePago[] | null } {
+  if (origen?.metodo) return { metodo: origen.metodo, formas: origen.formas ?? null };
+  return resolverOError(input);
 }
 
 export async function registerPayment(
@@ -59,6 +116,7 @@ export async function registerPayment(
 ) {
   const quote = await findOwnedQuote(db, quoteId, actor);
   const input = registerPaymentSchema.parse(rawInput);
+  const { metodo, formas } = formasAGuardar(input, origen);
 
   let comprobanteKey: string | null = origen?.comprobanteKey ?? null;
   let comprobanteMime: string | null = origen?.comprobanteMime ?? null;
@@ -72,7 +130,9 @@ export async function registerPayment(
     data: {
       quoteId,
       monto: input.monto,
-      metodo: input.metodo,
+      metodo,
+      // `Prisma.DbNull` no hace falta: `undefined` deja la columna en NULL.
+      formas: formas ?? undefined,
       concepto: input.concepto,
       fecha: new Date(`${input.fecha}T00:00:00.000Z`),
       referencia: input.referencia ?? null,
@@ -80,6 +140,8 @@ export async function registerPayment(
       comprobanteMime,
       registradoById: actor.id,
       pagoBanqueteroId: origen?.pagoBanqueteroId ?? null,
+      // Sin folio heredado, el default de la base toma el siguiente de la serie.
+      ...(origen?.folio != null ? { folio: origen.folio } : {}),
     },
   });
 
@@ -96,9 +158,9 @@ export async function registerPayment(
 
   await logActivity(db, {
     quoteId, tipo: 'pago',
-    descripcion: `Pago ${conceptoEfectivo} $${input.monto} (${input.metodo})`,
+    descripcion: `Pago ${formatFolio(payment.folio)} ${conceptoEfectivo} $${input.monto} (${describirFormasPago(payment)})`,
     meta: {
-      paymentId: payment.id, monto: input.monto, concepto: conceptoEfectivo,
+      paymentId: payment.id, folio: payment.folio, monto: input.monto, concepto: conceptoEfectivo, metodo, formas,
       // Lo tecleado se guarda solo cuando la deducción no le hizo caso: es el
       // rastro de que el número, no la captura, decidió el concepto.
       ...(conceptoEfectivo === input.concepto ? {} : { conceptoCapturado: input.concepto }),
@@ -152,7 +214,7 @@ export async function anularPayment(
   });
   await logActivity(db, {
     quoteId, tipo: 'pagoAnulado',
-    descripcion: `Pago anulado $${payment.monto}: ${motivo}`,
+    descripcion: `Pago ${formatFolio(payment.folio)} anulado $${payment.monto}: ${motivo}`,
     meta: { paymentId, motivo }, actorId: actor.id,
   });
 
@@ -204,7 +266,7 @@ export async function editarConcepto(
     quoteId,
     tipo: 'edicion',
     descripcion:
-      `Concepto del pago folio ${pago.folio}: ${pago.concepto} → ${efectivo}` +
+      `Concepto del pago ${formatFolio(pago.folio)}: ${pago.concepto} → ${efectivo}` +
       (efectivo === input.concepto ? '' : ` (se pidió ${input.concepto}; manda el saldo)`),
     meta: { paymentId, folio: pago.folio, de: pago.concepto, a: efectivo, pedido: input.concepto },
     actorId: actor.id,
@@ -244,7 +306,7 @@ export async function desbloquearFactura(
   await logActivity(db, {
     quoteId,
     tipo: 'edicion',
-    descripcion: `Desbloqueo de facturación del pago folio ${pago.folio}`,
+    descripcion: `Desbloqueo de facturación del pago ${formatFolio(pago.folio)}`,
     meta: { paymentId, folio: pago.folio },
     actorId: actor.id,
   });
@@ -288,7 +350,7 @@ export async function marcarFacturado(
   await logActivity(db, {
     quoteId,
     tipo: 'factura',
-    descripcion: `Pago folio ${pago.folio} marcado como facturado${input.facturaUuid ? ` (UUID ${input.facturaUuid})` : ''}`,
+    descripcion: `Pago ${formatFolio(pago.folio)} marcado como facturado${input.facturaUuid ? ` (UUID ${input.facturaUuid})` : ''}`,
     meta: { paymentId, folio: pago.folio, facturaUuid: input.facturaUuid ?? null },
     actorId: actor.id,
   });

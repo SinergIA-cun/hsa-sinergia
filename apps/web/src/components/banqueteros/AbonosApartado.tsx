@@ -4,11 +4,11 @@ import { api } from '../../lib/api.ts';
 import { formatMXN } from '../../lib/money.ts';
 import { formatEventDate } from '../../lib/date.ts';
 import { useAuth } from '../../auth/auth.tsx';
-import { Button, Field, MoneyInput, SelectInput, TextInput } from '../ui.tsx';
+import { describirFormasPago, formatFolio } from '@hsa/shared';
+import { Button, Field, MoneyInput, TextInput } from '../ui.tsx';
+import { FormasPagoCampo, errorFormas, formasIniciales, formasParaEnviar } from '../FormasPagoCampo.tsx';
 import { apiErrorMessage } from '../admin/shared.tsx';
-import type { AbonoApartado, ApartadoFecha, PaymentMethod } from '../../lib/types.ts';
-
-const METODOS: PaymentMethod[] = ['efectivo', 'transferencia', 'tarjeta'];
+import type { AbonoApartado, ApartadoFecha } from '../../lib/types.ts';
 
 /**
  * Los abonos de una fecha apartada.
@@ -108,8 +108,9 @@ function Renglon({
     <li className="text-xs">
       <div className={`flex flex-wrap items-center justify-between gap-2 ${anulado ? 'text-charcoal-soft line-through' : 'text-ink'}`}>
         <span className="tabular-nums">
-          {formatEventDate(abono.fecha)} · <strong>{formatMXN(abono.monto)}</strong>{' '}
-          <span className="text-charcoal-soft">{abono.metodo}</span>
+          <span className="font-semibold">{formatFolio(abono.folio)}</span> · {formatEventDate(abono.fecha)} ·{' '}
+          <strong>{formatMXN(abono.monto)}</strong>{' '}
+          <span className="text-charcoal-soft">{describirFormasPago(abono)}</span>
           {/* De dónde salió: el saldo del banquetero o un pago directo a la fecha. */}
           {abono.pagoBanqueteroId && (
             <span className="ml-1 rounded bg-gold/15 px-1.5 py-0.5 text-[0.6rem] font-semibold uppercase tracking-wide text-gold">
@@ -173,7 +174,7 @@ function FormaAbono({
   onCerrar: () => void;
 }) {
   const [monto, setMonto] = useState('');
-  const [metodo, setMetodo] = useState<PaymentMethod>('transferencia');
+  const [formas, setFormas] = useState(() => formasIniciales());
   const [fecha, setFecha] = useState(() => new Date().toISOString().slice(0, 10));
   const [referencia, setReferencia] = useState('');
   const [busy, setBusy] = useState(false);
@@ -184,12 +185,17 @@ function FormaAbono({
   async function guardar(e: FormEvent) {
     e.preventDefault();
     if (!valido) return;
+    const errorDeFormas = errorFormas(formas, Number(monto));
+    if (errorDeFormas) {
+      setError(errorDeFormas);
+      return;
+    }
     setBusy(true);
     setError('');
     try {
       await api.post(`/api/banqueteros/apartados/${apartadoId}/abonos`, {
         monto: Number(monto),
-        metodo,
+        ...formasParaEnviar(formas),
         fecha,
         referencia: referencia.trim() || undefined,
       });
@@ -212,19 +218,7 @@ function FormaAbono({
       <Field label="Fecha en que se recibió" hint="No la de captura: el ingreso se factura en su mes.">
         <TextInput type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} className="py-1.5 text-sm" />
       </Field>
-      <Field label="Forma de pago">
-        <SelectInput
-          value={metodo}
-          onChange={(e) => setMetodo(e.target.value as PaymentMethod)}
-          className="py-1.5 text-sm"
-        >
-          {METODOS.map((m) => (
-            <option key={m} value={m}>
-              {m}
-            </option>
-          ))}
-        </SelectInput>
-      </Field>
+      <FormasPagoCampo value={formas} onChange={setFormas} monto={Number(monto) || 0} />
       <Field label="Referencia (opcional)">
         <TextInput value={referencia} onChange={(e) => setReferencia(e.target.value)} className="py-1.5 text-sm" />
       </Field>

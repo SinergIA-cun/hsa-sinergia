@@ -38,10 +38,17 @@ enum QuoteStatus {
   liquidada
 }
 
+/// Cómo entró el dinero. `tarjeta` es de antes de separar débito y crédito: se
+/// conserva en los pagos viejos y ya no se ofrece. `mixto` = pago dividido en
+/// varias formas; el detalle vive en la columna `formas` del pago.
 enum PaymentMethod {
   efectivo
   transferencia
   tarjeta
+  cheque
+  tarjetaDebito
+  tarjetaCredito
+  mixto
 }
 
 enum PaymentConcept {
@@ -229,8 +236,14 @@ model PagoBanquetero {
   id              String          @id @default(cuid())
   banquetero      Banquetero      @relation(fields: [banqueteroId], references: [id])
   banqueteroId    String
+  /// Folio de la serie `I`. El depósito es la entrada de dinero; los pagos que
+  /// salen de repartirlo llevan este mismo folio. `null` = depósito de antes del
+  /// folio (no se renumeró nada: decisión del dueño).
+  folio           Int?            @default(dbgenerated("nextval('recibo_folio_seq')"))
   monto           Int
   metodo          PaymentMethod
+  /// Partes del depósito si vino dividido. Ver `Payment.formas`.
+  formas          Json?
   /// Cuándo se RECIBIÓ el dinero. Es la fecha que heredan los `Payment` de sus
   /// asignaciones, no la del reparto: el SAT exige facturar el ingreso en el mes
   /// en que se recibe, así que un depósito de marzo repartido en mayo sigue
@@ -323,8 +336,14 @@ model AbonoApartado {
   /// Cascade: el abono no significa nada sin su apartado.
   apartado         ApartadoFecha   @relation(fields: [apartadoId], references: [id], onDelete: Cascade)
   apartadoId       String
+  /// Folio de la serie `I` si el abono fue dinero que ENTRÓ (abono directo). Si
+  /// salió del saldo de un depósito lleva el folio de ese depósito: no es dinero
+  /// nuevo. `null` = abono de antes del folio.
+  folio            Int?            @default(dbgenerated("nextval('recibo_folio_seq')"))
   monto            Int
   metodo           PaymentMethod
+  /// Partes del abono si vino dividido. Ver `Payment.formas`.
+  formas           Json?
   /// Cuándo se RECIBIÓ el dinero, no cuándo se capturó ni cuándo se convierte.
   /// Es la fecha que hereda el `Payment` al convertir: el ingreso se factura en el
   /// mes en que entró.
@@ -613,7 +632,16 @@ model Payment {
   conceptoManual   PaymentConcept?
   fecha            DateTime
   referencia       String?
-  folio            Int             @unique @default(dbgenerated("nextval('recibo_folio_seq')"))
+  /// Folio de la serie `I`: el número de la hoja foliada del dinero que entró.
+  ///
+  /// Ya NO es único: un folio es UNA entrada de dinero, y un depósito de
+  /// banquetero repartido entre tres eventos es una sola entrada que genera tres
+  /// pagos. Los tres llevan el folio del depósito. La unicidad la da la secuencia
+  /// `recibo_folio_seq`, que es la misma para pagos, depósitos y abonos.
+  folio            Int             @default(dbgenerated("nextval('recibo_folio_seq')"))
+  /// Las partes de un pago dividido (`[{ forma, monto }]`, suman `monto`). `null`
+  /// en los pagos de antes de la división: su única forma es `metodo`.
+  formas           Json?
   // Candado de facturación (ver docs del Plan C). El ingreso se factura en el mes
   // en que se recibe; pasado ese mes se va a la global de público en general.
   facturadoAt      DateTime?
@@ -638,6 +666,7 @@ model Payment {
 
   @@index([quoteId])
   @@index([pagoBanqueteroId])
+  @@index([folio])
 }
 
 model ActivityLog {
@@ -680,6 +709,7 @@ model User {
   apartadosCancelados       ApartadoFecha[]  @relation("ApartadoCanceladoBy")
   actividades               ActivityLog[]    @relation("ActivityActor")
   priceListAudits           PriceListAudit[] @relation("PriceListAuditActor")
+  cambiosFolio              CambioFolio[]    @relation("CambioFolioActor")
 }
 
 /// La bitácora forense: quién tocó qué fila, con el contenido antes y después.
@@ -765,4 +795,21 @@ model EventoHistorico {
   @@unique([quoteId, version])
   @@index([fechaEvento(sort: Desc)])
   @@index([busqueda])
+}
+
+/// Cada vez que un admin fija el folio con el que arranca la numeración.
+///
+/// El folio lo lleva una secuencia de Postgres y un `setval` no deja rastro en la
+/// bitácora forense (no es un cambio de fila). Esta tabla es ese rastro.
+model CambioFolio {
+  id        String   @id @default(cuid())
+  /// El número que llevará el siguiente dinero que entre.
+  siguiente Int
+  /// El que iba a llevar antes del cambio.
+  anterior  Int
+  /// SetNull: el rastro sobrevive a que se borre el usuario (sin esto, borrar a
+  /// un admin que alguna vez fijó el folio tronaría por la llave foránea).
+  actor     User?    @relation("CambioFolioActor", fields: [actorId], references: [id], onDelete: SetNull)
+  actorId   String?
+  createdAt DateTime @default(now())
 }

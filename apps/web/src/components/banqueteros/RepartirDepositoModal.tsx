@@ -7,6 +7,7 @@ import { Button, Card, MoneyInput } from '../ui.tsx';
 import { apiErrorMessage } from '../admin/shared.tsx';
 import { STATUS_LABEL } from '../../lib/status.ts';
 import type { ApartadoFecha, DepositoBanquetero, EventoBanquetero } from '../../lib/types.ts';
+import { describirFormasPago, formatFolio } from '@hsa/shared';
 
 interface Props {
   deposito: DepositoBanquetero;
@@ -117,10 +118,12 @@ export function RepartirDepositoModal({ deposito, eventos, apartados, onCancel, 
         <div>
           <h2 className="font-display text-2xl text-ink">Repartir el depósito</h2>
           <p className="mt-1 text-sm text-charcoal-soft">
-            Depósito de <strong className="text-ink">{formatMXN(deposito.monto)}</strong> recibido el{' '}
-            {formatEventDate(deposito.fecha)} ({deposito.metodo}
-            {deposito.referencia ? ` · ${deposito.referencia}` : ''}). Cada renglón crea un pago con
-            su folio de recibo, <strong>con la fecha del depósito</strong>.
+            Depósito <strong className="text-ink">{formatFolio(deposito.folio)}</strong> de{' '}
+            <strong className="text-ink">{formatMXN(deposito.monto)}</strong> recibido el{' '}
+            {formatEventDate(deposito.fecha)} ({describirFormasPago(deposito)}
+            {deposito.referencia ? ` · ${deposito.referencia}` : ''}). Cada renglón aplica una parte a
+            un evento con el mismo folio del depósito y <strong>con la fecha del depósito</strong>:
+            es un solo dinero que entró.
           </p>
         </div>
 
