@@ -16,6 +16,7 @@ import { CompartirBanqueteroModal } from '../components/banqueteros/CompartirBan
 import { ContactoBanquetero } from '../components/banqueteros/ContactoBanquetero.tsx';
 import { useAuth } from '../auth/auth.tsx';
 import type { Catalog, DepositoBanquetero, PriceList } from '../lib/types.ts';
+import { formatFolio } from '@hsa/shared';
 
 /**
  * La ficha del banquetero: la contraparte con cuenta.
@@ -279,8 +280,8 @@ export function BanqueteroPage() {
           onSaved={async (pagos) => {
             setRepartir(null);
             setAvisoReparto(
-              `Se crearon ${pagos.length} pago(s): ${pagos
-                .map((p) => `recibo #${p.folio} por ${formatMXN(p.monto)}`)
+              `Se aplicó el depósito ${formatFolio(pagos[0]?.folio)} a ${pagos.length} evento(s): ${pagos
+                .map((p) => formatMXN(p.monto))
                 .join(' · ')}.`,
             );
             await invalidar();

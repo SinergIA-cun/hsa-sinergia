@@ -147,9 +147,10 @@ describe('estado de cuenta del banquetero', () => {
     expect(porFestejado.get('Generación A')!.pagado).toBe(55_000);
     expect(porFestejado.get('Generación B')!.pagado).toBe(55_000);
     expect(porFestejado.get('Generación C')!.pagado).toBe(213_345);
-    // Cada evento con su recibo: tres folios distintos colgados del mismo depósito.
+    // Tres aplicaciones del mismo depósito, y las tres llevan SU folio: es una
+    // sola entrada de dinero, así que es un solo número en la hoja foliada.
     expect(ec.depositos[0]!.asignaciones).toHaveLength(3);
-    expect(new Set(ec.depositos[0]!.asignaciones.map((x) => x.folio)).size).toBe(3);
+    expect(new Set(ec.depositos[0]!.asignaciones.map((x) => x.folio)).size).toBe(1);
   });
 
   it('el saldo sin asignar es Σ depósitos vivos − Σ asignaciones vivas', async () => {

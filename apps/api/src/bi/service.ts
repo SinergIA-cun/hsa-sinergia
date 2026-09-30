@@ -1,5 +1,5 @@
 import type { PrismaClient } from '@hsa/database';
-import { estadoFacturaPago, hoyCivilMexico, requisitosFactura } from '@hsa/shared';
+import { estadoFacturaPago, hoyCivilMexico, requisitosFactura, partesDePago, formatFolio } from '@hsa/shared';
 import { loadEstadoCuentaBulk } from '../quotes/service.js';
 
 /** Rango de fechas y paginación comunes a todos los endpoints del BI. */
@@ -89,11 +89,17 @@ export async function biPagos(db: PrismaClient, r: RangoBI) {
     return {
       id: p.id,
       folio: p.folio,
+      folioTexto: formatFolio(p.folio),
       quoteId: p.quoteId,
       cliente: p.quote?.client?.nombre ?? null,
       fecha: p.fecha.toISOString().slice(0, 10),
       monto: p.monto,
       metodo: p.metodo,
+      // Las partes del pago si vino dividido; los viejos traen una sola.
+      formas: partesDePago(p),
+      // El depósito del banquetero del que salió, si salió de uno: varios pagos
+      // de un mismo depósito comparten su folio (es UNA entrada de dinero).
+      pagoBanqueteroId: p.pagoBanqueteroId,
       concepto: p.concepto,
       registradoPor: p.registradoBy?.nombre ?? null,
       anulado: p.anuladoAt != null,
@@ -197,4 +203,93 @@ export async function biFacturacion(db: PrismaClient, r: RangoBI) {
       faltantes: req.filter((x) => !x.ok).map((x) => x.label),
     };
   });
+}
+
+/**
+ * Cada dinero que ENTRÓ, una fila por folio: la hoja foliada, digitalizada.
+ *
+ * `/pagos` cuenta aplicaciones a eventos y por eso repite folio cuando un
+ * depósito se reparte. Esto no: es la entrada de dinero misma —pago directo,
+ * depósito de banquetero o abono directo a una fecha apartada— y es lo que se
+ * concilia contra el banco y contra la caja.
+ *
+ * Paginación por `fecha` + `id`, igual que los demás; el `id` va prefijado con
+ * el tipo (`pago:…`, `deposito:…`, `abono:…`) para que el cursor sea único
+ * entre las tres tablas.
+ */
+export async function biIngresos(db: PrismaClient, r: RangoBI) {
+  const rango = { gte: r.desde, lte: r.hasta };
+  const [pagos, depositos, abonos] = await Promise.all([
+    db.payment.findMany({
+      // Solo los directos: los que salieron de un depósito o de un abono ya
+      // están contados en su entrada madre.
+      where: { fecha: rango, pagoBanqueteroId: null, abonoApartado: null, quote: { deletedAt: null } },
+      include: { quote: { select: { id: true, folio: true, client: { select: { nombre: true } } } } },
+    }),
+    db.pagoBanquetero.findMany({
+      where: { fecha: rango },
+      include: { banquetero: { select: { id: true, nombre: true } } },
+    }),
+    db.abonoApartado.findMany({
+      where: { fecha: rango, pagoBanqueteroId: null },
+      include: { apartado: { select: { id: true, banquetero: { select: { id: true, nombre: true } } } } },
+    }),
+  ]);
+  const filas = [
+    ...pagos.map((p) => ({
+      id: `pago:${p.id}`,
+      tipo: 'pago' as const,
+      folio: p.folio as number | null,
+      fecha: p.fecha,
+      monto: p.monto,
+      metodo: p.metodo,
+      formas: partesDePago(p),
+      referencia: p.referencia,
+      anulado: p.anuladoAt != null,
+      de: p.quote?.client?.nombre ?? null,
+      quoteId: p.quoteId,
+      eventoFolio: p.quote?.folio ?? null,
+      banqueteroId: null as string | null,
+      apartadoId: null as string | null,
+    })),
+    ...depositos.map((d) => ({
+      id: `deposito:${d.id}`,
+      tipo: 'deposito' as const,
+      folio: d.folio,
+      fecha: d.fecha,
+      monto: d.monto,
+      metodo: d.metodo,
+      formas: partesDePago(d),
+      referencia: d.referencia,
+      anulado: d.anuladoAt != null,
+      de: d.banquetero.nombre,
+      quoteId: null,
+      eventoFolio: null,
+      banqueteroId: d.banquetero.id,
+      apartadoId: null,
+    })),
+    ...abonos.map((a) => ({
+      id: `abono:${a.id}`,
+      tipo: 'abono' as const,
+      folio: a.folio,
+      fecha: a.fecha,
+      monto: a.monto,
+      metodo: a.metodo,
+      formas: partesDePago(a),
+      referencia: a.referencia,
+      anulado: a.anuladoAt != null,
+      de: a.apartado.banquetero.nombre,
+      quoteId: null,
+      eventoFolio: null,
+      banqueteroId: a.apartado.banquetero.id,
+      apartadoId: a.apartado.id,
+    })),
+  ].sort((a, b) => a.fecha.getTime() - b.fecha.getTime() || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+
+  const desde = r.cursor ? filas.findIndex((f) => f.id === r.cursor) + 1 : 0;
+  return filas.slice(desde, desde + r.limit).map((f) => ({
+    ...f,
+    folioTexto: formatFolio(f.folio),
+    fecha: f.fecha.toISOString().slice(0, 10),
+  }));
 }

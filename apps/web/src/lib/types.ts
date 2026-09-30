@@ -277,14 +277,22 @@ export interface Quote {
 
 export type PaymentConcept = 'anticipo' | 'complemento' | 'aCuenta' | 'finiquito';
 
-/** Debe seguir al enum `PaymentMethod` de Prisma. */
-export type PaymentMethod = 'efectivo' | 'transferencia' | 'tarjeta';
+/**
+ * Debe seguir al enum `PaymentMethod` de Prisma. `tarjeta` es de los pagos de
+ * antes de separar débito y crédito; `mixto`, de un pago dividido (ver `formas`).
+ */
+export type PaymentMethod = import('@hsa/shared').MetodoPago;
+/** Una parte de un pago dividido. */
+export type PartePago = import('@hsa/shared').PartePago;
 
 export interface Payment {
   id: string;
+  /** Serie I. Los pagos que salen de un mismo depósito comparten el suyo. */
   folio: number;
   monto: number;
   metodo: PaymentMethod;
+  /** Las partes si vino dividido; `null` en los pagos de antes de la división. */
+  formas: PartePago[] | null;
   /**
    * El concepto EFECTIVO: se deduce de dónde deja el acumulado contra los hitos
    * del plan, no de lo que se teclea. Se reclasifica cuando cambia el acumulado
@@ -459,8 +467,11 @@ export interface AsignacionDeposito {
 export interface DepositoBanquetero {
   id: string;
   banqueteroId: string;
+  /** Serie I. `null` = depósito de antes del folio. */
+  folio: number | null;
   monto: number;
   metodo: PaymentMethod;
+  formas: PartePago[] | null;
   /** Cuándo se RECIBIÓ. Es la fecha que heredan los pagos de sus asignaciones. */
   fecha: string;
   referencia: string | null;
@@ -484,8 +495,11 @@ export interface DepositoBanquetero {
  */
 export interface AbonoApartado {
   id: string;
+  /** Serie I; si salió de un depósito, el del depósito. `null` = de antes del folio. */
+  folio: number | null;
   monto: number;
   metodo: PaymentMethod;
+  formas: PartePago[] | null;
   /** Cuándo se RECIBIÓ el dinero. */
   fecha: string;
   referencia: string | null;

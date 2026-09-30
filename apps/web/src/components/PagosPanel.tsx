@@ -4,7 +4,9 @@ import { Lock, Receipt, ReceiptText } from 'lucide-react';
 import { api } from '../lib/api.ts';
 import { formatMXN } from '../lib/money.ts';
 import { formatEventDate, formatTimestamp } from '../lib/date.ts';
+import { describirFormasPago, formatFolio } from '@hsa/shared';
 import { Button, Card, MoneyInput, TextInput, SelectInput, Field } from './ui.tsx';
+import { FormasPagoCampo, errorFormas, formasEnFormData, formasIniciales } from './FormasPagoCampo.tsx';
 import { STATUS_LABEL } from '../lib/status.ts';
 import type { EstadoCuenta, Payment, PaymentConcept, ActivityEntry, QuoteStatus } from '../lib/types.ts';
 
@@ -38,7 +40,7 @@ interface Props {
 export function PagosPanel({ quoteId, publicToken, isAdmin, estadoCuenta, payments, activityLog, readOnly = false }: Props) {
   const qc = useQueryClient();
   const [monto, setMonto] = useState('');
-  const [metodo, setMetodo] = useState('transferencia');
+  const [formas, setFormas] = useState(() => formasIniciales());
   const [concepto, setConcepto] = useState('anticipo');
   const [fecha, setFecha] = useState(() => new Date().toISOString().slice(0, 10));
   const [referencia, setReferencia] = useState('');
@@ -63,11 +65,16 @@ export function PagosPanel({ quoteId, publicToken, isAdmin, estadoCuenta, paymen
   async function registrar(e: React.FormEvent) {
     e.preventDefault();
     setErr('');
+    const errorDeFormas = errorFormas(formas, Number(monto) || 0);
+    if (errorDeFormas) {
+      setErr(errorDeFormas);
+      return;
+    }
     setBusy(true);
     try {
       const fd = new FormData();
       fd.set('monto', monto);
-      fd.set('metodo', metodo);
+      formasEnFormData(fd, formas);
       fd.set('concepto', concepto);
       fd.set('fecha', fecha);
       if (referencia) fd.set('referencia', referencia);
@@ -78,14 +85,21 @@ export function PagosPanel({ quoteId, publicToken, isAdmin, estadoCuenta, paymen
         credentials: 'include',
         body: fd,
       });
-      if (!res.ok) throw new Error(String(res.status));
-      const body = (await res.json()) as { nuevoEstatus: QuoteStatus | null };
+      if (!res.ok) {
+        const cuerpo = (await res.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(cuerpo?.error ?? 'No se pudo registrar el pago. Revisa los datos.');
+      }
+      const body = (await res.json()) as { nuevoEstatus: QuoteStatus | null; payment: Payment };
 
       setMonto(''); setReferencia(''); setComprobante(null); setFileKey((k) => k + 1);
-      setInfo(body.nuevoEstatus ? `Estatus actualizado automáticamente a ${STATUS_LABEL[body.nuevoEstatus]}.` : '');
+      setFormas(formasIniciales(formas.dividido ? 'transferencia' : formas.forma));
+      setInfo(
+        `Pago registrado con el folio ${formatFolio(body.payment.folio)}.` +
+          (body.nuevoEstatus ? ` Estatus actualizado automáticamente a ${STATUS_LABEL[body.nuevoEstatus]}.` : ''),
+      );
       await refresh();
-    } catch {
-      setErr('No se pudo registrar el pago. Revisa los datos.');
+    } catch (e) {
+      setErr(e instanceof Error && e.message ? e.message : 'No se pudo registrar el pago. Revisa los datos.');
     } finally {
       setBusy(false);
     }
@@ -175,11 +189,7 @@ export function PagosPanel({ quoteId, publicToken, isAdmin, estadoCuenta, paymen
         <form onSubmit={registrar} className="grid gap-4 sm:grid-cols-2">
           <Field label="Monto (MXN)"><MoneyInput value={monto} onValue={setMonto} required /></Field>
           <Field label="Fecha"><TextInput type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} required /></Field>
-          <Field label="Método">
-            <SelectInput value={metodo} onChange={(e) => setMetodo(e.target.value)}>
-              <option value="transferencia">Transferencia</option><option value="efectivo">Efectivo</option><option value="tarjeta">Tarjeta</option>
-            </SelectInput>
-          </Field>
+          <FormasPagoCampo value={formas} onChange={setFormas} monto={Number(monto) || 0} />
           {/* El concepto se DEDUCE del saldo: comparando el pagado acumulado con
               los hitos del plan sale solo si es anticipo, complemento, a cuenta o
               finiquito. Lo que se elige aquí solo se usa en los eventos SIN plan
@@ -222,7 +232,7 @@ export function PagosPanel({ quoteId, publicToken, isAdmin, estadoCuenta, paymen
             {payments.map((p) => (
               <li key={p.id} className={`flex flex-wrap items-center justify-between gap-x-4 gap-y-1 py-2.5 text-sm ${p.anuladoAt ? 'opacity-50 line-through' : ''}`}>
                 <span className="flex flex-wrap items-center gap-x-1.5 gap-y-1">
-                  <span className="text-charcoal-soft/70">#{p.folio}</span> · {formatEventDate(p.fecha)} ·{' '}
+                  <span className="font-medium text-charcoal-soft">{formatFolio(p.folio)}</span> · {formatEventDate(p.fecha)} ·{' '}
                   {/* El concepto es editable en el renglón: corregirlo es un error
                       de captura, no un movimiento de dinero. En los pagos anulados
                       no se toca (son evidencia y el servidor lo rechaza). */}
@@ -230,7 +240,7 @@ export function PagosPanel({ quoteId, publicToken, isAdmin, estadoCuenta, paymen
                     <span>{CONCEPTO_LABEL[p.concepto]}</span>
                   ) : (
                     <label className="inline-flex items-center">
-                      <span className="sr-only">Concepto del pago #{p.folio}</span>
+                      <span className="sr-only">Concepto del pago {formatFolio(p.folio)}</span>
                       <select
                         value={p.concepto}
                         onChange={(e) => corregirConcepto.mutate({ paymentId: p.id, concepto: e.target.value })}
@@ -243,7 +253,7 @@ export function PagosPanel({ quoteId, publicToken, isAdmin, estadoCuenta, paymen
                       </select>
                     </label>
                   )}
-                  · {p.metodo}
+                  · {describirFormasPago(p)}
                   {p.referencia && ` · ${p.referencia}`}
                 </span>
                 <span className="flex items-center gap-3">
@@ -337,7 +347,7 @@ export function PagosPanel({ quoteId, publicToken, isAdmin, estadoCuenta, paymen
           <Card className="w-full max-w-md space-y-4 p-6">
             <h2 className="font-display text-xl text-ink">Marcar pago como facturado</h2>
             <p className="text-sm text-charcoal">
-              Pago <strong>#{pagoAFacturar.folio}</strong> de{' '}
+              Pago <strong>{formatFolio(pagoAFacturar.folio)}</strong> de{' '}
               <strong>{formatMXN(pagoAFacturar.monto)}</strong> del {formatEventDate(pagoAFacturar.fecha)}.
             </p>
             <p className="rounded-lg bg-cream-200/70 px-3 py-2 text-sm text-ink">

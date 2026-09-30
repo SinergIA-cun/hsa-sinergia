@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import type { PrismaClient } from '@hsa/database';
 import { z } from 'zod';
 import { requireApiKey } from './apiKey.js';
-import { biEventos, biPagos, biPagosEsperados, biCambios, biFacturacion, type RangoBI } from './service.js';
+import { biEventos, biPagos, biIngresos, biPagosEsperados, biCambios, biFacturacion, type RangoBI } from './service.js';
 
 const LIMITE_MAX = 500;
 const LIMITE_DEFAULT = 100;
@@ -42,6 +42,7 @@ export async function biRoutes(app: FastifyInstance): Promise<void> {
   const endpoints: [string, ConsultaBI][] = [
     ['eventos', biEventos],
     ['pagos', biPagos],
+    ['ingresos', biIngresos],
     ['pagos-esperados', biPagosEsperados],
     ['cambios', biCambios],
     ['facturacion', biFacturacion],

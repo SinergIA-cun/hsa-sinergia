@@ -4,6 +4,7 @@ import { ArrowDivider, Card } from '../components/ui.tsx';
 import { UsersSection } from '../components/admin/UsersSection.tsx';
 import { PersonalSection } from '../components/admin/PersonalSection.tsx';
 import { CatalogosSection } from '../components/admin/CatalogosSection.tsx';
+import { FoliosSection } from '../components/admin/FoliosSection.tsx';
 
 export function AdminPage() {
   return (
@@ -13,6 +14,7 @@ export function AdminPage() {
         <h1 className="mt-2 font-display text-4xl text-ink">Panel de admin</h1>
       </div>
       <UsersSection />
+      <FoliosSection />
 
       {/* La bitácora forense no es una sección más: es una herramienta de
           investigación, y meterla aquí como lista sería competir con la línea de

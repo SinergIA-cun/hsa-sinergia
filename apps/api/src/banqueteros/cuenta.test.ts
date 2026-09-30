@@ -192,8 +192,10 @@ describe('cuenta corriente del banquetero', () => {
 
     expect(deposito.saldoSinAsignar).toBe(0);
     expect(pagos.map((p) => p.monto)).toEqual([55_000, 55_000, 213_345]);
-    // Tres folios distintos: un recibo por evento, un solo depósito detrás.
-    expect(new Set(pagos.map((p) => p.folio)).size).toBe(3);
+    // UN folio: el del depósito. Es una sola entrada de dinero (decisión del
+    // dueño, 30-sep-2026: "cada dinero que entra"); repartirla no gasta folios.
+    // Antes esto exigía tres folios distintos, uno por evento.
+    expect(new Set(pagos.map((p) => p.folio))).toEqual(new Set([deposito.folio]));
   });
 
   it('asignar más que el saldo sin asignar responde 409 y no crea nada', async () => {

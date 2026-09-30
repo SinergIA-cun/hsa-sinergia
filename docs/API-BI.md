@@ -28,7 +28,7 @@ No hay ningún endpoint de escritura. `POST`, `PATCH` y `DELETE` sobre estas rut
 
 ## Envoltura de respuesta
 
-Los cinco endpoints devuelven la misma envoltura. Ejemplo real de
+Todos los endpoints devuelven la misma envoltura. Ejemplo real de
 `GET /api/bi/eventos?desde=2031-01-01&hasta=2031-12-31&limit=1`:
 
 ```json
@@ -152,6 +152,9 @@ Real, de `GET /api/bi/pagos?desde=2026-08-01&hasta=2026-08-31`:
             "fecha": "2026-08-05",
             "monto": 50000,
             "metodo": "transferencia",
+            "formas": [{ "forma": "transferencia", "monto": 50000 }],
+            "pagoBanqueteroId": null,
+            "folioTexto": "I 989",
             "concepto": "anticipo",
             "registradoPor": "Administrador",
             "anulado": false,
@@ -169,6 +172,52 @@ Real, de `GET /api/bi/pagos?desde=2026-08-01&hasta=2026-08-31`:
 `facturable: false` viene siempre acompañado de `motivoFactura` con el texto exacto que ve la
 persona en la app: `"El pago está anulado."`, `"Ya se facturó este pago."` o
 `"Cerró marzo sin CFDI: este pago se facturó a público en general."`.
+
+### `GET /api/bi/ingresos`
+
+**Cada dinero que entró, una fila por folio.** Es la hoja foliada de la hacienda (serie
+`I`), digitalizada: pagos directos, depósitos de banquetero y abonos directos a fechas
+apartadas. Es lo que se concilia contra el banco y contra la caja.
+
+- **Rango sobre:** `fecha` en que se recibió el dinero.
+- **Diferencia con `/pagos`:** `/pagos` es una fila por *aplicación a un evento*. Un depósito
+  de banquetero repartido en tres eventos es **una** fila aquí y **tres** en `/pagos`, las tres
+  con el mismo `folio` y el mismo `pagoBanqueteroId`. Sumar `/pagos` y `/ingresos` duplica.
+- `id` va prefijado con el tipo (`pago:…`, `deposito:…`, `abono:…`); es el cursor.
+
+```json
+{
+    "id": "deposito:cmuoh7x0a0002cbh9…",
+    "tipo": "deposito",
+    "folio": 5340,
+    "folioTexto": "I 5340",
+    "fecha": "2026-10-05",
+    "monto": 100000,
+    "metodo": "mixto",
+    "formas": [
+        { "forma": "transferencia", "monto": 90000 },
+        { "forma": "cheque", "monto": 10000 }
+    ],
+    "referencia": null,
+    "anulado": false,
+    "de": "Banquetería Ramírez",
+    "quoteId": null,
+    "eventoFolio": null,
+    "banqueteroId": "cmr…",
+    "apartadoId": null
+}
+```
+
+`folio: null` (`folioTexto: "sin folio"`) = un depósito o abono registrado antes de que
+existiera el folio; nada se renumeró.
+
+### Formas de pago
+
+`metodo` es uno de `efectivo`, `cheque`, `transferencia`, `tarjetaDebito`,
+`tarjetaCredito`, `mixto` (pago dividido) o `tarjeta` (pagos viejos, de antes de separar
+débito y crédito). `formas` trae siempre las partes, que suman `monto`: un pago de una sola
+forma trae una parte. Un pago que salió de un depósito dividido viene `mixto` con una sola
+parte `mixto`: el detalle por forma vive en el depósito (en `/ingresos`).
 
 ### `GET /api/bi/pagos-esperados`
 

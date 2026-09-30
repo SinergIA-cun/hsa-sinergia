@@ -1,8 +1,13 @@
 import { z } from 'zod';
 import type { PrismaClient } from '@hsa/database';
-import { hoyCivilMexico } from '@hsa/shared';
+import {
+  hoyCivilMexico,
+  metodoCapturaSchema,
+  formasPagoSchema,
+  partesDePago,
+} from '@hsa/shared';
 import { QuoteError, ownershipWhere, assertNotTrashed, type Actor } from '../quotes/service.js';
-import { registerPayment, anularPayment } from '../payments/service.js';
+import { registerPayment, anularPayment, resolverOError } from '../payments/service.js';
 import type { ComprobanteStorage } from '../payments/storage.js';
 import { abonarDesdeDeposito } from './abonos.js';
 import { apartadoVivo } from './apartados.js';
@@ -32,7 +37,9 @@ const montoCapturado = z.number().int().positive();
 
 export const depositoSchema = z.object({
   monto: montoCapturado,
-  metodo: z.enum(['efectivo', 'transferencia', 'tarjeta']),
+  /** Una sola forma, o `formas` si el depósito vino dividido. Ver `registerPaymentSchema`. */
+  metodo: metodoCapturaSchema.optional(),
+  formas: formasPagoSchema.optional(),
   fecha: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   referencia: z.string().max(120).optional(),
 });
@@ -203,6 +210,20 @@ async function cargarDeposito(db: PrismaClient, depositoId: string) {
   return deposito;
 }
 
+/**
+ * Cómo le toca heredar la forma de pago a un pago que sale de este depósito.
+ *
+ * Con una sola forma, esa. Con varias no se puede saber qué parte de cada una
+ * le tocó a cada evento, así que el pago queda `mixto` sin partes y el detalle
+ * vive en el depósito, que es el que tiene el folio.
+ */
+function formaHeredada(deposito: { monto: number; metodo: string; formas: unknown }) {
+  const partes = partesDePago(deposito);
+  return partes.length === 1
+    ? { metodo: partes[0]!.forma, formas: null }
+    : { metodo: 'mixto' as const, formas: null };
+}
+
 /** El depósito con su saldo ya calculado, que es lo que la interfaz consume. */
 function conSaldo<
   T extends {
@@ -229,6 +250,7 @@ export async function registrarDeposito(
 ) {
   if (actor.role !== 'admin') throw new QuoteError(403, 'Solo un admin puede registrar depósitos.');
   const input = depositoSchema.parse(rawInput);
+  const forma = resolverOError(input);
   const banquetero = await db.banquetero.findUnique({ where: { id: banqueteroId }, select: { id: true } });
   if (!banquetero) throw new QuoteError(404, 'Banquetero no encontrado');
 
@@ -244,7 +266,8 @@ export async function registrarDeposito(
     data: {
       banqueteroId,
       monto: input.monto,
-      metodo: input.metodo,
+      metodo: forma.metodo,
+      formas: forma.formas ?? undefined,
       // Día calendario a medianoche UTC, igual que `Payment.fecha`: es la fecha
       // que heredarán los pagos de sus asignaciones y el candado fiscal la compara
       // contra el día civil de México, que vive en ese mismo espacio.
@@ -353,7 +376,6 @@ export async function asignarDeposito(
       a.quoteId,
       {
         monto: a.monto,
-        metodo: deposito.metodo,
         // El concepto se DEDUCE del saldo del evento; 'aCuenta' es solo el
         // respaldo para las cotizaciones sin plan de pagos.
         concepto: 'aCuenta',
@@ -364,6 +386,10 @@ export async function asignarDeposito(
       undefined,
       {
         pagoBanqueteroId: deposito.id,
+        // Repartir no es dinero nuevo: el pago lleva el folio del depósito, que
+        // es la hoja foliada que se llenó cuando el dinero entró.
+        folio: deposito.folio,
+        ...formaHeredada(deposito),
         // El comprobante del depósito es el comprobante de cada recibo que sale
         // de él: hay un solo movimiento bancario detrás de los tres pagos.
         comprobanteKey: deposito.comprobanteKey,
@@ -390,7 +416,8 @@ export async function asignarDeposito(
       apartadoId: a.apartadoId,
       depositoId: deposito.id,
       monto: a.monto,
-      metodo: deposito.metodo,
+      metodo: formaHeredada(deposito).metodo,
+      folio: deposito.folio,
       fechaDeposito: deposito.fecha,
       actorId: actor.id,
     });

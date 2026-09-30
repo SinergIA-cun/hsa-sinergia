@@ -13,3 +13,4 @@ export * from './facturacion/candado.js';
 export * from './pagos/concepto.js';
 export * from './auditoria/agrupar.js';
 export * from './apartados/vigencia.js';
+export * from './pagos/formas.js';

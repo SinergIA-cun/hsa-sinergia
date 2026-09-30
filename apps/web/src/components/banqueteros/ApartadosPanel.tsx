@@ -8,9 +8,8 @@ import { Button, Card, Field, MoneyInput, SelectInput, TextInput } from '../ui.t
 import { apiErrorMessage } from '../admin/shared.tsx';
 import { hoyCivilMexico, vigenciaDeApartado } from '@hsa/shared';
 import { AbonosApartado } from './AbonosApartado.tsx';
-import type { ApartadoFecha, PaymentMethod, PriceList, Space } from '../../lib/types.ts';
-
-const METODOS: PaymentMethod[] = ['transferencia', 'efectivo', 'tarjeta'];
+import { FormasPagoCampo, errorFormas, formasIniciales, formasParaEnviar } from '../FormasPagoCampo.tsx';
+import type { ApartadoFecha, PriceList, Space } from '../../lib/types.ts';
 
 interface Props {
   banqueteroId: string;
@@ -283,7 +282,7 @@ function CrearApartado({
   const [spaceIds, setSpaceIds] = useState<string[]>([]);
   const [priceListId, setPriceListId] = useState('');
   const [deposito, setDeposito] = useState('');
-  const [depositoMetodo, setDepositoMetodo] = useState<PaymentMethod>('transferencia');
+  const [depositoFormas, setDepositoFormas] = useState(() => formasIniciales());
   const [depositoFecha, setDepositoFecha] = useState(() => new Date().toISOString().slice(0, 10));
   const [nota, setNota] = useState('');
   const [error, setError] = useState('');
@@ -308,8 +307,14 @@ function CrearApartado({
   }
 
   async function enviar(confirmar: boolean) {
+    const errorDeFormas = depositoNum > 0 ? errorFormas(depositoFormas, depositoNum) : null;
+    if (errorDeFormas) {
+      setError(errorDeFormas);
+      return;
+    }
     setBusy(true);
     setError('');
+    const envioFormas = formasParaEnviar(depositoFormas);
     try {
       await api.post(`/api/banqueteros/${banqueteroId}/apartados`, {
         fechaEvento,
@@ -319,7 +324,8 @@ function CrearApartado({
         // La forma de pago y la fecha de RECEPCIÓN solo viajan si hay depósito:
         // son obligatorias entonces porque el pago que nace al convertir hereda
         // esa fecha, no la de la conversión.
-        depositoMetodo: depositoNum > 0 ? depositoMetodo : null,
+        depositoMetodo: depositoNum > 0 ? (envioFormas.metodo ?? null) : null,
+        depositoFormas: depositoNum > 0 ? (envioFormas.formas ?? null) : null,
         depositoFecha: depositoNum > 0 ? depositoFecha : null,
         nota: nota.trim() || null,
         confirmar,
@@ -328,6 +334,7 @@ function CrearApartado({
       setSpaceIds([]);
       setPriceListId('');
       setDeposito('');
+      setDepositoFormas(formasIniciales());
       setNota('');
       setChoque('');
       await onCambio();
@@ -419,18 +426,7 @@ function CrearApartado({
         </Field>
         {depositoNum > 0 && (
           <>
-            <Field label="Forma de pago del depósito">
-              <SelectInput
-                value={depositoMetodo}
-                onChange={(e) => setDepositoMetodo(e.target.value as PaymentMethod)}
-              >
-                {METODOS.map((m) => (
-                  <option key={m} value={m}>
-                    {m}
-                  </option>
-                ))}
-              </SelectInput>
-            </Field>
+            <FormasPagoCampo value={depositoFormas} onChange={setDepositoFormas} monto={depositoNum} />
             <Field
               label="Fecha en que se recibió"
               hint="Al convertir, el pago lleva esta fecha, no la de la conversión."

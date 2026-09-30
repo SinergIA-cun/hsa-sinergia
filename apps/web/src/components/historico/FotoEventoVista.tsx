@@ -6,6 +6,7 @@ import { formatMXN } from '../../lib/money.ts';
 import { formatEventDate, formatFechaHora } from '../../lib/date.ts';
 import { BreakdownGrouped } from '../BreakdownGrouped.tsx';
 import type { DetalleHistorico, FotoEvento } from '../../lib/types.ts';
+import { FORMA_PAGO_LABEL, formatFolio, type MetodoPago } from '@hsa/shared';
 
 function Dato({ label, valor }: { label: string; valor: React.ReactNode }) {
   if (valor == null || valor === '' || valor === false) return null;
@@ -118,12 +119,14 @@ export function FotoEventoVista({ id }: { id: string }) {
                 </tr>
               </thead>
               <tbody className="divide-y divide-cream-200">
-                {f.pagos.map((p) => (
-                  <tr key={p.folio} className={p.anulado ? 'text-charcoal-soft line-through' : ''}>
-                    <td className="px-3 py-1.5 font-mono text-xs">{p.folio}</td>
+                {/* Llave por posición: el folio ya no es único dentro de un evento
+                    (dos pagos que salen del mismo depósito comparten el suyo). */}
+                {f.pagos.map((p, i) => (
+                  <tr key={i} className={p.anulado ? 'text-charcoal-soft line-through' : ''}>
+                    <td className="px-3 py-1.5 font-mono text-xs">{formatFolio(p.folio)}</td>
                     <td className="px-3 py-1.5">{formatEventDate(p.fechaISO)}</td>
                     <td className="px-3 py-1.5">{p.concepto}</td>
-                    <td className="px-3 py-1.5">{p.metodo}</td>
+                    <td className="px-3 py-1.5">{FORMA_PAGO_LABEL[p.metodo as MetodoPago] ?? p.metodo}</td>
                     <td className="px-3 py-1.5 text-right tabular-nums">{formatMXN(p.monto)}</td>
                     <td className="px-3 py-1.5 text-xs text-charcoal-soft">
                       {p.registradoPor ?? '—'}

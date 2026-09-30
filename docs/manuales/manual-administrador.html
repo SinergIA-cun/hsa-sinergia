@@ -27,6 +27,7 @@
   <ol>
     <li>Lo que puedes tú y ventas no<small>La tabla que conviene tener a la mano.</small></li>
     <li>Usuarios<small>Altas, roles, contraseñas y bajas.</small></li>
+    <li>Folios de recibo<small>La serie I y el número con el que arranca.</small></li>
     <li>Catálogos: el precio de la casa<small>El tema más delicado del sistema.</small></li>
     <li>Personal y cuadrillas<small>Quién trabaja cada evento.</small></li>
     <li>Banqueteros y su dinero<small>Depósitos, reparto, apartados y abonos.</small></li>
@@ -39,7 +40,7 @@
   </ol>
 </section>
 
-<!-- 1 ─────────────────────────────────────────────────────────────────── -->
+<!-- ─────────────────────────────────────────────────────────────────── -->
 <section class="seccion">
   <div class="kicker">Sección 1</div>
   <h2><span class="num">1</span>Lo que puedes tú y ventas no</h2>
@@ -67,7 +68,7 @@
   <p>El menú <span class="ui">Admin</span> solo aparece si entras con perfil de administrador. Todo lo demás del manual de ventas aplica igual para ti.</p>
 </section>
 
-<!-- 2 ─────────────────────────────────────────────────────────────────── -->
+<!-- ─────────────────────────────────────────────────────────────────── -->
 <section class="seccion">
   <div class="kicker">Sección 2</div>
   <h2><span class="num">2</span>Usuarios</h2>
@@ -96,10 +97,23 @@
   </div>
 </section>
 
-<!-- 3 ─────────────────────────────────────────────────────────────────── -->
+<!-- ─────────────────────────────────────────────────────────────────── -->
 <section class="seccion">
   <div class="kicker">Sección 3</div>
-  <h2><span class="num">3</span>Catálogos: el precio de la casa</h2>
+  <h2><span class="num">3</span>Folios de recibo</h2>
+  <p class="intro">Cada dinero que entra lleva un folio de la serie I, igual que las hojas foliadas de siempre: un pago, un depósito de banquetero o un abono a una fecha apartada.</p>
+  <p>En <span class="ui">Admin → Folios de recibo</span> se ve cuál es el siguiente y se captura el <strong>folio con el que arrancamos</strong>. Si la última hoja de papel fue la <span class="folio">I 5331</span>, se captura <strong>5332</strong> y el siguiente dinero que entre lleva ese número.</p>
+  <ul>
+    <li>Nada de lo ya registrado se renumera.</li>
+    <li>No se puede regresar a un número ya usado: habría dos recibos con el mismo folio.</li>
+    <li>Repartir un depósito o convertir un abono <strong>no gasta folios</strong>: llevan el del dinero que entró.</li>
+    <li>Cada cambio queda anotado con quién lo hizo y cuándo.</li>
+  </ul>
+</section>
+
+<section class="seccion">
+  <div class="kicker">Sección 4</div>
+  <h2><span class="num">4</span>Catálogos: el precio de la casa</h2>
   <p class="intro">Un catálogo es el año completo de precios: renta por rango de invitados, servicios, paquetes de alimentos, DJ y los parámetros (IVA, hora extra, descuento por alimentos).</p>
 
   <div class="caja">
@@ -135,10 +149,10 @@
   <p>Al apartarle una fecha se le puede congelar un catálogo. La cotización que nazca de ese apartado lo hereda, aunque para entonces el activo sea otro. Sirve para negociar 2029 con precios de hoy.</p>
 </section>
 
-<!-- 4 ─────────────────────────────────────────────────────────────────── -->
+<!-- ─────────────────────────────────────────────────────────────────── -->
 <section class="seccion">
-  <div class="kicker">Sección 4</div>
-  <h2><span class="num">4</span>Personal y cuadrillas</h2>
+  <div class="kicker">Sección 5</div>
+  <h2><span class="num">5</span>Personal y cuadrillas</h2>
   <p class="intro">En <span class="ui">Admin → Personal y cuadrillas</span>. Alimenta la hoja operativa de cada evento.</p>
 
   <ul>
@@ -149,13 +163,13 @@
   <p>Igual que con los usuarios: <span class="ui">Desactivar</span> conserva el historial, <span class="ui">Borrar</span> solo para un alta equivocada.</p>
 </section>
 
-<!-- 5 ─────────────────────────────────────────────────────────────────── -->
+<!-- ─────────────────────────────────────────────────────────────────── -->
 <section class="seccion">
-  <div class="kicker">Sección 5</div>
-  <h2><span class="num">5</span>Banqueteros y su dinero</h2>
+  <div class="kicker">Sección 6</div>
+  <h2><span class="num">6</span>Banqueteros y su dinero</h2>
   <p class="intro">Es la parte del sistema donde más fácil se pierde dinero si se captura mal, y por eso casi todo aquí es exclusivo de administrador.</p>
 
-  <h3>5.1 La cuenta corriente</h3>
+  <h3>6.1 La cuenta corriente</h3>
   <p>La ficha de cada banquetero muestra cuatro cifras:</p>
   <table>
     <thead><tr><th style="width:30%">Cifra</th><th>Qué es</th></tr></thead>
@@ -167,7 +181,7 @@
     </tbody>
   </table>
 
-  <h3>5.2 Registrar un depósito</h3>
+  <h3>6.2 Registrar un depósito</h3>
   <p>Entra completo a su cuenta aunque todavía no se sepa a qué eventos va.</p>
   <ol class="pasos">
     <li><strong>Monto</strong> en pesos enteros.</li>
@@ -181,12 +195,12 @@
     <p>Un depósito de marzo repartido en mayo sigue siendo ingreso <strong>de marzo</strong>. Si pones mal la fecha, los pagos que salgan de ese depósito nacerán con el mes equivocado y la factura saldrá mal.</p>
   </div>
 
-  <h3>5.3 Repartirlo</h3>
-  <p>Botón <span class="ui">Repartir</span>. Se elige a qué eventos va y cuánto a cada uno. Cada asignación genera un <strong>pago real</strong> en esa cotización, con su folio de recibo, heredando la fecha del depósito.</p>
+  <h3>6.3 Repartirlo</h3>
+  <p>Botón <span class="ui">Repartir</span>. Se elige a qué eventos va y cuánto a cada uno. Cada asignación genera un <strong>pago real</strong> en esa cotización, heredando la fecha del depósito <strong>y su folio</strong>: el depósito es un solo dinero que entró, así que es una sola hoja foliada aunque se reparta entre tres eventos.</p>
   <p>También se puede repartir hacia <strong>fechas apartadas</strong> que todavía no tienen cotización.</p>
 
-  <h3>5.4 Fechas apartadas</h3>
-  <p>Bloquean una fecha sin cotización ni precio. Se captura fecha, espacios (hasta tres), vencimiento, opcionalmente un catálogo garantizado, un depósito inicial y una nota.</p>
+  <h3>6.4 Fechas apartadas</h3>
+  <p>Bloquean una fecha sin cotización ni precio. Se captura fecha, espacios (hasta tres), opcionalmente un catálogo garantizado, un depósito inicial y una nota. El vencimiento no se captura: son <strong>siete días hábiles</strong>, contados solos (sin fines de semana ni días de descanso obligatorio). Un admin puede renovarlo por otros siete.</p>
   <p>Un apartado se puede ir abonando durante años. Al convertirlo en cotización, <strong>cada abono se convierte en un pago con su fecha original</strong> — tres abonos de tres años son tres ingresos de tres meses distintos, y el SAT los quiere facturados cada uno en el suyo.</p>
 
   <div class="caja">
@@ -194,14 +208,14 @@
     <p>Si nadie lo convierte antes de su vencimiento, la fecha se libera sola y se puede volver a vender. El panel de inicio avisa de los que vencen en 30 días. Sin ese vencimiento se apartaría 2029 gratis y se perdería inventario de fechas buenas.</p>
   </div>
 
-  <h3>5.5 El estado de cuenta compartible</h3>
+  <h3>6.5 El estado de cuenta compartible</h3>
   <p>Con <span class="ui">QR / enlace</span> le mandas una página de solo lectura con sus eventos, sus depósitos y cómo se repartieron. Se actualiza sola. Es lo que evita el hilo interminable de WhatsApp preguntando cuánto debe.</p>
 </section>
 
-<!-- 6 ─────────────────────────────────────────────────────────────────── -->
+<!-- ─────────────────────────────────────────────────────────────────── -->
 <section class="seccion">
-  <div class="kicker">Sección 6</div>
-  <h2><span class="num">6</span>Corregir dinero</h2>
+  <div class="kicker">Sección 7</div>
+  <h2><span class="num">7</span>Corregir dinero</h2>
   <p class="intro">Nada de dinero se borra. Se <strong>anula</strong>, y la anulación queda con su motivo, su fecha y su responsable.</p>
 
   <table>
@@ -217,10 +231,10 @@
   <p>Un recibo ya impreso no se puede «desimprimir». Por eso la anulación deja rastro en vez de hacer desaparecer el renglón: cuando el cliente llegue con su papel, tiene que poder explicarse qué pasó.</p>
 </section>
 
-<!-- 7 ─────────────────────────────────────────────────────────────────── -->
+<!-- ─────────────────────────────────────────────────────────────────── -->
 <section class="seccion">
-  <div class="kicker">Sección 7</div>
-  <h2><span class="num">7</span>Facturación</h2>
+  <div class="kicker">Sección 8</div>
+  <h2><span class="num">8</span>Facturación</h2>
   <p class="intro">El sistema no timbra facturas, pero sí cuida que los datos con los que se timbran no cambien después.</p>
 
   <h3>Marcar un pago como facturado</h3>
@@ -235,10 +249,10 @@
   </div>
 </section>
 
-<!-- 8 ─────────────────────────────────────────────────────────────────── -->
+<!-- ─────────────────────────────────────────────────────────────────── -->
 <section class="seccion">
-  <div class="kicker">Sección 8</div>
-  <h2><span class="num">8</span>La bitácora forense</h2>
+  <div class="kicker">Sección 9</div>
+  <h2><span class="num">9</span>La bitácora forense</h2>
   <p class="intro">En <span class="ui">Admin → Bitácora forense</span>. Registra qué fila cambió, cómo estaba antes y de dónde vino el cambio.</p>
 
   <p>La escriben los <strong>disparadores de la base de datos</strong>, no la aplicación. Eso significa que capta el cambio venga de donde venga: de la app, de una consola de SQL, de una migración. Guarda la fila completa antes y después.</p>
@@ -261,10 +275,10 @@
   </div>
 </section>
 
-<!-- 9 ─────────────────────────────────────────────────────────────────── -->
+<!-- ─────────────────────────────────────────────────────────────────── -->
 <section class="seccion">
-  <div class="kicker">Sección 9</div>
-  <h2><span class="num">9</span>Papelera e histórico</h2>
+  <div class="kicker">Sección 10</div>
+  <h2><span class="num">10</span>Papelera e histórico</h2>
 
   <h3>Papelera</h3>
   <p>Un contrato eliminado se conserva <strong>30 días</strong> y después se borra definitivamente. En ese plazo se puede restaurar completo, con sus pagos y su bitácora.</p>
@@ -275,10 +289,10 @@
   <p>El filtro <strong>solo eventos que quedaron debiendo</strong> es el que sirve para cobranza vieja.</p>
 </section>
 
-<!-- 10 ────────────────────────────────────────────────────────────────── -->
+<!-- ────────────────────────────────────────────────────────────────── -->
 <section class="seccion">
-  <div class="kicker">Sección 10</div>
-  <h2><span class="num">10</span>Lo que se congela, y por qué</h2>
+  <div class="kicker">Sección 11</div>
+  <h2><span class="num">11</span>Lo que se congela, y por qué</h2>
   <p class="intro">Varias cosas dejan de moverse a propósito. Si alguna vez te parece que el sistema «no guardó» un cambio, probablemente sea una de éstas.</p>
 
   <table>
@@ -294,10 +308,10 @@
   <p>Lo que <strong>no</strong> se congela nunca es la etiqueta descriptiva: sigue a la fecha, al cliente y al salón, incluso con el evento formalizado. Es a propósito — una descripción vieja es una descripción equivocada.</p>
 </section>
 
-<!-- 11 ────────────────────────────────────────────────────────────────── -->
+<!-- ────────────────────────────────────────────────────────────────── -->
 <section class="seccion">
-  <div class="kicker">Sección 11</div>
-  <h2><span class="num">11</span>Higiene de la instalación</h2>
+  <div class="kicker">Sección 12</div>
+  <h2><span class="num">12</span>Higiene de la instalación</h2>
 
   <h3>Contraseñas</h3>
   <p>La instalación nace con un usuario administrador y una contraseña genérica. <strong>Cámbiala antes de capturar el primer evento real</strong> — se hace desde <span class="ui">Admin → Usuarios → Editar</span>. Y dale cuenta propia a cada persona, en vez de repartir la misma.</p>

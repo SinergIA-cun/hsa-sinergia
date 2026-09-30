@@ -1,10 +1,16 @@
 import { z } from 'zod';
 import type { PrismaClient } from '@hsa/database';
-import { hoyCivilMexico, vigenciaDeApartado } from '@hsa/shared';
+import {
+  hoyCivilMexico,
+  vigenciaDeApartado,
+  metodoCapturaSchema,
+  formasPagoSchema,
+  type PartePago,
+} from '@hsa/shared';
 import { INCLUDE_ABONOS, totalAbonado } from './abonos.js';
 import { QuoteError, createQuote, type Actor } from '../quotes/service.js';
 import { getAvailability } from '../availability/service.js';
-import { registerPayment } from '../payments/service.js';
+import { registerPayment, resolverOError } from '../payments/service.js';
 import type { ComprobanteStorage } from '../payments/storage.js';
 
 /**
@@ -35,7 +41,9 @@ export const apartadoSchema = z
     // `int`: el depósito se captura. Prisma trunca los flotantes al escribir en
     // una columna `Int` sin avisar, así que un decimal se rechaza, no se redondea.
     deposito: z.number().int().nonnegative().default(0),
-    depositoMetodo: z.enum(['efectivo', 'transferencia', 'tarjeta']).nullish(),
+    depositoMetodo: metodoCapturaSchema.nullish(),
+    /** El depósito dividido en varias formas. Ver `registerPaymentSchema`. */
+    depositoFormas: formasPagoSchema.nullish(),
     /** Cuándo se RECIBIÓ el depósito (no cuándo se capturó ni cuándo se convierte). */
     depositoFecha: fechaISO.nullish(),
     /*
@@ -52,10 +60,15 @@ export const apartadoSchema = z
      */
     confirmar: z.boolean().default(false),
   })
-  .refine((d) => d.deposito === 0 || (d.depositoMetodo != null && d.depositoFecha != null), {
+  .refine(
+    (d) =>
+      d.deposito === 0 ||
+      ((d.depositoMetodo != null || (d.depositoFormas?.length ?? 0) > 0) && d.depositoFecha != null),
+    {
     message: 'Un depósito necesita forma de pago y la fecha en que se recibió.',
     path: ['depositoMetodo'],
-  });
+    },
+  );
 
 export const cancelarApartadoSchema = z.object({ motivo: z.string().min(3) });
 
@@ -117,6 +130,10 @@ export async function crearApartado(
     );
   }
 
+  const formaDeposito =
+    input.deposito > 0
+      ? resolverOError({ monto: input.deposito, metodo: input.depositoMetodo, formas: input.depositoFormas })
+      : null;
   const apartado = await db.apartadoFecha.create({
     data: {
       banqueteroId,
@@ -130,13 +147,14 @@ export async function crearApartado(
       // captura junto con la fecha porque así llega ("apártame el 15 y te dejo
       // veinte mil"), pero se guarda como lo que es: una entrada de dinero más,
       // con su propia fecha de recepción.
-      ...(input.deposito > 0 && input.depositoMetodo && input.depositoFecha
+      ...(input.deposito > 0 && formaDeposito && input.depositoFecha
         ? {
             abonos: {
               create: [
                 {
                   monto: input.deposito,
-                  metodo: input.depositoMetodo,
+                  metodo: formaDeposito.metodo,
+                  formas: formaDeposito.formas ?? undefined,
                   fecha: dia(input.depositoFecha),
                   referencia: 'Depósito al apartar',
                   registradoById: actor.id,
@@ -365,7 +383,6 @@ export async function convertirApartado(
       quote.id,
       {
         monto: abono.monto,
-        metodo: abono.metodo,
         concepto: 'aCuenta',
         fecha: abono.fecha.toISOString().slice(0, 10),
         referencia: abono.referencia ?? `Apartado ${apartado.id}`,
@@ -376,6 +393,11 @@ export async function convertirApartado(
         // Si el abono salió de un depósito, el pago hereda esa liga: el rastro
         // del dinero no se corta al convertir.
         ...(abono.pagoBanqueteroId ? { pagoBanqueteroId: abono.pagoBanqueteroId } : {}),
+        // El abono ya fue la entrada de dinero: el pago hereda su folio y su forma
+        // de pago en vez de gastar un folio nuevo.
+        folio: abono.folio,
+        metodo: abono.metodo,
+        formas: (abono.formas as PartePago[] | null) ?? null,
         // Y su comprobante viaja con él, en vez de quedarse huérfano en el abono.
         comprobanteKey: abono.comprobanteKey,
         comprobanteMime: abono.comprobanteMime,

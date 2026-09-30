@@ -1,7 +1,9 @@
 import { z } from 'zod';
 import type { PrismaClient, Prisma, PaymentMethod } from '@hsa/database';
+import { metodoCapturaSchema, formasPagoSchema } from '@hsa/shared';
 import { QuoteError, type Actor } from '../quotes/service.js';
 import type { ComprobanteStorage } from '../payments/storage.js';
+import { resolverOError } from '../payments/service.js';
 
 /**
  * Los abonos sobre una fecha apartada.
@@ -25,7 +27,9 @@ const montoCapturado = z.number().int().positive();
 
 export const abonoSchema = z.object({
   monto: montoCapturado,
-  metodo: z.enum(['efectivo', 'transferencia', 'tarjeta']),
+  /** Una sola forma, o `formas` si el abono vino dividido. */
+  metodo: metodoCapturaSchema.optional(),
+  formas: formasPagoSchema.optional(),
   /** Cuándo se RECIBIÓ el dinero, no cuándo se captura. */
   fecha: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   referencia: z.string().max(120).optional(),
@@ -93,6 +97,7 @@ export async function registrarAbono(
 ) {
   if (actor.role !== 'admin') throw new QuoteError(403, 'Solo un admin puede registrar abonos.');
   const input = abonoSchema.parse(rawInput);
+  const forma = resolverOError(input);
   await apartadoQuePuedeRecibir(db, apartadoId);
 
   let comprobanteKey: string | null = null;
@@ -107,7 +112,8 @@ export async function registrarAbono(
     data: {
       apartadoId,
       monto: input.monto,
-      metodo: input.metodo,
+      metodo: forma.metodo,
+      formas: forma.formas ?? undefined,
       // Día calendario a medianoche UTC, como `Payment.fecha`: es la que hereda
       // el pago al convertir, y el candado fiscal la compara contra el día civil
       // de México, que vive en ese mismo espacio.
@@ -138,6 +144,12 @@ export async function abonarDesdeDeposito(
     depositoId: string;
     monto: number;
     metodo: PaymentMethod;
+    /**
+     * El folio del depósito. Abonar desde el saldo no es dinero nuevo, así que no
+     * gasta un folio: lleva el del depósito. `null` (depósito de antes del folio)
+     * se guarda tal cual; sin esto el default de la base gastaría uno.
+     */
+    folio: number | null;
     fechaDeposito: Date;
     actorId: string;
   },
@@ -145,6 +157,7 @@ export async function abonarDesdeDeposito(
   return db.abonoApartado.create({
     data: {
       apartadoId: args.apartadoId,
+      folio: args.folio,
       monto: args.monto,
       metodo: args.metodo,
       fecha: args.fechaDeposito,
