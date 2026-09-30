@@ -58,6 +58,26 @@ enum PaymentConcept {
   finiquito
 }
 
+/// A qué va un pago. `evento` es la renta contratada (la de siempre: plan de
+/// pagos, hitos y estatus). `cargos` es la cuenta del punto de venta: horas
+/// extra, multas, invitados extra, gastos imprevistos. Esos pagos NO tocan el
+/// plan ni el valor del evento.
+enum PaymentDestino {
+  evento
+  cargos
+}
+
+/// Lo que se le puede cargar a la cuenta de un evento en el punto de venta.
+enum ProductoCargo {
+  horaExtra
+  djHoraExtra
+  invitadoExtra
+  danos
+  multa
+  gastoImprevisto
+  otro
+}
+
 enum ActivityType {
   creada
   estatus
@@ -70,6 +90,10 @@ enum ActivityType {
   fiscal
   /// Un admin movió la cotización a otro catálogo (se represió a propósito).
   catalogo
+  /// Se cargó algo a la cuenta del evento en el punto de venta.
+  cargo
+  /// Se anuló un cargo del punto de venta.
+  cargoAnulado
 }
 
 /// El catálogo completo de un año: renta, servicios, alimentos y parámetros.
@@ -525,6 +549,8 @@ model Quote {
   payments          Payment[]
   activityLog       ActivityLog[]
   extras            QuoteExtra[]
+  /// La cuenta del punto de venta: lo que se agregó después de contratar.
+  cargos            CargoEvento[]
   /// El apartado del que nació, si nació de uno.
   apartado          ApartadoFecha?
   /// Las fotos del evento una vez pasada su fecha (una por versión).
@@ -639,6 +665,8 @@ model Payment {
   /// pagos. Los tres llevan el folio del depósito. La unicidad la da la secuencia
   /// `recibo_folio_seq`, que es la misma para pagos, depósitos y abonos.
   folio            Int             @default(dbgenerated("nextval('recibo_folio_seq')"))
+  /// A qué va: la renta del evento o su cuenta de cargos. Ver `PaymentDestino`.
+  destino          PaymentDestino  @default(evento)
   /// Las partes de un pago dividido (`[{ forma, monto }]`, suman `monto`). `null`
   /// en los pagos de antes de la división: su única forma es `metodo`.
   formas           Json?
@@ -710,6 +738,8 @@ model User {
   actividades               ActivityLog[]    @relation("ActivityActor")
   priceListAudits           PriceListAudit[] @relation("PriceListAuditActor")
   cambiosFolio              CambioFolio[]    @relation("CambioFolioActor")
+  cargosRegistrados         CargoEvento[]    @relation("CargoRegistradoBy")
+  cargosAnulados            CargoEvento[]    @relation("CargoAnuladoBy")
 }
 
 /// La bitácora forense: quién tocó qué fila, con el contenido antes y después.
@@ -812,4 +842,39 @@ model CambioFolio {
   actor     User?    @relation("CambioFolioActor", fields: [actorId], references: [id], onDelete: SetNull)
   actorId   String?
   createdAt DateTime @default(now())
+}
+
+/// Un renglón de la cuenta del evento en el punto de venta.
+///
+/// Es lo que se agrega DESPUÉS de contratar —casi siempre durante o después del
+/// evento—: "quieren extender dos horas", "rompieron una mesa", "metieron cinco
+/// invitados de más". NO cambia el valor del evento (`Quote.total` y el plan de
+/// pagos quedan como se firmaron); es una venta aparte, casada al evento, con
+/// sus propios pagos (`Payment.destino = cargos`).
+///
+/// El precio se COPIA al renglón, igual que `QuoteExtra`: cambiar mañana el 5%
+/// de la hora extra no debe mover lo que ya se cobró.
+model CargoEvento {
+  id              String        @id @default(cuid())
+  quote           Quote         @relation(fields: [quoteId], references: [id])
+  quoteId         String
+  producto        ProductoCargo
+  /// Lo que se imprime: "Hora extra de salón", "Rompieron una mesa", etc.
+  descripcion     String
+  cantidad        Int
+  /// Con IVA incluido: lo que se teclea es lo que se cobra.
+  precioUnitario  Int
+  total           Int
+  /// El día de la venta (medianoche UTC, como `Payment.fecha`).
+  fecha           DateTime
+  registradoBy    User?         @relation("CargoRegistradoBy", fields: [registradoById], references: [id])
+  registradoById  String?
+  anuladoAt       DateTime?
+  anuladoBy       User?         @relation("CargoAnuladoBy", fields: [anuladoById], references: [id])
+  anuladoById     String?
+  motivoAnulacion String?
+  createdAt       DateTime      @default(now())
+
+  @@index([quoteId])
+  @@index([fecha])
 }

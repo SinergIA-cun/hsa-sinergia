@@ -1,5 +1,13 @@
 import type { PrismaClient } from '@hsa/database';
-import { estadoFacturaPago, hoyCivilMexico, requisitosFactura, partesDePago, formatFolio } from '@hsa/shared';
+import {
+  estadoFacturaPago,
+  hoyCivilMexico,
+  requisitosFactura,
+  partesDePago,
+  formatFolio,
+  saldoDeCargos,
+  PRODUCTO_INFO,
+} from '@hsa/shared';
 import { loadEstadoCuentaBulk } from '../quotes/service.js';
 
 /** Rango de fechas y paginación comunes a todos los endpoints del BI. */
@@ -45,6 +53,20 @@ export async function biEventos(db: PrismaClient, r: RangoBI) {
     take: r.limit,
     ...(r.cursor ? { skip: 1, cursor: { id: r.cursor } } : {}),
   });
+  // La cuenta del punto de venta de cada evento, en bloque (sin N+1).
+  const ids = quotes.map((q) => q.id);
+  const [cargos, pagosCargos] = await Promise.all([
+    db.cargoEvento.findMany({ where: { quoteId: { in: ids } }, select: { quoteId: true, total: true, anuladoAt: true } }),
+    db.payment.findMany({
+      where: { quoteId: { in: ids }, destino: 'cargos' },
+      select: { quoteId: true, monto: true, anuladoAt: true },
+    }),
+  ]);
+  const cuentaDe = (id: string) =>
+    saldoDeCargos(
+      cargos.filter((c) => c.quoteId === id),
+      pagosCargos.filter((p) => p.quoteId === id),
+    );
   return quotes.map((q) => ({
     id: q.id,
     fechaEvento: q.fechaEvento.toISOString().slice(0, 10),
@@ -61,6 +83,9 @@ export async function biEventos(db: PrismaClient, r: RangoBI) {
     renta: { subtotal: rentaSubtotalDe(q.breakdown), total: q.rentaTotal },
     otros: { total: q.total - q.rentaTotal },
     total: q.total,
+    // Lo vendido DESPUÉS de contratar en el punto de venta (horas extra, multas,
+    // daños). NO está en `total`: el valor del evento no cambia. Ver /cargos.
+    cargosAdicionales: cuentaDe(q.id),
   }));
 }
 
@@ -100,6 +125,9 @@ export async function biPagos(db: PrismaClient, r: RangoBI) {
       // El depósito del banquetero del que salió, si salió de uno: varios pagos
       // de un mismo depósito comparten su folio (es UNA entrada de dinero).
       pagoBanqueteroId: p.pagoBanqueteroId,
+      // `evento` = abona a la renta contratada; `cargos` = a la cuenta del punto
+      // de venta (otros ingresos del evento, fuera de su valor).
+      destino: p.destino,
       concepto: p.concepto,
       registradoPor: p.registradoBy?.nombre ?? null,
       anulado: p.anuladoAt != null,
@@ -239,6 +267,7 @@ export async function biIngresos(db: PrismaClient, r: RangoBI) {
     ...pagos.map((p) => ({
       id: `pago:${p.id}`,
       tipo: 'pago' as const,
+      destino: p.destino as string | null,
       folio: p.folio as number | null,
       fecha: p.fecha,
       monto: p.monto,
@@ -255,6 +284,7 @@ export async function biIngresos(db: PrismaClient, r: RangoBI) {
     ...depositos.map((d) => ({
       id: `deposito:${d.id}`,
       tipo: 'deposito' as const,
+      destino: null,
       folio: d.folio,
       fecha: d.fecha,
       monto: d.monto,
@@ -271,6 +301,7 @@ export async function biIngresos(db: PrismaClient, r: RangoBI) {
     ...abonos.map((a) => ({
       id: `abono:${a.id}`,
       tipo: 'abono' as const,
+      destino: null,
       folio: a.folio,
       fecha: a.fecha,
       monto: a.monto,
@@ -291,5 +322,44 @@ export async function biIngresos(db: PrismaClient, r: RangoBI) {
     ...f,
     folioTexto: formatFolio(f.folio),
     fecha: f.fecha.toISOString().slice(0, 10),
+  }));
+}
+
+/**
+ * Otros ingresos del evento: lo cargado a su cuenta en el punto de venta.
+ *
+ * Horas extra, DJ extra, invitados de más, multas, daños y gastos imprevistos.
+ * No forman parte del valor del evento (`/eventos.total`); sus cobros llegan por
+ * `/pagos` con `destino: "cargos"`. Incluye los anulados, marcados.
+ *
+ * Rango sobre `fecha` del cargo (el día de la venta).
+ */
+export async function biCargos(db: PrismaClient, r: RangoBI) {
+  const cargos = await db.cargoEvento.findMany({
+    where: { fecha: { gte: r.desde, lte: r.hasta }, quote: { deletedAt: null } },
+    include: {
+      quote: { select: { id: true, folio: true, fechaEvento: true, client: { select: { nombre: true } } } },
+      registradoBy: { select: { nombre: true } },
+    },
+    orderBy: [{ fecha: 'asc' }, DESEMPATE],
+    take: r.limit,
+    ...(r.cursor ? { skip: 1, cursor: { id: r.cursor } } : {}),
+  });
+  return cargos.map((c) => ({
+    id: c.id,
+    quoteId: c.quoteId,
+    eventoFolio: c.quote.folio,
+    fechaEvento: c.quote.fechaEvento.toISOString().slice(0, 10),
+    cliente: c.quote.client?.nombre ?? null,
+    fecha: c.fecha.toISOString().slice(0, 10),
+    producto: c.producto,
+    productoNombre: PRODUCTO_INFO[c.producto].nombre,
+    descripcion: c.descripcion,
+    cantidad: c.cantidad,
+    precioUnitario: c.precioUnitario,
+    total: c.total,
+    registradoPor: c.registradoBy?.nombre ?? null,
+    anulado: c.anuladoAt != null,
+    motivoAnulacion: c.motivoAnulacion,
   }));
 }

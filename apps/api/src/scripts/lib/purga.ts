@@ -37,6 +37,11 @@ export const TABLAS_MOVIMIENTO = [
   'Payment',
   'ApartadoFecha',
   'AbonoApartado',
+  // La cuenta del punto de venta de cada evento: se va con su evento.
+  'CargoEvento',
+  // Los cambios del folio de arranque: con la purga el folio vuelve a empezar,
+  // así que su historial ya no describe nada.
+  'CambioFolio',
 ] as const;
 
 /**

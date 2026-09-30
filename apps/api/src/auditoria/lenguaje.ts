@@ -75,6 +75,8 @@ const NOMBRE: Record<string, string> = {
   PagoBanquetero: 'un depósito de banquetero',
   ApartadoFecha: 'una fecha apartada',
   AbonoApartado: 'un abono a una fecha apartada',
+  CargoEvento: 'un cargo a la cuenta de un evento',
+  CambioFolio: 'el folio con el que arranca la serie I',
   Empleado: 'un empleado',
   Cuadrilla: 'una cuadrilla',
   CuadrillaMiembro: 'un integrante de una cuadrilla',
@@ -104,6 +106,8 @@ const ALTA: Record<string, string> = {
   PagoBanquetero: 'Registró',
   ApartadoFecha: 'Apartó',
   AbonoApartado: 'Registró',
+  CargoEvento: 'Cargó',
+  CambioFolio: 'Fijó',
 };
 
 function obj(v: unknown): Record<string, unknown> {
@@ -132,7 +136,16 @@ export function etiquetaDe(fila: FilaTraducible): string | null {
       return campo('folio');
     case 'Payment': {
       const folio = campo('folio');
-      return folio ? `recibo #${folio}` : null;
+      return folio ? `recibo I ${folio}` : null;
+    }
+    case 'CargoEvento': {
+      const desc = campo('descripcion');
+      const total = campo('total');
+      return desc ? `${desc}${total ? ` · $${Number(total).toLocaleString('es-MX')}` : ''}` : null;
+    }
+    case 'CambioFolio': {
+      const sig = campo('siguiente');
+      return sig ? `I ${sig}` : null;
     }
     case 'ApartadoFecha': {
       const fecha = campo('fechaEvento');
@@ -141,7 +154,10 @@ export function etiquetaDe(fila: FilaTraducible): string | null {
     case 'PagoBanquetero':
     case 'AbonoApartado': {
       const monto = campo('monto');
-      return monto ? `$${Number(monto).toLocaleString('es-MX')}` : null;
+      const folio = campo('folio');
+      if (!monto) return null;
+      const pesos = `$${Number(monto).toLocaleString('es-MX')}`;
+      return folio ? `I ${folio} · ${pesos}` : pesos;
     }
     case 'RentalPrice':
     case 'FoodPackagePrice': {

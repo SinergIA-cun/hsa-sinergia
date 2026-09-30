@@ -1,3 +1,4 @@
+import type { ProductoInfo } from '@hsa/shared';
 import type { QuoteBreakdown, Catalog as EngineCatalog } from '@hsa/shared';
 
 export type { QuoteBreakdown, EngineCatalog };
@@ -293,6 +294,8 @@ export interface Payment {
   metodo: PaymentMethod;
   /** Las partes si vino dividido; `null` en los pagos de antes de la división. */
   formas: PartePago[] | null;
+  /** `evento` = abona a la renta; `cargos` = a la cuenta del punto de venta. */
+  destino: 'evento' | 'cargos';
   /**
    * El concepto EFECTIVO: se deduce de dónde deja el acumulado contra los hitos
    * del plan, no de lo que se teclea. Se reclasifica cuando cambia el acumulado
@@ -382,7 +385,9 @@ export interface ActivityEntry {
     | 'restaurada'
     | 'factura'
     | 'fiscal'
-    | 'catalogo';
+    | 'catalogo'
+    | 'cargo'
+    | 'cargoAnulado';
   descripcion: string;
   createdAt: string;
   actor?: { nombre: string } | null;
@@ -395,6 +400,38 @@ export interface QuoteDetail {
   /** `editable: false` cuando ya se emitió una factura con estos datos. */
   fiscalEditable?: { editable: boolean; motivo: string | null };
   activityLog: ActivityEntry[];
+  /** La cuenta del punto de venta: lo cargado después de contratar. */
+  cuenta: CuentaEvento;
+  productosPuntoDeVenta: ProductoPuntoDeVenta[];
+}
+
+/** Un renglón de la cuenta del evento en el punto de venta. */
+export interface CargoEvento {
+  id: string;
+  producto: import('@hsa/shared').ProductoCargo;
+  descripcion: string;
+  cantidad: number;
+  precioUnitario: number;
+  total: number;
+  fecha: string;
+  registradoBy?: { nombre: string } | null;
+  anuladoAt: string | null;
+  motivoAnulacion: string | null;
+}
+
+/** La cuenta del evento: sus cargos, sus cobros y el saldo. No toca el valor del evento. */
+export interface CuentaEvento {
+  cargos: CargoEvento[];
+  pagos: Payment[];
+  total: number;
+  pagado: number;
+  saldo: number;
+}
+
+/** Lo que ofrece el punto de venta de un evento, con su precio sugerido. */
+export interface ProductoPuntoDeVenta extends ProductoInfo {
+  /** `null` = no tiene tarifa, se teclea. */
+  precioSugerido: number | null;
 }
 
 export type AvailabilityLevel = 'libre' | 'cotizaciones' | 'bloqueada';

@@ -211,6 +211,39 @@ apartadas. Es lo que se concilia contra el banco y contra la caja.
 `folio: null` (`folioTexto: "sin folio"`) = un depósito o abono registrado antes de que
 existiera el folio; nada se renumeró.
 
+### `GET /api/bi/cargos`
+
+**Otros ingresos del evento**: lo cargado a su cuenta en el punto de venta después de
+contratar — horas extra, DJ extra, invitados de más, multas, daños y gastos imprevistos.
+**No forman parte del valor del evento**: `/eventos.total` no cambia. Cada evento trae
+además `cargosAdicionales: { total, pagado, saldo }` en `/eventos`, y los cobros llegan por
+`/pagos` con `destino: "cargos"` (los de la renta traen `destino: "evento"`).
+
+- **Rango sobre:** `fecha` del cargo (el día de la venta). Incluye los anulados, marcados.
+
+```json
+{
+    "id": "cmuoib8py0007cbejiorzabcf",
+    "quoteId": "cmsj93pl20002cbrfoex3bnxe",
+    "eventoFolio": "26SEP-0007",
+    "fechaEvento": "2031-04-12",
+    "cliente": "Demo Candado D2",
+    "fecha": "2026-09-30",
+    "producto": "horaExtra",
+    "productoNombre": "Hora extra de salón",
+    "descripcion": "Hora extra de salón",
+    "cantidad": 2,
+    "precioUnitario": 5425,
+    "total": 10850,
+    "registradoPor": "Administrador",
+    "anulado": false,
+    "motivoAnulacion": null
+}
+```
+
+`producto` es uno de `horaExtra`, `djHoraExtra`, `invitadoExtra`, `danos`, `multa`,
+`gastoImprevisto`, `otro`. Los montos traen IVA incluido.
+
 ### Formas de pago
 
 `metodo` es uno de `efectivo`, `cheque`, `transferencia`, `tarjetaDebito`,

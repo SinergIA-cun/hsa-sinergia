@@ -20,7 +20,11 @@ export type LogTipo =
    * dejando la operación sin rastro. El typecheck no ve ese hueco; solo lo caza
    * un test que cuente los registros escritos.
    */
-  | 'catalogo';
+  | 'catalogo'
+  /** Se cargó algo a la cuenta del evento en el punto de venta (migración `punto_de_venta_cargos`). */
+  | 'cargo'
+  /** Se anuló un cargo del punto de venta. */
+  | 'cargoAnulado';
 
 /** Escribe una entrada de bitácora. Nunca lanza: la bitácora no debe tumbar la operación. */
 export async function logActivity(

@@ -19,6 +19,7 @@ import { whatsappUrl, mensajeCotizacion } from '../lib/share.ts';
 import { Button, Card, SelectInput, ArrowDivider } from '../components/ui.tsx';
 import { QuoteForm, type QuotePayload, type QuoteFormInitial } from '../components/QuoteForm.tsx';
 import { PagosPanel } from '../components/PagosPanel.tsx';
+import { PuntoDeVentaPanel } from '../components/PuntoDeVentaPanel.tsx';
 import { CompartirClienteModal } from '../components/CompartirClienteModal.tsx';
 import { ConfirmarEmpalmeModal, type EspacioOcupado } from '../components/ConfirmarEmpalmeModal.tsx';
 import { MoverCatalogoModal } from '../components/MoverCatalogoModal.tsx';
@@ -396,6 +397,19 @@ export function EditQuotePage() {
           estadoCuenta={estadoCuenta}
           payments={payments}
           activityLog={activityLog}
+          readOnly={enPapelera}
+        />
+      )}
+
+      {/* El punto de venta solo existe para un evento contratado: un borrador
+          todavía es una cotización y no tiene cuenta que cargarle. */}
+      {quote.status !== 'borrador' && quoteQ.data?.cuenta && (
+        <PuntoDeVentaPanel
+          quoteId={quote.id}
+          publicToken={quote.publicToken}
+          cuenta={quoteQ.data.cuenta}
+          productos={quoteQ.data.productosPuntoDeVenta}
+          isAdmin={isAdmin}
           readOnly={enPapelera}
         />
       )}

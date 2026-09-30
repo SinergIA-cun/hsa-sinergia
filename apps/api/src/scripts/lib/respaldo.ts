@@ -24,7 +24,11 @@ import type { PrismaClient } from '@hsa/database';
 
 /** Las secuencias que hay que reacomodar al restaurar, y de dónde sale su tope. */
 const SECUENCIAS_A_REACOMODAR: { seq: string; tabla: string; columna: string }[] = [
+  // El folio de la serie I lo gastan tres tablas (un folio por cada dinero que
+  // entra): pagos, depósitos de banquetero y abonos a fechas apartadas.
   { seq: 'recibo_folio_seq', tabla: 'Payment', columna: 'folio' },
+  { seq: 'recibo_folio_seq', tabla: 'PagoBanquetero', columna: 'folio' },
+  { seq: 'recibo_folio_seq', tabla: 'AbonoApartado', columna: 'folio' },
   { seq: 'client_ref_seq', tabla: 'Client', columna: 'numeroReferencia' },
   { seq: 'AuditoriaDb_id_seq', tabla: 'AuditoriaDb', columna: 'id' },
 ];
@@ -49,8 +53,15 @@ async function insertar(
 async function reacomodar(tx: EjecutorSql, destino: string, tabla: string): Promise<void> {
   const s = SECUENCIAS_A_REACOMODAR.find((x) => x.tabla === tabla);
   if (!s) return;
+  // GREATEST con lo que la secuencia ya iba a dar: varias tablas comparten la del
+  // folio y se restauran una tras otra, así que cada una solo puede SUBIRLA. Si la
+  // segunda la bajara al máximo de la suya, el siguiente pago repetiría el folio
+  // de un depósito de la primera.
   await tx.$executeRawUnsafe(
-    `SELECT setval('"${s.seq}"', COALESCE((SELECT max("${s.columna}") FROM "${destino}"."${tabla}"), 0) + 1, false)`,
+    `SELECT setval('"${s.seq}"', GREATEST(
+       COALESCE((SELECT max("${s.columna}") FROM "${destino}"."${tabla}"), 0) + 1,
+       (SELECT CASE WHEN is_called THEN last_value + 1 ELSE last_value END FROM "${s.seq}")
+     ), false)`,
   );
 }
 

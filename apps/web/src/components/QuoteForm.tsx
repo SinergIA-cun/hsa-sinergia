@@ -265,6 +265,10 @@ export function QuoteForm({
   const [capillaHorario, setCapillaHorario] = useState(initial?.capillaHorario ?? '');
   const [esCortesia, setEsCortesia] = useState(initial?.esCortesia ?? false);
   const [usaDjHoraExtra, setUsaDjHoraExtra] = useState(initial?.usaDjHoraExtra ?? false);
+  // Solo los contratos que YA las traían siguen mostrando las horas extra: las
+  // nuevas se cargan en el punto de venta del evento (decisión del dueño).
+  const horasExtraCotizadas = (initial?.horasExtra ?? 0) > 0;
+  const djCotizado = initial?.usaDjHoraExtra === true;
   const [addOns, setAddOns] = useState<Record<string, number>>(initial?.addOns ?? {});
   const [extras, setExtras] = useState<QuoteExtraInput[]>(initial?.extras ?? []);
   // El descuento se captura en por ciento; vacío = sin descuento.
@@ -695,9 +699,15 @@ export function QuoteForm({
             <Field label="Invitados">
               <TextInput type="number" min={1} value={invitados} onChange={(e) => setInvitados(Number(e.target.value))} />
             </Field>
-            <Field label="Horas extra" hint="5% de la renta por hora">
-              <TextInput type="number" min={0} value={horasExtra} onChange={(e) => setHorasExtra(Number(e.target.value))} />
-            </Field>
+            {/* Las horas extra se venden en el PUNTO DE VENTA del evento, cuando
+                pasan ("durante el evento quieren extender"), no al cotizar. El
+                campo solo sigue aquí para los contratos que ya las traían
+                cotizadas: esas quedan en su precio y se pueden quitar. */}
+            {horasExtraCotizadas && (
+              <Field label="Horas extra (cotizadas)" hint="Ya venían en el contrato. Las nuevas se cargan en el punto de venta del evento.">
+                <TextInput type="number" min={0} value={horasExtra} onChange={(e) => setHorasExtra(Number(e.target.value))} />
+              </Field>
+            )}
           </div>
         </Card>
 
@@ -929,8 +939,9 @@ export function QuoteForm({
         <Card className="space-y-3 p-6">
           <h2 className="font-display text-xl text-ink">Servicios adicionales</h2>
 
-          {/* DJ Hora extra: precio por tipo de evento × horas extra (manual). */}
-          {djPrecio != null && (
+          {/* DJ Hora extra: igual que las horas extra, ahora se vende en el punto de
+              venta. Solo sigue aquí para los contratos que ya lo traían. */}
+          {djPrecio != null && djCotizado && (
             <label
               className={`flex cursor-pointer items-start gap-3 rounded-lg border px-4 py-3 text-sm transition-colors ${
                 usaDjHoraExtra ? 'border-gold bg-gold/10' : 'border-ink/12 bg-white/50 hover:border-ink/30'

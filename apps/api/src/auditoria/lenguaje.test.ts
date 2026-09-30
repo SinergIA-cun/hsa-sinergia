@@ -116,7 +116,7 @@ describe('traducir la bitácora forense', () => {
       fila({ tabla: 'Payment', operacion: 'INSERT', despues: { folio: 37, monto: 5000 } }),
     );
     expect(pago.frase).toBe('Registró un pago');
-    expect(pago.etiqueta).toBe('recibo #37');
+    expect(pago.etiqueta).toBe('recibo I 37');
 
     const anular = fila({
       tabla: 'Payment',
@@ -168,7 +168,7 @@ describe('traducir la bitácora forense', () => {
       }),
     );
     expect(desbloqueo.frase).toBe('Desbloqueó los datos fiscales de un pago');
-    expect(desbloqueo.etiqueta).toBe('recibo #37');
+    expect(desbloqueo.etiqueta).toBe('recibo I 37');
   });
 
   it('un cambio de contraseña se dice, aunque el campo esté escondido', () => {

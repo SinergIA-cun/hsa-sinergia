@@ -19,6 +19,7 @@ import { archivarEvento } from '../historico/archivar.js';
 import { esUpgrade, type PaymentStatus } from '../quotes/estadoCuenta.js';
 import { reclasificarConceptos } from './conceptos.js';
 import type { ComprobanteStorage } from './storage.js';
+import { validarCobroDeCargos, descripcionPagoCargos } from '../cargos/service.js';
 
 export const registerPaymentSchema = z.object({
   monto: z.number().int().positive(),
@@ -42,6 +43,12 @@ export const registerPaymentSchema = z.object({
   concepto: paymentConceptSchema.default('aCuenta'),
   fecha: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   referencia: z.string().optional(),
+  /**
+   * A qué va el pago. `evento` (lo de siempre) abona a la renta contratada y
+   * mueve el plan de pagos. `cargos` abona a la cuenta del punto de venta —horas
+   * extra, multas, daños— y NO toca el plan ni el valor del evento.
+   */
+  destino: z.enum(['evento', 'cargos']).default('evento'),
 });
 
 export const anularSchema = z.object({ motivo: z.string().min(3) });
@@ -117,6 +124,12 @@ export async function registerPayment(
   const quote = await findOwnedQuote(db, quoteId, actor);
   const input = registerPaymentSchema.parse(rawInput);
   const { metodo, formas } = formasAGuardar(input, origen);
+  // Un depósito de banquetero o un abono solo pagan la renta del evento: la
+  // cuenta del punto de venta se cobra en el mostrador.
+  if (input.destino === 'cargos') {
+    if (origen?.pagoBanqueteroId) throw new QuoteError(400, 'Un depósito se reparte a eventos, no a su cuenta de cargos.');
+    await validarCobroDeCargos(db, quote, input.monto);
+  }
 
   let comprobanteKey: string | null = origen?.comprobanteKey ?? null;
   let comprobanteMime: string | null = origen?.comprobanteMime ?? null;
@@ -140,10 +153,25 @@ export async function registerPayment(
       comprobanteMime,
       registradoById: actor.id,
       pagoBanqueteroId: origen?.pagoBanqueteroId ?? null,
+      destino: input.destino,
       // Sin folio heredado, el default de la base toma el siguiente de la serie.
       ...(origen?.folio != null ? { folio: origen.folio } : {}),
     },
   });
+
+  // Un cobro a la cuenta del punto de venta no toca nada de la renta: ni
+  // conceptos, ni hitos, ni estatus. Solo su bitácora y la foto del histórico.
+  if (input.destino === 'cargos') {
+    await logActivity(db, {
+      quoteId, tipo: 'pago',
+      descripcion: descripcionPagoCargos(payment.folio, input.monto, describirFormasPago(payment)),
+      meta: { paymentId: payment.id, folio: payment.folio, monto: input.monto, destino: 'cargos', metodo, formas },
+      actorId: actor.id,
+    });
+    await archivarEvento(db, quoteId);
+    const { estadoCuenta } = await loadEstadoCuenta(db, quote);
+    return { payment, estadoCuenta, nuevoEstatus: null };
+  }
 
   // El concepto se DEDUCE del saldo, no de lo capturado: registrar el pago mueve
   // el acumulado, así que se reclasifica antes de anotar la bitácora — el rastro
