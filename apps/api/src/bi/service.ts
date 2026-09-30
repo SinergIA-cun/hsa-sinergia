@@ -369,3 +369,45 @@ export async function biCargos(db: PrismaClient, r: RangoBI) {
     motivoAnulacion: c.motivoAnulacion,
   }));
 }
+
+/**
+ * Dinero que SALIÓ: devoluciones a clientes (de la renta o de la cuenta del
+ * punto de venta) y a banqueteros (de su saldo a favor). No llevan folio de la
+ * serie I, que numera lo que entra. Incluye las anuladas, marcadas.
+ *
+ * Rango sobre `fecha` (cuándo salió el dinero).
+ */
+export async function biDevoluciones(db: PrismaClient, r: RangoBI) {
+  const devs = await db.devolucion.findMany({
+    where: { fecha: { gte: r.desde, lte: r.hasta } },
+    include: {
+      quote: { select: { id: true, folio: true, client: { select: { nombre: true } } } },
+      banquetero: { select: { id: true, nombre: true } },
+      pagoBanquetero: { select: { folio: true } },
+      registradoBy: { select: { nombre: true } },
+    },
+    orderBy: [{ fecha: 'asc' }, DESEMPATE],
+    take: r.limit,
+    ...(r.cursor ? { skip: 1, cursor: { id: r.cursor } } : {}),
+  });
+  return devs.map((d) => ({
+    id: d.id,
+    fecha: d.fecha.toISOString().slice(0, 10),
+    monto: d.monto,
+    metodo: d.metodo,
+    formas: partesDePago(d),
+    // `evento` / `cargos` para un cliente; `banquetero` para el saldo a favor.
+    de: d.quoteId ? d.destino : 'banquetero',
+    quoteId: d.quoteId,
+    eventoFolio: d.quote?.folio ?? null,
+    cliente: d.quote?.client?.nombre ?? d.banquetero?.nombre ?? null,
+    banqueteroId: d.banqueteroId,
+    depositoFolio: d.pagoBanquetero?.folio ?? null,
+    motivo: d.motivo,
+    referencia: d.referencia,
+    notaCreditoUuid: d.notaCreditoUuid,
+    registradoPor: d.registradoBy?.nombre ?? null,
+    anulado: d.anuladoAt != null,
+    motivoAnulacion: d.motivoAnulacion,
+  }));
+}

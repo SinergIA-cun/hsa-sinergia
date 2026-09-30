@@ -20,6 +20,7 @@ import { Button, Card, SelectInput, ArrowDivider } from '../components/ui.tsx';
 import { QuoteForm, type QuotePayload, type QuoteFormInitial } from '../components/QuoteForm.tsx';
 import { PagosPanel } from '../components/PagosPanel.tsx';
 import { PuntoDeVentaPanel } from '../components/PuntoDeVentaPanel.tsx';
+import { DevolucionesEvento } from '../components/DevolucionesPanel.tsx';
 import { CompartirClienteModal } from '../components/CompartirClienteModal.tsx';
 import { ConfirmarEmpalmeModal, type EspacioOcupado } from '../components/ConfirmarEmpalmeModal.tsx';
 import { MoverCatalogoModal } from '../components/MoverCatalogoModal.tsx';
@@ -416,6 +417,18 @@ export function EditQuotePage() {
           cuenta={quoteQ.data.cuenta}
           productos={quoteQ.data.productosPuntoDeVenta}
           isAdmin={isAdmin}
+          readOnly={enPapelera}
+        />
+      )}
+
+      {quoteQ.data && estadoCuenta && (
+        <DevolucionesEvento
+          quoteId={quote.id}
+          isAdmin={isAdmin}
+          pagadoRenta={estadoCuenta.pagado}
+          saldoRenta={estadoCuenta.saldo}
+          pagadoCuenta={quoteQ.data.cuenta?.pagado ?? 0}
+          devoluciones={quoteQ.data.devoluciones ?? []}
           readOnly={enPapelera}
         />
       )}

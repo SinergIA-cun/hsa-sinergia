@@ -423,7 +423,7 @@ function armarReglas(
 export async function loadEstadoCuenta(db: PrismaClient, quote: {
   id: string; rentaTotal: number; fechaEvento: Date; status: string; spaceIds: string[]; breakdown: unknown;
 }) {
-  const [rules, payments, firstApartado] = await Promise.all([
+  const [rules, payments, firstApartado, devoluciones] = await Promise.all([
     db.spacePaymentRule.findMany({ where: { spaceId: { in: quote.spaceIds } } }),
     // SOLO los de la renta: los cobros de la cuenta del punto de venta (horas
     // extra, multas) no son parte del valor del evento ni de su plan de pagos.
@@ -439,6 +439,12 @@ export async function loadEstadoCuenta(db: PrismaClient, quote: {
       },
       orderBy: { createdAt: 'asc' }, select: { createdAt: true },
     }),
+    // Lo devuelto al cliente de la renta resta de lo pagado: el plan, el saldo y
+    // el estatus sugerido se miden sobre el dinero que se quedó.
+    db.devolucion.findMany({
+      where: { quoteId: quote.id, destino: 'evento', anuladoAt: null },
+      select: { monto: true },
+    }),
   ]);
 
   const rentaBase = rentaBasePorEspacio(quote.breakdown, quote.spaceIds, quote.rentaTotal);
@@ -447,7 +453,10 @@ export async function loadEstadoCuenta(db: PrismaClient, quote: {
     fechaEvento: quote.fechaEvento,
     status: quote.status,
     rules: armarReglas(rules, quote.spaceIds, rentaBase),
-    payments: payments.map((p) => ({ monto: p.monto, anuladoAt: p.anuladoAt })),
+    payments: [
+      ...payments.map((p) => ({ monto: p.monto, anuladoAt: p.anuladoAt })),
+      ...devoluciones.map((d) => ({ monto: -d.monto, anuladoAt: null })),
+    ],
     fechaApartado: firstApartado?.createdAt ?? null,
   });
   return { estadoCuenta: ec, payments };
@@ -477,7 +486,7 @@ export async function loadEstadoCuentaBulk(
   // Todos los espacios de todas las cotizaciones: un evento puede usar hasta 3.
   const spaceIds = [...new Set(quotes.flatMap((q) => q.spaceIds))];
 
-  const [rules, payments, apartados] = await Promise.all([
+  const [rules, payments, apartados, devoluciones] = await Promise.all([
     db.spacePaymentRule.findMany({ where: { spaceId: { in: spaceIds } } }),
     // Igual que `loadEstadoCuenta`: la cuenta de cargos no abona a la renta.
     db.payment.findMany({ where: { quoteId: { in: quoteIds }, destino: 'evento' } }),
@@ -491,6 +500,10 @@ export async function loadEstadoCuentaBulk(
       orderBy: { createdAt: 'asc' },
       select: { quoteId: true, createdAt: true },
     }),
+    db.devolucion.findMany({
+      where: { quoteId: { in: quoteIds }, destino: 'evento', anuladoAt: null },
+      select: { quoteId: true, monto: true },
+    }),
   ]);
 
   const ruleBySpace = new Map(rules.map((r) => [r.spaceId, r]));
@@ -499,6 +512,12 @@ export async function loadEstadoCuentaBulk(
     const arr = pagosByQuote.get(p.quoteId) ?? [];
     arr.push({ monto: p.monto, anuladoAt: p.anuladoAt });
     pagosByQuote.set(p.quoteId, arr);
+  }
+  // Las devoluciones de la renta restan, igual que en `loadEstadoCuenta`.
+  for (const d of devoluciones) {
+    const arr = pagosByQuote.get(d.quoteId!) ?? [];
+    arr.push({ monto: -d.monto, anuladoAt: null });
+    pagosByQuote.set(d.quoteId!, arr);
   }
   const apartadoByQuote = new Map<string, Date>();
   for (const a of apartados) {
@@ -1546,7 +1565,15 @@ export async function getQuote(db: PrismaClient, id: string, actor: Actor) {
 
   // La cuenta del punto de venta va aparte del estado de cuenta: son ventas
   // posteriores que no cambian el valor del evento.
-  const [cuenta, productos] = await Promise.all([cuentaDelEvento(db, id), productosDelEvento(db, quote)]);
+  const [cuenta, productos, devoluciones] = await Promise.all([
+    cuentaDelEvento(db, id),
+    productosDelEvento(db, quote),
+    db.devolucion.findMany({
+      where: { quoteId: id },
+      orderBy: { fecha: 'asc' },
+      include: { registradoBy: { select: { nombre: true } } },
+    }),
+  ]);
   const cuentaConCandado = {
     ...cuenta,
     pagos: cuenta.pagos.map((p) => {
@@ -1563,6 +1590,7 @@ export async function getQuote(db: PrismaClient, id: string, actor: Actor) {
     activityLog,
     cuenta: cuentaConCandado,
     productosPuntoDeVenta: productos,
+    devoluciones,
   };
 }
 

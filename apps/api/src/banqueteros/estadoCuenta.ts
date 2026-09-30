@@ -101,7 +101,20 @@ export async function estadoCuentaBanquetero(
    * Aquí solo entran los abonos DIRECTOS. Los que salieron de un depósito ya
    * volvieron solos a su saldo, porque `saldoSinAsignar` dejó de descontarlos.
    */
-  const saldoLiberado = saldoLiberadoPorApartados(apartados, hoy);
+  // Menos lo que ya se le devolvió de ese saldo liberado (las devoluciones que
+  // salen de un depósito ya las descuenta el saldo de su depósito).
+  const devoluciones = await db.devolucion.findMany({
+    where: { banqueteroId },
+    orderBy: { fecha: 'desc' },
+    include: {
+      registradoBy: { select: { nombre: true } },
+      pagoBanquetero: { select: { id: true, folio: true } },
+    },
+  });
+  const devueltoDelLiberado = devoluciones
+    .filter((d) => d.pagoBanqueteroId == null && d.anuladoAt == null)
+    .reduce((s, d) => s + d.monto, 0);
+  const saldoLiberado = saldoLiberadoPorApartados(apartados, hoy) - devueltoDelLiberado;
 
   const vivos = apartados.filter((a) => a.vivo);
   const limite = new Date(hoy);
@@ -116,6 +129,7 @@ export async function estadoCuentaBanquetero(
     depositos,
     apartados,
     apartadosPorVencer: porVencer,
+    devoluciones,
     totales: {
       eventos: eventos.length,
       // Solo de las cotizaciones: un apartado no tiene total y no es una venta
@@ -128,6 +142,8 @@ export async function estadoCuentaBanquetero(
       /** Lo que el banquetero trae a favor: sin repartir más lo que soltaron sus fechas. */
       saldoAFavor: saldoSinAsignar + saldoLiberado,
       saldoLiberado,
+      /** Lo que se le ha devuelto de su saldo a favor (sin anuladas). */
+      devuelto: devoluciones.filter((d) => d.anuladoAt == null).reduce((s, d) => s + d.monto, 0),
       apartadosVivos: vivos.length,
       apartadosPorVencer: porVencer.length,
     },

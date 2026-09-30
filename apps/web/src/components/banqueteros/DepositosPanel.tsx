@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
-import { Ban, FileImage, Paperclip, Split } from 'lucide-react';
+import { Ban, FileImage, Paperclip, Split, Undo2 } from 'lucide-react';
 import { api } from '../../lib/api.ts';
 import { formatMXN } from '../../lib/money.ts';
 import { formatEventDate } from '../../lib/date.ts';
@@ -8,6 +8,7 @@ import { describirFormasPago, formatFolio } from '@hsa/shared';
 import { Button, Card, Field, MoneyInput, TextInput } from '../ui.tsx';
 import { FormasPagoCampo, errorFormas, formasEnFormData, formasIniciales } from '../FormasPagoCampo.tsx';
 import { apiErrorMessage } from '../admin/shared.tsx';
+import { DevolucionForm } from '../DevolucionForm.tsx';
 import type { DepositoBanquetero } from '../../lib/types.ts';
 
 interface Props {
@@ -70,6 +71,7 @@ function DepositoCard({
   const [busy, setBusy] = useState(false);
   const [anulando, setAnulando] = useState<{ tipo: 'deposito' | 'asignacion'; id: string } | null>(null);
   const [motivo, setMotivo] = useState('');
+  const [devolviendo, setDevolviendo] = useState(false);
 
   const vivas = d.asignaciones.filter((a) => a.anuladoAt == null);
 
@@ -169,6 +171,12 @@ function DepositoCard({
             <Split size={13} /> Repartir {formatMXN(d.saldoSinAsignar)}
           </Button>
         )}
+        {/* Devolverle al banquetero lo que sigue sin repartir de ESTE depósito. */}
+        {isAdmin && !d.anuladoAt && d.saldoSinAsignar > 0 && !devolviendo && (
+          <Button variant="outline" className="px-3 py-1.5 text-xs" onClick={() => setDevolviendo(true)}>
+            <Undo2 size={13} /> Devolver
+          </Button>
+        )}
         {d.comprobanteKey && (
           <a
             href={`${apiBase}/api/banqueteros/depositos/${d.id}/comprobante`}
@@ -244,7 +252,18 @@ function DepositoCard({
           </div>
         </div>
       )}
-    </Card>
+    {devolviendo && (
+        <DevolucionForm
+          sugerido={d.saldoSinAsignar}
+          maximo={d.saldoSinAsignar}
+          onEnviar={async (cuerpo) => {
+            await api.post(`/api/banqueteros/${d.banqueteroId}/devoluciones`, { ...cuerpo, pagoBanqueteroId: d.id });
+            await onCambio();
+          }}
+          onCerrar={() => setDevolviendo(false)}
+        />
+      )}
+      </Card>
   );
 }
 

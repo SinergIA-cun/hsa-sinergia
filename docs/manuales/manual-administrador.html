@@ -229,6 +229,15 @@
   </table>
 
   <p>Un recibo ya impreso no se puede «desimprimir». Por eso la anulación deja rastro en vez de hacer desaparecer el renglón: cuando el cliente llegue con su papel, tiene que poder explicarse qué pasó.</p>
+  <h3>Devolver dinero</h3>
+  <p>Si un cliente pagó de más, en la pantalla del evento aparece <span class="ui">Devoluciones</span> con el aviso de cuánto fue el excedente. <span class="ui">Registrar devolución</span> arranca con ese monto; se elige si se devuelve de la renta o de la cuenta del punto de venta, cómo salió el dinero (también se puede dividir), la fecha, el motivo y, si el pago ya estaba facturado, el UUID de la nota de crédito (se puede anotar después).</p>
+  <p>A un banquetero se le devuelve su saldo a favor: lo que sigue sin repartir de un depósito, con <span class="ui">Devolver</span> en la tarjeta del depósito, o lo que le liberaron sus apartados vencidos o cancelados, con <span class="ui">Devolver el saldo liberado</span>.</p>
+  <ul>
+    <li>Nunca se devuelve más de lo que entró de ese lado: el sistema no lo deja.</li>
+    <li>Lo devuelto resta de lo pagado: el saldo, el plan y el saldo a favor se actualizan solos.</li>
+    <li>Una devolución equivocada no se borra: se anula, con motivo.</li>
+    <li>No lleva folio de la serie I: el folio numera el dinero que entra.</li>
+  </ul>
 </section>
 
 <!-- ─────────────────────────────────────────────────────────────────── -->

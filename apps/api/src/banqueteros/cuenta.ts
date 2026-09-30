@@ -162,6 +162,9 @@ export function saldoLiberadoPorApartados(
 }
 
 const CON_ASIGNACIONES = {
+  // Lo que se le devolvió al banquetero de este depósito: sale del mismo saldo
+  // sin repartir que las asignaciones.
+  devoluciones: { select: { id: true, monto: true, anuladoAt: true, fecha: true, motivo: true } },
   // Los abonos a fechas apartadas que salieron de este depósito: cuentan contra
   // su saldo igual que las asignaciones a eventos.
   abonosApartado: {
@@ -201,7 +204,7 @@ const CON_ASIGNACIONES = {
   },
 } as const;
 
-async function cargarDeposito(db: PrismaClient, depositoId: string) {
+export async function cargarDeposito(db: PrismaClient, depositoId: string) {
   const deposito = await db.pagoBanquetero.findUnique({
     where: { id: depositoId },
     include: CON_ASIGNACIONES,
@@ -224,16 +227,23 @@ function formaHeredada(deposito: { monto: number; metodo: string; formas: unknow
     : { metodo: 'mixto' as const, formas: null };
 }
 
+interface DepositoConMovimientos {
+  monto: number;
+  anuladoAt: Date | null;
+  asignaciones: MovimientoLite[];
+  abonosApartado?: AbonoContraDeposito[];
+  /** Lo devuelto al banquetero de este depósito: resta igual que una asignación. */
+  devoluciones?: MovimientoLite[];
+}
+
+/** El saldo sin repartir de un depósito, contando asignaciones, abonos y devoluciones. */
+export function saldoDeDeposito(d: DepositoConMovimientos): number {
+  return saldoSinAsignar(d, [...d.asignaciones, ...(d.devoluciones ?? [])], d.abonosApartado ?? []);
+}
+
 /** El depósito con su saldo ya calculado, que es lo que la interfaz consume. */
-function conSaldo<
-  T extends {
-    monto: number;
-    anuladoAt: Date | null;
-    asignaciones: MovimientoLite[];
-    abonosApartado?: AbonoContraDeposito[];
-  },
->(d: T) {
-  return { ...d, saldoSinAsignar: saldoSinAsignar(d, d.asignaciones, d.abonosApartado ?? []) };
+function conSaldo<T extends DepositoConMovimientos>(d: T) {
+  return { ...d, saldoSinAsignar: saldoDeDeposito(d) };
 }
 
 /**
@@ -307,7 +317,7 @@ export async function asignarDeposito(
 
   // Todo se valida ANTES de escribir: un reparto que se pasa del saldo no debe
   // dejar los primeros pagos hechos y el último rechazado.
-  const disponible = saldoSinAsignar(deposito, deposito.asignaciones, deposito.abonosApartado);
+  const disponible = saldoDeDeposito(deposito);
   const pedido =
     input.asignaciones.reduce((s, a) => s + a.monto, 0) +
     input.apartados.reduce((s, a) => s + a.monto, 0);
@@ -461,6 +471,9 @@ export async function anularDeposito(
   const { motivo } = anularDepositoSchema.parse(rawInput);
   const deposito = await cargarDeposito(db, depositoId);
   if (deposito.anuladoAt) throw new QuoteError(409, 'El depósito ya está anulado');
+  if (deposito.devoluciones.some((d) => d.anuladoAt == null)) {
+    throw new QuoteError(409, 'Parte de este depósito ya se le devolvió al banquetero. Anula primero esa devolución.');
+  }
   const vivas = deposito.asignaciones.filter((a) => a.anuladoAt == null);
   if (vivas.length > 0) {
     throw new QuoteError(

@@ -76,6 +76,7 @@ const NOMBRE: Record<string, string> = {
   ApartadoFecha: 'una fecha apartada',
   AbonoApartado: 'un abono a una fecha apartada',
   CargoEvento: 'un cargo a la cuenta de un evento',
+  Devolucion: 'una devolución de dinero',
   CambioFolio: 'el folio con el que arranca la serie I',
   Empleado: 'un empleado',
   Cuadrilla: 'una cuadrilla',
@@ -107,6 +108,7 @@ const ALTA: Record<string, string> = {
   ApartadoFecha: 'Apartó',
   AbonoApartado: 'Registró',
   CargoEvento: 'Cargó',
+  Devolucion: 'Registró',
   CambioFolio: 'Fijó',
 };
 
@@ -142,6 +144,10 @@ export function etiquetaDe(fila: FilaTraducible): string | null {
       const desc = campo('descripcion');
       const total = campo('total');
       return desc ? `${desc}${total ? ` · $${Number(total).toLocaleString('es-MX')}` : ''}` : null;
+    }
+    case 'Devolucion': {
+      const monto = campo('monto');
+      return monto ? `$${Number(monto).toLocaleString('es-MX')}` : null;
     }
     case 'CambioFolio': {
       const sig = campo('siguiente');
