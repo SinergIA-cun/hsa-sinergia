@@ -218,6 +218,10 @@ export interface QuoteExtraInput {
 
 export interface Quote {
   id: string;
+  /** El id del evento en el BI si vino de allá: tiene PRECIO PACTADO, no se recotiza. */
+  importadoBI?: string | null;
+  /** Cuándo se contrató, para los importados (se vendieron antes del sistema). */
+  contratadoEl?: string | null;
   clientId: string;
   client?: Client;
   eventTypeId: string;

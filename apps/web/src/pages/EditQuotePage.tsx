@@ -216,7 +216,11 @@ export function EditQuotePage() {
   if (!catalog) return <p className="text-wine">No se pudo cargar el catálogo de la cotización.</p>;
 
   const enPapelera = Boolean(quote.deletedAt);
-  const editable = EDITABLE_STATUSES.includes(quote.status) && !enPapelera;
+  // Un evento importado del BI no abre el formulario: el formulario recalcula el
+  // precio en vivo contra el catálogo, y ese evento se vendió a un precio
+  // PACTADO que el servidor nunca recotiza. Enseñar otro total sería mentir.
+  const importado = Boolean(quote.importadoBI);
+  const editable = EDITABLE_STATUSES.includes(quote.status) && !enPapelera && !importado;
   const contratoDisponible =
     !enPapelera && ['formalizada', 'complementada', 'liquidada'].includes(quote.status);
   const publicUrl = `${window.location.origin}/c/${quote.publicToken}`;
@@ -270,7 +274,7 @@ export function EditQuotePage() {
               <BookMarked size={12} /> Catálogo {quote.priceList?.nombre ?? '—'}
             </span>
             <span>Sus precios mandan aunque el catálogo activo sea otro.</span>
-            {isAdmin && !enPapelera && (
+            {isAdmin && !enPapelera && !importado && (
               <button
                 type="button"
                 className="rounded text-xs font-medium text-gold underline underline-offset-2 hover:text-gold-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold/60"
@@ -375,7 +379,9 @@ export function EditQuotePage() {
             <p className="text-sm text-charcoal-soft">
               {enPapelera
                 ? 'Solo lectura: evento eliminado, conservado como evidencia.'
-                : 'Ya no es editable (tiene compromiso de pago). Puedes cambiar el estatus o imprimir.'}
+                : importado
+                  ? `Importado del BI${quote.contratadoEl ? `, contratado el ${formatEventDate(quote.contratadoEl)}` : ''}. Tiene precio pactado: no se recotiza. La fecha se cambia arrastrándolo en la agenda y los datos del día, en la hoja operativa.`
+                  : 'Ya no es editable (tiene compromiso de pago). Puedes cambiar el estatus o imprimir.'}
             </p>
           </div>
           <BreakdownGrouped breakdown={quote.breakdown} />

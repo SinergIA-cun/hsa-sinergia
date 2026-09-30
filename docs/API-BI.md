@@ -23,8 +23,11 @@ recibida:
 {"error":"Llave de API inválida o ausente."}
 ```
 
-No hay ningún endpoint de escritura. `POST`, `PATCH` y `DELETE` sobre estas rutas responden
-404, y hay una prueba automatizada que se pone en rojo si alguien agrega uno.
+Con `BI_API_KEY` no hay ningún endpoint de escritura: `POST`, `PATCH` y `DELETE` sobre estas
+rutas responden 404, y hay una prueba automatizada que se pone en rojo si alguien agrega uno.
+
+La **única** escritura es la importación de eventos (ver la sección *Importar y conciliar* al
+final), y va con **otra llave**, `BI_IMPORT_API_KEY`. La de lectura no la abre (401).
 
 ## Envoltura de respuesta
 
@@ -387,3 +390,110 @@ Real, de `GET /api/bi/facturacion?desde=2031-01-01&hasta=2031-12-31`:
 ```
 
 `faltantes` vacío significa que el cliente tiene todo lo que exige el CFDI 4.0.
+
+## Importar y conciliar (escritura, llave aparte)
+
+El BI tiene la historia completa: eventos de años anteriores y los pagos de este año hasta
+agosto. La hacienda solo necesita **los eventos que todavía no se celebran**: los que caen
+del **1 de octubre de 2026** en adelante, aunque se hayan contratado antes (un evento del
+1-ene-2027 contratado el 2-feb-2026 entra). Los anteriores se quedan en el BI.
+
+Llave: encabezado `x-api-key` con `BI_IMPORT_API_KEY` (distinta de `BI_API_KEY`). Sin esa
+variable estas rutas no existen (404).
+
+### `POST /api/bi/conciliar` — compara, **nunca escribe**
+
+### `POST /api/bi/importar/eventos` — crea los nuevos y liga los indicados
+
+Los dos reciben el mismo cuerpo y devuelven el mismo reporte. Lo recomendable: conciliar
+primero, revisar, e importar después.
+
+```json
+{
+  "pagosHasta": "2026-08-31",
+  "completo": true,
+  "eventos": [
+    {
+      "idBI": "EV-10233",
+      "fechaContratacion": "2026-02-02",
+      "fechaEvento": "2027-01-01",
+      "tipoEvento": "Boda",
+      "salones": ["Cúpula"],
+      "invitados": 250,
+      "cliente": { "nombre": "María López", "telefono": "5512345678", "correo": "maria@ejemplo.mx" },
+      "banquetero": "Banquetería Ramírez",
+      "festejado": "María y Juan",
+      "vendedora": "Laura",
+      "renta": { "total": 174000 },
+      "otros": { "total": 210000 },
+      "horaInicio": "18:00",
+      "horaTermino": "02:00",
+      "pagos": [
+        { "idBI": "PG-1", "folio": 5101, "fecha": "2026-02-02", "monto": 25000, "metodo": "transferencia" },
+        { "idBI": "PG-2", "folio": 5190, "fecha": "2026-06-15", "monto": 30000,
+          "formas": [{ "forma": "tarjetaDebito", "monto": 10000 }, { "forma": "tarjetaCredito", "monto": 20000 }] }
+      ]
+    }
+  ]
+}
+```
+
+| Campo | Qué es |
+|---|---|
+| `idBI` | Id del evento en el BI. **Llave de idempotencia**: mandar el mismo evento dos veces no lo duplica. |
+| `folioHSA` | Opcional. Folio de un evento que ya existe aquí (`26SEP-0184`), para ligarlo en vez de crearlo. |
+| `fechaContratacion` | Cuándo se vendió. El folio del evento sale de este mes (`26FEB-…`), no de la fecha de importación. |
+| `tipoEvento`, `salones` | Por nombre. Se comparan sin acentos ni mayúsculas y sin "Jardín/Salón/La/Los": `"Cúpula"` = `"Jardín La Cúpula"`. Lo que no coincide exacto **no se adivina**: el evento sale `invalido`. |
+| `banquetero`, `vendedora` | Por nombre. Si no se reconocen, el evento entra sin ellos y se avisa. |
+| `renta.total` | Lo que cobra la hacienda, con IVA. Es el **precio pactado**. |
+| `otros.total` | Alimentos y servicios (se pagan al proveedor), con IVA. |
+| `pagos[].folio` | **Obligatorio**: el folio de la hoja foliada (serie I). Se conserva tal cual. |
+| `pagos[].metodo` / `formas` | Igual que en `/pagos`: una forma, o las partes de un pago dividido (deben sumar `monto`). |
+| `pagosHasta` | Hasta qué fecha tiene pagos el BI. Del lado de la hacienda solo se comparan los pagos hasta ese día: los de septiembre en adelante solo existen aquí y **es lo esperado**. |
+| `completo` | `true` = el lote trae TODOS los eventos del BI del corte en adelante. Solo así se reporta `soloEnHSA`. |
+
+Hasta 200 eventos por llamada; para más, se manda por partes (todo es idempotente).
+
+### El reporte
+
+```json
+{
+  "corte": "2026-10-01",
+  "resumen": { "nuevo": 1, "difiere": 1, "creados": 1 },
+  "resultados": [
+    { "idBI": "EV-10233", "estado": "nuevo", "accion": "creado", "folioHSA": "26FEB-0213", "quoteId": "cm…" },
+    { "idBI": "EV-10240", "estado": "difiere", "folioHSA": "26AGO-0151",
+      "diferencias": [
+        { "campo": "invitados", "bi": 250, "hsa": 280 },
+        { "campo": "folios", "bi": [5188], "hsa": [] }
+      ] }
+  ],
+  "soloEnHSA": [
+    { "quoteId": "cm…", "folioHSA": "26SEP-0190", "fechaEvento": "2027-03-13", "cliente": "Pérez", "idBI": null }
+  ]
+}
+```
+
+| `estado` | Qué pasó | Qué hacer |
+|---|---|---|
+| `nuevo` | No existe aquí. Con `importar` se **crea** (`accion: "creado"`). | Nada. |
+| `igual` | Ya existe y cuadra. | Nada. |
+| `difiere` | Ya existe y algo no cuadra (`diferencias`). **No se sobrescribe**: desde la importación la operación vive en la hacienda. | Cuadrarlo a mano en el sistema que esté mal. |
+| `posibleDuplicado` | No está ligado, pero aquí ya hay algo esa fecha en ese salón (`candidatos`: un evento o un apartado). No se importa. | Si es el mismo evento, reenviarlo con `folioHSA` para ligarlo. Si no, es un empalme real. |
+| `fueraDeCorte` | Se celebra antes del 1-oct-2026. | Nada: se queda en el BI. |
+| `invalido` | Un salón o tipo de evento no reconocido, formas que no suman, folios repetidos… (`errores`). | Corregir en el BI y reenviar. |
+
+`diferencias[].campo` es uno de `fechaEvento`, `salones`, `invitados`, `tipoEvento`,
+`rentaTotal`, `pagado` o `folios` (en `folios`, `bi` = folios que solo tiene el BI, `hsa` =
+los que solo tiene la hacienda).
+
+### Qué queda aquí de un evento importado
+
+- Estatus **al menos formalizada** (es un evento vendido: bloquea su fecha); si sus pagos ya
+  cruzaron un hito, sube solo, igual que con un pago capturado aquí.
+- **Precio pactado**: su desglose son los montos del BI. Editarlo, moverlo de fecha o de
+  catálogo **nunca** lo recotiza.
+- Sus pagos con el folio de papel, y el concepto deducido del saldo.
+- En `/eventos`: `origen: "bi"`, `idBI` y `contratadoEl`. Los vendidos aquí traen
+  `origen: "hsa"`.
+- El cliente se reutiliza solo si el **teléfono** coincide exacto; si no, se crea uno nuevo.
