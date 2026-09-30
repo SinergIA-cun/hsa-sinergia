@@ -37,9 +37,19 @@ function terminosPago(plan: Milestone[]): string[] {
   });
 }
 
+/** La cuenta del punto de venta tal como la ve el cliente: renglones y saldo. */
+interface CuentaPublica {
+  cargos: { id: string; descripcion: string; cantidad: number; precioUnitario: number; total: number; fecha: string }[];
+  pagos: PublicPago[];
+  total: number;
+  pagado: number;
+  saldo: number;
+}
+
 interface PublicResponse {
   quote: Quote;
   estadoCuenta: EstadoCuenta;
+  cuenta?: CuentaPublica;
 }
 
 export function PublicQuotePage() {
@@ -203,6 +213,52 @@ export function PublicQuotePage() {
                   </li>
                 ))}
               </ul>
+            </div>
+          </section>
+        )}
+
+        {/* La cuenta del evento: lo que se agregó después de contratar (horas
+            extra, invitados de más, daños). Va aparte del plan de pagos porque
+            no cambia el valor del evento. */}
+        {data.cuenta && data.cuenta.cargos.length > 0 && (
+          <section className="mt-10">
+            <div className="mb-4 flex items-center justify-center">
+              <span className="divider-arrow text-[0.7rem] uppercase tracking-[0.25em]">
+                Cargos adicionales
+              </span>
+            </div>
+            <div className="rounded-[var(--radius-card)] border border-cream-300 bg-white/80 p-6 shadow-sm">
+              <ul className="divide-y divide-cream-200">
+                {data.cuenta.cargos.map((c) => (
+                  <li key={c.id} className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 py-2.5 text-sm">
+                    <span className="text-charcoal">
+                      {c.descripcion}
+                      <span className="text-charcoal-soft">
+                        {' '}· {c.cantidad} × {formatMXN(c.precioUnitario)} · {formatEventDate(c.fecha)}
+                      </span>
+                    </span>
+                    <span className="tabular-nums text-charcoal">{formatMXN(c.total)}</span>
+                  </li>
+                ))}
+                {data.cuenta.pagos.map((p) => (
+                  <li key={p.id} className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 py-2.5 text-sm">
+                    <span className="text-charcoal-soft">{formatEventDate(p.fecha)} · Pago</span>
+                    <span className="flex items-center gap-4">
+                      <span className="tabular-nums text-charcoal">−{formatMXN(p.monto)}</span>
+                      <Link
+                        to={`/c/${token}/recibo/${p.id}`}
+                        className="inline-flex items-center gap-1 text-xs font-medium text-gold hover:underline"
+                      >
+                        <Receipt size={13} /> Ver recibo
+                      </Link>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+              <p className="mt-3 flex justify-between border-t border-cream-300 pt-3 text-sm font-semibold text-ink">
+                <span>Por pagar de cargos adicionales</span>
+                <span className="tabular-nums">{formatMXN(data.cuenta.saldo)}</span>
+              </p>
             </div>
           </section>
         )}

@@ -58,6 +58,7 @@ export async function paymentRoutes(app: FastifyInstance): Promise<void> {
         concepto: fields.concepto,
         fecha: fields.fecha,
         referencia: fields.referencia || undefined,
+        destino: fields.destino || undefined,
       };
     } else {
       rawInput = (req.body ?? {}) as Record<string, unknown>;

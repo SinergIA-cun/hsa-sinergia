@@ -15,6 +15,7 @@ import {
 } from '@hsa/shared';
 import { loadCatalog } from '../catalog/loader.js';
 import { getAvailability } from '../availability/service.js';
+import { cuentaDelEvento, productosDelEvento } from '../cargos/cuenta.js';
 import { logActivity } from './activityLog.js';
 import { archivarEvento, yaPaso } from '../historico/archivar.js';
 import { computeEstadoCuenta, esUpgrade, type EstadoCuenta, type SpaceRuleWithRent } from './estadoCuenta.js';
@@ -424,7 +425,9 @@ export async function loadEstadoCuenta(db: PrismaClient, quote: {
 }) {
   const [rules, payments, firstApartado] = await Promise.all([
     db.spacePaymentRule.findMany({ where: { spaceId: { in: quote.spaceIds } } }),
-    db.payment.findMany({ where: { quoteId: quote.id }, orderBy: { fecha: 'asc' } }),
+    // SOLO los de la renta: los cobros de la cuenta del punto de venta (horas
+    // extra, multas) no son parte del valor del evento ni de su plan de pagos.
+    db.payment.findMany({ where: { quoteId: quote.id, destino: 'evento' }, orderBy: { fecha: 'asc' } }),
     db.activityLog.findFirst({
       // Primer momento en que el evento alcanzó el hito del anticipo. Se aceptan
       // ambos términos: 'formalizada' es el nombre actual y 'apartada' el que
@@ -476,7 +479,8 @@ export async function loadEstadoCuentaBulk(
 
   const [rules, payments, apartados] = await Promise.all([
     db.spacePaymentRule.findMany({ where: { spaceId: { in: spaceIds } } }),
-    db.payment.findMany({ where: { quoteId: { in: quoteIds } } }),
+    // Igual que `loadEstadoCuenta`: la cuenta de cargos no abona a la renta.
+    db.payment.findMany({ where: { quoteId: { in: quoteIds }, destino: 'evento' } }),
     db.activityLog.findMany({
       // Ver la nota en loadEstadoCuenta: se aceptan el término nuevo y el legado.
       where: {
@@ -542,7 +546,7 @@ export async function reconcileStatuses(
   opts: { dryRun?: boolean; actorId?: string } = {},
 ): Promise<CambioEstatus[]> {
   const quotes = await db.quote.findMany({
-    where: { deletedAt: null, payments: { some: { anuladoAt: null } } },
+    where: { deletedAt: null, payments: { some: { anuladoAt: null, destino: 'evento' } } },
     select: {
       id: true,
       status: true,
@@ -1524,12 +1528,25 @@ export async function getQuote(db: PrismaClient, id: string, actor: Actor) {
     return { ...p, facturable: est.facturable, motivoFactura: est.motivo };
   });
 
+  // La cuenta del punto de venta va aparte del estado de cuenta: son ventas
+  // posteriores que no cambian el valor del evento.
+  const [cuenta, productos] = await Promise.all([cuentaDelEvento(db, id), productosDelEvento(db, quote)]);
+  const cuentaConCandado = {
+    ...cuenta,
+    pagos: cuenta.pagos.map((p) => {
+      const est = estadoFacturaPago(p, hoy);
+      return { ...p, facturable: est.facturable, motivoFactura: est.motivo };
+    }),
+  };
+
   return {
     quote,
     estadoCuenta,
     payments: paymentsConCandado,
     fiscalEditable: datosFiscalesEditables(payments),
     activityLog,
+    cuenta: cuentaConCandado,
+    productosPuntoDeVenta: productos,
   };
 }
 
@@ -1538,9 +1555,8 @@ export async function getByToken(db: PrismaClient, token: string) {
   const quote = await db.quote.findUnique({ where: { publicToken: token }, include: includeRels });
   if (!quote || quote.deletedAt) return null; // en papelera: invisible para el cliente
   const { estadoCuenta, payments } = await loadEstadoCuenta(db, quote);
-  const pagosPublicos = payments
-    .filter((p) => p.anuladoAt == null)
-    .map((p) => ({
+  const cuenta = await cuentaDelEvento(db, quote.id);
+  const aPublico = (p: (typeof payments)[number]) => ({
       id: p.id,
       folio: p.folio,
       monto: p.monto,
@@ -1551,6 +1567,27 @@ export async function getByToken(db: PrismaClient, token: string) {
       formas: p.formas,
       fecha: p.fecha.toISOString(),
       tieneComprobante: Boolean(p.comprobanteKey),
-    }));
-  return { quote, estadoCuenta: { ...estadoCuenta, pagos: pagosPublicos } };
+      destino: p.destino,
+    });
+  const pagosPublicos = payments.filter((p) => p.anuladoAt == null).map(aPublico);
+  // La cuenta del punto de venta: lo que se cargó después de contratar. Es del
+  // cliente —él pidió las horas extra—, así que ve renglones y saldo. Sin quién
+  // lo registró ni anulaciones: eso es interno.
+  const cuentaPublica = {
+    cargos: cuenta.cargos
+      .filter((c) => c.anuladoAt == null)
+      .map((c) => ({
+        id: c.id,
+        descripcion: c.descripcion,
+        cantidad: c.cantidad,
+        precioUnitario: c.precioUnitario,
+        total: c.total,
+        fecha: c.fecha.toISOString(),
+      })),
+    pagos: cuenta.pagos.filter((p) => p.anuladoAt == null).map(aPublico),
+    total: cuenta.total,
+    pagado: cuenta.pagado,
+    saldo: cuenta.saldo,
+  };
+  return { quote, estadoCuenta: { ...estadoCuenta, pagos: pagosPublicos }, cuenta: cuentaPublica };
 }
