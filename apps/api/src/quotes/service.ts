@@ -141,7 +141,7 @@ const EDITABLE_STATUSES = new Set(['borrador', 'formalizada', 'complementada']);
  * Los nombres de los espacios se leen EN EL ORDEN de `spaceIds`: `findMany` no
  * garantiza orden, y de eso depende cuál espacio manda en la etiqueta.
  */
-async function generarEtiqueta(
+export async function generarEtiqueta(
   db: PrismaClient,
   datos: { fecha: string; cliente: string; spaceIds: string[] },
 ): Promise<string> {
@@ -169,7 +169,7 @@ async function assertBanquetero(db: PrismaClient, banqueteroId: string | null | 
  * El catálogo activo, o un 409 si no hay ninguno. Es el que se le fija a una
  * cotización nueva; de ahí en adelante manda el fijado, no el activo.
  */
-async function catalogoActivo(db: PrismaClient): Promise<{ id: string }> {
+export async function catalogoActivo(db: PrismaClient): Promise<{ id: string }> {
   const activo = await db.priceList.findFirst({
     where: { activa: true },
     orderBy: { anio: 'desc' },
@@ -805,11 +805,21 @@ export async function updateQuote(db: PrismaClient, id: string, rawInput: unknow
   // Con el catálogo que la cotización FIJÓ al crearse, nunca con el activo:
   // reeditar una cotización de 2027 debe usar precios de 2027 aunque el catálogo
   // vigente ya sea 2028. Sin esto, cambiarle el nombre al cliente la represia.
-  const { breakdown, enriched } = await computeAndEnrich(
-    db,
-    toSelection(input),
-    existing.priceListId,
-  );
+  /**
+   * Un evento importado del BI tiene PRECIO PACTADO: se vendió antes del sistema
+   * a los montos que trae su desglose, y el catálogo de hoy no tiene por qué dar
+   * lo mismo. Nunca se recotiza —ni al editarlo ni al moverlo de fecha—, y ni
+   * siquiera se corre el motor: su selección (sin paquete ni servicios) no
+   * describe lo que se vendió, y un salón o PAX fuera de catálogo haría fallar
+   * una edición que solo quería cambiar el festejado.
+   */
+  const precioPactado = existing.importadoBI != null;
+  const { breakdown, enriched } = precioPactado
+    ? {
+        breakdown: { total: existing.total, rentaTotal: existing.rentaTotal },
+        enriched: existing.breakdown,
+      }
+    : await computeAndEnrich(db, toSelection(input), existing.priceListId);
 
   /**
    * Un evento que ya pasó deja de recalcular precio.
@@ -826,7 +836,8 @@ export async function updateQuote(db: PrismaClient, id: string, rawInput: unknow
    * desglose corresponda al tipo de día en el que quedó.
    */
   const congelaPrecio =
-    yaPaso(existing.fechaEvento) && yaPaso(new Date(`${input.fecha}T00:00:00.000Z`));
+    precioPactado ||
+    (yaPaso(existing.fechaEvento) && yaPaso(new Date(`${input.fecha}T00:00:00.000Z`)));
 
   let bitacoraFiscal: { campos: string[]; desbloqueoDeAdmin: boolean } | null = null;
   if (input.client) {
@@ -1115,6 +1126,11 @@ async function prepararMovimiento(db: PrismaClient, id: string, priceListId: str
   });
   if (!existing) throw new QuoteError(404, 'Cotización no encontrada');
   assertNotTrashed(existing);
+  // Mover de catálogo ES recotizar, y un evento importado del BI tiene precio
+  // pactado: se vendió a esos montos y ningún catálogo los mueve.
+  if (existing.importadoBI) {
+    throw new QuoteError(409, 'Este evento vino del BI con precio pactado: no se mueve de catálogo.');
+  }
 
   const destino = await db.priceList.findUnique({ where: { id: priceListId } });
   if (!destino) throw new QuoteError(404, `El catálogo ${priceListId} no existe`);

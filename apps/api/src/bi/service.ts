@@ -69,6 +69,12 @@ export async function biEventos(db: PrismaClient, r: RangoBI) {
     );
   return quotes.map((q) => ({
     id: q.id,
+    folio: q.folio,
+    // `bi` = se importó del BI (o se ligó a uno de allá); `hsa` = se vendió aquí.
+    origen: q.importadoBI ? 'bi' : 'hsa',
+    idBI: q.importadoBI,
+    // Cuándo se vendió: la del BI para los importados, la de alta para los demás.
+    contratadoEl: (q.contratadoEl ?? q.createdAt).toISOString().slice(0, 10),
     fechaEvento: q.fechaEvento.toISOString().slice(0, 10),
     estatus: q.status,
     tipoEvento: q.eventType?.nombre ?? null,

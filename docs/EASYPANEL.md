@@ -81,7 +81,10 @@ COMPROBANTES_DIR=/app/data/comprobantes
 Opcional — solo si quieres el API de solo lectura del BI en línea:
 ```
 BI_API_KEY=<mínimo 32 caracteres, ej. openssl rand -hex 32>
+BI_IMPORT_API_KEY=<OTRA llave, distinta: solo para que el BI mande eventos>
 ```
+`BI_IMPORT_API_KEY` abre `POST /api/bi/importar/eventos` y `POST /api/bi/conciliar` (ver
+`docs/API-BI.md`). Es la única escritura del BI; sin ella esas rutas no existen.
 Sin esa variable, el módulo `/api/bi` **no se registra** y sus rutas responden 404. No hay
 modo "abierto por descuido": la ausencia de la llave cierra el API, no lo abre.
 
@@ -188,7 +191,7 @@ bundle todavía contenía "Apartada" y "Valet"). Para subir los commits de la ra
 3. **Reconstruir las DOS imágenes.** La de web no es opcional: `VITE_API_URL` se hornea
    en build-time, así que un contenedor web viejo seguirá sirviendo el JS viejo aunque
    la API ya esté nueva.
-4. Opcional: `BI_API_KEY` si quieres el BI en línea.
+4. Opcional: `BI_API_KEY` si quieres el BI en línea, y `BI_IMPORT_API_KEY` (otra llave) para que el BI mande los eventos de octubre en adelante.
 5. **No hace falta ningún paso manual de base de datos.** El `CMD` del `apps/api/Dockerfile`
    corre `migrate:deploy` y todos los backfills al arrancar, incluido el `fase12` que
    desactiva el add-on del valet.

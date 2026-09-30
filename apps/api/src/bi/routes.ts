@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import type { PrismaClient } from '@hsa/database';
 import { z } from 'zod';
 import { requireApiKey } from './apiKey.js';
+import { importarLote, conciliarLote } from './importar.js';
 import { biEventos, biPagos, biIngresos, biCargos, biPagosEsperados, biCambios, biFacturacion, type RangoBI } from './service.js';
 
 const LIMITE_MAX = 500;
@@ -35,6 +36,7 @@ type ConsultaBI = (db: PrismaClient, r: RangoBI) => Promise<unknown[]>;
  * Se registra únicamente si hay `BI_API_KEY`; sin ella estas rutas no existen.
  */
 export async function biRoutes(app: FastifyInstance): Promise<void> {
+  await rutasDeImportacion(app);
   const llave = app.config.BI_API_KEY;
   if (!llave) return;
   const guardia = requireApiKey(llave);
@@ -71,4 +73,22 @@ export async function biRoutes(app: FastifyInstance): Promise<void> {
       };
     });
   }
+}
+
+/**
+ * La única escritura del BI: mandar los eventos vendidos antes del sistema que se
+ * celebran del corte en adelante, y conciliarlos. Con su propia llave
+ * (`BI_IMPORT_API_KEY`); sin ella estas rutas no existen.
+ *
+ * `/conciliar` nunca escribe. `/importar/eventos` crea los nuevos y liga los que
+ * vienen con `folioHSA`; lo que ya existe no se sobrescribe, se reporta.
+ */
+async function rutasDeImportacion(app: FastifyInstance): Promise<void> {
+  const llave = app.config.BI_IMPORT_API_KEY;
+  if (!llave) return;
+  const guardia = requireApiKey(llave);
+  // Un lote de 200 eventos con sus pagos cabe de sobra en 5 MB.
+  const opciones = { preHandler: guardia, bodyLimit: 5 * 1024 * 1024 };
+  app.post('/bi/conciliar', opciones, async (req) => conciliarLote(app.prisma, req.body));
+  app.post('/bi/importar/eventos', opciones, async (req) => importarLote(app.prisma, req.body));
 }

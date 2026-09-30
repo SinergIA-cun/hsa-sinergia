@@ -551,6 +551,15 @@ model Quote {
   extras            QuoteExtra[]
   /// La cuenta del punto de venta: lo que se agregó después de contratar.
   cargos            CargoEvento[]
+  /// El id del evento en el BI, si vino de ahí (o se ligó a uno). Es la llave de
+  /// la importación: mandar el mismo evento dos veces no lo duplica.
+  ///
+  /// Un evento importado tiene PRECIO PACTADO: su desglose son los montos del BI
+  /// y editarlo nunca lo recotiza contra el catálogo (se vendió a ese precio).
+  importadoBI       String?           @unique
+  /// Cuándo se contrató, si no fue aquí. Los importados se vendieron antes de que
+  /// existiera el sistema, así que `createdAt` es la fecha de la importación.
+  contratadoEl      DateTime?
   /// El apartado del que nació, si nació de uno.
   apartado          ApartadoFecha?
   /// Las fotos del evento una vez pasada su fecha (una por versión).
@@ -665,6 +674,8 @@ model Payment {
   /// pagos. Los tres llevan el folio del depósito. La unicidad la da la secuencia
   /// `recibo_folio_seq`, que es la misma para pagos, depósitos y abonos.
   folio            Int             @default(dbgenerated("nextval('recibo_folio_seq')"))
+  /// El id del pago en el BI, si vino de una importación.
+  importadoBI      String?
   /// A qué va: la renta del evento o su cuenta de cargos. Ver `PaymentDestino`.
   destino          PaymentDestino  @default(evento)
   /// Las partes de un pago dividido (`[{ forma, monto }]`, suman `monto`). `null`

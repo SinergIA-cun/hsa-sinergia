@@ -33,6 +33,15 @@ const envSchema = z.object({
     .transform((v) => (v === '' ? undefined : v))
     .pipe(z.string().min(32, 'BI_API_KEY debe tener al menos 32 caracteres').optional())
     .optional(),
+  // Llave APARTE para que el BI mande eventos (importar y conciliar). Es la única
+  // puerta de escritura del BI: con solo BI_API_KEY el BI sigue siendo de solo
+  // lectura, y revocar una no toca la otra. Sin esta variable, las rutas de
+  // importación no existen (404).
+  BI_IMPORT_API_KEY: z
+    .string()
+    .transform((v) => (v === '' ? undefined : v))
+    .pipe(z.string().min(32, 'BI_IMPORT_API_KEY debe tener al menos 32 caracteres').optional())
+    .optional(),
 });
 
 export type AppConfig = z.infer<typeof envSchema>;
