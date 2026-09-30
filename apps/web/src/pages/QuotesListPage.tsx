@@ -12,7 +12,7 @@ import { useAuth } from '../auth/auth.tsx';
 import type { Quote, QuoteStatus, Catalog } from '../lib/types.ts';
 
 const SECTIONS: { title: string; statuses: QuoteStatus[]; defaultOpen: boolean }[] = [
-  { title: 'Contratos', statuses: ['borrador'], defaultOpen: true },
+  { title: 'Cotizaciones', statuses: ['borrador'], defaultOpen: true },
   { title: 'Eventos Formalizados', statuses: ['formalizada'], defaultOpen: true },
   { title: 'Complemento cubierto', statuses: ['complementada'], defaultOpen: false },
   { title: 'Eventos Liquidados', statuses: ['liquidada'], defaultOpen: false },
@@ -24,7 +24,7 @@ function QuoteRow({ q, showSeller }: { q: Quote; showSeller: boolean }) {
 
   async function eliminar(e: React.MouseEvent) {
     e.stopPropagation();
-    if (!window.confirm('¿Enviar este contrato a la papelera? Podrás restaurarlo dentro de 30 días.')) return;
+    if (!window.confirm('¿Enviar esta cotización a la papelera? Podrás restaurarla dentro de 30 días.')) return;
     await api.del(`/api/quotes/${q.id}`);
     await qc.invalidateQueries({ queryKey: ['quotes'] });
     // La insignia de la papelera acaba de cambiar: si no se invalida, el número
@@ -36,7 +36,7 @@ function QuoteRow({ q, showSeller }: { q: Quote; showSeller: boolean }) {
     <Card
       className="flex cursor-pointer flex-wrap items-center justify-between gap-4 p-5 transition-shadow hover:shadow-md"
     >
-      <div className="min-w-[11rem] flex-1" onClick={() => navigate(`/cotizaciones/${q.id}`)}>
+      <div className="min-w-[11rem] flex-1" onClick={() => navigate(`/eventos/${q.id}`)}>
         <p className="font-display text-xl text-ink">{q.client?.nombre ?? 'Cliente'}</p>
         <p className="text-xs uppercase tracking-wide text-gold">{q.eventType?.nombre ?? 'Evento'}</p>
         {/* El folio primero: es la identidad, y es lo que la gente teclea para
@@ -56,7 +56,7 @@ function QuoteRow({ q, showSeller }: { q: Quote; showSeller: boolean }) {
       </div>
       <div
         className="flex items-center gap-6 text-sm text-charcoal-soft"
-        onClick={() => navigate(`/cotizaciones/${q.id}`)}
+        onClick={() => navigate(`/eventos/${q.id}`)}
       >
         <span className="flex flex-col">
           <span className="inline-flex items-center gap-1.5">
@@ -70,7 +70,7 @@ function QuoteRow({ q, showSeller }: { q: Quote; showSeller: boolean }) {
           <Users size={14} className="text-ink-300" /> {q.invitados}
         </span>
       </div>
-      <div className="text-right" onClick={() => navigate(`/cotizaciones/${q.id}`)}>
+      <div className="text-right" onClick={() => navigate(`/eventos/${q.id}`)}>
         <p className="font-display text-2xl text-ink">{formatMXN(q.total)}</p>
         <div className="flex flex-wrap items-center justify-end gap-1.5">
           {q.desfase && (
@@ -218,7 +218,7 @@ export function QuotesListPage() {
   const needle = query.trim().toLowerCase();
   const quotes = needle ? allQuotes.filter((q) => matchesQuery(q, needle, spaceNameById)) : allQuotes;
 
-  // CRM por ventas (solo admin)
+  // Filtro por vendedora (solo admin)
   const perSeller = new Map<string, number>();
   if (isAdmin) {
     for (const q of allQuotes) {
@@ -231,14 +231,14 @@ export function QuotesListPage() {
     <div>
       <div className="mb-6 flex items-end justify-between">
         <div>
-          <ArrowDivider>{isAdmin ? 'CRM · Ventas' : 'Mis ventas'}</ArrowDivider>
+          <ArrowDivider>{isAdmin ? 'Punto de venta · Equipo' : 'Punto de venta'}</ArrowDivider>
           <h1 className="mt-2 font-display text-4xl text-ink">
-            {isAdmin ? 'Contratos del equipo' : 'Mis contratos'}
+            {isAdmin ? 'Eventos del equipo' : 'Mis eventos'}
           </h1>
         </div>
-        <Link to="/cotizaciones/nueva">
+        <Link to="/eventos/nuevo">
           <Button variant="gold">
-            <Plus size={16} /> Nueva
+            <Plus size={16} /> Nuevo evento
           </Button>
         </Link>
       </div>
@@ -289,11 +289,11 @@ export function QuotesListPage() {
 
       {!isLoading && allQuotes.length === 0 && pasados === 0 && (
         <Card className="p-12 text-center">
-          <p className="font-display text-2xl text-ink">Aún no hay contratos</p>
+          <p className="font-display text-2xl text-ink">Aún no hay eventos</p>
           <p className="mt-2 text-sm text-charcoal-soft">Crea la primera en un par de minutos.</p>
-          <Link to="/cotizaciones/nueva" className="mt-6 inline-block">
+          <Link to="/eventos/nuevo" className="mt-6 inline-block">
             <Button variant="gold">
-              <Plus size={16} /> Nuevo contrato
+              <Plus size={16} /> Nuevo evento
             </Button>
           </Link>
         </Card>

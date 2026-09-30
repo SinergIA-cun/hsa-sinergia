@@ -154,7 +154,7 @@ export function ContratoPage() {
       `}</style>
 
       <div className="contrato-toolbar">
-        <Link to={`/cotizaciones/${quote.id}`} className="contrato-btn" style={{ border: '1px solid rgba(247,242,232,0.4)' }}>
+        <Link to={`/eventos/${quote.id}`} className="contrato-btn" style={{ border: '1px solid rgba(247,242,232,0.4)' }}>
           <ArrowLeft size={15} /> Volver
         </Link>
         <span style={{ fontFamily: 'Archivo, sans-serif', fontSize: '0.85rem' }}>

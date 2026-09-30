@@ -1,6 +1,6 @@
 import { type ReactNode } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuth } from './auth/auth.tsx';
 import { AppShell } from './components/AppShell.tsx';
 import { LoginPage } from './pages/LoginPage.tsx';
@@ -50,8 +50,17 @@ function ProtectedBare({ children }: { children: ReactNode }) {
 /** Restringe a usuarios con role === 'admin'; redirige al resto. */
 function AdminOnly({ children }: { children: ReactNode }) {
   const { user } = useAuth();
-  if (user?.role !== 'admin') return <Navigate to="/cotizaciones" replace />;
+  if (user?.role !== 'admin') return <Navigate to="/eventos" replace />;
   return <>{children}</>;
+}
+
+/** `/cotizaciones/abc/contrato` → `/eventos/abc/contrato`, conservando `?…`. */
+function RedirigirCotizaciones() {
+  const loc = useLocation();
+  const destino = loc.pathname
+    .replace(/^\/cotizaciones\/nueva/, '/eventos/nuevo')
+    .replace(/^\/cotizaciones/, '/eventos');
+  return <Navigate to={destino + loc.search} replace />;
 }
 
 export function App() {
@@ -66,8 +75,11 @@ export function App() {
                 `/c/:token` del cliente: sin sesión y de solo lectura. */}
             <Route path="/b/:token" element={<BanqueteroPublicoPage />} />
             <Route path="/c/:token/recibo/:paymentId" element={<ReciboPage />} />
+            {/* Antes esto se llamaba "cotizaciones". Los marcadores y enlaces viejos
+                siguen funcionando: se redirigen a la misma pantalla en /eventos. */}
+            <Route path="/cotizaciones/*" element={<RedirigirCotizaciones />} />
             <Route
-              path="/cotizaciones"
+              path="/eventos"
               element={
                 <Protected>
                   <QuotesListPage />
@@ -75,7 +87,7 @@ export function App() {
               }
             />
             <Route
-              path="/cotizaciones/nueva"
+              path="/eventos/nuevo"
               element={
                 <Protected>
                   <NewQuotePage />
@@ -83,7 +95,7 @@ export function App() {
               }
             />
             <Route
-              path="/cotizaciones/:id"
+              path="/eventos/:id"
               element={
                 <Protected>
                   <EditQuotePage />
@@ -91,7 +103,7 @@ export function App() {
               }
             />
             <Route
-              path="/cotizaciones/:id/contrato"
+              path="/eventos/:id/contrato"
               element={
                 <ProtectedBare>
                   <ContratoPage />
@@ -99,7 +111,7 @@ export function App() {
               }
             />
             <Route
-              path="/cotizaciones/:id/operativa"
+              path="/eventos/:id/operativa"
               element={
                 <ProtectedBare>
                   <HojaOperativaPage />

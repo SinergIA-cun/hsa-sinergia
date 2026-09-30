@@ -81,7 +81,7 @@ export function ConvertirApartadoPage() {
         qc.invalidateQueries({ queryKey: ['banquetero', banqueteroId] }),
         qc.invalidateQueries({ queryKey: ['apartados', banqueteroId] }),
       ]);
-      navigate(`/cotizaciones/${res.quote.id}?creado=1`);
+      navigate(`/eventos/${res.quote.id}?creado=1`);
     } catch (e) {
       setError(
         e instanceof Error && e.message ? e.message : 'No se pudo convertir. Revisa los datos.',
@@ -111,7 +111,7 @@ export function ConvertirApartadoPage() {
     return (
       <div>
         {volver}
-        <p className="text-wine">Este apartado ya se convirtió en contrato.</p>
+        <p className="text-wine">Este apartado ya se convirtió en evento.</p>
       </div>
     );
   }
@@ -198,7 +198,7 @@ export function ConvertirApartadoPage() {
         }}
         bloqueado={{ fecha: true, espacios: true, banquetero: true }}
         excludeApartadoId={apartado.id}
-        submitLabel="Convertir en contrato"
+        submitLabel="Convertir en evento"
         onSubmit={convertir}
         errorMsg={error}
       />

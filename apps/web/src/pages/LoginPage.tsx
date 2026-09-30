@@ -23,7 +23,7 @@ export function LoginPage() {
   const [busy, setBusy] = useState(false);
 
   if (user) {
-    navigate('/cotizaciones', { replace: true });
+    navigate('/eventos', { replace: true });
   }
 
   async function onSubmit(e: FormEvent) {
@@ -32,7 +32,7 @@ export function LoginPage() {
     setBusy(true);
     try {
       await login(email, password);
-      navigate('/cotizaciones', { replace: true });
+      navigate('/eventos', { replace: true });
     } catch (err) {
       setError(loginErrorMessage(err));
     } finally {
@@ -59,7 +59,7 @@ export function LoginPage() {
               Todo tu evento en un sólo lugar.
             </h1>
             <p className="mt-4 max-w-sm text-sm text-cream/70">
-              Un oasis dentro de la ciudad. Cotizador interno para el equipo de ventas.
+              Un oasis dentro de la ciudad. Punto de venta del salón de eventos.
             </p>
           </div>
           <p className="text-xs text-cream/40">{MARCA.direccionCorta}</p>
@@ -73,7 +73,7 @@ export function LoginPage() {
             <Logo className="items-start" />
           </div>
           <h2 className="font-display text-3xl text-ink">Iniciar sesión</h2>
-          <p className="mb-8 mt-1 text-sm text-charcoal-soft">Accede a tu panel de contratos.</p>
+          <p className="mb-8 mt-1 text-sm text-charcoal-soft">Entra al punto de venta.</p>
 
           <div className="space-y-4">
             <Field label="Correo">

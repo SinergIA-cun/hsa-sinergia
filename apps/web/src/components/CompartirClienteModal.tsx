@@ -39,7 +39,7 @@ export function CompartirClienteModal({ quote, publicUrl, onClose }: Props) {
       <div
         role="dialog"
         aria-modal="true"
-        aria-label="Compartir contrato con el cliente"
+        aria-label="Compartir con el cliente"
         onClick={(e) => e.stopPropagation()}
         className="relative w-full max-w-md rounded-[var(--radius-card)] bg-cream p-8 shadow-xl"
       >

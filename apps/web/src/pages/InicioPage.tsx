@@ -83,7 +83,7 @@ export function InicioPage() {
     queryFn: () => api.get<DashboardData>('/api/dashboard'),
   });
 
-  const abrir = (id: string) => navigate(`/cotizaciones/${id}`);
+  const abrir = (id: string) => navigate(`/eventos/${id}`);
 
   // Un evento que ya pasó también tiene el finiquito vencido, así que el API lo
   // manda en las dos listas. Aquí se saca de la de finiquito: "ya pasó sin

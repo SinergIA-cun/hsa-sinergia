@@ -58,7 +58,7 @@ export function HojaOperativaPage() {
       `}</style>
 
       <div className="ho-toolbar">
-        <Link to={`/cotizaciones/${quote.id}`} className="ho-btn" style={{ border: '1px solid rgba(247,242,232,0.4)' }}>
+        <Link to={`/eventos/${quote.id}`} className="ho-btn" style={{ border: '1px solid rgba(247,242,232,0.4)' }}>
           <ArrowLeft size={15} /> Volver
         </Link>
         <button onClick={() => window.print()} className="ho-btn" style={{ background: '#b0894e', color: '#fff' }}>

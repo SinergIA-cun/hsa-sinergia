@@ -175,7 +175,7 @@ export function AgendaPage() {
 
   // Al abrir una cotización, lleva el mes de origen para poder regresar aquí.
   function abrir(quoteId: string) {
-    navigate(`/cotizaciones/${quoteId}?volver=agenda&m=${mesParam}`);
+    navigate(`/eventos/${quoteId}?volver=agenda&m=${mesParam}`);
   }
 
   // El chip es a la vez botón (abrir el contrato) y asa de arrastre, y esos dos
@@ -401,8 +401,8 @@ export function AgendaPage() {
         ))}
       </div>
       <p className="mt-2 text-xs text-charcoal-soft">
-        El chip muestra el espacio (Cúpula → Arcos → Campos). Toca un evento para abrir su
-        contrato, o arrástralo a otro día para cambiarle la fecha. El símbolo ⚠ marca las
+        El chip muestra el espacio (Cúpula → Arcos → Campos). Toca un evento para abrirlo, o
+        arrástralo a otro día para cambiarle la fecha. El símbolo ⚠ marca las
         cotizaciones cuyo espacio ya fue apartado por otro evento ese mismo día.
       </p>
       <p className="mt-1 text-xs text-charcoal-soft">

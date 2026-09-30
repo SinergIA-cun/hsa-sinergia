@@ -51,7 +51,7 @@ export function PapeleraPage() {
     <div>
       <div className="mb-6">
         <ArrowDivider>Papelera</ArrowDivider>
-        <h1 className="mt-2 font-display text-4xl text-ink">Contratos eliminados</h1>
+        <h1 className="mt-2 font-display text-4xl text-ink">Eventos eliminados</h1>
         <p className="mt-1 text-sm text-charcoal-soft">
           Se conservan {RETENTION_DAYS} días y luego se eliminan definitivamente.
         </p>
@@ -83,7 +83,7 @@ export function PapeleraPage() {
             </div>
             <p className="font-display text-xl text-ink">{formatMXN(q.total)}</p>
             <div className="flex items-center gap-2">
-              <Link to={`/cotizaciones/${q.id}`}>
+              <Link to={`/eventos/${q.id}`}>
                 <Button variant="ghost">
                   <Eye size={15} /> Ver detalle
                 </Button>

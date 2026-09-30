@@ -66,7 +66,7 @@ export function BanqueteroPage() {
   return (
     <div>
       {/* A la cartera, no a `/admin`: esa ruta rebota a ventas y el botón de
-          regresar los sacaba a `/cotizaciones` sin explicación. */}
+          regresar los sacaba a `/eventos` sin explicación. */}
       <Link
         to="/banqueteros"
         className="mb-4 inline-flex items-center gap-1.5 text-sm text-charcoal-soft hover:text-ink"
@@ -204,7 +204,7 @@ export function BanqueteroPage() {
                        ver cuál ibas a abrir. Es el mismo tono que usan los
                        renglones cliqueables del histórico y de la bitácora. */
                     className="cursor-pointer transition-colors hover:bg-cream-100/70"
-                    onClick={() => navigate(`/cotizaciones/${e.quoteId}`)}
+                    onClick={() => navigate(`/eventos/${e.quoteId}`)}
                   >
                     <td className="px-4 py-2.5 text-ink">
                       <span className="block font-mono font-semibold">{e.folio ?? '—'}</span>

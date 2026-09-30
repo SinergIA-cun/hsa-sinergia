@@ -134,7 +134,7 @@ function DepositoCard({
             >
               <span className="min-w-0">
                 <Link
-                  to={`/cotizaciones/${a.quoteId}`}
+                  to={`/eventos/${a.quoteId}`}
                   className="font-medium text-ink hover:text-gold hover:underline"
                 >
                   {a.quote?.folio ?? 'Evento'}
