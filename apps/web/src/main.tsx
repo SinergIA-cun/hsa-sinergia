@@ -14,7 +14,7 @@ import { MARCA } from './lib/marca.ts';
 // El título se pone aquí y no en `index.html`: el HTML no puede leer una
 // variable con valor por omisión, y el demo necesita cambiar el nombre sin
 // tocar el archivo.
-document.title = `${MARCA.nombre} · Cotizador`;
+document.title = `${MARCA.nombre} · Punto de venta`;
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

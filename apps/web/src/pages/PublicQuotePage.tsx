@@ -73,7 +73,7 @@ export function PublicQuotePage() {
       <div className="grid min-h-screen place-items-center bg-ink px-6 text-center text-cream">
         <div>
           <Logo tone="cream" />
-          <p className="mt-6 font-display text-2xl">Contrato no encontrado</p>
+          <p className="mt-6 font-display text-2xl">Evento no encontrado</p>
           <p className="mt-2 text-sm text-cream/60">El enlace pudo haber expirado o ser incorrecto.</p>
         </div>
       </div>
@@ -99,7 +99,7 @@ export function PublicQuotePage() {
         <div className="relative mx-auto max-w-3xl px-6 py-10 text-center sm:py-14">
           <Logo tone="cream" />
           <p className="mt-8 text-xs uppercase tracking-[0.35em] text-gold-200">
-            Contrato de evento
+            Estado de cuenta del evento
           </p>
           <h1 className="mt-3 font-display text-4xl leading-tight sm:text-5xl">
             {quote.client?.nombre}

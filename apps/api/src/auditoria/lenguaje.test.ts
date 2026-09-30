@@ -36,11 +36,11 @@ describe('traducir la bitácora forense', () => {
         despues: { folio: '26SEP-0012', deletedAt: '2026-09-08T18:15:00Z' },
       }),
     );
-    expect(papelera.frase).toBe('Envió a la papelera un contrato');
+    expect(papelera.frase).toBe('Envió a la papelera un evento');
     expect(papelera.etiqueta).toBe('26SEP-0012');
 
     const alta = traducir(fila({ operacion: 'INSERT', despues: { folio: '26SEP-0013' } }));
-    expect(alta.frase).toBe('Creó un contrato');
+    expect(alta.frase).toBe('Creó un evento');
     expect(alta.etiqueta).toBe('26SEP-0013');
 
     const cliente = traducir(
@@ -81,7 +81,7 @@ describe('traducir la bitácora forense', () => {
     // Enviar un contrato a la papelera escribe también su bitácora: dos
     // renglones del mismo acto, y solo uno es noticia.
     expect(t.relevancia).toBe('secundario');
-    expect(t.frase).toBe('Anotó un movimiento en la bitácora de un contrato');
+    expect(t.frase).toBe('Anotó un movimiento en la bitácora de un evento');
   });
 
   it('poner o quitar la marca cambia el significado, no solo el campo', () => {
@@ -90,7 +90,7 @@ describe('traducir la bitácora forense', () => {
       antes: { folio: '26SEP-0012', deletedAt: '2026-09-08T18:15:00Z' },
       despues: { folio: '26SEP-0012', deletedAt: null },
     });
-    expect(traducir(restaurar).frase).toBe('Restauró un contrato');
+    expect(traducir(restaurar).frase).toBe('Restauró un evento');
 
     const activar = fila({
       tabla: 'PriceList',
@@ -142,7 +142,7 @@ describe('traducir la bitácora forense', () => {
         despues: { fechaEvento: '2029-08-18T00:00:00Z', quoteId: 'abc' },
       }),
     );
-    expect(convertir.frase).toBe('Convirtió una fecha apartada en contrato');
+    expect(convertir.frase).toBe('Convirtió una fecha apartada en evento');
     expect(convertir.etiqueta).toBe('2029-08-18');
 
     const mover = fila({
@@ -150,14 +150,14 @@ describe('traducir la bitácora forense', () => {
       antes: { folio: '26SEP-0012', priceListId: 'a' },
       despues: { folio: '26SEP-0012', priceListId: 'b' },
     });
-    expect(traducir(mover).frase).toBe('Movió un contrato a otra lista de precios');
+    expect(traducir(mover).frase).toBe('Movió un evento a otra lista de precios');
 
     const estatus = fila({
       campos: ['status'],
       antes: { folio: '26SEP-0012', status: 'borrador' },
       despues: { folio: '26SEP-0012', status: 'formalizada' },
     });
-    expect(traducir(estatus).frase).toBe('Cambió el estatus del contrato a formalizada');
+    expect(traducir(estatus).frase).toBe('Cambió el estatus del evento a formalizada');
 
     const desbloqueo = traducir(
       fila({
@@ -241,29 +241,29 @@ describe('cuando cambian varias columnas de un jalón', () => {
      * columnas, UNA decisión. La frase tiene que nombrar la decisión.
      */
     const t = quote(['fechaEvento', 'total', 'breakdown', 'rentaTotal']);
-    expect(t.frase).toBe('Cambió la fecha de un contrato');
+    expect(t.frase).toBe('Cambió la fecha de un evento');
   });
 
   it('cambiar los invitados también gana sobre los totales que arrastra', () => {
     expect(quote(['invitados', 'total', 'breakdown']).frase).toBe(
-      'Cambió el número de invitados de un contrato',
+      'Cambió el número de invitados de un evento',
     );
   });
 
   it('si los montos cambiaron SOLOS, entonces sí son la noticia', () => {
     // Nadie tocó la fecha ni la gente y el precio se movió: se recotizó.
     expect(quote(['total', 'breakdown', 'rentaTotal']).frase).toBe(
-      'Recotizó un contrato: cambiaron los montos',
+      'Recotizó un evento: cambiaron los montos',
     );
   });
 
   it('el estatus manda sobre todo lo demás', () => {
     const t = quote(['status', 'total', 'breakdown'], { status: 'complementada' });
-    expect(t.frase).toBe('Cambió el estatus del contrato a complementada');
+    expect(t.frase).toBe('Cambió el estatus del evento a complementada');
   });
 
-  it('la vigencia se nombra: era el caso que caía en "editó un contrato"', () => {
-    expect(quote(['vigenciaHasta']).frase).toBe('Cambió la vigencia de un contrato');
+  it('la vigencia se nombra: era el caso que caía en "editó un evento"', () => {
+    expect(quote(['vigenciaHasta']).frase).toBe('Cambió la vigencia de un evento');
   });
 
   it('acreditar un abono como pago se dice completo', () => {
@@ -274,7 +274,7 @@ describe('cuando cambian varias columnas de un jalón', () => {
       antes: { monto: 50000, paymentId: null },
       despues: { monto: 50000, paymentId: 'pay1' },
     });
-    expect(t.frase).toBe('Acreditó un abono como pago de un contrato');
+    expect(t.frase).toBe('Acreditó un abono como pago de un evento');
     expect(t.etiqueta).toBe('$50,000');
   });
 
@@ -291,6 +291,6 @@ describe('cuando cambian varias columnas de un jalón', () => {
   });
 
   it('un campo que nadie tradujo sigue cayendo al genérico, no se rompe', () => {
-    expect(quote(['notasInternas']).frase).toBe('Editó un contrato');
+    expect(quote(['notasInternas']).frase).toBe('Editó un evento');
   });
 });

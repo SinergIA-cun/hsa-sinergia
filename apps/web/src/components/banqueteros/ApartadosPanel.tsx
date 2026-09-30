@@ -156,7 +156,7 @@ function ApartadoRow({
           {a.quote && (
             <p className="mt-1 text-xs">
               <Link
-                to={`/cotizaciones/${a.quote.id}`}
+                to={`/eventos/${a.quote.id}`}
                 className="font-medium text-gold hover:underline"
               >
                 {a.quote.folio ?? 'Ver la cotización'}

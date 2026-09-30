@@ -92,8 +92,8 @@ export function EditQuotePage() {
 
   // Origen de la navegación: si vino de la agenda, "atrás" regresa a ese mes.
   const desdeAgenda = sp.get('volver') === 'agenda';
-  const backTo = desdeAgenda ? `/agenda?m=${sp.get('m') ?? ''}` : '/cotizaciones';
-  const backLabel = desdeAgenda ? 'Agenda' : 'Contratos';
+  const backTo = desdeAgenda ? `/agenda?m=${sp.get('m') ?? ''}` : '/eventos';
+  const backLabel = desdeAgenda ? 'Agenda' : 'Eventos';
   const { user } = useAuth();
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState('');
@@ -207,7 +207,7 @@ export function EditQuotePage() {
 
   if (quoteQ.isLoading) return <p className="text-charcoal-soft">Cargando…</p>;
   if (!quote || !estadoCuenta || !payments || !activityLog) {
-    return <p className="text-wine">No se encontró el contrato.</p>;
+    return <p className="text-wine">No se encontró el evento.</p>;
   }
   // El catálogo arranca deshabilitado hasta saber cuál pide la cotización, así
   // que se espera por `isPending`: con `isLoading` habría un parpadeo de "no se
@@ -240,7 +240,7 @@ export function EditQuotePage() {
       {recienCreado && (
         <div className="mb-4 flex items-center gap-2 rounded-lg bg-emerald-600/10 px-4 py-2.5 text-sm text-emerald-800">
           <Check size={16} className="shrink-0" />
-          Contrato creado. Comparte el QR o el enlace con el cliente y registra sus pagos aquí abajo.
+          Evento creado. Comparte el QR o el enlace con el cliente y registra sus pagos aquí abajo.
         </div>
       )}
 
@@ -321,7 +321,7 @@ export function EditQuotePage() {
             </a>
           )}
           {contratoDisponible && (
-            <Link to={`/cotizaciones/${quote.id}/contrato`}>
+            <Link to={`/eventos/${quote.id}/contrato`}>
               <Button variant="gold">
                 <FileText size={15} /> Generar contrato
               </Button>
@@ -374,7 +374,7 @@ export function EditQuotePage() {
             </span>
             <p className="text-sm text-charcoal-soft">
               {enPapelera
-                ? 'Solo lectura: contrato eliminado, conservado como evidencia.'
+                ? 'Solo lectura: evento eliminado, conservado como evidencia.'
                 : 'Ya no es editable (tiene compromiso de pago). Puedes cambiar el estatus o imprimir.'}
             </p>
           </div>

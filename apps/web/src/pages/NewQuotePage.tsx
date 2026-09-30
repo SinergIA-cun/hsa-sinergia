@@ -51,7 +51,7 @@ export function NewQuotePage() {
     try {
       const res = await api.post<{ quote: Quote }>('/api/quotes', payload);
       await qc.invalidateQueries({ queryKey: ['quotes'] });
-      navigate(`/cotizaciones/${res.quote.id}?creado=1`);
+      navigate(`/eventos/${res.quote.id}?creado=1`);
     } catch {
       setError('No se pudo guardar. Revisa los datos.');
     }
@@ -63,19 +63,19 @@ export function NewQuotePage() {
   return (
     <div>
       <Link
-        to="/cotizaciones"
+        to="/eventos"
         className="mb-4 inline-flex items-center gap-1.5 text-sm text-charcoal-soft hover:text-ink"
       >
         <ArrowLeft size={15} /> Contratos
       </Link>
       <ArrowDivider>Nuevo</ArrowDivider>
-      <h1 className="mb-8 mt-2 font-display text-4xl text-ink">Armar contrato</h1>
+      <h1 className="mb-8 mt-2 font-display text-4xl text-ink">Nuevo evento</h1>
       <QuoteForm
         catalog={catalog}
         catalogos={catalogos}
         priceListId={priceListId ?? catalogos.find((c) => c.activa)?.id}
         onPriceListChange={setPriceListId}
-        submitLabel="Crear contrato"
+        submitLabel="Crear evento"
         onSubmit={handleSubmit}
         errorMsg={error}
         enableClientSearch

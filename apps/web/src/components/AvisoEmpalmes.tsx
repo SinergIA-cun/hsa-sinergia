@@ -35,7 +35,7 @@ export function AvisoEmpalmes() {
         {items.map((d) => (
           <li key={d.id}>
             <Link
-              to={`/cotizaciones/${d.id}`}
+              to={`/eventos/${d.id}`}
               className="block rounded-[var(--radius-card)] border-l-4 border-wine bg-wine/[0.04] p-4 transition-colors hover:bg-wine/[0.08]"
             >
               <p className="truncate font-medium text-ink">{d.clienteNombre}</p>

@@ -62,7 +62,7 @@ export function FotoEventoVista({ id }: { id: string }) {
         </p>
         {/* La cotización viva sigue existiendo: los pagos se registran ahí. */}
         <Link
-          to={`/cotizaciones/${data.quoteId}`}
+          to={`/eventos/${data.quoteId}`}
           className="inline-flex items-center gap-1.5 text-xs text-ink underline hover:text-gold"
         >
           <ExternalLink size={13} /> Abrir el contrato vivo

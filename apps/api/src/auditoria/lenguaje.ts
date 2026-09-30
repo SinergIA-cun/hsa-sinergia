@@ -59,7 +59,7 @@ export interface Traduccion {
  * verbos: creó UN contrato, borró UNA lista, activó UNA lista.
  */
 const NOMBRE: Record<string, string> = {
-  Quote: 'un contrato',
+  Quote: 'un evento',
   Client: 'un cliente',
   Payment: 'un pago',
   PriceList: 'una lista de precios',
@@ -82,7 +82,7 @@ const NOMBRE: Record<string, string> = {
   CuadrillaMiembro: 'un integrante de una cuadrilla',
   QuoteExtra: 'un servicio de un evento',
   User: 'un usuario',
-  ActivityLog: 'la bitácora de un contrato',
+  ActivityLog: 'la bitácora de un evento',
   PriceListAudit: 'la bitácora de un catálogo',
   EventoHistorico: 'una foto del histórico',
   AuditoriaDb: 'la bitácora',
@@ -201,14 +201,14 @@ function significadoDeUpdate(fila: FilaTraducible, nombre: string): string | nul
   }
   // Convertir un apartado: deja de ser una fecha suelta y pasa a tener contrato.
   if (fila.tabla === 'ApartadoFecha' && cambio('quoteId') && sePuso('quoteId')) {
-    return 'Convirtió una fecha apartada en contrato';
+    return 'Convirtió una fecha apartada en evento';
   }
   if (fila.tabla === 'Quote' && cambio('priceListId')) {
-    return 'Movió un contrato a otra lista de precios';
+    return 'Movió un evento a otra lista de precios';
   }
   if (fila.tabla === 'Quote' && cambio('status')) {
     const status = texto(d['status']);
-    return status ? `Cambió el estatus del contrato a ${status}` : 'Cambió el estatus de un contrato';
+    return status ? `Cambió el estatus del evento a ${status}` : 'Cambió el estatus de un evento';
   }
   /*
    * Lo que alguien DECIDIÓ gana sobre lo que se recalculó.
@@ -220,19 +220,19 @@ function significadoDeUpdate(fila: FilaTraducible, nombre: string): string | nul
    * SOLOS, y entonces sí son la noticia: la cotización se rehízo.
    */
   if (fila.tabla === 'Quote') {
-    if (cambio('fechaEvento')) return 'Cambió la fecha de un contrato';
-    if (cambio('spaceIds') || cambio('espacios')) return 'Cambió los espacios de un contrato';
-    if (cambio('invitados')) return 'Cambió el número de invitados de un contrato';
-    if (cambio('banqueteroId')) return 'Cambió el banquetero de un contrato';
-    if (cambio('vigenciaHasta')) return 'Cambió la vigencia de un contrato';
-    if (cambio('operativa')) return 'Actualizó la hoja operativa de un contrato';
+    if (cambio('fechaEvento')) return 'Cambió la fecha de un evento';
+    if (cambio('spaceIds') || cambio('espacios')) return 'Cambió los espacios de un evento';
+    if (cambio('invitados')) return 'Cambió el número de invitados de un evento';
+    if (cambio('banqueteroId')) return 'Cambió el banquetero de un evento';
+    if (cambio('vigenciaHasta')) return 'Cambió la vigencia de un evento';
+    if (cambio('operativa')) return 'Actualizó la hoja operativa de un evento';
     if (cambio('total') || cambio('rentaTotal') || cambio('breakdown')) {
-      return 'Recotizó un contrato: cambiaron los montos';
+      return 'Recotizó un evento: cambiaron los montos';
     }
   }
   // El abono de un apartado deja de estar suelto: ya es un pago del contrato.
   if (fila.tabla === 'AbonoApartado' && cambio('paymentId') && sePuso('paymentId')) {
-    return 'Acreditó un abono como pago de un contrato';
+    return 'Acreditó un abono como pago de un evento';
   }
   if (fila.tabla === 'Client' && (cambio('rfc') || cambio('regimenFiscal') || cambio('cp'))) {
     return 'Cambió los datos fiscales de un cliente';
@@ -273,7 +273,7 @@ export function traducir(fila: FilaTraducible): Traduccion {
     if (fila.operacion === 'TRUNCATE') return `Vació por completo la tabla ${fila.tabla}`;
     if (fila.operacion === 'PURGA') return 'Vació la bitácora al entregar la instalación';
     if (fila.operacion === 'INSERT') {
-      if (fila.tabla === 'ActivityLog') return 'Anotó un movimiento en la bitácora de un contrato';
+      if (fila.tabla === 'ActivityLog') return 'Anotó un movimiento en la bitácora de un evento';
       if (fila.tabla === 'PriceListAudit') return 'Anotó un cambio en la bitácora de un catálogo';
       if (fila.tabla === 'EventoHistorico') return 'Archivó un evento en el histórico';
       return `${ALTA[fila.tabla] ?? 'Agregó'} ${nombre}`;

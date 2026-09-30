@@ -7,7 +7,7 @@ import type { ContratoQueUsa, QuoteStatus, UsoEnContratos } from '../../lib/type
 /**
  * Los contratos que impiden borrar algo, con nombre y liga.
  *
- * Existe porque "en uso por 1 contrato" sin decir cuál convierte un borrado en
+ * Existe porque "en uso por 1 evento" sin decir cuál convierte un borrado en
  * una búsqueda a mano entre cientos. Con tres datos —cliente, código y fecha— y
  * una liga, el bloqueo deja de ser un misterio.
  *
@@ -37,7 +37,7 @@ function Renglon({ c }: { c: ContratoQueUsa }) {
   return (
     <li>
       <Link
-        to={c.enPapelera ? '/papelera' : `/cotizaciones/${c.id}`}
+        to={c.enPapelera ? '/papelera' : `/eventos/${c.id}`}
         className="group flex items-start justify-between gap-2 rounded px-1.5 py-1 hover:bg-white/70"
       >
         <span className="min-w-0">

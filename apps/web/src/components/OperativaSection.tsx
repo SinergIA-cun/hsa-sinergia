@@ -167,7 +167,7 @@ export function OperativaSection({ quote }: { quote: Quote }) {
           <h3 className="font-display text-xl text-ink">Datos operativos (hoja del evento)</h3>
           <p className="text-sm text-charcoal-soft">Se imprimen en el contrato y en la hoja operativa interna.</p>
         </div>
-        <Link to={`/cotizaciones/${quote.id}/operativa`}>
+        <Link to={`/eventos/${quote.id}/operativa`}>
           <Button variant="outline">
             <ClipboardList size={15} /> Ver hoja operativa
           </Button>
