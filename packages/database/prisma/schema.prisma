@@ -300,6 +300,9 @@ model PagoBanquetero {
   /// siendo ingreso de marzo para el candado del Plan C.
   fecha           DateTime
   referencia      String?
+  /// Notas libres de quien registra: lo que ayude a entender este dinero ("pagó
+  /// la tía", "el cheque se cobra el lunes"). Internas: el cliente no las ve.
+  notas           String?
   comprobanteKey  String?
   comprobanteMime String?
   registradoBy    User?           @relation("PagoBanqueteroRegistradoBy", fields: [registradoById], references: [id])
@@ -403,6 +406,9 @@ model AbonoApartado {
   /// mes en que entró.
   fecha            DateTime
   referencia       String?
+  /// Notas libres de quien registra: lo que ayude a entender este dinero ("pagó
+  /// la tía", "el cheque se cobra el lunes"). Internas: el cliente no las ve.
+  notas            String?
   comprobanteKey   String?
   comprobanteMime  String?
   /// Si salió del saldo a favor del banquetero, de qué depósito. `null` = pago
@@ -707,6 +713,9 @@ model Payment {
   conceptoManual   PaymentConcept?
   fecha            DateTime
   referencia       String?
+  /// Notas libres de quien registra: lo que ayude a entender este dinero ("pagó
+  /// la tía", "el cheque se cobra el lunes"). Internas: el cliente no las ve.
+  notas            String?
   /// Folio de la serie `I`: el número de la hoja foliada del dinero que entró.
   ///
   /// Ya NO es único: un folio es UNA entrada de dinero, y un depósito de

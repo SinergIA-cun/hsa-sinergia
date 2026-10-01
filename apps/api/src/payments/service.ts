@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { notasSchema, notaONull, editarNotasSchema } from './notas.js';
 import type { PrismaClient } from '@hsa/database';
 import {
   estadoFacturaPago,
@@ -43,6 +44,7 @@ export const registerPaymentSchema = z.object({
   concepto: paymentConceptSchema.default('aCuenta'),
   fecha: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   referencia: z.string().optional(),
+  notas: notasSchema.optional(),
   /**
    * A qué va el pago. `evento` (lo de siempre) abona a la renta contratada y
    * mueve el plan de pagos. `cargos` abona a la cuenta del punto de venta —horas
@@ -156,6 +158,7 @@ export async function registerPayment(
       concepto: input.concepto,
       fecha: new Date(`${input.fecha}T00:00:00.000Z`),
       referencia: input.referencia ?? null,
+      notas: notaONull(input.notas),
       comprobanteKey,
       comprobanteMime,
       registradoById: actor.id,
@@ -309,6 +312,35 @@ export async function editarConcepto(
   });
 
   return { concepto: efectivo, pedido: input.concepto, estadoCuenta, cambios };
+}
+
+/**
+ * Corregir o completar las notas de un pago. Como el concepto, lo puede hacer
+ * ventas sobre lo suyo: no mueve dinero. También en un pago anulado, porque ahí
+ * es justo donde más falta explicar qué pasó. Queda en la bitácora.
+ */
+export async function editarNotasPago(
+  db: PrismaClient,
+  quoteId: string,
+  paymentId: string,
+  rawInput: unknown,
+  actor: Actor,
+) {
+  await findOwnedQuote(db, quoteId, actor);
+  const { notas } = editarNotasSchema.parse(rawInput);
+  const pago = await db.payment.findFirst({ where: { id: paymentId, quoteId } });
+  if (!pago) throw new QuoteError(404, 'Pago no encontrado');
+  const nuevas = notaONull(notas);
+  if (nuevas === pago.notas) return { notas: nuevas };
+  await db.payment.update({ where: { id: paymentId }, data: { notas: nuevas } });
+  await logActivity(db, {
+    quoteId,
+    tipo: 'edicion',
+    descripcion: `Notas del pago ${formatFolio(pago.folio, pago.folioLetra)}: ${nuevas ?? '(sin notas)'}`,
+    meta: { paymentId, folio: pago.folio, antes: pago.notas, despues: nuevas },
+    actorId: actor.id,
+  });
+  return { notas: nuevas };
 }
 
 /**

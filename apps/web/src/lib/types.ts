@@ -328,6 +328,8 @@ export interface Payment {
   conceptoManual?: PaymentConcept | null;
   fecha: string;
   referencia: string | null;
+  /** Lo que ayuda a entender el pago. Internas: el cliente no las ve. */
+  notas?: string | null;
   comprobanteKey: string | null;
   anuladoAt: string | null;
   motivoAnulacion: string | null;
@@ -598,6 +600,8 @@ export interface DepositoBanquetero {
   /** Cuándo se RECIBIÓ. Es la fecha que heredan los pagos de sus asignaciones. */
   fecha: string;
   referencia: string | null;
+  /** Lo que ayuda a entender este dinero. Internas. */
+  notas?: string | null;
   comprobanteKey: string | null;
   comprobanteMime: string | null;
   anuladoAt: string | null;
@@ -627,6 +631,8 @@ export interface AbonoApartado {
   /** Cuándo se RECIBIÓ el dinero. */
   fecha: string;
   referencia: string | null;
+  /** Lo que ayuda a entender este dinero. Internas. */
+  notas?: string | null;
   comprobanteKey: string | null;
   /** Si salió del saldo del banquetero, de qué depósito. */
   pagoBanqueteroId: string | null;

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { notasSchema, notaONull, editarNotasSchema } from '../payments/notas.js';
 import { enTransaccionConActor, type PrismaClient } from '@hsa/database';
 import {
   hoyCivilMexico,
@@ -43,6 +44,7 @@ export const depositoSchema = z.object({
   formas: formasPagoSchema.optional(),
   fecha: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   referencia: z.string().max(120).optional(),
+  notas: notasSchema.optional(),
 });
 
 export const asignarSchema = z
@@ -285,6 +287,7 @@ export async function registrarDeposito(
       // contra el día civil de México, que vive en ese mismo espacio.
       fecha: new Date(`${input.fecha}T00:00:00.000Z`),
       referencia: input.referencia ?? null,
+      notas: notaONull(input.notas),
       comprobanteKey,
       comprobanteMime,
       registradoById: actor.id,
@@ -432,6 +435,8 @@ export async function asignarDeposito(
             concepto: 'aCuenta',
             fecha: fechaDeposito,
             referencia: deposito.referencia ?? undefined,
+            // Lo que se anotó del depósito explica también cada pago que sale de él.
+            notas: deposito.notas ?? undefined,
           },
           actor,
           undefined,
@@ -470,6 +475,7 @@ export async function asignarDeposito(
           depositoId: deposito.id,
           monto: a.monto,
           metodo: formaHeredada(deposito).metodo,
+          notas: deposito.notas,
           folio: deposito.folio,
           folioLetra: tomarLetra(),
           fechaDeposito: deposito.fecha,
@@ -561,4 +567,13 @@ export async function loadComprobanteDeposito(
   const data = await storage.load(deposito.comprobanteKey);
   if (!data) return null;
   return { data, mime: deposito.comprobanteMime ?? 'application/octet-stream' };
+}
+
+/** Corregir o completar las notas de un depósito. Admin, como todo lo del depósito. */
+export async function editarNotasDeposito(db: PrismaClient, depositoId: string, raw: unknown, actor: Actor) {
+  if (actor.role !== 'admin') throw new QuoteError(403, 'Solo un admin edita los depósitos.');
+  const { notas } = editarNotasSchema.parse(raw);
+  const dep = await db.pagoBanquetero.findUnique({ where: { id: depositoId }, select: { id: true } });
+  if (!dep) throw new QuoteError(404, 'Depósito no encontrado');
+  return db.pagoBanquetero.update({ where: { id: depositoId }, data: { notas: notaONull(notas) }, select: { id: true, notas: true } });
 }

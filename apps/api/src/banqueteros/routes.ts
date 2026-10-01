@@ -11,6 +11,7 @@ import {
   anularDeposito,
   listarDepositos,
   loadComprobanteDeposito,
+  editarNotasDeposito,
 } from './cuenta.js';
 import {
   crearApartado,
@@ -19,7 +20,7 @@ import {
   convertirApartado,
   renovarApartado,
 } from './apartados.js';
-import { anularAbono, loadComprobanteAbono, registrarAbono } from './abonos.js';
+import { anularAbono, editarNotasAbono, loadComprobanteAbono, registrarAbono } from './abonos.js';
 import { estadoCuentaBanquetero, estadoCuentaPublico } from './estadoCuenta.js';
 import { resumenBanqueteros } from './resumen.js';
 
@@ -70,6 +71,7 @@ export async function banqueteroRoutes(app: FastifyInstance): Promise<void> {
           formas: formasDeMultipart(fields.formas),
           fecha: fields.fecha,
           referencia: fields.referencia || undefined,
+          notas: fields.notas || undefined,
         };
       } else {
         rawInput = (req.body ?? {}) as Record<string, unknown>;
@@ -136,6 +138,19 @@ export async function banqueteroRoutes(app: FastifyInstance): Promise<void> {
           req.user as Actor,
         );
         return { deposito };
+      } catch (e) {
+        if (e instanceof QuoteError) return reply.code(e.status).send({ error: e.message });
+        throw e;
+      }
+    },
+  );
+
+  app.patch<{ Params: { depositoId: string } }>(
+    '/banqueteros/depositos/:depositoId/notas',
+    { preHandler: requireAdmin },
+    async (req, reply) => {
+      try {
+        return { deposito: await editarNotasDeposito(app.prisma, req.params.depositoId, req.body, req.user as Actor) };
       } catch (e) {
         if (e instanceof QuoteError) return reply.code(e.status).send({ error: e.message });
         throw e;
@@ -269,6 +284,7 @@ export async function banqueteroRoutes(app: FastifyInstance): Promise<void> {
           formas: formasDeMultipart(fields.formas),
           fecha: fields.fecha,
           referencia: fields.referencia || undefined,
+          notas: fields.notas || undefined,
         };
       } else {
         rawInput = (req.body ?? {}) as Record<string, unknown>;
@@ -284,6 +300,19 @@ export async function banqueteroRoutes(app: FastifyInstance): Promise<void> {
           file,
         );
         return reply.code(201).send({ abono });
+      } catch (e) {
+        if (e instanceof QuoteError) return reply.code(e.status).send({ error: e.message });
+        throw e;
+      }
+    },
+  );
+
+  app.patch<{ Params: { abonoId: string } }>(
+    '/banqueteros/abonos/:abonoId/notas',
+    { preHandler: requireAdmin },
+    async (req, reply) => {
+      try {
+        return { abono: await editarNotasAbono(app.prisma, req.params.abonoId, req.body, req.user as Actor) };
       } catch (e) {
         if (e instanceof QuoteError) return reply.code(e.status).send({ error: e.message });
         throw e;

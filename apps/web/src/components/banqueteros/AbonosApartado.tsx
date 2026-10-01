@@ -9,6 +9,7 @@ import { Button, Field, MoneyInput, TextInput } from '../ui.tsx';
 import { FormasPagoCampo, errorFormas, formasIniciales, formasParaEnviar } from '../FormasPagoCampo.tsx';
 import { apiErrorMessage } from '../admin/shared.tsx';
 import type { AbonoApartado, ApartadoFecha } from '../../lib/types.ts';
+import { NotasCampo, NotasEditables } from '../NotasPago.tsx';
 
 /**
  * Los abonos de una fecha apartada.
@@ -133,6 +134,16 @@ function Renglon({
       {anulado && abono.motivoAnulacion && (
         <p className="text-[0.7rem] text-wine">Anulado: {abono.motivoAnulacion}</p>
       )}
+      <div className="mt-1 flex">
+        <NotasEditables
+          notas={abono.notas}
+          editable={isAdmin}
+          onGuardar={async (notas) => {
+            await api.patch(`/api/banqueteros/abonos/${abono.id}/notas`, { notas });
+            await onCambio();
+          }}
+        />
+      </div>
       {armado && (
         <div className="mt-1 space-y-1 rounded border border-wine/30 bg-wine/5 p-2">
           <TextInput
@@ -177,6 +188,7 @@ function FormaAbono({
   const [formas, setFormas] = useState(() => formasIniciales());
   const [fecha, setFecha] = useState(() => new Date().toISOString().slice(0, 10));
   const [referencia, setReferencia] = useState('');
+  const [notas, setNotas] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
@@ -198,9 +210,11 @@ function FormaAbono({
         ...formasParaEnviar(formas),
         fecha,
         referencia: referencia.trim() || undefined,
+        notas: notas.trim() || undefined,
       });
       setMonto('');
       setReferencia('');
+      setNotas('');
       await onListo();
       onCerrar();
     } catch (err) {
@@ -222,6 +236,9 @@ function FormaAbono({
       <Field label="Referencia (opcional)">
         <TextInput value={referencia} onChange={(e) => setReferencia(e.target.value)} className="py-1.5 text-sm" />
       </Field>
+      <div className="sm:col-span-2">
+        <NotasCampo value={notas} onChange={setNotas} />
+      </div>
       {error && <p className="text-xs text-wine sm:col-span-2">{error}</p>}
       <div className="sm:col-span-2">
         <Button type="submit" variant="gold" className="px-3 py-1.5 text-xs" disabled={!valido || busy}>

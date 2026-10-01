@@ -10,6 +10,7 @@ import { FormasPagoCampo, errorFormas, formasEnFormData, formasIniciales } from 
 import { apiErrorMessage } from '../admin/shared.tsx';
 import { DevolucionForm } from '../DevolucionForm.tsx';
 import type { DepositoBanquetero } from '../../lib/types.ts';
+import { NotasCampo, NotasEditables } from '../NotasPago.tsx';
 
 interface Props {
   banqueteroId: string;
@@ -110,6 +111,17 @@ function DepositoCard({
               Anulado{d.motivoAnulacion ? `: ${d.motivoAnulacion}` : ''}
             </p>
           )}
+          {/* Se heredan a los pagos del reparto: explican también cada uno. */}
+          <div className="mt-2 flex">
+            <NotasEditables
+              notas={d.notas}
+              editable={isAdmin}
+              onGuardar={async (notas) => {
+                await api.patch(`/api/banqueteros/depositos/${d.id}/notas`, { notas });
+                await onCambio();
+              }}
+            />
+          </div>
         </div>
         {!d.anuladoAt && (
           <div className="text-right">
@@ -289,6 +301,7 @@ function RegistrarDeposito({
   const [formas, setFormas] = useState(() => formasIniciales());
   const [fecha, setFecha] = useState(() => new Date().toISOString().slice(0, 10));
   const [referencia, setReferencia] = useState('');
+  const [notas, setNotas] = useState('');
   const [comprobante, setComprobante] = useState<File | null>(null);
   const [fileKey, setFileKey] = useState(0);
   const [error, setError] = useState('');
@@ -315,6 +328,7 @@ function RegistrarDeposito({
       formasEnFormData(fd, formas);
       fd.set('fecha', fecha);
       if (referencia.trim()) fd.set('referencia', referencia.trim());
+      if (notas.trim()) fd.set('notas', notas.trim());
       if (comprobante) fd.set('comprobante', comprobante);
       const res = await fetch(`${apiBase}/api/banqueteros/${banqueteroId}/depositos`, {
         method: 'POST',
@@ -327,6 +341,7 @@ function RegistrarDeposito({
       }
       setMonto('');
       setReferencia('');
+      setNotas('');
       setComprobante(null);
       setFormas(formasIniciales());
       setFileKey((k) => k + 1);
@@ -360,6 +375,7 @@ function RegistrarDeposito({
             placeholder="ej. SPEI 0043128"
           />
         </Field>
+        <NotasCampo value={notas} onChange={setNotas} />
         <Field label="Ficha del banco (opcional)">
           <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-ink/15 bg-white/70 px-3 py-2 text-sm text-charcoal">
             <Paperclip size={15} />

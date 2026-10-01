@@ -387,6 +387,7 @@ export async function convertirApartado(
         concepto: 'aCuenta',
         fecha: abono.fecha.toISOString().slice(0, 10),
         referencia: abono.referencia ?? `Apartado ${apartado.id}`,
+        notas: abono.notas ?? undefined,
       },
       actor,
       undefined,

@@ -8,6 +8,7 @@ import { describirFormasPago, formatFolio } from '@hsa/shared';
 import { Button, Card, MoneyInput, TextInput, SelectInput, Field } from './ui.tsx';
 import { FormasPagoCampo, errorFormas, formasEnFormData, formasIniciales } from './FormasPagoCampo.tsx';
 import { STATUS_LABEL } from '../lib/status.ts';
+import { NotasCampo, NotasEditables } from './NotasPago.tsx';
 import type { EstadoCuenta, Payment, PaymentConcept, ActivityEntry, QuoteStatus } from '../lib/types.ts';
 
 /** Los cuatro conceptos, con la etiqueta que ve la vendedora. */
@@ -55,6 +56,7 @@ export function PagosPanel({
   const [concepto, setConcepto] = useState('anticipo');
   const [fecha, setFecha] = useState(() => new Date().toISOString().slice(0, 10));
   const [referencia, setReferencia] = useState('');
+  const [notas, setNotas] = useState('');
   const [comprobante, setComprobante] = useState<File | null>(null);
   const [fileKey, setFileKey] = useState(0);
   const [info, setInfo] = useState('');
@@ -89,6 +91,7 @@ export function PagosPanel({
       fd.set('concepto', concepto);
       fd.set('fecha', fecha);
       if (referencia) fd.set('referencia', referencia);
+      if (notas.trim()) fd.set('notas', notas.trim());
       if (comprobante) fd.set('comprobante', comprobante);
 
       const res = await fetch(`${apiBase}/api/quotes/${quoteId}/payments`, {
@@ -102,7 +105,7 @@ export function PagosPanel({
       }
       const body = (await res.json()) as { nuevoEstatus: QuoteStatus | null; payment: Payment };
 
-      setMonto(''); setReferencia(''); setComprobante(null); setFileKey((k) => k + 1);
+      setMonto(''); setReferencia(''); setNotas(''); setComprobante(null); setFileKey((k) => k + 1);
       setFormas(formasIniciales(formas.dividido ? 'transferencia' : formas.forma));
       setInfo(
         `Pago registrado con el folio ${formatFolio(body.payment.folio, body.payment.folioLetra)}.` +
@@ -228,6 +231,9 @@ export function PagosPanel({
             />
           </Field>
           <div className="sm:col-span-2">
+            <NotasCampo value={notas} onChange={setNotas} />
+          </div>
+          <div className="sm:col-span-2">
             {err && <p className="mb-2 text-sm text-wine">{err}</p>}
             <Button type="submit" variant="primary" disabled={busy}>{busy ? 'Guardando…' : 'Guardar pago'}</Button>
           </div>
@@ -241,8 +247,8 @@ export function PagosPanel({
           <h3 className="mb-4 font-display text-xl text-ink">Pagos</h3>
           <ul className="divide-y divide-cream-200">
             {payments.map((p) => (
-              <li key={p.id} className={`flex flex-wrap items-center justify-between gap-x-4 gap-y-1 py-2.5 text-sm ${p.anuladoAt ? 'opacity-50 line-through' : ''}`}>
-                <span className="flex flex-wrap items-center gap-x-1.5 gap-y-1">
+              <li key={p.id} className={`flex flex-wrap items-center justify-between gap-x-4 gap-y-1 py-2.5 text-sm ${p.anuladoAt ? 'opacity-60' : ''}`}>
+                <span className={`flex flex-wrap items-center gap-x-1.5 gap-y-1 ${p.anuladoAt ? 'line-through' : ''}`}>
                   <span className="font-medium text-charcoal-soft">{formatFolio(p.folio, p.folioLetra)}</span> · {formatEventDate(p.fecha)} ·{' '}
                   {/* El concepto es editable en el renglón: corregirlo es un error
                       de captura, no un movimiento de dinero. En los pagos anulados
@@ -268,7 +274,7 @@ export function PagosPanel({
                   {p.referencia && ` · ${p.referencia}`}
                 </span>
                 <span className="flex items-center gap-3">
-                  <span className="tabular-nums">{formatMXN(p.monto)}</span>
+                  <span className={`tabular-nums ${p.anuladoAt ? 'line-through' : ''}`}>{formatMXN(p.monto)}</span>
                   {p.comprobanteKey && !p.anuladoAt && (
                     <a
                       href={`${apiBase}/api/quotes/${quoteId}/comprobante/${p.id}`}
@@ -346,6 +352,17 @@ export function PagosPanel({
                     )}
                   </div>
                 )}
+                {/* Las notas: lo que ayuda a entender el pago. Se pueden agregar
+                    después, incluso en un pago anulado (ahí es donde más falta
+                    explicar qué pasó). */}
+                <NotasEditables
+                  notas={p.notas}
+                  editable={!readOnly}
+                  onGuardar={async (notas) => {
+                    await api.patch(`/api/quotes/${quoteId}/payments/${p.id}/notas`, { notas });
+                    await refresh();
+                  }}
+                />
               </li>
             ))}
           </ul>
