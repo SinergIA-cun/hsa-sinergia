@@ -25,6 +25,7 @@ import { ConfirmarEmpalmeModal, type EspacioOcupado } from '../components/Confir
 import { MoverCatalogoModal } from '../components/MoverCatalogoModal.tsx';
 import { OperativaSection } from '../components/OperativaSection.tsx';
 import { CodigoEvento } from '../components/CodigoEvento.tsx';
+import { CicloEvento } from '../components/ciclo/CicloEvento.tsx';
 import { DESPLAZADAS_KEY } from '../lib/desplazadas.ts';
 import { STATUS_LABEL, STATUS_STYLE, EDITABLE_STATUSES } from '../lib/status.ts';
 import { formatEventDate, formatTimestamp } from '../lib/date.ts';
@@ -279,7 +280,13 @@ export function EditQuotePage() {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          {!enPapelera && (
+          {/* Standby y cancelada no se eligen aquí: tienen sus botones abajo. */}
+          {!enPapelera && (quote.status === 'standby' || quote.status === 'cancelada') && (
+            <span className={`rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-wide ${STATUS_STYLE[quote.status]}`}>
+              {STATUS_LABEL[quote.status]}
+            </span>
+          )}
+          {!enPapelera && quote.status !== 'standby' && quote.status !== 'cancelada' && (
           <label className="flex items-center gap-2 text-sm">
             <span className="text-charcoal-soft">Estatus</span>
             <SelectInput
@@ -327,6 +334,16 @@ export function EditQuotePage() {
         </div>
       </div>
 
+      {/* Mover fecha, standby y cancelar; y si ya está sin fecha o cancelado, cómo salir. */}
+      {!enPapelera && (
+        <CicloEvento
+          quote={quote}
+          pagado={estadoCuenta.pagado}
+          cancelacion={quoteQ.data?.cancelacion}
+          isAdmin={isAdmin}
+        />
+      )}
+
       {enPapelera && (
         <div className="mb-6 rounded-lg border border-wine/30 bg-wine/5 px-4 py-3 text-sm text-wine">
           <strong>En papelera</strong> desde el {formatTimestamp(quote.deletedAt!)} · vista de solo
@@ -373,8 +390,12 @@ export function EditQuotePage() {
               {enPapelera
                 ? 'Solo lectura: evento eliminado, conservado como evidencia.'
                 : importado
-                  ? `Importado del BI${quote.contratadoEl ? `, contratado el ${formatEventDate(quote.contratadoEl)}` : ''}. Tiene precio pactado: no se recotiza. La fecha se cambia arrastrándolo en la agenda y los datos del día, en la hoja operativa.`
-                  : 'Ya no es editable (tiene compromiso de pago). Puedes cambiar el estatus o imprimir.'}
+                  ? `Importado del BI${quote.contratadoEl ? `, contratado el ${formatEventDate(quote.contratadoEl)}` : ''}. Tiene precio pactado: no se recotiza. La fecha se cambia con "Mover fecha" y los datos del día, en la hoja operativa.`
+                  : quote.status === 'standby'
+                    ? 'Sin fecha: se edita de nuevo en cuanto se reprograme.'
+                    : quote.status === 'cancelada'
+                      ? 'Cancelado: solo lectura. Un admin lo puede reactivar.'
+                      : 'Ya no es editable (está liquidado). Puedes cambiar el estatus o imprimir.'}
             </p>
           </div>
           <BreakdownGrouped breakdown={quote.breakdown} />
@@ -397,6 +418,8 @@ export function EditQuotePage() {
           payments={payments}
           activityLog={activityLog}
           readOnly={enPapelera}
+          // A un cancelado ya no le entra dinero (la API lo rechaza igual).
+          sinPagosNuevos={quote.status === 'cancelada'}
         />
       )}
 

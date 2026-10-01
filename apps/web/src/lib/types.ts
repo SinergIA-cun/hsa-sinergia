@@ -208,7 +208,11 @@ export interface Client {
  * 13-ago-2026 (punto 8). Debe seguir a `QUOTE_STATUSES` de la API.
  */
 export const QUOTE_STATUSES = ['borrador', 'formalizada', 'complementada', 'liquidada'] as const;
-export type QuoteStatus = (typeof QUOTE_STATUSES)[number];
+/**
+ * Más los dos que sueltan la fecha: `standby` (sin fecha) y `cancelada`. No se
+ * eligen en el selector de estatus: tienen sus propios botones en el evento.
+ */
+export type QuoteStatus = (typeof QUOTE_STATUSES)[number] | 'standby' | 'cancelada';
 
 /**
  * Servicio suelto de UN evento, fuera del catálogo. Ej.: el proveedor de comida
@@ -279,6 +283,12 @@ export interface Quote {
   etiqueta?: string | null;
   /** Los códigos que tuvo y ya no tiene (solo en la lista, para el buscador). */
   codigosAnteriores?: string[];
+  /** El estatus al que vuelve si sale de standby o se reactiva. */
+  statusPrevio?: QuoteStatus | null;
+  standbyDesde?: string | null;
+  standbyMotivo?: string | null;
+  canceladaAt?: string | null;
+  cancelacionMotivo?: string | null;
   publicToken: string;
   createdAt: string;
   deletedAt?: string | null;
@@ -418,6 +428,34 @@ export interface QuoteDetail {
   devoluciones: Devolucion[];
   /** Todos los códigos que ha tenido, del primero al vigente. */
   codigos?: CodigoHistorial[];
+  /** Si está cancelado: lo acordado, lo devuelto y lo que falta devolver. */
+  cancelacion?: ResumenCancelacion | null;
+}
+
+export interface ResumenCancelacion {
+  fecha: string;
+  motivo: string | null;
+  porcentaje: number;
+  pagado: number;
+  devolver: number;
+  retenido: number;
+  devuelto: number;
+  pendiente: number;
+}
+
+/** Un evento en standby, para la lista "Sin fecha". */
+export interface EventoSinFecha {
+  quoteId: string;
+  codigo: string | null;
+  folio: string;
+  cliente: string;
+  eventoNombre: string;
+  /** La fecha que tenía antes de quedarse sin fecha. */
+  fechaQueTenia: string;
+  spaceIds: string[];
+  standbyDesde: string | null;
+  motivo: string | null;
+  statusPrevio: QuoteStatus | null;
 }
 
 /** Un código que tuvo el evento, y por qué cambió. */

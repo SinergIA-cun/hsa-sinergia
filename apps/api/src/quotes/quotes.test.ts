@@ -2284,7 +2284,7 @@ describe('banquetero / cliente y festejado', () => {
  * se queda en borrador.
  */
 describe('estatus retirados (punto 8)', () => {
-  it('el enum de la base tiene exactamente los cuatro estatus vivos', async () => {
+  it('el enum de la base tiene los cuatro estatus vivos más standby y cancelada', async () => {
     // Postgres no puede quitar un valor de un enum, así que la migración creó un
     // tipo nuevo y movió la columna. Esto comprueba que el tipo VIEJO ya no es el
     // que usa la columna: si el swap no corrió, aquí siguen apareciendo siete.
@@ -2295,7 +2295,10 @@ describe('estatus retirados (punto 8)', () => {
        WHERE t.typname = 'QuoteStatus'
        ORDER BY e.enumsortorder
     `;
-    expect(filas.map((f) => f.valor)).toEqual(['borrador', 'formalizada', 'complementada', 'liquidada']);
+    // `standby` y `cancelada` llegaron el 1-oct-2026 (sueltan la fecha del evento).
+    expect(filas.map((f) => f.valor)).toEqual([
+      'borrador', 'formalizada', 'complementada', 'liquidada', 'standby', 'cancelada',
+    ]);
   });
 
   it('QUOTE_STATUSES ya no ofrece los tres retirados', () => {

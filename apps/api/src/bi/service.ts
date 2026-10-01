@@ -1,4 +1,5 @@
 import type { PrismaClient } from '@hsa/database';
+import { resumenCancelacion } from '../quotes/ciclo.js';
 import {
   estadoFacturaPago,
   hoyCivilMexico,
@@ -67,6 +68,12 @@ export async function biEventos(db: PrismaClient, r: RangoBI) {
       select: { quoteId: true, codigo: true, motivos: true, fechaEvento: true, createdAt: true },
     }),
   ]);
+  // La cancelación de los cancelados: lo acordado, lo devuelto y lo que falta.
+  const cancelaciones = new Map(
+    await Promise.all(
+      quotes.filter((q) => q.status === 'cancelada').map(async (q) => [q.id, await resumenCancelacion(db, q)] as const),
+    ),
+  );
   const historialDe = (id: string) =>
     codigos
       .filter((c) => c.quoteId === id)
@@ -96,7 +103,14 @@ export async function biEventos(db: PrismaClient, r: RangoBI) {
     // Cuándo se vendió: la del BI para los importados, la de alta para los demás.
     contratadoEl: (q.contratadoEl ?? q.createdAt).toISOString().slice(0, 10),
     fechaEvento: q.fechaEvento.toISOString().slice(0, 10),
+    // `standby` y `cancelada` sueltan la fecha: no ocupan agenda.
     estatus: q.status,
+    // En standby, `fechaEvento` es la fecha que TENÍA.
+    standby:
+      q.status === 'standby'
+        ? { desde: q.standbyDesde?.toISOString() ?? null, motivo: q.standbyMotivo, estatusPrevio: q.statusPrevio }
+        : null,
+    cancelacion: cancelaciones.get(q.id) ?? null,
     tipoEvento: q.eventType?.nombre ?? null,
     invitados: q.invitados,
     espacios: q.spaceIds,

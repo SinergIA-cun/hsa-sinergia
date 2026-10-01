@@ -358,7 +358,7 @@ async function soloEnHSA(db: PrismaClient, lote: Lote, resultados: Resultado[]) 
     where: {
       fechaEvento: { gte: dia(FECHA_CORTE_IMPORTACION) },
       deletedAt: null,
-      status: { not: 'borrador' },
+      status: { notIn: ['borrador', 'standby', 'cancelada'] },
       OR: [{ importadoBI: null }, { importadoBI: { notIn: idsBI } }],
     },
     select: { id: true, folio: true, etiqueta: true, fechaEvento: true, importadoBI: true, client: { select: { nombre: true } } },

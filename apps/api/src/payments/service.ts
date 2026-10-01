@@ -124,6 +124,11 @@ export async function registerPayment(
   origen?: OrigenDeposito,
 ) {
   const quote = await findOwnedQuote(db, quoteId, actor);
+  // A un evento cancelado ya no entra dinero: lo que queda es devolver (o
+  // reactivarlo). En standby sí se puede seguir pagando; solo no sube de estatus.
+  if (quote.status === 'cancelada') {
+    throw new QuoteError(409, 'El evento está cancelado: no se le registran pagos.');
+  }
   const input = registerPaymentSchema.parse(rawInput);
   const { metodo, formas } = formasAGuardar(input, origen);
   // Un depósito de banquetero o un abono solo pagan la renta del evento: la

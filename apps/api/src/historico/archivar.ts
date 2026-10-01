@@ -39,6 +39,9 @@ export async function archivarEvento(
   // La papelera es evidencia de otra cosa: lo que se eliminó no se archiva como
   // si hubiera sucedido.
   if (quote.deletedAt) return { version: null, motivo: 'en-papelera' };
+  // Un evento en standby no tiene fecha: la que conserva es la que TENÍA, y que
+  // ya haya pasado no quiere decir que el evento sucedió.
+  if (quote.status === 'standby') return { version: null, motivo: 'aun-no-pasa' };
   if (!yaPaso(quote.fechaEvento, opts.hoy)) return { version: null, motivo: 'aun-no-pasa' };
 
   const espacios = await db.space.findMany({ select: { id: true, nombre: true } });
