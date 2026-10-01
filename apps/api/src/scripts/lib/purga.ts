@@ -31,6 +31,8 @@ export const TABLAS_MOVIMIENTO = [
   'PriceListAudit',
   'Quote',
   'QuoteExtra',
+  // El historial de códigos de cada evento: se va con su evento.
+  'CodigoEvento',
   'ActivityLog',
   'EventoHistorico',
   'PagoBanquetero',

@@ -4,7 +4,6 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowLeft,
   BookMarked,
-  Hash,
   ExternalLink,
   Printer,
   FileText,
@@ -25,6 +24,7 @@ import { CompartirClienteModal } from '../components/CompartirClienteModal.tsx';
 import { ConfirmarEmpalmeModal, type EspacioOcupado } from '../components/ConfirmarEmpalmeModal.tsx';
 import { MoverCatalogoModal } from '../components/MoverCatalogoModal.tsx';
 import { OperativaSection } from '../components/OperativaSection.tsx';
+import { CodigoEvento } from '../components/CodigoEvento.tsx';
 import { DESPLAZADAS_KEY } from '../lib/desplazadas.ts';
 import { STATUS_LABEL, STATUS_STYLE, EDITABLE_STATUSES } from '../lib/status.ts';
 import { formatEventDate, formatTimestamp } from '../lib/date.ts';
@@ -260,17 +260,9 @@ export function EditQuotePage() {
           {/* A qué catálogo pertenece: es el dato que explica por qué dos
               cotizaciones de fechas parecidas tienen precios distintos. */}
           <p className="mt-1.5 flex flex-wrap items-center gap-2 text-xs text-charcoal-soft">
-            {/* El folio: la identidad del evento, la que se copia al recibo, al
-                contrato y a los correos. No cambia aunque el evento se mueva. */}
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-ink px-2.5 py-0.5 font-mono text-[0.7rem] font-semibold tracking-tight text-cream">
-              <Hash size={12} /> {quote.folio}
-            </span>
-            {/* Y la etiqueta, que sí sigue a la fecha, al cliente y al salón. */}
-            {quote.etiqueta && (
-              <span className="font-mono text-[0.7rem] tracking-tight text-charcoal-soft">
-                {quote.etiqueta}
-              </span>
-            )}
+            {/* El código es el identificador principal; el folio interno va al
+                lado, y los códigos que tuvo, a un clic. */}
+            <CodigoEvento codigo={quote.etiqueta} folio={quote.folio} historial={quoteQ.data?.codigos ?? []} />
             <span className="inline-flex items-center gap-1.5 rounded-full bg-cream-200 px-2.5 py-0.5 font-semibold uppercase tracking-wide text-ink-500">
               <BookMarked size={12} /> Catálogo {quote.priceList?.nombre ?? '—'}
             </span>

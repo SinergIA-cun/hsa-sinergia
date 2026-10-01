@@ -270,15 +270,15 @@ export interface Quote {
   total: number;
   rentaTotal: number;
   status: QuoteStatus;
-  /** **El folio** (`27SEP-0184`): año y mes de contratación más consecutivo. Es
-   *  la identidad del evento y NO cambia nunca — ni al moverlo de fecha, ni al
-   *  cambiarle el salón, ni al ajustar el PAX. Es lo que va impreso donde alguien
-   *  lo va a copiar. */
+  /** **El folio** (`27SEP-0184`): la llave interna, que no cambia nunca. Va en
+   *  segundo plano, al lado del código. */
   folio: string;
-  /** **La etiqueta** (`29OCT27-CBARRERA-CUPULA`): cómo se describe el evento HOY.
-   *  Se recalcula en cada guardado, así que siempre dice la verdad. Va al lado del
-   *  folio, nunca en su lugar. */
+  /** **El código** (`04SEP26-HLANGRUEN-CUPULA`): el identificador principal. Se
+   *  recalcula si cambia la fecha, el salón o el cliente, y cada código que tuvo
+   *  queda en su historial (`CodigoEvento`). */
   etiqueta?: string | null;
+  /** Los códigos que tuvo y ya no tiene (solo en la lista, para el buscador). */
+  codigosAnteriores?: string[];
   publicToken: string;
   createdAt: string;
   deletedAt?: string | null;
@@ -416,6 +416,19 @@ export interface QuoteDetail {
   cuenta: CuentaEvento;
   productosPuntoDeVenta: ProductoPuntoDeVenta[];
   devoluciones: Devolucion[];
+  /** Todos los códigos que ha tenido, del primero al vigente. */
+  codigos?: CodigoHistorial[];
+}
+
+/** Un código que tuvo el evento, y por qué cambió. */
+export interface CodigoHistorial {
+  codigo: string;
+  /** `alta`, `fecha`, `espacio`, `cliente` o `repetido`. */
+  motivos: string[];
+  fechaEvento: string;
+  /** Desde cuándo lo tiene (ISO). */
+  desde: string;
+  actor: string | null;
 }
 
 /** Dinero que la hacienda devolvió: a un cliente o a un banquetero. No lleva folio I. */

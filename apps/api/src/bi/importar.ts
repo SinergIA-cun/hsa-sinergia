@@ -14,9 +14,10 @@ import {
   type Diferencia,
   type EventoComparable,
 } from '@hsa/shared';
-import { catalogoActivo, generarEtiqueta, loadEstadoCuenta } from '../quotes/service.js';
+import { catalogoActivo, loadEstadoCuenta } from '../quotes/service.js';
 import { esUpgrade } from '../quotes/estadoCuenta.js';
 import { logActivity } from '../quotes/activityLog.js';
+import { calcularCodigo, eventoPorCodigo, renglonDeCodigo } from '../quotes/codigo.js';
 import { reclasificarConceptos } from '../payments/conceptos.js';
 import { apartadoVivo } from '../banqueteros/apartados.js';
 
@@ -34,7 +35,11 @@ import { apartadoVivo } from '../banqueteros/apartados.js';
  *  - **Ante la duda, no importa.** Un salón o tipo de evento que no se reconoce,
  *    o un evento que se parece a uno que ya existe (misma fecha y salón), se
  *    reporta y se salta. Para ligarlo a uno que ya existe se reenvía con
- *    `folioHSA`.
+ *    `folioHSA` o con su `codigo`.
+ *  - **El código es la identidad de la operación.** Si el BI manda el `codigo`
+ *    con el que el evento ya circula (`04SEP26-HLANGRUEN-CUPULA`) y aquí hay un
+ *    evento que lo tiene o lo tuvo, es ese evento. Si no hay ninguno, el evento
+ *    nuevo nace con ese mismo código para no cambiarle el nombre.
  *  - **Precio pactado.** El desglose son los montos del BI; el catálogo nunca
  *    lo recotiza (ver `updateQuote`).
  */
@@ -58,6 +63,12 @@ export const eventoBISchema = z.object({
   idBI: z.string().min(1).max(100),
   /** Para ligar el evento del BI a uno que YA existe aquí (su folio de evento). */
   folioHSA: z.string().min(1).max(40).optional(),
+  /**
+   * El código con el que el evento ya circula (`04SEP26-HLANGRUEN-CUPULA`). Liga
+   * contra el código vigente o cualquiera de los anteriores; si nadie lo tiene,
+   * es el código con el que se crea.
+   */
+  codigo: z.string().trim().min(1).max(60).optional(),
   fechaContratacion: fechaISO,
   fechaEvento: fechaISO,
   tipoEvento: z.string().min(1).max(80),
@@ -118,6 +129,8 @@ export interface Resultado {
   estado: Estado;
   /** El folio del evento aquí, si existe (o si se creó). */
   folioHSA?: string;
+  /** Su código vigente aquí, que es el principal. */
+  codigoHSA?: string | null;
   quoteId?: string;
   diferencias?: Diferencia[];
   candidatos?: Candidato[];
@@ -215,6 +228,7 @@ async function comparableHSA(
 const QUOTE_SELECT = {
   id: true,
   folio: true,
+  etiqueta: true,
   importadoBI: true,
   deletedAt: true,
   status: true,
@@ -253,6 +267,19 @@ async function conciliarUno(
       };
     }
   }
+  if (!existente && ev.codigo) {
+    const id = await eventoPorCodigo(db, ev.codigo);
+    if (id) {
+      existente = await db.quote.findUnique({ where: { id }, select: QUOTE_SELECT });
+      if (existente?.importadoBI && existente.importadoBI !== ev.idBI) {
+        return {
+          idBI: ev.idBI,
+          estado: 'invalido',
+          errores: [`El evento ${ev.codigo} ya está ligado al evento ${existente.importadoBI} del BI.`],
+        };
+      }
+    }
+  }
 
   const ladoBI: EventoComparable = {
     fechaEvento: ev.fechaEvento,
@@ -270,6 +297,7 @@ async function conciliarUno(
         idBI: ev.idBI,
         estado: 'difiere',
         folioHSA: existente.folio,
+        codigoHSA: existente.etiqueta,
         quoteId: existente.id,
         avisos: [...r.avisos, 'Aquí el evento está en la papelera.'],
         diferencias: [],
@@ -280,6 +308,7 @@ async function conciliarUno(
       idBI: ev.idBI,
       estado: diferencias.length ? 'difiere' : 'igual',
       folioHSA: existente.folio,
+      codigoHSA: existente.etiqueta,
       quoteId: existente.id,
       diferencias,
       avisos: r.avisos,
@@ -314,7 +343,7 @@ async function conciliarUno(
       candidatos,
       avisos: [
         ...r.avisos,
-        'Ya hay algo aquí en esa fecha y salón. Si es el mismo evento, reenvíalo con folioHSA para ligarlo.',
+        'Ya hay algo aquí en esa fecha y salón. Si es el mismo evento, reenvíalo con folioHSA o codigo para ligarlo.',
       ],
     };
   }
@@ -332,7 +361,7 @@ async function soloEnHSA(db: PrismaClient, lote: Lote, resultados: Resultado[]) 
       status: { not: 'borrador' },
       OR: [{ importadoBI: null }, { importadoBI: { notIn: idsBI } }],
     },
-    select: { id: true, folio: true, fechaEvento: true, importadoBI: true, client: { select: { nombre: true } } },
+    select: { id: true, folio: true, etiqueta: true, fechaEvento: true, importadoBI: true, client: { select: { nombre: true } } },
     orderBy: { fechaEvento: 'asc' },
   });
   return quotes
@@ -340,6 +369,7 @@ async function soloEnHSA(db: PrismaClient, lote: Lote, resultados: Resultado[]) 
     .map((q) => ({
       quoteId: q.id,
       folioHSA: q.folio,
+      codigoHSA: q.etiqueta,
       fechaEvento: q.fechaEvento.toISOString().slice(0, 10),
       cliente: q.client?.nombre ?? null,
       idBI: q.importadoBI,
@@ -414,15 +444,18 @@ async function crearImportado(db: PrismaClient, ev: EventoBI, r: ReturnType<type
       ).id;
 
     const folio = await folioDeContratacion(tx, ev.fechaContratacion);
-    const etiqueta = await generarEtiqueta(tx as unknown as PrismaClient, {
-      fecha: ev.fechaEvento,
-      cliente: ev.cliente.nombre,
-      spaceIds: r.spaceIds,
-    });
+    const datosCodigo = { fecha: ev.fechaEvento, cliente: ev.cliente.nombre, spaceIds: r.spaceIds };
+    // El código con el que ya circula, si el BI lo mandó y nadie más lo usa aquí;
+    // si no, el que le toca. (Si lo usara otro evento, la conciliación ya lo
+    // habría ligado a ese y no estaríamos creando.)
+    const libre =
+      ev.codigo && !(await tx.quote.findFirst({ where: { etiqueta: ev.codigo, deletedAt: null }, select: { id: true } }));
+    const etiqueta = libre ? ev.codigo! : await calcularCodigo(tx as unknown as PrismaClient, datosCodigo);
     const q = await tx.quote.create({
       data: {
         folio,
         etiqueta,
+        codigos: { create: renglonDeCodigo(etiqueta, datosCodigo, ['alta'], null) },
         clientId,
         eventTypeId: r.eventTypeId!,
         fechaEvento: dia(ev.fechaEvento),
@@ -505,7 +538,7 @@ export async function importarLote(db: PrismaClient, raw: unknown) {
     if (res.estado === 'nuevo' && res._resuelto) {
       try {
         const q = await crearImportado(db, ev, res._resuelto);
-        resultados.push({ ...quitarInterno(res), quoteId: q.id, folioHSA: q.folio, accion: 'creado' });
+        resultados.push({ ...quitarInterno(res), quoteId: q.id, folioHSA: q.folio, codigoHSA: q.etiqueta, accion: 'creado' });
       } catch (e) {
         resultados.push({
           idBI: ev.idBI,
@@ -517,7 +550,7 @@ export async function importarLote(db: PrismaClient, raw: unknown) {
     }
     // Ligar: el BI dijo cuál es con `folioHSA` y el evento aún no tenía liga. No
     // se cambia ningún dato: solo se anota el id, y las diferencias se reportan.
-    if (res.quoteId && ev.folioHSA && (res.estado === 'igual' || res.estado === 'difiere')) {
+    if (res.quoteId && (ev.folioHSA || ev.codigo) && (res.estado === 'igual' || res.estado === 'difiere')) {
       const q = await db.quote.findUniqueOrThrow({ where: { id: res.quoteId }, select: { importadoBI: true } });
       if (!q.importadoBI) {
         await db.quote.update({ where: { id: res.quoteId }, data: { importadoBI: ev.idBI } });

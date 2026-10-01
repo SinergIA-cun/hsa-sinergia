@@ -232,9 +232,10 @@ export function BanqueteroPage() {
                     onClick={() => navigate(`/eventos/${e.quoteId}`)}
                   >
                     <td className="px-4 py-2.5 text-ink">
-                      <span className="block font-mono font-semibold">{e.folio ?? '—'}</span>
-                      {e.etiqueta && (
-                        <span className="block font-mono text-[0.68rem] text-charcoal-soft">{e.etiqueta}</span>
+                      {/* El código primero (es el principal); el folio interno debajo. */}
+                      <span className="block font-mono font-semibold">{e.etiqueta ?? e.folio ?? '—'}</span>
+                      {e.etiqueta && e.folio && (
+                        <span className="block font-mono text-[0.68rem] text-charcoal-soft">Folio {e.folio}</span>
                       )}
                     </td>
                     <td className="px-4 py-2.5 text-charcoal">{formatEventDate(e.fechaEventoISO)}</td>

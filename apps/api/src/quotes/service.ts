@@ -2,7 +2,6 @@ import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import type { PrismaClient, Prisma } from '@hsa/database';
 import {
-  etiquetaEvento,
   computeQuote,
   quoteSelectionSchema,
   estadoFacturaPago,
@@ -19,6 +18,7 @@ import { loadCatalog } from '../catalog/loader.js';
 import { getAvailability } from '../availability/service.js';
 import { cuentaDelEvento, productosDelEvento } from '../cargos/cuenta.js';
 import { logActivity } from './activityLog.js';
+import { calcularCodigo, motivosDelCambio, renglonDeCodigo, historialDeCodigos } from './codigo.js';
 import { archivarEvento, yaPaso } from '../historico/archivar.js';
 import { computeEstadoCuenta, esUpgrade, type EstadoCuenta, type SpaceRuleWithRent } from './estadoCuenta.js';
 
@@ -125,35 +125,17 @@ const includeRels = {
 // las ediciones en esos estatus quedan registradas en la bitácora de actividad.
 const EDITABLE_STATUSES = new Set(['borrador', 'formalizada', 'complementada']);
 
-// --- Etiqueta del evento ------------------------------------------------------
+// --- Código del evento -------------------------------------------------------
 
 /**
- * La etiqueta de una cotización: cómo se describe HOY.
- *
- * Ya no resuelve colisiones ni se congela. Quien identifica es `Quote.folio`
- * (`27-0184`), que lo asigna Postgres al insertar y no cambia nunca; la etiqueta
- * solo describe, así que dos eventos pueden compartirla sin consecuencia y
- * recalcularla en cada guardado es exactamente lo que se quiere.
- *
- * Antes esto eran ~70 líneas: un índice único, sufijos `-2`/`-3`, un reintento
- * por si otra sesión se quedaba con la base entre el cálculo y la escritura, y
- * una regla de congelado por estatus. Todo eso existía para sostener un
- * identificador hecho de datos que cambian. Con el folio aparte, sobra.
- *
- * Los nombres de los espacios se leen EN EL ORDEN de `spaceIds`: `findMany` no
- * garantiza orden, y de eso depende cuál espacio manda en la etiqueta.
+ * El código que le toca a un evento NUEVO (ver `codigo.ts`). Lo usa también la
+ * importación del BI.
  */
 export async function generarEtiqueta(
   db: PrismaClient,
   datos: { fecha: string; cliente: string; spaceIds: string[] },
 ): Promise<string> {
-  const spaces = await db.space.findMany({
-    where: { id: { in: datos.spaceIds } },
-    select: { id: true, nombre: true },
-  });
-  const nombreById = new Map(spaces.map((sp) => [sp.id, sp.nombre]));
-  const espacios = datos.spaceIds.map((id) => nombreById.get(id) ?? '');
-  return etiquetaEvento({ fechaISO: datos.fecha, cliente: datos.cliente, espacios });
+  return calcularCodigo(db, datos);
 }
 
 /**
@@ -694,16 +676,15 @@ export async function createQuote(
     (await db.client.findUnique({ where: { id: clientId! }, select: { nombre: true } }))?.nombre ??
     '';
 
-  // El folio lo pone Postgres al insertar; aquí solo va la etiqueta.
-  const etiqueta = await generarEtiqueta(db, {
-    fecha: input.fecha,
-    cliente: nombreCliente,
-    spaceIds: input.spaceIds,
-  });
+  // El folio lo pone Postgres al insertar; aquí va el código, que es el
+  // principal, con el primer renglón de su historial.
+  const datosCodigo = { fecha: input.fecha, cliente: nombreCliente, spaceIds: input.spaceIds };
+  const etiqueta = await generarEtiqueta(db, datosCodigo);
 
   const created = await db.quote.create({
         data: {
           etiqueta,
+          codigos: { create: renglonDeCodigo(etiqueta, datosCodigo, ['alta'], actor.id) },
           clientId: clientId!,
           eventTypeId: input.eventTypeId,
           fechaEvento: new Date(`${input.fecha}T00:00:00.000Z`),
@@ -756,19 +737,21 @@ export async function duplicateQuote(db: PrismaClient, id: string, actor: Actor)
   });
   if (!src) throw new QuoteError(404, 'Cotización no encontrada');
 
-  // La copia nace con SU PROPIO folio —lo asigna Postgres, es otro evento— y con
-  // la misma etiqueta que el original, que es correcto: describe un evento con
-  // el mismo cliente, la misma fecha y el mismo salón. Antes había que darle
-  // sufijo `-2` porque la etiqueta era el identificador; ya no lo es.
-  const etiqueta = await generarEtiqueta(db, {
+  // La copia nace con SU PROPIO folio —lo asigna Postgres, es otro evento— y
+  // con su propio código: mismo cliente, misma fecha y mismo salón que el
+  // original, así que lleva sufijo (`-2`). El código es el principal y dos
+  // eventos no pueden compartirlo.
+  const datosCodigo = {
     fecha: src.fechaEvento.toISOString().slice(0, 10),
     cliente: src.client?.nombre ?? '',
     spaceIds: src.spaceIds,
-  });
+  };
+  const etiqueta = await generarEtiqueta(db, datosCodigo);
 
   const created = await db.quote.create({
         data: {
           etiqueta,
+          codigos: { create: renglonDeCodigo(etiqueta, datosCodigo, ['alta'], actor.id) },
           clientId: src.clientId,
           eventTypeId: src.eventTypeId,
           fechaEvento: src.fechaEvento,
@@ -888,6 +871,10 @@ export async function updateQuote(db: PrismaClient, id: string, rawInput: unknow
     precioPactado ||
     (yaPaso(existing.fechaEvento) && yaPaso(new Date(`${input.fecha}T00:00:00.000Z`)));
 
+  // El nombre ANTES de editar al cliente: sirve para explicar por qué cambió el código.
+  const nombreClienteAntes =
+    (await db.client.findUnique({ where: { id: existing.clientId }, select: { nombre: true } }))?.nombre ?? '';
+
   let bitacoraFiscal: { campos: string[]; desbloqueoDeAdmin: boolean } | null = null;
   if (input.client) {
     // Los datos fiscales se congelan cuando ya salió un CFDI con ellos: cambiarlos
@@ -927,25 +914,37 @@ export async function updateQuote(db: PrismaClient, id: string, rawInput: unknow
     await db.client.update({ where: { id: existing.clientId }, data: input.client });
   }
 
-  // La etiqueta se regenera SIEMPRE, también con el evento ya formalizado: es una
-  // descripción, y una descripción vieja es una descripción equivocada. Lo que no
-  // cambia —lo que está impreso en el recibo que el cliente tiene— es el folio, y
-  // ese no se toca aquí ni en ningún otro lado.
+  // El código se recalcula SIEMPRE, también con el evento ya formalizado: si el
+  // evento se movió de fecha o de salón, su código tiene que decirlo. Cada cambio
+  // deja su renglón en el historial, así que el código viejo de un recibo sigue
+  // llevando a este evento. El folio, la llave interna, no se toca nunca.
   const nombreCliente =
-    input.client?.nombre ??
-    (await db.client.findUnique({ where: { id: existing.clientId }, select: { nombre: true } }))?.nombre ??
-    '';
-  const etiqueta = await generarEtiqueta(db, {
-    fecha: input.fecha,
-    cliente: nombreCliente,
-    spaceIds: input.spaceIds,
-  });
+    input.client?.nombre ?? nombreClienteAntes;
+  const datosCodigo = { fecha: input.fecha, cliente: nombreCliente, spaceIds: input.spaceIds };
+  const etiqueta = await calcularCodigo(db, datosCodigo, { id, etiqueta: existing.etiqueta });
+  const cambioDeCodigo =
+    etiqueta !== existing.etiqueta
+      ? renglonDeCodigo(
+          etiqueta,
+          datosCodigo,
+          motivosDelCambio(
+            {
+              fecha: existing.fechaEvento.toISOString().slice(0, 10),
+              cliente: nombreClienteAntes,
+              spaceIds: existing.spaceIds,
+            },
+            datosCodigo,
+          ),
+          actor.id,
+        )
+      : null;
 
   const escribir = (etiqueta: string) =>
     db.quote.update({
       where: { id },
       data: {
         etiqueta,
+        ...(cambioDeCodigo ? { codigos: { create: cambioDeCodigo } } : {}),
         eventTypeId: input.eventTypeId,
         fechaEvento: new Date(`${input.fecha}T00:00:00.000Z`),
         horasEvento: input.horasEvento ?? null,
@@ -1574,9 +1573,25 @@ export async function listQuotes(db: PrismaClient, actor: Actor) {
     orderBy: { createdAt: 'desc' },
     include: includeRels,
   });
-  const estados = await loadEstadoCuentaBulk(db, quotes);
+  const [estados, historial] = await Promise.all([
+    loadEstadoCuentaBulk(db, quotes),
+    db.codigoEvento.findMany({
+      where: { quoteId: { in: quotes.map((q) => q.id) } },
+      select: { quoteId: true, codigo: true },
+    }),
+  ]);
+  // Los códigos que tuvo y ya no tiene: el buscador los encuentra, para que el
+  // código de un recibo viejo siga llevando al evento.
+  const anteriores = new Map<string, Set<string>>();
+  for (const h of historial) {
+    anteriores.set(h.quoteId, (anteriores.get(h.quoteId) ?? new Set()).add(h.codigo));
+  }
   // `desfase`: el estatus exige un pago que aún no está cubierto (bandera de auditoría).
-  return quotes.map((q) => ({ ...q, desfase: estados.get(q.id)?.desfase ?? false }));
+  return quotes.map((q) => ({
+    ...q,
+    desfase: estados.get(q.id)?.desfase ?? false,
+    codigosAnteriores: [...(anteriores.get(q.id) ?? [])].filter((c) => c !== q.etiqueta),
+  }));
 }
 
 export async function getQuote(db: PrismaClient, id: string, actor: Actor) {
@@ -1595,7 +1610,7 @@ export async function getQuote(db: PrismaClient, id: string, actor: Actor) {
 
   // La cuenta del punto de venta va aparte del estado de cuenta: son ventas
   // posteriores que no cambian el valor del evento.
-  const [cuenta, productos, devoluciones] = await Promise.all([
+  const [cuenta, productos, devoluciones, codigos] = await Promise.all([
     cuentaDelEvento(db, id),
     productosDelEvento(db, quote),
     db.devolucion.findMany({
@@ -1603,6 +1618,7 @@ export async function getQuote(db: PrismaClient, id: string, actor: Actor) {
       orderBy: { fecha: 'asc' },
       include: { registradoBy: { select: { nombre: true } } },
     }),
+    historialDeCodigos(db, id),
   ]);
   const cuentaConCandado = {
     ...cuenta,
@@ -1621,6 +1637,8 @@ export async function getQuote(db: PrismaClient, id: string, actor: Actor) {
     cuenta: cuentaConCandado,
     productosPuntoDeVenta: productos,
     devoluciones,
+    // Todos los códigos que ha tenido, del primero al vigente.
+    codigos,
   };
 }
 

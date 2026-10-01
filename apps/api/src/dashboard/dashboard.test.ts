@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { randomUUID } from 'node:crypto';
-import { hoyCivilMexico } from '@hsa/shared';
+import { hoyCivilMexico, vigenciaDeApartado } from '@hsa/shared';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { prisma } from '@hsa/database';
@@ -193,11 +193,12 @@ describe('getDashboard · lo que el tablero grita', () => {
     });
     createdBanqueteros.push(b.id);
 
-    // Se cuenta desde el día civil de MÉXICO, no desde el reloj UTC. Es lo que
-    // usa `diasParaVencer`, y después de las 18:00 hora de México el UTC ya pasó
-    // a mañana: la prueba fallaba cada tarde con "expected 11 to be <= 10".
-    const enDiez = hoyCivilMexico();
-    enDiez.setUTCDate(enDiez.getUTCDate() + 10);
+    // El plazo NO se captura: son siete días hábiles desde hoy (día civil de
+    // México). En días naturales eso va de 9 a 11 según el día de la semana —
+    // un jueves cruza el fin de semana y da 11—, así que lo esperado se calcula
+    // con la misma regla en vez de fijar un número.
+    const hoy = hoyCivilMexico();
+    const esperados = Math.round((vigenciaDeApartado(hoy).getTime() - hoy.getTime()) / 86_400_000);
     const { apartado } = await crearApartado(
       prisma,
       b.id,
@@ -205,7 +206,6 @@ describe('getDashboard · lo que el tablero grita', () => {
         // Una fecha lejana para no chocar con los eventos de las otras suites.
         fechaEvento: '2038-06-05',
         spaceIds: [arcosId],
-        vence: enDiez.toISOString().slice(0, 10),
         deposito: 20_000,
         depositoMetodo: 'transferencia',
         depositoFecha: new Date().toISOString().slice(0, 10),
@@ -218,7 +218,7 @@ describe('getDashboard · lo que el tablero grita', () => {
     const mio = d.banqueteros.apartados.find((a) => a.apartadoId === apartado.id);
     expect(mio).toBeDefined();
     expect(mio!.banqueteroId).toBe(b.id);
-    expect(mio!.diasParaVencer).toBeLessThanOrEqual(10);
+    expect(mio!.diasParaVencer).toBe(esperados);
     expect(mio!.abonado).toBe(20_000);
     expect(d.banqueteros.porVencer).toBeGreaterThanOrEqual(1);
   });

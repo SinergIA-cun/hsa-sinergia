@@ -139,7 +139,7 @@ function DepositoCard({
                   to={`/eventos/${a.quoteId}`}
                   className="font-medium text-ink hover:text-gold hover:underline"
                 >
-                  {a.quote?.folio ?? 'Evento'}
+                  {a.quote?.etiqueta ?? a.quote?.folio ?? 'Evento'}
                 </Link>
                 <span className="ml-2 text-xs text-charcoal-soft">
                   {formatFolio(a.folio, a.folioLetra)} · {a.concepto}

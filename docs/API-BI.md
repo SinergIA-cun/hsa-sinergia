@@ -126,6 +126,35 @@ paga al proveedor de alimentos y servicios.
 - **Rango sobre:** `fechaEvento`.
 - **Ejemplo:** ver la envoltura de arriba.
 
+**El código del evento es el identificador principal.** Cada evento trae:
+
+| Campo | Qué es |
+|---|---|
+| `codigo` | El código vigente, `04SEP26-HLANGRUEN-CUPULA` (día, mes, año, inicial + apellido del cliente, salón). Cambia si el evento se mueve de fecha o de salón, o si cambia el cliente. Dos eventos vivos nunca lo comparten: el segundo lleva sufijo (`-2`). |
+| `codigos` | Todos los que ha tenido, del primero al vigente: `{ codigo, motivos, fechaEvento, desde }`. `motivos` es `alta`, `fecha`, `espacio`, `cliente` o `repetido`. Sirve para cuadrar registros que traen un código viejo. |
+| `folio` | La llave interna (`26SEP-0184`). No cambia nunca. |
+| `id` | El id técnico. Tampoco cambia. |
+
+Los demás endpoints traen `eventoCodigo` (el código vigente del evento al que pertenece cada
+renglón) además del id o el folio. Un evento que se mueve de fecha sale con su código nuevo;
+como `/eventos` filtra por fecha de evento, para seguirlo hay que usar `id` o `folio`.
+
+```json
+{
+  "id": "cm…",
+  "codigo": "11SEP26-HLANGRUEN-CUPULA",
+  "codigos": [
+    { "codigo": "04SEP26-HLANGRUEN-CUPULA", "motivos": ["alta"], "fechaEvento": "2026-09-04", "desde": "2026-03-02T17:10:00.000Z" },
+    { "codigo": "11SEP26-HLANGRUEN-CUPULA", "motivos": ["fecha"], "fechaEvento": "2026-09-11", "desde": "2026-08-20T15:31:00.000Z" }
+  ],
+  "folio": "26MAR-0021"
+}
+```
+
+> El historial empieza el 1-oct-2026 con el código que cada evento tenía ese día. Los
+> cambios de antes no se pueden reconstruir: el código depende del nombre del cliente en ese
+> momento, y ese dato no se guardó.
+
 > `renta.subtotal` sale de la copia del desglose guardada con el evento. Los eventos creados
 > **antes** de que el motor separara renta y "otros" no lo traen: para esos el campo llega
 > como `null` explícito (no desaparece del JSON). `renta.total` y `total` siempre están.
@@ -457,6 +486,7 @@ primero, revisar, e importar después.
 |---|---|
 | `idBI` | Id del evento en el BI. **Llave de idempotencia**: mandar el mismo evento dos veces no lo duplica. |
 | `folioHSA` | Opcional. Folio de un evento que ya existe aquí (`26SEP-0184`), para ligarlo en vez de crearlo. |
+| `codigo` | Opcional. El código con el que el evento ya circula (`04SEP26-HLANGRUEN-CUPULA`). Si aquí hay un evento que lo tiene **o lo tuvo**, se liga a ese. Si no hay ninguno, el evento nuevo nace con ese mismo código, para no cambiarle el nombre a algo que ya está en papel. |
 | `fechaContratacion` | Cuándo se vendió. El folio del evento sale de este mes (`26FEB-…`), no de la fecha de importación. |
 | `tipoEvento`, `salones` | Por nombre. Se comparan sin acentos ni mayúsculas y sin "Jardín/Salón/La/Los": `"Cúpula"` = `"Jardín La Cúpula"`. Lo que no coincide exacto **no se adivina**: el evento sale `invalido`. |
 | `banquetero`, `vendedora` | Por nombre. Si no se reconocen, el evento entra sin ellos y se avisa. |
@@ -476,7 +506,7 @@ Hasta 200 eventos por llamada; para más, se manda por partes (todo es idempoten
   "corte": "2026-10-01",
   "resumen": { "nuevo": 1, "difiere": 1, "creados": 1 },
   "resultados": [
-    { "idBI": "EV-10233", "estado": "nuevo", "accion": "creado", "folioHSA": "26FEB-0213", "quoteId": "cm…" },
+    { "idBI": "EV-10233", "estado": "nuevo", "accion": "creado", "folioHSA": "26FEB-0213", "codigoHSA": "13MAR27-JPEREZ-ARCOS", "quoteId": "cm…" },
     { "idBI": "EV-10240", "estado": "difiere", "folioHSA": "26AGO-0151",
       "diferencias": [
         { "campo": "invitados", "bi": 250, "hsa": 280 },
@@ -494,7 +524,7 @@ Hasta 200 eventos por llamada; para más, se manda por partes (todo es idempoten
 | `nuevo` | No existe aquí. Con `importar` se **crea** (`accion: "creado"`). | Nada. |
 | `igual` | Ya existe y cuadra. | Nada. |
 | `difiere` | Ya existe y algo no cuadra (`diferencias`). **No se sobrescribe**: desde la importación la operación vive en la hacienda. | Cuadrarlo a mano en el sistema que esté mal. |
-| `posibleDuplicado` | No está ligado, pero aquí ya hay algo esa fecha en ese salón (`candidatos`: un evento o un apartado). No se importa. | Si es el mismo evento, reenviarlo con `folioHSA` para ligarlo. Si no, es un empalme real. |
+| `posibleDuplicado` | No está ligado, pero aquí ya hay algo esa fecha en ese salón (`candidatos`: un evento o un apartado). No se importa. | Si es el mismo evento, reenviarlo con `folioHSA` o `codigo` para ligarlo. Si no, es un empalme real. |
 | `fueraDeCorte` | Se celebra antes del 1-oct-2026. | Nada: se queda en el BI. |
 | `invalido` | Un salón o tipo de evento no reconocido, formas que no suman, folios repetidos… (`errores`). | Corregir en el BI y reenviar. |
 

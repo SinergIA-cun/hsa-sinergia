@@ -55,13 +55,27 @@ export async function biEventos(db: PrismaClient, r: RangoBI) {
   });
   // La cuenta del punto de venta de cada evento, en bloque (sin N+1).
   const ids = quotes.map((q) => q.id);
-  const [cargos, pagosCargos] = await Promise.all([
+  const [cargos, pagosCargos, codigos] = await Promise.all([
     db.cargoEvento.findMany({ where: { quoteId: { in: ids } }, select: { quoteId: true, total: true, anuladoAt: true } }),
     db.payment.findMany({
       where: { quoteId: { in: ids }, destino: 'cargos' },
       select: { quoteId: true, monto: true, anuladoAt: true },
     }),
+    db.codigoEvento.findMany({
+      where: { quoteId: { in: ids } },
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+      select: { quoteId: true, codigo: true, motivos: true, fechaEvento: true, createdAt: true },
+    }),
   ]);
+  const historialDe = (id: string) =>
+    codigos
+      .filter((c) => c.quoteId === id)
+      .map((c) => ({
+        codigo: c.codigo,
+        motivos: c.motivos,
+        fechaEvento: c.fechaEvento.toISOString().slice(0, 10),
+        desde: c.createdAt.toISOString(),
+      }));
   const cuentaDe = (id: string) =>
     saldoDeCargos(
       cargos.filter((c) => c.quoteId === id),
@@ -69,6 +83,12 @@ export async function biEventos(db: PrismaClient, r: RangoBI) {
     );
   return quotes.map((q) => ({
     id: q.id,
+    // El código es el identificador principal. Cambia si el evento se mueve de
+    // fecha o de salón; `codigos` trae todos los que ha tenido, del primero al
+    // vigente, para cuadrar contra registros que tengan uno viejo.
+    codigo: q.etiqueta,
+    codigos: historialDe(q.id),
+    // La llave interna que nunca cambia.
     folio: q.folio,
     // `bi` = se importó del BI (o se ligó a uno de allá); `hsa` = se vendió aquí.
     origen: q.importadoBI ? 'bi' : 'hsa',
@@ -104,7 +124,7 @@ export async function biPagos(db: PrismaClient, r: RangoBI) {
   const pagos = await db.payment.findMany({
     where: { fecha: { gte: r.desde, lte: r.hasta }, quote: { deletedAt: null } },
     include: {
-      quote: { select: { id: true, fechaEvento: true, client: { select: { nombre: true } } } },
+      quote: { select: { id: true, etiqueta: true, fechaEvento: true, client: { select: { nombre: true } } } },
       registradoBy: { select: { nombre: true } },
       anuladoBy: { select: { nombre: true } },
     },
@@ -123,6 +143,7 @@ export async function biPagos(db: PrismaClient, r: RangoBI) {
       folioLetra: p.folioLetra,
       folioTexto: formatFolio(p.folio, p.folioLetra),
       quoteId: p.quoteId,
+      eventoCodigo: p.quote?.etiqueta ?? null,
       cliente: p.quote?.client?.nombre ?? null,
       fecha: p.fecha.toISOString().slice(0, 10),
       monto: p.monto,
@@ -160,7 +181,7 @@ export async function biPagos(db: PrismaClient, r: RangoBI) {
 export async function biPagosEsperados(db: PrismaClient, r: RangoBI) {
   const quotes = await db.quote.findMany({
     where: { deletedAt: null, status: { in: ['formalizada', 'complementada'] } },
-    select: { id: true, rentaTotal: true, fechaEvento: true, status: true, spaceIds: true, breakdown: true,
+    select: { id: true, etiqueta: true, rentaTotal: true, fechaEvento: true, status: true, spaceIds: true, breakdown: true,
               client: { select: { nombre: true } } },
     orderBy: { fechaEvento: 'asc' },
     take: r.limit,
@@ -176,6 +197,7 @@ export async function biPagosEsperados(db: PrismaClient, r: RangoBI) {
       if (vence < r.desde || vence > r.hasta) continue;
       filas.push({
         quoteId: q.id,
+        eventoCodigo: q.etiqueta,
         cliente: q.client?.nombre ?? null,
         hito: hito.key,
         etiqueta: hito.label,
@@ -193,7 +215,7 @@ export async function biPagosEsperados(db: PrismaClient, r: RangoBI) {
 export async function biCambios(db: PrismaClient, r: RangoBI) {
   const logs = await db.activityLog.findMany({
     where: { createdAt: { gte: r.desde, lte: r.hasta }, quote: { deletedAt: null } },
-    include: { actor: { select: { nombre: true } }, quote: { select: { client: { select: { nombre: true } } } } },
+    include: { actor: { select: { nombre: true } }, quote: { select: { etiqueta: true, client: { select: { nombre: true } } } } },
     orderBy: [{ createdAt: 'asc' }, DESEMPATE],
     take: r.limit,
     ...(r.cursor ? { skip: 1, cursor: { id: r.cursor } } : {}),
@@ -201,6 +223,7 @@ export async function biCambios(db: PrismaClient, r: RangoBI) {
   return logs.map((l) => ({
     id: l.id,
     quoteId: l.quoteId,
+    eventoCodigo: l.quote?.etiqueta ?? null,
     cliente: l.quote?.client?.nombre ?? null,
     tipo: l.tipo,
     descripcion: l.descripcion,
@@ -259,7 +282,7 @@ export async function biIngresos(db: PrismaClient, r: RangoBI) {
       // Solo los directos: los que salieron de un depósito o de un abono ya
       // están contados en su entrada madre.
       where: { fecha: rango, pagoBanqueteroId: null, abonoApartado: null, quote: { deletedAt: null } },
-      include: { quote: { select: { id: true, folio: true, client: { select: { nombre: true } } } } },
+      include: { quote: { select: { id: true, folio: true, etiqueta: true, client: { select: { nombre: true } } } } },
     }),
     db.pagoBanquetero.findMany({
       where: { fecha: rango },
@@ -285,6 +308,7 @@ export async function biIngresos(db: PrismaClient, r: RangoBI) {
       de: p.quote?.client?.nombre ?? null,
       quoteId: p.quoteId,
       eventoFolio: p.quote?.folio ?? null,
+      eventoCodigo: p.quote?.etiqueta ?? null,
       banqueteroId: null as string | null,
       apartadoId: null as string | null,
     })),
@@ -302,6 +326,7 @@ export async function biIngresos(db: PrismaClient, r: RangoBI) {
       de: d.banquetero.nombre,
       quoteId: null,
       eventoFolio: null,
+      eventoCodigo: null,
       banqueteroId: d.banquetero.id,
       apartadoId: null,
     })),
@@ -319,6 +344,7 @@ export async function biIngresos(db: PrismaClient, r: RangoBI) {
       de: a.apartado.banquetero.nombre,
       quoteId: null,
       eventoFolio: null,
+      eventoCodigo: null,
       banqueteroId: a.apartado.banquetero.id,
       apartadoId: a.apartado.id,
     })),
@@ -345,7 +371,7 @@ export async function biCargos(db: PrismaClient, r: RangoBI) {
   const cargos = await db.cargoEvento.findMany({
     where: { fecha: { gte: r.desde, lte: r.hasta }, quote: { deletedAt: null } },
     include: {
-      quote: { select: { id: true, folio: true, fechaEvento: true, client: { select: { nombre: true } } } },
+      quote: { select: { id: true, folio: true, etiqueta: true, fechaEvento: true, client: { select: { nombre: true } } } },
       registradoBy: { select: { nombre: true } },
     },
     orderBy: [{ fecha: 'asc' }, DESEMPATE],
@@ -356,6 +382,7 @@ export async function biCargos(db: PrismaClient, r: RangoBI) {
     id: c.id,
     quoteId: c.quoteId,
     eventoFolio: c.quote.folio,
+    eventoCodigo: c.quote.etiqueta,
     fechaEvento: c.quote.fechaEvento.toISOString().slice(0, 10),
     cliente: c.quote.client?.nombre ?? null,
     fecha: c.fecha.toISOString().slice(0, 10),
@@ -382,7 +409,7 @@ export async function biDevoluciones(db: PrismaClient, r: RangoBI) {
   const devs = await db.devolucion.findMany({
     where: { fecha: { gte: r.desde, lte: r.hasta } },
     include: {
-      quote: { select: { id: true, folio: true, client: { select: { nombre: true } } } },
+      quote: { select: { id: true, folio: true, etiqueta: true, client: { select: { nombre: true } } } },
       banquetero: { select: { id: true, nombre: true } },
       pagoBanquetero: { select: { folio: true } },
       registradoBy: { select: { nombre: true } },
@@ -401,6 +428,7 @@ export async function biDevoluciones(db: PrismaClient, r: RangoBI) {
     de: d.quoteId ? d.destino : 'banquetero',
     quoteId: d.quoteId,
     eventoFolio: d.quote?.folio ?? null,
+    eventoCodigo: d.quote?.etiqueta ?? null,
     cliente: d.quote?.client?.nombre ?? d.banquetero?.nombre ?? null,
     banqueteroId: d.banqueteroId,
     depositoFolio: d.pagoBanquetero?.folio ?? null,

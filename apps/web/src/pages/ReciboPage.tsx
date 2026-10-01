@@ -120,16 +120,14 @@ export function ReciboPage() {
             <div className="recibo-row"><span>N.º de referencia</span><span>{quote.client.numeroReferencia}</span></div>
           )}
           <div className="recibo-row"><span>Evento</span><span>{quote.eventType?.nombre} · {formatEventDate(quote.fechaEvento)}</span></div>
-          {/* El folio: es lo que se copia para referirse al evento en un correo o
-              una transferencia, y lo que hace que este recibo se pueda amarrar a su
-              evento dentro de un año, aunque para entonces el evento se haya
-              movido de fecha y de salón. */}
-          <div className="recibo-row"><span>Folio del evento</span><span>{quote.folio}</span></div>
-          {/* Y cómo estaba el evento HOY. En el próximo recibo puede decir otra
-              cosa, y eso es correcto: entre los dos se ve qué cambió. */}
+          {/* El código del evento, que es el principal: cómo estaba el evento el
+              día que se imprimió. Si el evento se mueve, el próximo recibo dirá
+              otro, y el sistema sabe que los dos son el mismo evento (guarda cada
+              código que tuvo). El folio interno amarra el recibo aunque cambie. */}
           {quote.etiqueta && (
-            <div className="recibo-row"><span>Referencia</span><span>{quote.etiqueta}</span></div>
+            <div className="recibo-row"><span>Código del evento</span><span>{quote.etiqueta}</span></div>
           )}
+          <div className="recibo-row"><span>Folio interno</span><span>{quote.folio}</span></div>
         </div>
 
         {pago.tieneComprobante && (
