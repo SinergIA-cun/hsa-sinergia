@@ -363,6 +363,30 @@ describe('computeQuote · servicios sueltos del evento (extras)', () => {
 // Por eso ya no hay tope: con 100% el precio de la renta es cero y todo lo que
 // se deriva de él sale cero por aritmética, sin reglas inventadas.
 // ---------------------------------------------------------------------------
+describe('computeQuote · descuento / promoción', () => {
+  // "Otro campo como el de cortesía familiar, de descuento/promoción, que funcione
+  // igual pero sin marcar colores. Solo afecta la renta del local" (el dueño).
+  it('descuenta la renta igual que la cortesía, con su propia etiqueta', () => {
+    const conPromo = computeQuote(catalog, mk({ descuentoPct: 25, descuentoMotivo: 'Promo octubre', esPromocion: true }));
+    const conCortesia = computeQuote(catalog, mk({ descuentoPct: 25, descuentoMotivo: 'Promo octubre' }));
+    expect(conPromo.rentaTotal).toBe(conCortesia.rentaTotal);
+    const linea = conPromo.lines.find((l) => l.monto < 0 && l.grupo === 'renta')!;
+    expect(linea.concepto).toBe('Descuento / promoción (25% renta)');
+    expect(linea.detalle).toBe('Promo octubre');
+    expect(conPromo.lines.some((l) => l.concepto.startsWith('Descuento de cortesía'))).toBe(false);
+  });
+
+  it('no toca alimentos ni servicios: solo la renta del local', () => {
+    const sin = computeQuote(catalog, mk({ foodPackageId: 'boda-supreme', addOns: [{ addOnId: 'dj', cantidad: 1 }] }));
+    const con = computeQuote(
+      catalog,
+      mk({ foodPackageId: 'boda-supreme', addOns: [{ addOnId: 'dj', cantidad: 1 }], descuentoPct: 5, descuentoMotivo: 'Promo', esPromocion: true }),
+    );
+    expect(con.otrosTotal).toBe(sin.otrosTotal);
+    expect(con.rentaTotal).toBeLessThan(sin.rentaTotal);
+  });
+});
+
 describe('computeQuote · descuento de cortesía', () => {
   it('100% deja rentaTotal en cero y otrosTotal intacto', () => {
     const r = computeQuote(

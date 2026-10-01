@@ -61,6 +61,12 @@ export const quoteSelectionSchema = z.object({
   descuentoPct: z.number().min(0).max(100).optional(),
   /** Motivo del descuento. Obligatorio si hay descuento: sin él no es auditable. */
   descuentoMotivo: z.string().min(1).max(300).optional(),
+  /**
+   * El descuento es una **promoción** y no una cortesía familiar. Funciona igual
+   * —el mismo porcentaje, solo sobre la renta del local— pero no marca el evento
+   * en verde y el renglón dice "Descuento / promoción" (decisión del dueño).
+   */
+  esPromocion: z.boolean().optional(),
 });
 
 /**
@@ -74,7 +80,7 @@ export const quoteSelectionSchema = z.object({
 export const motivoObligatorio = {
   check: (d: { descuentoPct?: number | null; descuentoMotivo?: string | null }): boolean =>
     !(d.descuentoPct != null && d.descuentoPct > 0) || Boolean(d.descuentoMotivo?.trim()),
-  opts: { message: 'Un descuento de cortesía requiere motivo', path: ['descuentoMotivo'] },
+  opts: { message: 'Un descuento requiere motivo', path: ['descuentoMotivo'] },
 };
 
 /** Tipo derivado del esquema (salida post-parse): fuente única de verdad. */

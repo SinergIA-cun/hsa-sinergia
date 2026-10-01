@@ -125,7 +125,7 @@ export function computeQuote(
     const monto = rentaEspacios * (sel.descuentoPct / 100);
     rentaBase -= monto;
     lines.push({
-      concepto: `Descuento de cortesía (${sel.descuentoPct}% renta)`,
+      concepto: `${sel.esPromocion ? 'Descuento / promoción' : 'Descuento de cortesía'} (${sel.descuentoPct}% renta)`,
       detalle: sel.descuentoMotivo,
       monto: round2(-monto),
       ivaIncluido: true,

@@ -250,6 +250,8 @@ export interface Quote {
   usaCapilla?: boolean;
   capillaHorario?: string | null;
   esCortesia?: boolean;
+  /** Descuento / promoción sobre la renta (como la cortesía, sin color en la agenda). */
+  esPromocion?: boolean;
   usaDjHoraExtra?: boolean;
   requiereFactura?: boolean;
   /** El banquetero que compró el evento. Con banquetero, ÉL es el cliente de la
