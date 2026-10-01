@@ -485,35 +485,19 @@ model Quote {
   total             Int
   rentaTotal        Int
   status            QuoteStatus       @default(borrador)
-  /// Código de evento (`17ENE-CBOLADO-CUPULA`): día, mes, inicial + apellido del
-  /// cliente y el espacio abreviado. Es la identidad legible del evento, la que
-  /// se copia en recibos y contratos.
-  ///
-  /// **El folio: la identidad que no cambia.** `27SEP-0184` — año y mes en que se
-  /// contrató, más un consecutivo.
-  ///
-  /// Un evento cambia de fecha, de salón y sobre todo de PAX; las condiciones se
-  /// terminan de pulir semanas antes. El identificador tiene que sobrevivir a
-  /// todo eso, porque ya está impreso en un recibo que el cliente tiene en la
-  /// mano. Por eso NO codifica nada que pueda cambiar: el año y el mes son los de
-  /// la CONTRATACIÓN —hechos históricos— y no los del evento, que se mueve. Un
-  /// evento cambia de mes con más frecuencia todavía que de año.
-  ///
-  /// Lo asigna POSTGRES y no la aplicación, igual que `Banquetero.publicToken`:
-  /// una fila sin folio no puede existir, y `nextval` es atómico, así que dos
-  /// altas simultáneas no pueden chocar. La app nunca lo escribe ni lo cambia.
+  /// **El folio: la llave interna que no cambia.** `27SEP-0184` — año y mes en
+  /// que se contrató, más un consecutivo. Lo asigna POSTGRES (`folio_evento()`):
+  /// una fila sin folio no puede existir y dos altas simultáneas no chocan. La app
+  /// nunca lo escribe ni lo cambia. Ya no es lo que se enseña primero: ver abajo.
   folio             String            @unique @default(dbgenerated("folio_evento()"))
-  /// **La etiqueta: la descripción viva.** `29OCT27-CBARRERA-CUPULA`.
+  /// **El código: el identificador principal.** `04SEP26-HLANGRUEN-CUPULA` —
+  /// día, mes, año, inicial + apellido del cliente y el salón.
   ///
-  /// Se recalcula SIEMPRE que cambia la fecha, el cliente o el espacio, incluso
-  /// con el evento ya formalizado. No se congela y no es única: no identifica
-  /// nada, describe. Antes hacía los dos trabajos, y por eso se congelaba al
-  /// formalizar —para no romper los recibos— y desde ese momento mentía: un
-  /// evento movido a mayo seguía diciendo marzo.
-  ///
-  /// Va impresa AL LADO del folio, nunca en su lugar. En el recibo es la foto de
-  /// cómo estaba el evento el día que se imprimió, y por eso los recibos de un
-  /// mismo folio cuentan solos cómo fue cambiando.
+  /// Es el que la operación usa de siempre, el que se ve primero en pantalla, en
+  /// el recibo y en el BI (decisión del dueño, 1-oct-2026). Como describe el
+  /// evento, se recalcula cuando cambia la fecha, el salón o el cliente —también
+  /// ya formalizado— y cada cambio queda en `CodigoEvento`. Dos eventos vivos no
+  /// lo comparten: el segundo lleva sufijo (`-2`). Ver `quotes/codigo.ts`.
   etiqueta          String?
   publicToken       String            @unique
   vigenciaHasta     DateTime?
@@ -584,6 +568,9 @@ model Quote {
   apartado          ApartadoFecha?
   /// Las fotos del evento una vez pasada su fecha (una por versión).
   historico         EventoHistorico[]
+  /// Todos los códigos que ha tenido, empezando por el de su alta. El vigente es
+  /// `etiqueta`; aquí queda el rastro de cada cambio de fecha, salón o cliente.
+  codigos           CodigoEvento[]
 
   @@index([clientId])
   @@index([status])
@@ -777,6 +764,7 @@ model User {
   actividades               ActivityLog[]    @relation("ActivityActor")
   priceListAudits           PriceListAudit[] @relation("PriceListAuditActor")
   cambiosFolio              CambioFolio[]    @relation("CambioFolioActor")
+  codigosEvento             CodigoEvento[]   @relation("CodigoEventoActor")
   cargosRegistrados         CargoEvento[]    @relation("CargoRegistradoBy")
   cargosAnulados            CargoEvento[]    @relation("CargoAnuladoBy")
   devolucionesRegistradas   Devolucion[]     @relation("DevolucionRegistradaBy")
@@ -866,6 +854,34 @@ model EventoHistorico {
   @@unique([quoteId, version])
   @@index([fechaEvento(sort: Desc)])
   @@index([busqueda])
+}
+
+/// Cada código que ha tenido un evento (`04SEP26-HLANGRUEN-CUPULA`).
+///
+/// El código es la identidad que se usa en la operación: es el principal en la
+/// pantalla, en el recibo y en el BI. Como describe el evento, cambia cuando se
+/// mueve de fecha o de salón; cada cambio deja aquí un renglón, así que un código
+/// viejo impreso en un papel siempre lleva al evento de hoy.
+model CodigoEvento {
+  id          String   @id @default(cuid())
+  /// Cascade: sin el evento el rastro no significa nada (solo se borran de verdad
+  /// los borradores de la papelera).
+  quote       Quote    @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  quoteId     String
+  codigo      String
+  /// Qué lo cambió: `alta`, `fecha`, `espacio`, `cliente`, o `repetido` (otro
+  /// evento ya tenía ese código y se le puso sufijo).
+  motivos     String[]
+  /// La fecha y los espacios con los que se armó este código.
+  fechaEvento DateTime
+  spaceIds    String[]
+  /// SetNull: el rastro sobrevive a que se borre el usuario.
+  actor       User?    @relation("CodigoEventoActor", fields: [actorId], references: [id], onDelete: SetNull)
+  actorId     String?
+  createdAt   DateTime @default(now())
+
+  @@index([quoteId, createdAt])
+  @@index([codigo])
 }
 
 /// Cada vez que un admin fija el folio con el que arranca la numeración.

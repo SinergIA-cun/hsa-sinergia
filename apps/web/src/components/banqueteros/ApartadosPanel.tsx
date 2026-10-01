@@ -159,7 +159,7 @@ function ApartadoRow({
                 to={`/eventos/${a.quote.id}`}
                 className="font-medium text-gold hover:underline"
               >
-                {a.quote.folio ?? 'Ver la cotización'}
+                {a.quote.etiqueta ?? a.quote.folio ?? 'Ver la cotización'}
               </Link>
             </p>
           )}

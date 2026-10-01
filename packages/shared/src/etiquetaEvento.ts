@@ -3,17 +3,14 @@
  * `17ENE27-CBOLADO-CUPULA`: día, mes abreviado, los dos dígitos del año, inicial
  * del nombre + apellido, y el espacio abreviado.
  *
- * **No identifica: describe.** Quien identifica es `Quote.folio` (`27-0184`),
- * que no cambia nunca. Esta etiqueta se recalcula siempre que cambie la fecha,
- * el cliente o el espacio, incluso con el evento ya formalizado, y por eso
- * siempre dice la verdad.
+ * **Es el código principal del evento** (decisión del dueño, 1-oct-2026): el
+ * que se ve primero y el que viaja al BI. Como describe el evento, cambia cuando
+ * el evento cambia de fecha, de salón o de cliente; la API guarda cada código que
+ * tuvo (`CodigoEvento`) y le pone sufijo `-2` si otro evento vivo ya lo tiene
+ * (`apps/api/src/quotes/codigo.ts`). La llave interna que nunca cambia es
+ * `Quote.folio`.
  *
- * Antes hacía los dos trabajos y no podía hacer ninguno bien: para no romper los
- * recibos ya impresos se congelaba al formalizar, y desde ese instante describía
- * un evento que ya no existía. Un evento movido a mayo seguía diciendo marzo.
- *
- * Función PURA: no toca la base. Ya no necesita resolver colisiones —dos eventos
- * pueden compartir etiqueta sin problema, porque no es lo que los identifica.
+ * Función PURA: no toca la base ni resuelve repetidos.
  *
  * Reglas fijadas (los tests son la especificación):
  * - **Día**: los dos dígitos del ISO, tal cual (`04JUL27`, no `4JUL27`).

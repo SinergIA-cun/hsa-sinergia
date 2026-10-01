@@ -1912,14 +1912,14 @@ describe('folio y etiqueta', () => {
     const uno = await createQuote(prisma, { ...base, client: { telefono: '5555550000', nombre: 'Colisión Exacta' } }, actor);
     createdQuoteIds.push(uno.id);
     createdClientIds.push(uno.clientId);
-    // MISMO cliente, MISMA fecha, MISMO salón: antes esto obligaba a un sufijo
-    // `-2` en el identificador. Ahora comparten etiqueta —que es correcto,
-    // describen lo mismo— y se distinguen por folio, que es lo que identifica.
+    // MISMO cliente, MISMA fecha, MISMO salón: el código es el identificador
+    // principal (decisión del dueño, 1-oct-2026), así que el segundo lleva
+    // sufijo. El folio sigue siendo distinto y consecutivo.
     const dos = await createQuote(prisma, { ...base, clientId: uno.clientId }, actor);
     createdQuoteIds.push(dos.id);
 
     expect(uno.etiqueta).toBe('20FEB34-CEXACTA-CUPULA');
-    expect(dos.etiqueta).toBe('20FEB34-CEXACTA-CUPULA');
+    expect(dos.etiqueta).toBe('20FEB34-CEXACTA-CUPULA-2');
     expect(dos.folio).not.toBe(uno.folio);
     const numero = (folio: string): number => Number(folio.split('-')[1]);
     expect(numero(dos.folio)).toBe(numero(uno.folio) + 1);
@@ -1999,7 +1999,7 @@ describe('folio y etiqueta', () => {
     expect(otroNombre.folio).toBe(q.folio);
   });
 
-  it('el duplicado nace con su propio folio y hereda la etiqueta', async () => {
+  it('el duplicado nace con su propio folio y su propio código (con sufijo)', async () => {
     const { eventTypeId, cupulaId } = await ids();
     const q = await createQuote(
       prisma,
@@ -2018,10 +2018,9 @@ describe('folio y etiqueta', () => {
     createdQuoteIds.push(dup.id);
 
     expect(dup.folio).not.toBe(q.folio);
-    // La misma etiqueta es lo correcto: describen un evento con el mismo
-    // cliente, la misma fecha y el mismo salón. Son eventos distintos, y eso lo
-    // dice el folio.
-    expect(dup.etiqueta).toBe('11JUL34-DDUPLICADO-CUPULA');
+    // Describe lo mismo, pero el código es el identificador principal: dos
+    // eventos vivos no lo comparten.
+    expect(dup.etiqueta).toBe('11JUL34-DDUPLICADO-CUPULA-2');
     expect(q.etiqueta).toBe('11JUL34-DDUPLICADO-CUPULA');
   });
 });

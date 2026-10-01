@@ -39,15 +39,12 @@ function QuoteRow({ q, showSeller }: { q: Quote; showSeller: boolean }) {
       <div className="min-w-[11rem] flex-1" onClick={() => navigate(`/eventos/${q.id}`)}>
         <p className="font-display text-xl text-ink">{q.client?.nombre ?? 'Cliente'}</p>
         <p className="text-xs uppercase tracking-wide text-gold">{q.eventType?.nombre ?? 'Evento'}</p>
-        {/* El folio primero: es la identidad, y es lo que la gente teclea para
-            encontrar un evento. La etiqueta debajo dice de cuál se trata sin
-            abrirlo — y como se recalcula sola, siempre está al día. */}
-        <p className="mt-0.5 font-mono text-[0.78rem] font-semibold tracking-tight text-ink">
-          {q.folio}
-        </p>
+        {/* El código primero: es el identificador principal, el que la
+            operación usa y teclea. El folio interno va debajo, chico. */}
         {q.etiqueta && (
-          <p className="font-mono text-[0.68rem] tracking-tight text-charcoal-soft">{q.etiqueta}</p>
+          <p className="mt-0.5 font-mono text-[0.78rem] font-semibold tracking-tight text-ink">{q.etiqueta}</p>
         )}
+        <p className="font-mono text-[0.68rem] tracking-tight text-charcoal-soft">Folio {q.folio}</p>
         {showSeller && q.createdBy && (
           <p className="mt-0.5 inline-flex items-center gap-1 text-xs text-charcoal-soft">
             <UserCircle size={12} /> {q.createdBy.nombre}
@@ -177,6 +174,11 @@ function matchesQuery(q: Quote, needle: string, spaceNameById: Map<string, strin
     q.eventType?.nombre,
     q.createdBy?.nombre,
     q.client?.numeroReferencia?.toString(),
+    // El código vigente, los que tuvo y el folio: el de un recibo viejo también
+    // tiene que encontrar el evento.
+    q.etiqueta,
+    ...(q.codigosAnteriores ?? []),
+    q.folio,
     ...espacios,
   ]
     .filter(Boolean)
@@ -279,7 +281,7 @@ export function QuotesListPage() {
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Buscar cliente, teléfono, evento, espacio, referencia…"
+            placeholder="Buscar código, cliente, teléfono, espacio, referencia…"
             className="w-full rounded-lg border border-ink/15 bg-white/70 py-2.5 pl-9 pr-3 text-sm text-charcoal placeholder:text-charcoal-soft/60 focus:border-gold focus:outline-none focus:ring-2 focus:ring-gold/30"
           />
         </div>
