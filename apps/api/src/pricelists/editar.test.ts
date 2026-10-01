@@ -228,10 +228,10 @@ describe('editar precios de renta', () => {
       {
         cambios: rentas.map((r) => ({
           id: r.id,
-          viernes: r.viernes * 2,
-          viernesEspecial: r.viernesEspecial * 2,
-          sabado: r.sabado * 2,
-          domAJue: r.domAJue * 2,
+          viernes: r.viernes! * 2,
+          viernesEspecial: r.viernesEspecial! * 2,
+          sabado: r.sabado! * 2,
+          domAJue: r.domAJue! * 2,
         })),
       },
       actor,
@@ -243,7 +243,7 @@ describe('editar precios de renta', () => {
     expect(guardada.rentaTotal).toBe(q.rentaTotal);
     // Y el catálogo sí subió: el test no pasa por no haber cambiado nada.
     const unaRenta = await prisma.rentalPrice.findUniqueOrThrow({ where: { id: rentas[0]!.id } });
-    expect(unaRenta.sabado).toBe(rentas[0]!.sabado * 2);
+    expect(unaRenta.sabado).toBe(rentas[0]!.sabado! * 2);
   });
 
   it('queda en la bitácora con el impacto del momento', async () => {

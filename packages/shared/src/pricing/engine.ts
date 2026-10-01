@@ -3,6 +3,7 @@ import type { QuoteSelection } from '../schemas.js';
 import { findBracket, nivelConExtras } from './brackets.js';
 import { bracketDeParte, capacidadTotal, repartirInvitados } from './reparto.js';
 import { dayType } from './day-type.js';
+import { precioDelDia, NOMBRE_DIA } from './precioDelDia.js';
 
 function round2(n: number): number {
   return Math.round((n + Number.EPSILON) * 100) / 100;
@@ -76,18 +77,23 @@ export function computeQuote(
           : `El espacio ${spaceId} no tiene rango de renta para ${sel.invitados} invitados`,
       );
     }
-    if (row.prices[dt] == null) {
-      throw new Error(`Falta precio para el espacio ${spaceId} en día ${dt}`);
+    // "No aplica": ese día no se ofrece en este espacio (con esta tarifa). Antes
+    // se marcaba con cero y se cotizaba una renta de $0.
+    const precioDia = precioDelDia(row.prices, dt);
+    if (precioDia == null) {
+      const espacio = catalog.spaceNames?.[spaceId] ?? 'El espacio elegido';
+      const dia = dt === 'viernesEspecial' ? 'viernes' : NOMBRE_DIA[dt];
+      throw new Error(`${espacio} no se ofrece en ${dia}${usaFlat ? ' con renta plana' : ''}.`);
     }
     // Personas extra: si se pasa del nivel anterior por poquito, se cobra ese
     // nivel más cada persona extra a precio del nivel entre su tope (Arcos sábado:
     // $76,000 / 100 = $760). Va en el MISMO renglón del salón —con su `spaceId`—
     // para que el plan de pagos y los descuentos lo vean como renta de ese salón.
     const nivel = nivelConExtras(rows, row, tocan, catalog.toleranciaExtras ?? 0);
-    const precioNivel = nivel.row.prices[dt];
+    const precioNivel = precioDelDia(nivel.row.prices, dt);
     const usaExtras = nivel.extras > 0 && precioNivel != null && nivel.row.max != null;
     const porPersonaExtra = usaExtras ? Math.round(precioNivel! / nivel.row.max!) : 0;
-    const monto = usaExtras ? precioNivel! + nivel.extras * porPersonaExtra : row.prices[dt]!;
+    const monto = usaExtras ? precioNivel! + nivel.extras * porPersonaExtra : precioDia;
     rentaEspacios += monto;
     const detalles = [
       // Con un solo salón el reparto no es noticia; con varios, decir cuántos le
@@ -325,7 +331,7 @@ export function porPersonaDelNivel(
     const rango = sel.spaceIds.length > 1 ? bracketDeParte(rows, tocan) : findBracket(rows, tocan);
     if (!rango) return { renta: null, alimentos: null };
     const { row } = nivelConExtras(rows, rango, tocan, tol);
-    const p = row.prices[dt];
+    const p = precioDelDia(row.prices, dt);
     if (p == null) return { renta: null, alimentos: null };
     precio += p;
     topes += row.max ?? Math.max(row.min, tocan);

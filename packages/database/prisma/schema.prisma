@@ -187,10 +187,12 @@ model RentalPrice {
   spaceId         String
   min             Int
   max             Int?
-  viernes         Int
-  viernesEspecial Int
-  sabado          Int
-  domAJue         Int
+  /// Los cuatro precios con IVA. `null` = no aplica: ese día no se ofrece. El
+  /// viernes especial que no aplica se cobra como viernes normal (es promoción).
+  viernes         Int?
+  viernesEspecial Int?
+  sabado          Int?
+  domAJue         Int?
   /// "dia" = renta por tipo de día · "plano" = renta plana (Team Building).
   /// Antes vivía en PriceList, lo que obligaba a tener DOS listas por año y
   /// dejaba la plana fuera del filtro `activa`.

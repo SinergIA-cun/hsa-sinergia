@@ -26,7 +26,9 @@ export const clonarCatalogoSchema = z.object({
  * `int`, redondea a la mitad PAR (5.5 → 6, 3.5 → 4). Pero ese camino no existe
  * aquí, porque Prisma nunca le manda el flotante.
  */
-const conIncremento = (v: number, pct: number): number => Math.round(v * (1 + pct / 100));
+// Un precio "no aplica" (null) se queda así en el catálogo clonado.
+const conIncremento = <T extends number | null>(v: T, pct: number): T =>
+  (v == null ? v : Math.round(v * (1 + pct / 100))) as T;
 
 /**
  * Crea un catálogo nuevo, opcionalmente clonando otro con un % de incremento.

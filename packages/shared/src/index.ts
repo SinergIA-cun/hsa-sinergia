@@ -18,3 +18,4 @@ export * from './pos/productos.js';
 export * from './bi/importacion.js';
 export * from './clientes/contacto.js';
 export * from './eventos/ciclo.js';
+export * from './pricing/precioDelDia.js';
