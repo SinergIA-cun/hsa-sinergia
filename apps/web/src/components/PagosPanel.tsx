@@ -35,9 +35,20 @@ interface Props {
   activityLog: ActivityEntry[];
   /** Solo lectura (papelera): sin registrar pagos ni anular. */
   readOnly?: boolean;
+  /** Sin registrar pagos nuevos, pero con todo lo demás (evento cancelado). */
+  sinPagosNuevos?: boolean;
 }
 
-export function PagosPanel({ quoteId, publicToken, isAdmin, estadoCuenta, payments, activityLog, readOnly = false }: Props) {
+export function PagosPanel({
+  quoteId,
+  publicToken,
+  isAdmin,
+  estadoCuenta,
+  payments,
+  activityLog,
+  readOnly = false,
+  sinPagosNuevos = false,
+}: Props) {
   const qc = useQueryClient();
   const [monto, setMonto] = useState('');
   const [formas, setFormas] = useState(() => formasIniciales());
@@ -183,7 +194,7 @@ export function PagosPanel({ quoteId, publicToken, isAdmin, estadoCuenta, paymen
       )}
 
       {/* Registrar pago */}
-      {!readOnly && (
+      {!readOnly && !sinPagosNuevos && (
       <Card className="p-6">
         <h3 className="mb-4 font-display text-xl text-ink">Registrar pago</h3>
         <form onSubmit={registrar} className="grid gap-4 sm:grid-cols-2">

@@ -1,6 +1,6 @@
 import type { PrismaClient, Prisma } from '@hsa/database';
 import { totalAbonado } from '../banqueteros/abonos.js';
-import { hoyCivilMexico } from '@hsa/shared';
+import { hoyCivilMexico, ESTATUS_SIN_FECHA } from '@hsa/shared';
 
 export type AvailabilityLevel = 'libre' | 'cotizaciones' | 'bloqueada';
 
@@ -107,6 +107,8 @@ export async function getAvailability(
         fechaEvento: range,
         spaceIds: { hasSome: spaceIds },
         deletedAt: null,
+        // Standby y cancelada sueltan la fecha: no ocupan ni avisan.
+        status: { notIn: [...ESTATUS_SIN_FECHA] },
         ...(excludeQuoteId ? { id: { not: excludeQuoteId } } : {}),
       },
       include: { client: { select: { nombre: true } } },
@@ -118,6 +120,7 @@ export async function getAvailability(
         fechaEvento: range,
         usaCapilla: true,
         deletedAt: null,
+        status: { notIn: [...ESTATUS_SIN_FECHA] },
         ...(excludeQuoteId ? { id: { not: excludeQuoteId } } : {}),
       },
       include: { client: { select: { nombre: true } } },
@@ -227,7 +230,9 @@ export async function getAgenda(
   const hoy = opts.hoy ?? hoyCivilMexico();
   const [quotes, apartados] = await Promise.all([
     db.quote.findMany({
-      where: { fechaEvento: { gte, lt }, deletedAt: null },
+      // Los eventos en standby y los cancelados no están en ninguna fecha. Los de
+      // standby se listan aparte (`getSinFecha`).
+      where: { fechaEvento: { gte, lt }, deletedAt: null, status: { notIn: [...ESTATUS_SIN_FECHA] } },
       include: { client: { select: { nombre: true } }, eventType: { select: { nombre: true } } },
       orderBy: { fechaEvento: 'asc' },
     }),

@@ -36,6 +36,12 @@ enum QuoteStatus {
   formalizada
   complementada
   liquidada
+  /// Sin fecha: el cliente pospuso y no sabe cuándo. Suelta la fecha (no ocupa
+  /// agenda ni disponibilidad), conserva su dinero y vuelve con "Reprogramar".
+  standby
+  /// Se canceló. Suelta la fecha. Lo pagado se devuelve en el porcentaje que se
+  /// decidió al cancelar; lo demás se queda como retención.
+  cancelada
 }
 
 /// Cómo entró el dinero. `tarjeta` es de antes de separar débito y crédito: se
@@ -101,6 +107,12 @@ enum ActivityType {
   devolucion
   /// Se anuló una devolución.
   devolucionAnulada
+  /// El evento se canceló.
+  cancelada
+  /// El evento se puso en standby (sin fecha).
+  standby
+  /// El evento volvió de standby o de cancelado, o se reprogramó.
+  reprogramada
 }
 
 /// El catálogo completo de un año: renta, servicios, alimentos y parámetros.
@@ -469,27 +481,27 @@ model Client {
 }
 
 model Quote {
-  id                String            @id @default(cuid())
-  client            Client            @relation(fields: [clientId], references: [id])
-  clientId          String
-  eventType         EventType         @relation(fields: [eventTypeId], references: [id])
-  eventTypeId       String
-  fechaEvento       DateTime
-  horasEvento       Int?
-  invitados         Int
-  spaceIds          String[]
-  horasExtra        Int               @default(0)
-  foodPackageId     String?
-  addOns            Json              @default("[]")
-  breakdown         Json
-  total             Int
-  rentaTotal        Int
-  status            QuoteStatus       @default(borrador)
+  id                  String            @id @default(cuid())
+  client              Client            @relation(fields: [clientId], references: [id])
+  clientId            String
+  eventType           EventType         @relation(fields: [eventTypeId], references: [id])
+  eventTypeId         String
+  fechaEvento         DateTime
+  horasEvento         Int?
+  invitados           Int
+  spaceIds            String[]
+  horasExtra          Int               @default(0)
+  foodPackageId       String?
+  addOns              Json              @default("[]")
+  breakdown           Json
+  total               Int
+  rentaTotal          Int
+  status              QuoteStatus       @default(borrador)
   /// **El folio: la llave interna que no cambia.** `27SEP-0184` — año y mes en
   /// que se contrató, más un consecutivo. Lo asigna POSTGRES (`folio_evento()`):
   /// una fila sin folio no puede existir y dos altas simultáneas no chocan. La app
   /// nunca lo escribe ni lo cambia. Ya no es lo que se enseña primero: ver abajo.
-  folio             String            @unique @default(dbgenerated("folio_evento()"))
+  folio               String            @unique @default(dbgenerated("folio_evento()"))
   /// **El código: el identificador principal.** `04SEP26-HLANGRUEN-CUPULA` —
   /// día, mes, año, inicial + apellido del cliente y el salón.
   ///
@@ -498,30 +510,47 @@ model Quote {
   /// evento, se recalcula cuando cambia la fecha, el salón o el cliente —también
   /// ya formalizado— y cada cambio queda en `CodigoEvento`. Dos eventos vivos no
   /// lo comparten: el segundo lleva sufijo (`-2`). Ver `quotes/codigo.ts`.
-  etiqueta          String?
-  publicToken       String            @unique
-  vigenciaHasta     DateTime?
-  usaCapilla        Boolean           @default(false) // cortesía; $5,000 en sábado. Varios eventos pueden usarla el mismo día.
-  capillaHorario    String? // horario de la capilla para este evento (varios eventos comparten el día).
-  esCortesia        Boolean           @default(false) // cortesía familiar: se marca verde en la agenda.
+  etiqueta            String?
+  publicToken         String            @unique
+  vigenciaHasta       DateTime?
+  usaCapilla          Boolean           @default(false) // cortesía; $5,000 en sábado. Varios eventos pueden usarla el mismo día.
+  capillaHorario      String? // horario de la capilla para este evento (varios eventos comparten el día).
+  esCortesia          Boolean           @default(false) // cortesía familiar: se marca verde en la agenda.
   /// Descuento de cortesía, en por ciento (0..100). Pega SOLO sobre la renta, y
   /// lo hace CAMBIANDO SU PRECIO: las horas extra y el descuento del 5% por
   /// alimentos se calculan sobre el precio ya descontado. La capilla nunca se
   /// descuenta. Alimentos y servicios se cobran completos. Con 100% la renta queda
   /// en cero (más la capilla, si la hay). `null` = sin descuento, que es como se
   /// comportó `esCortesia` desde siempre (se guardaba, pero el motor nunca la leyó).
-  descuentoPct      Float?
+  descuentoPct        Float?
   /// Motivo del descuento. Es OBLIGATORIO cuando hay descuento —lo exige el
   /// esquema de crear/editar—, pero la columna es nullable porque la enorme
   /// mayoría de las cotizaciones no lleva descuento.
-  descuentoMotivo   String?
-  usaDjHoraExtra    Boolean           @default(false) // DJ por hora extra (precio según tipo de evento).
-  requiereFactura   Boolean           @default(false) // este cliente pidió factura para ESTE evento.
-  banquetero        Banquetero?       @relation(fields: [banqueteroId], references: [id])
+  descuentoMotivo     String?
+  /// El estatus que tenía antes de ponerse en standby o cancelarse. Es al que
+  /// vuelve al reprogramarse (y de ahí sube si los pagos ya dan para más).
+  statusPrevio        QuoteStatus?
+  /// Desde cuándo y por qué está en standby. `fechaEvento` se conserva como la
+  /// fecha que tenía, pero ya no ocupa la agenda.
+  standbyDesde        DateTime?
+  standbyMotivo       String?
+  /// La cancelación: cuándo, por qué y qué se decidió hacer con el dinero.
+  canceladaAt         DateTime?
+  cancelacionMotivo   String?
+  /// Porcentaje de lo pagado que se le devuelve (0..100). El resto se retiene.
+  cancelacionPct      Float?
+  /// Lo pagado al cancelar y lo que de eso se acordó devolver, en pesos. Se
+  /// guardan porque lo pagado puede cambiar después (una devolución, un pago
+  /// anulado) y el acuerdo es el de ese día.
+  cancelacionPagado   Int?
+  cancelacionDevolver Int?
+  usaDjHoraExtra      Boolean           @default(false) // DJ por hora extra (precio según tipo de evento).
+  requiereFactura     Boolean           @default(false) // este cliente pidió factura para ESTE evento.
+  banquetero          Banquetero?       @relation(fields: [banqueteroId], references: [id])
   /// El banquetero de este evento. Con banquetero, ÉL es el cliente de la
   /// hacienda: firma él y se le factura a él (decisión del dueño en el diseño de
   /// banqueteros). El festejado de abajo es el cliente final, y es dato operativo.
-  banqueteroId      String?
+  banqueteroId        String?
   /// Nombre del festejado (el cliente FINAL cuando el evento lo compra un
   /// banquetero, y de paso el homenajeado de cualquier evento).
   ///
@@ -532,45 +561,45 @@ model Quote {
   /// Convive con `operativa.hoja.nombreFestejado`, que es donde se capturaba
   /// antes al llenar la hoja: esta columna es la que se captura al COTIZAR y manda
   /// sobre la de la hoja, que queda como respaldo de los eventos anteriores.
-  festejado         String?
-  festejadoTelefono String?
-  createdBy         User?             @relation("QuoteCreatedBy", fields: [createdById], references: [id])
-  createdById       String?
-  createdAt         DateTime          @default(now())
-  horaInicio        String?
-  horaTermino       String?
-  horarioCivil      String?
+  festejado           String?
+  festejadoTelefono   String?
+  createdBy           User?             @relation("QuoteCreatedBy", fields: [createdById], references: [id])
+  createdById         String?
+  createdAt           DateTime          @default(now())
+  horaInicio          String?
+  horaTermino         String?
+  horarioCivil        String?
   // Hoja operativa (datos ricos por evento: banquetero, equipo, personal, etc.).
   // JSON flexible para alimentar el documento interno, el correo diario y el ERP futuro.
-  operativa         Json?
-  deletedAt         DateTime?
+  operativa           Json?
+  deletedAt           DateTime?
   /// Catálogo con el que se coteó. MANDA al recalcular: reeditar una cotización
   /// de 2027 usa precios de 2027 aunque el catálogo activo ya sea 2028.
-  priceList         PriceList         @relation(fields: [priceListId], references: [id])
-  priceListId       String
-  payments          Payment[]
-  activityLog       ActivityLog[]
-  extras            QuoteExtra[]
+  priceList           PriceList         @relation(fields: [priceListId], references: [id])
+  priceListId         String
+  payments            Payment[]
+  activityLog         ActivityLog[]
+  extras              QuoteExtra[]
   /// La cuenta del punto de venta: lo que se agregó después de contratar.
-  cargos            CargoEvento[]
+  cargos              CargoEvento[]
   /// El dinero que se le devolvió al cliente de este evento.
-  devoluciones      Devolucion[]
+  devoluciones        Devolucion[]
   /// El id del evento en el BI, si vino de ahí (o se ligó a uno). Es la llave de
   /// la importación: mandar el mismo evento dos veces no lo duplica.
   ///
   /// Un evento importado tiene PRECIO PACTADO: su desglose son los montos del BI
   /// y editarlo nunca lo recotiza contra el catálogo (se vendió a ese precio).
-  importadoBI       String?           @unique
+  importadoBI         String?           @unique
   /// Cuándo se contrató, si no fue aquí. Los importados se vendieron antes de que
   /// existiera el sistema, así que `createdAt` es la fecha de la importación.
-  contratadoEl      DateTime?
+  contratadoEl        DateTime?
   /// El apartado del que nació, si nació de uno.
-  apartado          ApartadoFecha?
+  apartado            ApartadoFecha?
   /// Las fotos del evento una vez pasada su fecha (una por versión).
-  historico         EventoHistorico[]
+  historico           EventoHistorico[]
   /// Todos los códigos que ha tenido, empezando por el de su alta. El vigente es
   /// `etiqueta`; aquí queda el rastro de cada cambio de fecha, salón o cliente.
-  codigos           CodigoEvento[]
+  codigos             CodigoEvento[]
 
   @@index([clientId])
   @@index([status])

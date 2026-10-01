@@ -151,6 +151,14 @@ como `/eventos` filtra por fecha de evento, para seguirlo hay que usar `id` o `f
 }
 ```
 
+**Standby y cancelados.** `estatus` puede ser también `standby` (el evento se quedó sin
+fecha: `fechaEvento` es la que TENÍA) o `cancelada`. Los dos sueltan la fecha: no ocupan agenda.
+
+| Campo | Qué es |
+|---|---|
+| `standby` | `null`, o `{ desde, motivo, estatusPrevio }`: desde cuándo está sin fecha y a qué estatus vuelve al reprogramarse. |
+| `cancelacion` | `null`, o `{ fecha, motivo, porcentaje, pagado, devolver, retenido, devuelto, pendiente }`: lo pagado al cancelar, el porcentaje que se acordó devolver, cuánto es, lo que se retiene, lo ya devuelto desde la cancelación y lo que falta. Las devoluciones en sí salen en `/devoluciones`. |
+
 > El historial empieza el 1-oct-2026 con el código que cada evento tenía ese día. Los
 > cambios de antes no se pueden reconstruir: el código depende del nombre del cliente en ese
 > momento, y ese dato no se guardó.

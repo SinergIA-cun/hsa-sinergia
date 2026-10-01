@@ -16,6 +16,7 @@ import { computeQuote } from '@hsa/shared';
 import { api } from '../lib/api.ts';
 import { Card, ArrowDivider, Button } from '../components/ui.tsx';
 import { MoverFechaModal } from '../components/MoverFechaModal.tsx';
+import { SinFechaPanel } from '../components/SinFechaPanel.tsx';
 import { DESPLAZADAS_KEY, useDesplazadas } from '../lib/desplazadas.ts';
 import { STATUS_LABEL } from '../lib/status.ts';
 import type { AgendaApartado, AgendaEvent, AgendaResponse, Catalog, QuoteDetail } from '../lib/types.ts';
@@ -310,6 +311,8 @@ export function AgendaPage() {
           </Button>
         </div>
       </div>
+
+      <SinFechaPanel />
 
       {errorArrastre && (
         <div

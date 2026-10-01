@@ -12,10 +12,13 @@ import { useAuth } from '../auth/auth.tsx';
 import type { Quote, QuoteStatus, Catalog } from '../lib/types.ts';
 
 const SECTIONS: { title: string; statuses: QuoteStatus[]; defaultOpen: boolean }[] = [
+  // Los que no tienen fecha van primero: son pendientes de alguien.
+  { title: 'Sin fecha · en standby', statuses: ['standby'], defaultOpen: true },
   { title: 'Cotizaciones', statuses: ['borrador'], defaultOpen: true },
   { title: 'Eventos Formalizados', statuses: ['formalizada'], defaultOpen: true },
   { title: 'Complemento cubierto', statuses: ['complementada'], defaultOpen: false },
   { title: 'Eventos Liquidados', statuses: ['liquidada'], defaultOpen: false },
+  { title: 'Cancelados', statuses: ['cancelada'], defaultOpen: false },
 ];
 
 function QuoteRow({ q, showSeller }: { q: Quote; showSeller: boolean }) {
@@ -57,7 +60,14 @@ function QuoteRow({ q, showSeller }: { q: Quote; showSeller: boolean }) {
       >
         <span className="flex flex-col">
           <span className="inline-flex items-center gap-1.5">
-            <CalendarDays size={14} className="text-ink-300" /> {formatEventDate(q.fechaEvento)}
+            <CalendarDays size={14} className="text-ink-300" />{' '}
+            {q.status === 'standby' ? (
+              <span>
+                Sin fecha <span className="text-charcoal-soft/70">(tenía {formatEventDate(q.fechaEvento)})</span>
+              </span>
+            ) : (
+              formatEventDate(q.fechaEvento)
+            )}
           </span>
           <span className="mt-0.5 text-[0.7rem] text-charcoal-soft/70">
             creada {formatTimestamp(q.createdAt)}
@@ -215,7 +225,9 @@ export function QuotesListPage() {
    */
   const hoy = hoyCivilMexico();
   const todas = data?.quotes ?? [];
-  const allQuotes = todas.filter((q) => new Date(q.fechaEvento) >= hoy);
+  // Uno en standby no tiene fecha: la que conserva es la que TENÍA, y que ya
+  // haya pasado no lo saca de la lista (no sucedió, se pospuso).
+  const allQuotes = todas.filter((q) => q.status === 'standby' || new Date(q.fechaEvento) >= hoy);
   const pasados = todas.length - allQuotes.length;
   const needle = query.trim().toLowerCase();
   const quotes = needle ? allQuotes.filter((q) => matchesQuery(q, needle, spaceNameById)) : allQuotes;
@@ -307,7 +319,10 @@ export function QuotesListPage() {
 
       {!isLoading &&
         quotes.length > 0 &&
-        SECTIONS.map((s) => (
+        SECTIONS
+          // "Sin fecha" y "Cancelados" solo salen si tienen algo: vacías son ruido.
+          .filter((s) => !s.statuses.some((st) => st === 'standby' || st === 'cancelada') || quotes.some((q) => s.statuses.includes(q.status)))
+          .map((s) => (
           <Section
             key={s.title + (needle ? '-q' : '')}
             title={s.title}

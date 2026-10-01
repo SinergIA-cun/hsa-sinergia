@@ -28,7 +28,13 @@ export type LogTipo =
   /** Se le devolvió dinero al cliente (migración `devoluciones`). */
   | 'devolucion'
   /** Se anuló una devolución. */
-  | 'devolucionAnulada';
+  | 'devolucionAnulada'
+  /** Se canceló el evento (migración `cancelar_standby`). */
+  | 'cancelada'
+  /** Se puso en standby, sin fecha. */
+  | 'standby'
+  /** Volvió de standby o de cancelado, o se le puso fecha nueva. */
+  | 'reprogramada';
 
 /** Escribe una entrada de bitácora. Nunca lanza: la bitácora no debe tumbar la operación. */
 export async function logActivity(

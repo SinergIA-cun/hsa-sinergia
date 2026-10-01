@@ -19,6 +19,7 @@ import { getAvailability } from '../availability/service.js';
 import { cuentaDelEvento, productosDelEvento } from '../cargos/cuenta.js';
 import { logActivity } from './activityLog.js';
 import { calcularCodigo, motivosDelCambio, renglonDeCodigo, historialDeCodigos } from './codigo.js';
+import { resumenCancelacion } from './ciclo.js';
 import { archivarEvento, yaPaso } from '../historico/archivar.js';
 import { computeEstadoCuenta, esUpgrade, type EstadoCuenta, type SpaceRuleWithRent } from './estadoCuenta.js';
 
@@ -108,7 +109,7 @@ const CAMPOS_FISCALES = ['rfc', 'razonSocial', 'regimenFiscal', 'cpFiscal', 'uso
 // El catálogo viaja con la cotización porque es el dato que explica por qué dos
 // cotizaciones de fechas parecidas tienen precios distintos. Sin él, la interfaz
 // solo puede enseñar un cuid, que no le dice nada a nadie.
-const includeRels = {
+export const includeRels = {
   client: true,
   eventType: true,
   createdBy: { select: { id: true, nombre: true } },
@@ -367,7 +368,7 @@ export function ownershipWhere(actor: Actor): Prisma.QuoteWhereInput {
  * guardar, pero la autoridad es el servidor: sin esto, una llamada directa a la
  * API —o dos personas de ventas guardando al mismo tiempo— pisan el compromiso.
  */
-async function assertEspaciosDisponibles(
+export async function assertEspaciosDisponibles(
   db: PrismaClient,
   fecha: string,
   spaceIds: string[],
@@ -814,6 +815,19 @@ export class QuoteError extends Error {
 }
 
 /** Una cotización en la papelera es de solo lectura (evidencia de auditoría). */
+/**
+ * Un evento en standby o cancelado no se edita ni se mueve por los caminos
+ * normales: primero se reprograma (y ahí se revisa que la fecha siga libre).
+ */
+export function assertConFecha(status: string): void {
+  if (status === 'standby') {
+    throw new QuoteError(409, 'El evento está en standby (sin fecha). Reprográmalo para editarlo.');
+  }
+  if (status === 'cancelada') {
+    throw new QuoteError(409, 'El evento está cancelado. Un admin lo puede reactivar.');
+  }
+}
+
 export function assertNotTrashed(quote: { deletedAt: Date | null }): void {
   if (quote.deletedAt) {
     throw new QuoteError(409, 'La cotización está en la papelera (solo lectura); restáurala para modificarla');
@@ -824,6 +838,7 @@ export async function updateQuote(db: PrismaClient, id: string, rawInput: unknow
   const existing = await db.quote.findFirst({ where: { id, ...ownershipWhere(actor) } });
   if (!existing) throw new QuoteError(404, 'Cotización no encontrada');
   assertNotTrashed(existing);
+  assertConFecha(existing.status);
   if (!EDITABLE_STATUSES.has(existing.status)) {
     throw new QuoteError(409, `No se puede editar una cotización en estatus "${existing.status}"`);
   }
@@ -1068,6 +1083,7 @@ export async function moveQuoteDate(db: PrismaClient, id: string, fecha: string,
   });
   if (!existing) throw new QuoteError(404, 'Cotización no encontrada');
   assertNotTrashed(existing);
+  assertConFecha(existing.status);
   if (!EDITABLE_STATUSES.has(existing.status)) {
     throw new QuoteError(409, `No se puede mover una cotización en estatus "${existing.status}"`);
   }
@@ -1092,6 +1108,39 @@ export async function moveQuoteDate(db: PrismaClient, id: string, fecha: string,
   });
 
   return actualizada;
+}
+
+/**
+ * Vista previa de mover un evento a otra fecha, SIN escribir: el total con la
+ * fecha nueva (el mismo cálculo que hará el guardado) y qué salones estarían
+ * ocupados ese día. Para el modal de "Mover fecha" y el de "Reprogramar".
+ */
+export async function simularFecha(db: PrismaClient, id: string, fecha: string, actor: Actor) {
+  const existing = await db.quote.findFirst({
+    where: { id, ...ownershipWhere(actor) },
+    include: SELECCION_INCLUDE,
+  });
+  if (!existing) throw new QuoteError(404, 'Cotización no encontrada');
+  assertNotTrashed(existing);
+  const disp = await getAvailability(db, fecha, existing.spaceIds, id);
+  const ocupados = disp.spaces.filter((sp) => sp.level === 'bloqueada').map((sp) => sp.nombre);
+  let despues: number | null = null;
+  let error: string | null = null;
+  if (existing.importadoBI) {
+    despues = existing.total; // precio pactado: no se recotiza
+  } else {
+    try {
+      const { breakdown } = await computeAndEnrich(
+        db,
+        toSelection({ ...seleccionGuardada(existing), fecha }),
+        existing.priceListId,
+      );
+      despues = Math.round(breakdown.total);
+    } catch (e) {
+      error = e instanceof Error ? e.message : 'No se pudo calcular el precio con esa fecha.';
+    }
+  }
+  return { antes: existing.total, despues, ocupados, error, precioPactado: existing.importadoBI != null };
 }
 
 export const moverCatalogoSchema = z.object({ priceListId: z.string().min(1) });
@@ -1273,6 +1322,9 @@ export async function updateStatus(
   const existing = await db.quote.findFirst({ where: { id, ...ownershipWhere(actor) } });
   if (!existing) throw new QuoteError(404, 'Cotización no encontrada');
   assertNotTrashed(existing);
+  // Salir de standby o de cancelado tiene su propio camino (ponerle fecha, ver
+  // si sigue libre): cambiarle el estatus a mano se saltaría todo eso.
+  assertConFecha(existing.status);
   const updated = await db.quote.update({ where: { id }, data: { status }, include: includeRels });
   await logActivity(db, {
     quoteId: id,
@@ -1610,7 +1662,7 @@ export async function getQuote(db: PrismaClient, id: string, actor: Actor) {
 
   // La cuenta del punto de venta va aparte del estado de cuenta: son ventas
   // posteriores que no cambian el valor del evento.
-  const [cuenta, productos, devoluciones, codigos] = await Promise.all([
+  const [cuenta, productos, devoluciones, codigos, cancelacion] = await Promise.all([
     cuentaDelEvento(db, id),
     productosDelEvento(db, quote),
     db.devolucion.findMany({
@@ -1619,6 +1671,7 @@ export async function getQuote(db: PrismaClient, id: string, actor: Actor) {
       include: { registradoBy: { select: { nombre: true } } },
     }),
     historialDeCodigos(db, id),
+    resumenCancelacion(db, quote),
   ]);
   const cuentaConCandado = {
     ...cuenta,
@@ -1639,6 +1692,8 @@ export async function getQuote(db: PrismaClient, id: string, actor: Actor) {
     devoluciones,
     // Todos los códigos que ha tenido, del primero al vigente.
     codigos,
+    // Si está cancelado: lo acordado, lo devuelto y lo que falta devolver.
+    cancelacion,
   };
 }
 

@@ -1,4 +1,4 @@
-import { prorratearRenta } from '@hsa/shared';
+import { prorratearRenta, sueltaLaFecha } from '@hsa/shared';
 
 export type PaymentStatus = 'formalizada' | 'complementada' | 'liquidada';
 
@@ -179,6 +179,10 @@ export function computeEstadoCuenta(args: {
 /** ¿`sugerido` está más adelante que el estatus actual? (para proponer avanzar) */
 export function esUpgrade(actual: string, sugerido: PaymentStatus | null): boolean {
   if (!sugerido) return false;
+  // En standby o cancelado, ningún pago lo regresa a la agenda por su cuenta: eso
+  // solo lo hace "Reprogramar". Sin esto, `standby` (que no tiene rango) contaba
+  // como cero y el primer pago lo devolvía a formalizada con su fecha vieja.
+  if (sueltaLaFecha(actual)) return false;
   const actualRank = actual in RANK ? RANK[actual as PaymentStatus] : 0;
   return RANK[sugerido] > actualRank;
 }
