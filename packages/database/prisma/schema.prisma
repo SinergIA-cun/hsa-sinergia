@@ -524,6 +524,10 @@ model Quote {
   usaCapilla          Boolean           @default(false) // cortesía; $5,000 en sábado. Varios eventos pueden usarla el mismo día.
   capillaHorario      String? // horario de la capilla para este evento (varios eventos comparten el día).
   esCortesia          Boolean           @default(false) // cortesía familiar: se marca verde en la agenda.
+  /// Descuento / promoción: el mismo descuento que la cortesía (`descuentoPct`,
+  /// solo sobre la renta del local) pero sin marcar el evento en la agenda. Es
+  /// una u otra: el formulario no deja marcar las dos.
+  esPromocion         Boolean           @default(false)
   /// Descuento de cortesía, en por ciento (0..100). Pega SOLO sobre la renta, y
   /// lo hace CAMBIANDO SU PRECIO: las horas extra y el descuento del 5% por
   /// alimentos se calculan sobre el precio ya descontado. La capilla nunca se

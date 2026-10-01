@@ -58,6 +58,7 @@ export interface QuoteFormInitial {
   usaCapilla: boolean;
   capillaHorario: string;
   esCortesia: boolean;
+  esPromocion: boolean;
   usaDjHoraExtra: boolean;
   addOns: Record<string, number>;
   extras: QuoteExtraInput[];
@@ -88,6 +89,7 @@ export interface QuotePayload {
   usaCapilla: boolean;
   capillaHorario?: string | null;
   esCortesia: boolean;
+  esPromocion: boolean;
   usaDjHoraExtra: boolean;
   foodPackageId?: string;
   addOns: { addOnId: string; cantidad: number }[];
@@ -266,6 +268,7 @@ export function QuoteForm({
   const [usaCapilla, setUsaCapilla] = useState(initial?.usaCapilla ?? false);
   const [capillaHorario, setCapillaHorario] = useState(initial?.capillaHorario ?? '');
   const [esCortesia, setEsCortesia] = useState(initial?.esCortesia ?? false);
+  const [esPromocion, setEsPromocion] = useState(initial?.esPromocion ?? false);
   const [usaDjHoraExtra, setUsaDjHoraExtra] = useState(initial?.usaDjHoraExtra ?? false);
   // Solo los contratos que YA las traían siguen mostrando las horas extra: las
   // nuevas se cargan en el punto de venta del evento (decisión del dueño).
@@ -330,12 +333,13 @@ export function QuoteForm({
    * la casilla de cortesía marcada: un descuento escondido detrás de una casilla
    * apagada movería dinero sin que se vea en la pantalla.
    */
+  const conDescuento = esCortesia || esPromocion;
   const pctValido = useMemo(() => {
-    if (!esCortesia || descuentoPct.trim() === '') return undefined;
+    if (!conDescuento || descuentoPct.trim() === '') return undefined;
     const n = Number(descuentoPct);
     if (!Number.isFinite(n) || n <= 0 || n > 100) return undefined;
     return n;
-  }, [esCortesia, descuentoPct]);
+  }, [conDescuento, descuentoPct]);
   /** Los extras válidos (con nombre y monto): un renglón a medias no se cobra. */
   const extrasValidos = useMemo(
     () => extras.filter((e) => e.nombre.trim() !== '' && Number.isInteger(e.monto) && e.monto > 0),
@@ -356,8 +360,9 @@ export function QuoteForm({
       extras: extrasValidos,
       descuentoPct: pctValido,
       descuentoMotivo: descuentoMotivo.trim() || undefined,
+      esPromocion,
     }),
-    [fecha, invitados, spaceIds, horasExtra, usaCapilla, usaDjHoraExtra, eventTypeId, foodPackageId, addOns, extrasValidos, pctValido, descuentoMotivo],
+    [fecha, invitados, spaceIds, horasExtra, usaCapilla, usaDjHoraExtra, eventTypeId, foodPackageId, addOns, extrasValidos, pctValido, descuentoMotivo, esPromocion],
   );
 
   const { breakdown, calcError } = useMemo(() => {
@@ -489,6 +494,7 @@ export function QuoteForm({
         usaCapilla,
         capillaHorario: usaCapilla ? capillaHorario || null : null,
         esCortesia,
+        esPromocion,
         usaDjHoraExtra,
         foodPackageId: foodPackageId || undefined,
         addOns: Object.entries(addOns).map(([addOnId, cantidad]) => ({ addOnId, cantidad })),
@@ -865,9 +871,12 @@ export function QuoteForm({
               checked={esCortesia}
               onChange={(e) => {
                 setEsCortesia(e.target.checked);
+                // Cortesía y promoción son el MISMO descuento: es una u otra. Pasar
+                // de una a la otra conserva el porcentaje y el motivo.
+                if (e.target.checked) setEsPromocion(false);
                 // Apagar la casilla limpia el descuento: si se quedara guardado,
                 // el precio traería un descuento que la pantalla ya no muestra.
-                if (!e.target.checked) {
+                else {
                   setDescuentoPct('');
                   setDescuentoMotivo('');
                 }
@@ -882,11 +891,43 @@ export function QuoteForm({
             </span>
           </label>
 
+          {/* Descuento / promoción: el mismo descuento que la cortesía, sin
+              color en la agenda (un 5%, un 25% a un evento). */}
+          <label
+            className={`flex cursor-pointer items-start gap-3 rounded-lg border px-4 py-3 text-sm transition-colors ${
+              esPromocion ? 'border-gold bg-gold/10' : 'border-ink/12 bg-white/50 hover:border-ink/30'
+            }`}
+          >
+            <input
+              type="checkbox"
+              checked={esPromocion}
+              onChange={(e) => {
+                setEsPromocion(e.target.checked);
+                if (e.target.checked) setEsCortesia(false);
+                else {
+                  setDescuentoPct('');
+                  setDescuentoMotivo('');
+                }
+              }}
+              className="mt-0.5 h-4 w-4 accent-[var(--color-gold)]"
+            />
+            <span className="flex-1">
+              <span className="font-medium text-ink">Descuento / promoción</span>
+              <span className="block text-xs text-charcoal-soft">
+                Un porcentaje de descuento sobre la renta del local. No marca color en la agenda.
+              </span>
+            </span>
+          </label>
+
           {/* Descuento de cortesía: CAMBIA EL PRECIO de la renta. Las horas extra
               y el 5% por alimentos salen del precio ya descontado; la capilla no
               se descuenta. Con 100% la renta queda en cero (más la capilla). */}
-          {esCortesia && (
-            <div className="space-y-3 rounded-lg border border-emerald-600/40 bg-emerald-600/5 px-4 py-3">
+          {conDescuento && (
+            <div
+              className={`space-y-3 rounded-lg border px-4 py-3 ${
+                esCortesia ? 'border-emerald-600/40 bg-emerald-600/5' : 'border-gold/40 bg-gold/5'
+              }`}
+            >
               <p className="text-xs text-charcoal-soft">
                 El descuento cambia el <span className="font-medium text-ink">precio de la renta del salón</span>: las
                 horas extra y el 5% por alimentos se calculan sobre el precio ya descontado. La capilla, los alimentos
@@ -908,7 +949,7 @@ export function QuoteForm({
                   <TextInput
                     value={descuentoMotivo}
                     onChange={(e) => setDescuentoMotivo(e.target.value)}
-                    placeholder="Ej.: boda de la hija del dueño"
+                    placeholder={esCortesia ? 'Ej.: boda de la hija del dueño' : 'Ej.: promoción de octubre'}
                   />
                 </Field>
               </div>

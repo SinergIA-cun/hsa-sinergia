@@ -76,6 +76,7 @@ export const createQuoteSchema = quoteSelectionSchema
     eventTypeId: z.string(),
     horasEvento: z.number().int().positive().optional(),
     esCortesia: z.boolean().default(false),
+    esPromocion: z.boolean().default(false),
     requiereFactura: z.boolean().default(false),
     capillaHorario: z.string().max(20).nullable().optional(),
     clientId: z.string().optional(),
@@ -94,6 +95,7 @@ export const updateQuoteSchema = quoteSelectionSchema
     eventTypeId: z.string(),
     horasEvento: z.number().int().positive().nullable().optional(),
     esCortesia: z.boolean().default(false),
+    esPromocion: z.boolean().default(false),
     requiereFactura: z.boolean().default(false),
     capillaHorario: z.string().max(20).nullable().optional(),
     client: clientSchema.optional(),
@@ -241,6 +243,7 @@ function toSelection(input: {
   extras?: QuoteExtra[];
   descuentoPct?: number | null;
   descuentoMotivo?: string | null;
+  esPromocion?: boolean;
 }): QuoteSelection {
   return {
     fecha: input.fecha,
@@ -255,6 +258,7 @@ function toSelection(input: {
     extras: input.extras ?? [],
     descuentoPct: input.descuentoPct ?? undefined,
     descuentoMotivo: input.descuentoMotivo ?? undefined,
+    esPromocion: input.esPromocion ?? false,
   };
 }
 
@@ -291,6 +295,7 @@ interface SeleccionGuardadaInput {
   usaCapilla: boolean;
   capillaHorario: string | null;
   esCortesia: boolean;
+  esPromocion: boolean;
   usaDjHoraExtra: boolean;
   requiereFactura: boolean;
   eventTypeId: string;
@@ -317,6 +322,7 @@ export interface SeleccionGuardada {
   usaCapilla: boolean;
   capillaHorario: string | null;
   esCortesia: boolean;
+  esPromocion: boolean;
   usaDjHoraExtra: boolean;
   requiereFactura: boolean;
   eventTypeId: string;
@@ -350,6 +356,7 @@ export function seleccionGuardada(q: SeleccionGuardadaInput): SeleccionGuardada 
     usaCapilla: q.usaCapilla,
     capillaHorario: q.capillaHorario,
     esCortesia: q.esCortesia,
+    esPromocion: q.esPromocion,
     usaDjHoraExtra: q.usaDjHoraExtra,
     requiereFactura: q.requiereFactura,
     eventTypeId: q.eventTypeId,
@@ -703,6 +710,7 @@ export async function createQuote(
           usaCapilla: input.usaCapilla ?? false,
           capillaHorario: input.capillaHorario ?? null,
           esCortesia: input.esCortesia ?? false,
+          esPromocion: input.esPromocion ?? false,
           requiereFactura: input.requiereFactura,
           usaDjHoraExtra: input.usaDjHoraExtra ?? false,
           foodPackageId: input.foodPackageId ?? null,
@@ -773,6 +781,10 @@ export async function duplicateQuote(db: PrismaClient, id: string, actor: Actor)
           foodPackageId: src.foodPackageId,
           addOns: src.addOns as unknown as Prisma.InputJsonValue,
           extras: { create: src.extras },
+          // La copia lleva el mismo descuento con su misma casilla: sin ellas, una
+          // cortesía duplicada perdía el verde de la agenda y conservaba el descuento.
+          esCortesia: src.esCortesia,
+          esPromocion: src.esPromocion,
           descuentoPct: src.descuentoPct,
           descuentoMotivo: src.descuentoMotivo,
           // La copia es OTRO evento del mismo comprador: el banquetero y el
@@ -976,6 +988,7 @@ export async function updateQuote(db: PrismaClient, id: string, rawInput: unknow
         usaCapilla: input.usaCapilla ?? false,
         capillaHorario: input.capillaHorario ?? null,
         esCortesia: input.esCortesia ?? false,
+        esPromocion: input.esPromocion ?? false,
         requiereFactura: input.requiereFactura,
         usaDjHoraExtra: input.usaDjHoraExtra ?? false,
         foodPackageId: input.foodPackageId ?? null,

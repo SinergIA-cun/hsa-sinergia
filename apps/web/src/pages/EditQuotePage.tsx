@@ -60,6 +60,7 @@ function toInitial(q: Quote): Partial<QuoteFormInitial> {
     usaCapilla: q.usaCapilla ?? false,
     capillaHorario: q.capillaHorario ?? '',
     esCortesia: q.esCortesia ?? false,
+    esPromocion: q.esPromocion ?? false,
     usaDjHoraExtra: q.usaDjHoraExtra ?? false,
     addOns: Object.fromEntries((q.addOns ?? []).map((a) => [a.addOnId, a.cantidad])),
     // Los extras y el descuento se devuelven al formulario porque guardar manda
