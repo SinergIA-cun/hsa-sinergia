@@ -25,11 +25,20 @@ export class ApiError extends Error {
 // Se lee al arrancar y ya no al compilar: horneado, el valor por omisión de la
 // imagen apuntaba a la API de producción, y una segunda instancia construida
 // del mismo repo le pegaba a la base del cliente sin avisar. Ver `config.ts`.
-const API_BASE = (config('apiUrl', import.meta.env.VITE_API_URL) ?? '').replace(/\/$/, '');
+export const API_BASE = (config('apiUrl', import.meta.env.VITE_API_URL) ?? '').replace(/\/$/, '');
 
-function resolveUrl(url: string): string {
+/**
+ * La URL completa de una ruta de la API. La usa todo lo que no pasa por `api`:
+ * las subidas con foto (`fetch` con FormData) y los enlaces o imágenes que abre
+ * el navegador directo. Leer `VITE_API_URL` por fuera de aquí dejaba la ruta
+ * relativa —al dominio de la web, que no tiene API— y así se rompieron los pagos
+ * con comprobante en producción. Lo impide una regla de ESLint.
+ */
+export function apiUrl(url: string): string {
   return url.startsWith('/api') || url.startsWith('/health') ? `${API_BASE}${url}` : url;
 }
+
+const resolveUrl = apiUrl;
 
 async function request<T>(method: string, url: string, body?: unknown): Promise<T> {
   const res = await fetch(resolveUrl(url), {

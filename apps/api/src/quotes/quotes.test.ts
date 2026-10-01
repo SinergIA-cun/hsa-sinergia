@@ -43,13 +43,13 @@ const createdPriceListIds: string[] = [];
 
 async function ids() {
   const eventType = await prisma.eventType.findFirst({ where: { slug: 'boda' } });
-  const arcos = await prisma.space.findFirst({ where: { nombre: 'Salón Los Arcos' } });
-  const campos = await prisma.space.findFirst({ where: { nombre: 'Jardín Los Campos' } });
-  const cupula = await prisma.space.findFirst({ where: { nombre: 'Jardín La Cúpula' } });
+  const arcos = await prisma.space.findFirst({ where: { nombre: 'Arcos' } });
+  const campos = await prisma.space.findFirst({ where: { nombre: 'Campos' } });
+  const cupula = await prisma.space.findFirst({ where: { nombre: 'Cúpula' } });
   // Balcones es el espacio SIN SpacePaymentRule (ver data/payment-rules.ts) y el
   // cuarto salón para probar el tope. Antes se usaba La Capilla, que dejó de ser
   // un espacio: es la casilla por evento con tarifa de sábado.
-  const balcones = await prisma.space.findFirst({ where: { nombre: 'Salón Los Balcones' } });
+  const balcones = await prisma.space.findFirst({ where: { nombre: 'Balcones' } });
   return {
     eventTypeId: eventType!.id,
     arcosId: arcos!.id,
@@ -606,7 +606,7 @@ describe('quotes HTTP', () => {
     // El error viaja como 409 con un mensaje que dice QUÉ salón está tomado;
     // un 500 dejaría al vendedor sin saber por qué no se guardó.
     expect(res.statusCode).toBe(409);
-    expect(res.json().error).toMatch(/Salón Los Arcos no está disponible/i);
+    expect(res.json().error).toMatch(/Arcos no está disponible/i);
     expect(await prisma.client.count({ where: { nombre: 'Encima HTTP' } })).toBe(0);
   });
 
@@ -1739,7 +1739,7 @@ describe('el contrato cuadra: renglones de renta contra su total', () => {
 
     // Los cinco renglones, con su número, en el orden en que se imprimen.
     expect(renta.map((l) => [l.concepto, l.monto])).toEqual([
-      ['Renta Salón Los Arcos', 108500],
+      ['Renta Arcos', 108500],
       ['Descuento de cortesía (50% renta)', -54250],
       ['Horas extra', 5425],
       ['Capilla', 5000],
@@ -1901,7 +1901,8 @@ describe('folio y etiqueta', () => {
     const hoy = hoyCivilMexico();
     const MESES = ['ENE', 'FEB', 'MAR', 'ABR', 'MAY', 'JUN', 'JUL', 'AGO', 'SEP', 'OCT', 'NOV', 'DIC'];
     const esperado = `${String(hoy.getUTCFullYear()).slice(2)}${MESES[hoy.getUTCMonth()]}`;
-    expect(q.folio).toMatch(new RegExp(`^${esperado}-\\d{4}$`));
+    // Al menos 4 dígitos; pasando de 9999 sigue creciendo, nunca se recorta.
+    expect(q.folio).toMatch(new RegExp(`^${esperado}-\\d{4,}$`));
     // Y la etiqueta sí describe el evento.
     expect(q.etiqueta).toBe('17ENE34-CBOLADO-CUPULA');
   });

@@ -30,7 +30,7 @@ const evento = (extra: Record<string, unknown>) => ({
 beforeAll(async () => {
   const u = await prisma.user.findUniqueOrThrow({ where: { email: 'admin@haciendasanandres.com.mx' } });
   admin = { id: u.id, role: 'admin' };
-  arcosId = (await prisma.space.findFirstOrThrow({ where: { nombre: 'Salón Los Arcos' } })).id;
+  arcosId = (await prisma.space.findFirstOrThrow({ where: { nombre: 'Arcos' } })).id;
   eventTypeId = (await prisma.eventType.findFirstOrThrow({ where: { slug: 'boda' } })).id;
 });
 

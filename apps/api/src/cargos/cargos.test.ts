@@ -66,7 +66,7 @@ beforeAll(async () => {
     data: { nombre: 'Ventas PV', email: ventasEmail, passwordHash: await hashPassword('ventas1234'), role: 'ventas' },
   });
   ventas = { id: v.id, role: 'ventas' };
-  arcosId = (await prisma.space.findFirstOrThrow({ where: { nombre: 'Salón Los Arcos' } })).id;
+  arcosId = (await prisma.space.findFirstOrThrow({ where: { nombre: 'Arcos' } })).id;
   eventTypeId = (await prisma.eventType.findFirstOrThrow({ where: { slug: 'boda' } })).id;
 });
 

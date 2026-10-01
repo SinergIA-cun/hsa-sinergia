@@ -103,12 +103,12 @@ describe('traducir la bitácora forense', () => {
     const desactivar = fila({
       tabla: 'Space',
       campos: ['activo'],
-      antes: { nombre: 'Salón Los Arcos', activo: true },
-      despues: { nombre: 'Salón Los Arcos', activo: false },
+      antes: { nombre: 'Arcos', activo: true },
+      despues: { nombre: 'Arcos', activo: false },
     });
     const t = traducir(desactivar);
     expect(t.frase).toBe('Desactivó un espacio');
-    expect(t.etiqueta).toBe('Salón Los Arcos');
+    expect(t.etiqueta).toBe('Arcos');
   });
 
   it('el dinero se nombra por su recibo y su monto', () => {

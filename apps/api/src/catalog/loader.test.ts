@@ -48,7 +48,7 @@ describe('loadCatalog', () => {
 
   it('Team Building cotiza con renta plana (Arcos 250 = 50,000, igual sábado que jueves)', async () => {
     const catalog = await loadCatalog(prisma);
-    const arcos = await prisma.space.findFirst({ where: { nombre: 'Salón Los Arcos' } });
+    const arcos = await prisma.space.findFirst({ where: { nombre: 'Arcos' } });
     const tb = await prisma.eventType.findUnique({ where: { slug: 'team-building' } });
     const sel = {
       invitados: 250,
@@ -68,7 +68,7 @@ describe('loadCatalog', () => {
 
   it('computeQuote sobre el catálogo real da el precio de folleto (Arcos 250 sábado = 108,500)', async () => {
     const catalog = await loadCatalog(prisma);
-    const arcos = await prisma.space.findFirst({ where: { nombre: 'Salón Los Arcos' } });
+    const arcos = await prisma.space.findFirst({ where: { nombre: 'Arcos' } });
     const r = computeQuote(catalog, {
       fecha: '2027-05-08',
       invitados: 250,
@@ -89,7 +89,7 @@ describe('loadCatalog', () => {
     const pkg = catalog.foodPackages.find((p) => p.eventTypeId === xv!.id);
     expect(pkg?.name).toBe('Servicio de Alimentos');
 
-    const arcos = await prisma.space.findFirst({ where: { nombre: 'Salón Los Arcos' } });
+    const arcos = await prisma.space.findFirst({ where: { nombre: 'Arcos' } });
     const r = computeQuote(catalog, {
       fecha: '2027-05-08',
       invitados: 250,
@@ -130,7 +130,7 @@ describe('loadCatalog', () => {
     addOnsCreados.push(inactivo.id);
 
     const catalog = await loadCatalog(prisma);
-    const arcos = await prisma.space.findFirst({ where: { nombre: 'Salón Los Arcos' } });
+    const arcos = await prisma.space.findFirst({ where: { nombre: 'Arcos' } });
     const r = computeQuote(catalog, {
       fecha: '2027-05-08',
       invitados: 250,
@@ -147,7 +147,7 @@ describe('loadCatalog', () => {
 
   it('un add-on con id inexistente (no solo inactivo) sigue lanzando error', async () => {
     const catalog = await loadCatalog(prisma);
-    const arcos = await prisma.space.findFirst({ where: { nombre: 'Salón Los Arcos' } });
+    const arcos = await prisma.space.findFirst({ where: { nombre: 'Arcos' } });
     expect(() =>
       computeQuote(catalog, {
         fecha: '2027-05-08',
@@ -261,7 +261,7 @@ describe('DJ hora extra por catálogo', () => {
     const grad = await prisma.eventType.findUniqueOrThrow({ where: { slug: 'graduacion' } });
     expect(cat.djHoraExtraByEventType[grad.id]).toBeUndefined();
 
-    const arcos = await prisma.space.findFirstOrThrow({ where: { nombre: 'Salón Los Arcos' } });
+    const arcos = await prisma.space.findFirstOrThrow({ where: { nombre: 'Arcos' } });
     const sel = {
       fecha: '2027-05-08',
       invitados: 250,
@@ -281,7 +281,7 @@ describe('DJ hora extra por catálogo', () => {
   it('el que SÍ tiene renglón cobra precio × horas extra, en "otros" y sin IVA propio', async () => {
     const cat = await loadCatalog(prisma);
     const boda = await prisma.eventType.findUniqueOrThrow({ where: { slug: 'boda' } });
-    const arcos = await prisma.space.findFirstOrThrow({ where: { nombre: 'Salón Los Arcos' } });
+    const arcos = await prisma.space.findFirstOrThrow({ where: { nombre: 'Arcos' } });
     const r = computeQuote(cat, {
       fecha: '2027-05-08',
       invitados: 250,

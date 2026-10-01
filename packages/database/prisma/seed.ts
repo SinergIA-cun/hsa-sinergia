@@ -5,6 +5,7 @@ import { applyTeamBuilding2027 } from './data/team-building-2027.js';
 import { applyPaymentRules } from './data/payment-rules.js';
 import { applyBanqueteros } from './data/banqueteros.js';
 import { applyPersonal } from './data/personal.js';
+import { ESPACIOS } from './data/espacios.js';
 
 const prisma = new PrismaClient();
 
@@ -34,9 +35,9 @@ async function seedCatalog() {
   // Espacios. La Capilla NO es un espacio: es la casilla por evento con tarifa de
   // sábado (PriceList.capillaSabado). Tenerla como salón rentable hacía que el
   // contrato imprimiera su cuid en cuanto se daba de baja.
-  const arcos = await prisma.space.create({ data: { nombre: 'Salón Los Arcos', capacidadMax: 400 } });
-  const campos = await prisma.space.create({ data: { nombre: 'Jardín Los Campos', capacidadMax: 400 } });
-  const cupula = await prisma.space.create({ data: { nombre: 'Jardín La Cúpula', capacidadMax: 800 } });
+  const arcos = await prisma.space.create({ data: { nombre: ESPACIOS.arcos.nombre, capacidadMax: 400 } });
+  const campos = await prisma.space.create({ data: { nombre: ESPACIOS.campos.nombre, capacidadMax: 400 } });
+  const cupula = await prisma.space.create({ data: { nombre: ESPACIOS.cupula.nombre, capacidadMax: 800 } });
 
   // Renta Los Arcos / Los Campos (misma tabla)
   const arcosCampos = [

@@ -53,7 +53,7 @@ afterAll(async () => {
 
 describe('reparto de un depósito', () => {
   it('si el segundo renglón falla, el primero tampoco queda', async () => {
-    const arcos = await prisma.space.findFirstOrThrow({ where: { nombre: 'Salón Los Arcos' } });
+    const arcos = await prisma.space.findFirstOrThrow({ where: { nombre: 'Arcos' } });
     const boda = await prisma.eventType.findFirstOrThrow({ where: { slug: 'boda' } });
     const eventos = [];
     for (const fecha of ['2047-01-05', '2047-01-12']) {

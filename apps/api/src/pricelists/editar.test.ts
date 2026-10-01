@@ -98,7 +98,7 @@ async function conCatalogoActivo<T>(priceListId: string, fn: () => Promise<T>): 
 async function cotizacionEn(priceListId: string, fecha: string) {
   return conCatalogoActivo(priceListId, async () => {
     const eventType = await prisma.eventType.findFirstOrThrow({ where: { slug: 'boda' } });
-    const arcos = await prisma.space.findFirstOrThrow({ where: { nombre: 'Salón Los Arcos' } });
+    const arcos = await prisma.space.findFirstOrThrow({ where: { nombre: 'Arcos' } });
     const q = await createQuote(
       prisma,
       {
@@ -733,7 +733,7 @@ describe('DJ y parámetros del catálogo', () => {
     // Es cómo se apaga el servicio: sin renglón, no se ofrece.
     const cat = await catalogoDePrueba('DJ-QUITA', 2053);
     const boda = await bodaId();
-    const arcos = await prisma.space.findFirstOrThrow({ where: { nombre: 'Salón Los Arcos' } });
+    const arcos = await prisma.space.findFirstOrThrow({ where: { nombre: 'Arcos' } });
 
     const cotizarConDj = (fecha: string) =>
       conCatalogoActivo(cat.id, async () => {
@@ -998,7 +998,7 @@ describe('borrar un catálogo', () => {
 
   it('una fecha apartada con precio garantizado también lo bloquea', async () => {
     const cat = await catalogoDePrueba('borrar-apartado', 2047);
-    const arcos = await prisma.space.findFirstOrThrow({ where: { nombre: 'Salón Los Arcos' } });
+    const arcos = await prisma.space.findFirstOrThrow({ where: { nombre: 'Arcos' } });
     const banquetero = await prisma.banquetero.create({
       data: { nombre: `Banquetero borrar-cat ${SUF}`, telefono: '9990001122' },
     });
@@ -1025,7 +1025,7 @@ describe('borrar un catálogo', () => {
 
   it('un apartado CANCELADO ya no bloquea', async () => {
     const cat = await catalogoDePrueba('borrar-apartado-cancelado', 2048);
-    const arcos = await prisma.space.findFirstOrThrow({ where: { nombre: 'Salón Los Arcos' } });
+    const arcos = await prisma.space.findFirstOrThrow({ where: { nombre: 'Arcos' } });
     const banquetero = await prisma.banquetero.create({
       data: { nombre: `Banquetero cancelado ${SUF}`, telefono: '9990001133' },
     });
@@ -1126,7 +1126,7 @@ describe('activar un catálogo con contexto de actor', () => {
 describe('el catálogo se elige al crear el contrato', () => {
   async function crearPorHttp(cuerpo: Record<string, unknown>) {
     const eventType = await prisma.eventType.findFirstOrThrow({ where: { slug: 'boda' } });
-    const arcos = await prisma.space.findFirstOrThrow({ where: { nombre: 'Salón Los Arcos' } });
+    const arcos = await prisma.space.findFirstOrThrow({ where: { nombre: 'Arcos' } });
     return app.inject({
       method: 'POST',
       url: '/api/quotes',

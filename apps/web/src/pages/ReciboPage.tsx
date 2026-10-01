@@ -1,7 +1,7 @@
 import { useParams, Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { ArrowLeft, Printer } from 'lucide-react';
-import { api } from '../lib/api.ts';
+import { api, apiUrl } from '../lib/api.ts';
 import { formatMXN } from '../lib/money.ts';
 import { formatEventDate } from '../lib/date.ts';
 import type { Quote, EstadoCuenta } from '../lib/types.ts';
@@ -132,7 +132,7 @@ export function ReciboPage() {
 
         {pago.tieneComprobante && (
           <div className="recibo-foto">
-            <img src={`/api/c/${token}/recibo/${pago.id}/imagen`} alt="Comprobante de pago" />
+            <img src={apiUrl(`/api/c/${token}/recibo/${pago.id}/imagen`)} alt="Comprobante de pago" />
           </div>
         )}
 

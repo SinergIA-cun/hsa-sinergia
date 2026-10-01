@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Lock, Receipt, ReceiptText } from 'lucide-react';
-import { api } from '../lib/api.ts';
+import { api, API_BASE } from '../lib/api.ts';
 import { formatMXN } from '../lib/money.ts';
 import { formatEventDate, formatTimestamp } from '../lib/date.ts';
 import { describirFormasPago, formatFolio } from '@hsa/shared';
@@ -66,7 +66,7 @@ export function PagosPanel({
   const [uuidFactura, setUuidFactura] = useState('');
   const [errFactura, setErrFactura] = useState('');
 
-  const apiBase = (import.meta.env.VITE_API_URL ?? '').replace(/\/$/, '');
+  const apiBase = API_BASE;
 
   async function refresh() {
     await qc.invalidateQueries({ queryKey: ['quote', quoteId] });

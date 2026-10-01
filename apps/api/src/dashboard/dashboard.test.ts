@@ -26,7 +26,7 @@ let adminActor: Actor;
 const HOY = new Date().toISOString().slice(0, 10); // dentro del mes en curso y >= hoy
 
 beforeAll(async () => {
-  const arcos = await prisma.space.findFirst({ where: { nombre: 'Salón Los Arcos' } });
+  const arcos = await prisma.space.findFirst({ where: { nombre: 'Arcos' } });
   const boda = await prisma.eventType.findFirst({ where: { slug: 'boda' } });
   arcosId = arcos!.id;
   eventTypeId = boda!.id;

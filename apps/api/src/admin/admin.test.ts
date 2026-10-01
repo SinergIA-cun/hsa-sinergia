@@ -144,7 +144,7 @@ describe('borrar algo que un contrato usa', () => {
     // `createQuote`: así esta prueba no depende de cuál catálogo esté activo, que
     // es un estado que otras suites mueven y restauran.
     const eventType = await prisma.eventType.findFirstOrThrow({ where: { slug: 'boda' } });
-    const arcos = await prisma.space.findFirstOrThrow({ where: { nombre: 'Salón Los Arcos' } });
+    const arcos = await prisma.space.findFirstOrThrow({ where: { nombre: 'Arcos' } });
     const cliente = await prisma.client.create({
       data: { nombre: 'Cliente que bloquea el borrado' },
     });

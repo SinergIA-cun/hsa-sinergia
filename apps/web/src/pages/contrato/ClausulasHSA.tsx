@@ -239,7 +239,7 @@ export function ClausulasHSA({
         <p><b>Entrega y Recolección de Equipo</b></p>
         <ol>
           <li>El horario de entrega de equipo es de 8:00 a 18:00 hrs; fuera de este horario se deberá pagar horas extras.</li>
-          <li>Salón Los Arcos: el equipo debe contar con tapas de hule en las patas de cada mesa y silla, para evitar rayones.</li>
+          <li>Arcos: el equipo debe contar con tapas de hule en las patas de cada mesa y silla, para evitar rayones.</li>
           <li>No se permite colocar cableado para iluminar las mesas en el salón y en los jardines.</li>
           <li>
             El proveedor tiene 1 hora para el desmontaje; no se permite dejar mobiliario al término de cada evento, de

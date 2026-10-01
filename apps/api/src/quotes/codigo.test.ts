@@ -36,8 +36,8 @@ const sabado = () => new Date(Date.UTC(2049, 0, 2 + 7 * semana++)).toISOString()
 beforeAll(async () => {
   const u = await prisma.user.findUniqueOrThrow({ where: { email: 'admin@haciendasanandres.com.mx' } });
   admin = { id: u.id, role: 'admin' };
-  arcosId = (await prisma.space.findFirstOrThrow({ where: { nombre: 'Salón Los Arcos' } })).id;
-  cupulaId = (await prisma.space.findFirstOrThrow({ where: { nombre: 'Jardín La Cúpula' } })).id;
+  arcosId = (await prisma.space.findFirstOrThrow({ where: { nombre: 'Arcos' } })).id;
+  cupulaId = (await prisma.space.findFirstOrThrow({ where: { nombre: 'Cúpula' } })).id;
   eventTypeId = (await prisma.eventType.findFirstOrThrow({ where: { slug: 'boda' } })).id;
 });
 

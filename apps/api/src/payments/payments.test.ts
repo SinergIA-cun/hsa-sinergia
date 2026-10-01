@@ -24,7 +24,7 @@ const clients: string[] = [];
 beforeAll(async () => {
   const admin = await prisma.user.findUnique({ where: { email: 'admin@haciendasanandres.com.mx' } });
   actor = { id: admin!.id, role: 'admin' };
-  arcosId = (await prisma.space.findFirst({ where: { nombre: 'Salón Los Arcos' } }))!.id;
+  arcosId = (await prisma.space.findFirst({ where: { nombre: 'Arcos' } }))!.id;
   eventTypeId = (await prisma.eventType.findFirst({ where: { slug: 'boda' } }))!.id;
   const ventas = await prisma.user.create({
     data: {
@@ -726,7 +726,7 @@ describe('concepto de pago deducido', () => {
 
   it('sin plan de pagos se respeta lo capturado y no se inventa nada', async () => {
     // Los Balcones no tiene SpacePaymentRule ⇒ el plan queda pendiente.
-    const balconesId = (await prisma.space.findFirstOrThrow({ where: { nombre: 'Salón Los Balcones' } })).id;
+    const balconesId = (await prisma.space.findFirstOrThrow({ where: { nombre: 'Balcones' } })).id;
     const q = await createQuote(prisma, {
       fecha: siguienteSabado(), invitados: 40, spaceIds: [arcosId, balconesId], eventTypeId,
       client: { telefono: '5555550000', nombre: 'Pago Sin Plan' },

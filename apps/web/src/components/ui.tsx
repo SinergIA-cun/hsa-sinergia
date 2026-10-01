@@ -82,7 +82,7 @@ function soloDigitos(v: unknown): string {
 }
 
 /**
- * Campo de dinero con comas de millar.
+ * Campo de dinero con signo de pesos y comas de millar.
  *
  * `125300` y `125,300` se leen distinto, y el segundo es el que evita teclear un
  * cero de más sin notarlo. El estado sigue guardando dígitos pelones —los mismos
@@ -130,25 +130,36 @@ export const MoneyInput = forwardRef<
     el.setSelectionRange(pos, pos);
   }, [visible]);
 
+  // El "$" va fuera del valor: es un adorno, así que copiar el monto o leerlo
+  // con lector de pantalla sigue dando solo la cifra. El `pl-7` va al final para
+  // que ningún `px-*` de quien lo usa lo tape.
   return (
-    <input
-      ref={(el) => {
-        propio.current = el;
-        if (typeof ref === 'function') ref(el);
-        else if (ref) ref.current = el;
-      }}
-      type="text"
-      inputMode="numeric"
-      autoComplete="off"
-      value={visible}
-      onChange={(e) => {
-        const hastaElCursor = e.target.value.slice(0, e.target.selectionStart ?? 0);
-        caret.current = hastaElCursor.replace(/\D/g, '').length;
-        onValue(soloDigitos(e.target.value));
-      }}
-      className={cn(inputBase, 'tabular-nums', className)}
-      {...props}
-    />
+    <span className="relative block">
+      <span
+        aria-hidden
+        className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-sm text-charcoal-soft"
+      >
+        $
+      </span>
+      <input
+        ref={(el) => {
+          propio.current = el;
+          if (typeof ref === 'function') ref(el);
+          else if (ref) ref.current = el;
+        }}
+        type="text"
+        inputMode="numeric"
+        autoComplete="off"
+        value={visible}
+        onChange={(e) => {
+          const hastaElCursor = e.target.value.slice(0, e.target.selectionStart ?? 0);
+          caret.current = hastaElCursor.replace(/\D/g, '').length;
+          onValue(soloDigitos(e.target.value));
+        }}
+        className={cn(inputBase, 'tabular-nums', className, 'pl-6')}
+        {...props}
+      />
+    </span>
   );
 });
 

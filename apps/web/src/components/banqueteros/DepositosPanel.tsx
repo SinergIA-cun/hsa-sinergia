@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { Ban, FileImage, Paperclip, Split, Undo2 } from 'lucide-react';
-import { api } from '../../lib/api.ts';
+import { api, API_BASE } from '../../lib/api.ts';
 import { formatMXN } from '../../lib/money.ts';
 import { formatEventDate } from '../../lib/date.ts';
 import { describirFormasPago, formatFolio } from '@hsa/shared';
@@ -28,7 +28,7 @@ interface Props {
  * punta.
  */
 export function DepositosPanel({ banqueteroId, depositos, isAdmin, onCambio, onRepartir }: Props) {
-  const apiBase = (import.meta.env.VITE_API_URL ?? '').replace(/\/$/, '');
+  const apiBase = API_BASE;
 
   return (
     <div className="grid gap-6 lg:grid-cols-[3fr_2fr]">
