@@ -74,8 +74,8 @@ beforeAll(async () => {
   });
   actor = { id: admin.id, role: 'admin' };
   ventas = { id: admin.id, role: 'ventas' };
-  arcosId = (await prisma.space.findFirstOrThrow({ where: { nombre: 'Salón Los Arcos' } })).id;
-  camposId = (await prisma.space.findFirstOrThrow({ where: { nombre: 'Jardín Los Campos' } })).id;
+  arcosId = (await prisma.space.findFirstOrThrow({ where: { nombre: 'Arcos' } })).id;
+  camposId = (await prisma.space.findFirstOrThrow({ where: { nombre: 'Campos' } })).id;
   eventTypeId = (await prisma.eventType.findFirstOrThrow({ where: { slug: 'boda' } })).id;
   banqueteroId = await nuevoBanquetero('Abonos');
 });

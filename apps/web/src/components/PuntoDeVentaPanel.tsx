@@ -2,7 +2,7 @@ import { useState, type FormEvent } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Receipt, ShoppingBag } from 'lucide-react';
 import { describirFormasPago, formatFolio, PRODUCTO_INFO } from '@hsa/shared';
-import { api } from '../lib/api.ts';
+import { api, API_BASE } from '../lib/api.ts';
 import { formatMXN } from '../lib/money.ts';
 import { formatEventDate } from '../lib/date.ts';
 import { Button, Card, Field, MoneyInput, TextInput } from './ui.tsx';
@@ -333,7 +333,7 @@ function CobrarCuenta({ quoteId, saldo, onListo }: { quoteId: string; saldo: num
   const [error, setError] = useState('');
   const [ok, setOk] = useState('');
   const [busy, setBusy] = useState(false);
-  const apiBase = (import.meta.env.VITE_API_URL ?? '').replace(/\/$/, '');
+  const apiBase = API_BASE;
 
   async function cobrar(e: FormEvent) {
     e.preventDefault();

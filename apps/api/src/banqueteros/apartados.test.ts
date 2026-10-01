@@ -72,8 +72,8 @@ beforeAll(async () => {
     },
   });
   ventas = { id: usuarioVentas.id, role: 'ventas' };
-  arcosId = (await prisma.space.findFirst({ where: { nombre: 'Salón Los Arcos' } }))!.id;
-  camposId = (await prisma.space.findFirst({ where: { nombre: 'Jardín Los Campos' } }))!.id;
+  arcosId = (await prisma.space.findFirst({ where: { nombre: 'Arcos' } }))!.id;
+  camposId = (await prisma.space.findFirst({ where: { nombre: 'Campos' } }))!.id;
   eventTypeId = (await prisma.eventType.findFirst({ where: { slug: 'boda' } }))!.id;
   const b = await prisma.banquetero.create({ data: { telefono: '5555550000', nombre: `Apartador ${randomUUID().slice(0, 6)}` } });
   banqueteroId = b.id;
@@ -274,7 +274,7 @@ describe('apartar sobre una fecha comprometida: avisa, no bloquea', () => {
       actor,
     );
     expect(apartado.id).toBeTruthy();
-    expect(avisos.map((a) => a.nombre)).toEqual(['Salón Los Arcos']);
+    expect(avisos.map((a) => a.nombre)).toEqual(['Arcos']);
   });
 
   it('sobre una fecha libre no avisa nada', async () => {
@@ -543,7 +543,7 @@ describe('validaciones y permisos', () => {
       cookies,
     });
     expect(choque.statusCode).toBe(409);
-    expect(choque.json().error).toContain('Salón Los Arcos');
+    expect(choque.json().error).toContain('Arcos');
   });
 });
 

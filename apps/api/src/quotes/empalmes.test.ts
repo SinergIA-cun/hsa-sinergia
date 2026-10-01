@@ -94,8 +94,8 @@ beforeAll(async () => {
   });
   ventasActor = { id: ventas.id, role: 'ventas' };
   eventTypeId = (await prisma.eventType.findFirst({ where: { slug: 'boda' } }))!.id;
-  cupulaId = (await prisma.space.findFirst({ where: { nombre: 'Jardín La Cúpula' } }))!.id;
-  arcosId = (await prisma.space.findFirst({ where: { nombre: 'Salón Los Arcos' } }))!.id;
+  cupulaId = (await prisma.space.findFirst({ where: { nombre: 'Cúpula' } }))!.id;
+  arcosId = (await prisma.space.findFirst({ where: { nombre: 'Arcos' } }))!.id;
   app = await buildServer({ config: loadConfig() });
   await app.ready();
 });

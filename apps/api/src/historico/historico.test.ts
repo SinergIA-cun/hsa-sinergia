@@ -84,7 +84,7 @@ beforeAll(async () => {
   });
   actor = { id: admin.id, role: 'admin' };
   eventTypeId = (await prisma.eventType.findFirstOrThrow({ where: { slug: 'boda' } })).id;
-  const arcos = await prisma.space.findFirstOrThrow({ where: { nombre: 'Salón Los Arcos' } });
+  const arcos = await prisma.space.findFirstOrThrow({ where: { nombre: 'Arcos' } });
   arcosId = arcos.id;
   arcosNombre = arcos.nombre;
 });

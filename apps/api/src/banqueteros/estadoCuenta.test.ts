@@ -74,7 +74,7 @@ beforeAll(async () => {
     },
   });
   ventasId = v.id;
-  arcosId = (await prisma.space.findFirst({ where: { nombre: 'Salón Los Arcos' } }))!.id;
+  arcosId = (await prisma.space.findFirst({ where: { nombre: 'Arcos' } }))!.id;
   eventTypeId = (await prisma.eventType.findFirst({ where: { slug: 'boda' } }))!.id;
   const [r, vac, vec] = await Promise.all([
     prisma.banquetero.create({ data: { telefono: '5555550000', nombre: `Ramírez EC ${randomUUID().slice(0, 6)}` } }),

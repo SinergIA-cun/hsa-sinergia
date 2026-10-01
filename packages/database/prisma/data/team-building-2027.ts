@@ -1,4 +1,5 @@
 import type { PrismaClient } from '@prisma/client';
+import { ESPACIOS, buscarEspacio, type ClaveEspacio } from './espacios.js';
 
 // Team Building 2027: renta PLANA (un precio por capacidad, igual todos los días)
 // + dos espacios nuevos (Los Balcones, Los Pajaritos). Transcrito de TB.pdf.
@@ -40,18 +41,14 @@ function flatCols(precio: number) {
   return { viernes: precio, viernesEspecial: precio, sabado: precio, domAJue: precio };
 }
 
-async function findSpace(prisma: PrismaClient, nombre: string) {
-  return prisma.space.findFirst({ where: { nombre } });
-}
-
-/** Crea el espacio si no existe (por nombre) y lo devuelve activo. */
-async function ensureSpace(prisma: PrismaClient, nombre: string, capacidadMax: number) {
-  const existing = await findSpace(prisma, nombre);
+/** Crea el espacio si no existe (por su nombre de hoy o el de antes) y lo devuelve activo. */
+async function ensureSpace(prisma: PrismaClient, clave: ClaveEspacio, capacidadMax: number) {
+  const existing = await buscarEspacio(prisma, clave);
   if (existing) {
     if (!existing.activo) await prisma.space.update({ where: { id: existing.id }, data: { activo: true } });
     return existing;
   }
-  return prisma.space.create({ data: { nombre, capacidadMax, activo: true } });
+  return prisma.space.create({ data: { nombre: ESPACIOS[clave].nombre, capacidadMax, activo: true } });
 }
 
 /**
@@ -91,14 +88,14 @@ async function setRentalRows(
  * quedan como "plan pendiente" hasta que el cliente indique el anticipo.
  */
 export async function applyTeamBuilding2027(prisma: PrismaClient): Promise<void> {
-  const arcos = await findSpace(prisma, 'Salón Los Arcos');
-  const campos = await findSpace(prisma, 'Jardín Los Campos');
-  const cupula = await findSpace(prisma, 'Jardín La Cúpula');
+  const arcos = await buscarEspacio(prisma, 'arcos');
+  const campos = await buscarEspacio(prisma, 'campos');
+  const cupula = await buscarEspacio(prisma, 'cupula');
   if (!arcos || !campos || !cupula) {
     throw new Error('Faltan espacios base (Arcos/Campos/Cúpula); corre el seed primero.');
   }
-  const balcones = await ensureSpace(prisma, 'Salón Los Balcones', 70);
-  const pajaritos = await ensureSpace(prisma, 'Salón Los Pajaritos', 50);
+  const balcones = await ensureSpace(prisma, 'balcones', 70);
+  const pajaritos = await ensureSpace(prisma, 'pajaritos', 50);
 
   const catalogo = await prisma.priceList.findFirst({ where: { activa: true }, orderBy: { anio: 'desc' } });
   if (!catalogo) throw new Error('No hay catálogo (PriceList) activo al que colgar la renta plana.');

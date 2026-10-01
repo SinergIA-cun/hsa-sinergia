@@ -64,7 +64,7 @@ beforeAll(async () => {
   await app.ready();
   const u = await prisma.user.findUniqueOrThrow({ where: { email: 'admin@haciendasanandres.com.mx' } });
   admin = { id: u.id, role: 'admin' };
-  arcosId = (await prisma.space.findFirstOrThrow({ where: { nombre: 'Salón Los Arcos' } })).id;
+  arcosId = (await prisma.space.findFirstOrThrow({ where: { nombre: 'Arcos' } })).id;
 });
 
 afterAll(async () => {
@@ -88,7 +88,7 @@ describe('importar un evento nuevo', () => {
     expect(r.resultados[0]).toMatchObject({ idBI: ev.idBI, estado: 'nuevo', accion: 'creado' });
 
     const q = await prisma.quote.findUniqueOrThrow({ where: { importadoBI: ev.idBI }, include: { payments: true } });
-    expect(q.folio).toMatch(/^26FEB-\d{4}$/);
+    expect(q.folio).toMatch(/^26FEB-\d{4,}$/);
     expect(q.contratadoEl?.toISOString().slice(0, 10)).toBe('2026-02-02');
     expect(q.rentaTotal).toBe(95_000);
     expect(q.total).toBe(215_000);

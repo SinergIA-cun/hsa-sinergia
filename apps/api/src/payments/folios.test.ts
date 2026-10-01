@@ -68,7 +68,7 @@ beforeAll(async () => {
   await app.ready();
   const u = await prisma.user.findUniqueOrThrow({ where: { email: 'admin@haciendasanandres.com.mx' } });
   admin = { id: u.id, role: 'admin' };
-  arcosId = (await prisma.space.findFirstOrThrow({ where: { nombre: 'Salón Los Arcos' } })).id;
+  arcosId = (await prisma.space.findFirstOrThrow({ where: { nombre: 'Arcos' } })).id;
   eventTypeId = (await prisma.eventType.findFirstOrThrow({ where: { slug: 'boda' } })).id;
   banqueteroId = (await prisma.banquetero.create({ data: { telefono: '5555550000', nombre: `Folios ${randomUUID().slice(0, 6)}` } })).id;
 });

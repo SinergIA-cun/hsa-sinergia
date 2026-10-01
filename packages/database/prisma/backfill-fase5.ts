@@ -1,4 +1,5 @@
 import { prisma } from '../src/index.js';
+import { ESPACIOS, buscarEspacio, type ClaveEspacio } from './data/espacios.js';
 
 /**
  * Backfill IDEMPOTENTE de los datos nuevos de Fase 5 para una base de datos que
@@ -17,10 +18,10 @@ import { prisma } from '../src/index.js';
 // Reglas de pago por espacio (sección H del contrato). Los demás espacios
 // (Balcones, Pajaritos, Jardín del Caballo, Capilla) quedan sin regla hasta
 // tener sus números.
-const SPACE_RULES: { nombre: string; anticipo: number; complementoPct: number }[] = [
-  { nombre: 'Jardín La Cúpula', anticipo: 25000, complementoPct: 0.25 },
-  { nombre: 'Salón Los Arcos', anticipo: 20000, complementoPct: 0.1 },
-  { nombre: 'Jardín Los Campos', anticipo: 15000, complementoPct: 0.15 },
+const SPACE_RULES: { espacio: ClaveEspacio; anticipo: number; complementoPct: number }[] = [
+  { espacio: 'cupula', anticipo: 25000, complementoPct: 0.25 },
+  { espacio: 'arcos', anticipo: 20000, complementoPct: 0.1 },
+  { espacio: 'campos', anticipo: 15000, complementoPct: 0.15 },
 ];
 
 async function main(): Promise<void> {
@@ -35,20 +36,21 @@ async function main(): Promise<void> {
 
   // 2. Reglas de pago por espacio.
   for (const r of SPACE_RULES) {
-    const space = await prisma.space.findFirst({ where: { nombre: r.nombre } });
+    const space = await buscarEspacio(prisma, r.espacio);
+    const nombre = ESPACIOS[r.espacio].nombre;
     if (!space) {
-      console.log(`· Regla ${r.nombre}: SIN espacio con ese nombre (revisar) — omitido`);
+      console.log(`· Regla ${nombre}: SIN espacio con ese nombre (revisar) — omitido`);
       continue;
     }
     const existing = await prisma.spacePaymentRule.findUnique({ where: { spaceId: space.id } });
     if (existing) {
-      console.log(`· Regla ${r.nombre}: ya existe`);
+      console.log(`· Regla ${nombre}: ya existe`);
       continue;
     }
     await prisma.spacePaymentRule.create({
       data: { spaceId: space.id, anticipo: r.anticipo, complementoPct: r.complementoPct },
     });
-    console.log(`· Regla ${r.nombre}: creada (anticipo ${r.anticipo}, ${Math.round(r.complementoPct * 100)}%)`);
+    console.log(`· Regla ${nombre}: creada (anticipo ${r.anticipo}, ${Math.round(r.complementoPct * 100)}%)`);
   }
 
   // 3. DJ pasa a cobrarse por hora (kind fijo → porUnidad). Idempotente.

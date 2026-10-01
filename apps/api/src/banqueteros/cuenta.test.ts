@@ -90,7 +90,7 @@ beforeAll(async () => {
     },
   });
   ventas = { id: usuarioVentas.id, role: 'ventas' };
-  arcosId = (await prisma.space.findFirst({ where: { nombre: 'Salón Los Arcos' } }))!.id;
+  arcosId = (await prisma.space.findFirst({ where: { nombre: 'Arcos' } }))!.id;
   eventTypeId = (await prisma.eventType.findFirst({ where: { slug: 'boda' } }))!.id;
   const b1 = await prisma.banquetero.create({ data: { nombre: `Ramírez ${randomUUID().slice(0, 6)}` } });
   const b2 = await prisma.banquetero.create({ data: { nombre: `Otro ${randomUUID().slice(0, 6)}` } });

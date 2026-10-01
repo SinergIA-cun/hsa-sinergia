@@ -25,4 +25,21 @@ export default tseslint.config(
       },
     },
   },
+  {
+    // La dirección de la API se lee al ARRANCAR (`/config.js`), no al compilar:
+    // `VITE_API_URL` ya viene vacía en la imagen. Leerla directo dejaba las
+    // subidas con foto apuntando al dominio de la web, sin API (los pagos con
+    // comprobante dejaron de registrarse en producción). Usa `apiUrl`/`API_BASE`.
+    files: ['apps/web/src/**/*.{ts,tsx}'],
+    ignores: ['apps/web/src/lib/api.ts', 'apps/web/src/lib/config.ts'],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: "MemberExpression[property.name='VITE_API_URL']",
+          message: 'Usa API_BASE o apiUrl() de lib/api.ts: la dirección de la API se lee al arrancar.',
+        },
+      ],
+    },
+  },
 );
