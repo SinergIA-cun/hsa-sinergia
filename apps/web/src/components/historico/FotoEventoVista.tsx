@@ -123,7 +123,7 @@ export function FotoEventoVista({ id }: { id: string }) {
                     (dos pagos que salen del mismo depósito comparten el suyo). */}
                 {f.pagos.map((p, i) => (
                   <tr key={i} className={p.anulado ? 'text-charcoal-soft line-through' : ''}>
-                    <td className="px-3 py-1.5 font-mono text-xs">{formatFolio(p.folio)}</td>
+                    <td className="px-3 py-1.5 font-mono text-xs">{formatFolio(p.folio, p.folioLetra)}</td>
                     <td className="px-3 py-1.5">{formatEventDate(p.fechaISO)}</td>
                     <td className="px-3 py-1.5">{p.concepto}</td>
                     <td className="px-3 py-1.5">{FORMA_PAGO_LABEL[p.metodo as MetodoPago] ?? p.metodo}</td>

@@ -312,7 +312,7 @@ export function BanqueteroPage() {
             setRepartir(null);
             setAvisoReparto(
               `Se aplicó el depósito ${formatFolio(pagos[0]?.folio)} a ${pagos.length} evento(s): ${pagos
-                .map((p) => formatMXN(p.monto))
+                .map((p) => `${formatFolio(p.folio, p.folioLetra)} por ${formatMXN(p.monto)}`)
                 .join(' · ')}.`,
             );
             await invalidar();

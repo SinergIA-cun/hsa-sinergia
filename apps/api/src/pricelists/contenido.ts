@@ -49,6 +49,7 @@ export async function contenidoDeCatalogo(db: PrismaClient, priceListId: string)
       extraHourRate: priceList.extraHourRate,
       foodDiscountRate: priceList.foodDiscountRate,
       capillaSabado: priceList.capillaSabado,
+      toleranciaExtras: priceList.toleranciaExtras,
     },
     renta: renta.map((r) => ({
       id: r.id,

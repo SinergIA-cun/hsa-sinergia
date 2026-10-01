@@ -185,7 +185,8 @@ apartadas. Es lo que se concilia contra el banco y contra la caja.
 - **Rango sobre:** `fecha` en que se recibió el dinero.
 - **Diferencia con `/pagos`:** `/pagos` es una fila por *aplicación a un evento*. Un depósito
   de banquetero repartido en tres eventos es **una** fila aquí y **tres** en `/pagos`, las tres
-  con el mismo `folio` y el mismo `pagoBanqueteroId`. Sumar `/pagos` y `/ingresos` duplica.
+  con el mismo `folio` y el mismo `pagoBanqueteroId`, y cada una con su `folioLetra` (`A`, `B`,
+  `C`; `folioTexto` = `"I 5340-B"`). Sumar `/pagos` y `/ingresos` duplica.
 - `id` va prefijado con el tipo (`pago:…`, `deposito:…`, `abono:…`); es el cursor.
 
 ```json
@@ -244,7 +245,8 @@ además `cargosAdicionales: { total, pagado, saldo }` en `/eventos`, y los cobro
 }
 ```
 
-`producto` es uno de `horaExtra`, `djHoraExtra`, `invitadoExtra`, `danos`, `multa`,
+`producto` es uno de `horaExtra`, `djHoraExtra`, `invitadoExtra` (su renta),
+`invitadoExtraAlimentos` (sus alimentos, que se le pagan al proveedor), `danos`, `multa`,
 `gastoImprevisto`, `otro`. Los montos traen IVA incluido.
 
 ### `GET /api/bi/devoluciones`

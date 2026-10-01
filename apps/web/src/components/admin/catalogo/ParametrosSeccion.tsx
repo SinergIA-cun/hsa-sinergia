@@ -10,6 +10,7 @@ export interface ParametrosPatch {
   extraHourRate?: number;
   foodDiscountRate?: number;
   capillaSabado?: number;
+  toleranciaExtras?: number;
 }
 
 /** Las tres tasas, capturadas en PORCENTAJE. La cuarta es un precio en pesos. */
@@ -58,6 +59,7 @@ export function ParametrosSeccion({
     foodDiscountRate: aPct(params.foodDiscountRate),
   });
   const [capilla, setCapilla] = useState(String(params.capillaSabado));
+  const [tolerancia, setTolerancia] = useState(String(params.toleranciaExtras ?? 0));
   const [invalido, setInvalido] = useState('');
   const { correr, pendiente, error, ok, limpiar } = useGuardar('No se pudieron guardar los parámetros.');
 
@@ -87,6 +89,12 @@ export function ParametrosSeccion({
   } else if (capillaNum !== params.capillaSabado) {
     patch.capillaSabado = capillaNum;
   }
+  const toleranciaNum = Number(tolerancia);
+  if (tolerancia.trim() === '' || !Number.isInteger(toleranciaNum) || toleranciaNum < 0) {
+    malo = true;
+  } else if (toleranciaNum !== (params.toleranciaExtras ?? 0)) {
+    patch.toleranciaExtras = toleranciaNum;
+  }
   const cambios = Object.keys(patch).length;
 
   function descartar() {
@@ -96,13 +104,14 @@ export function ParametrosSeccion({
       foodDiscountRate: aPct(params.foodDiscountRate),
     });
     setCapilla(String(params.capillaSabado));
+    setTolerancia(String(params.toleranciaExtras ?? 0));
     setInvalido('');
     limpiar();
   }
 
   async function guardar() {
     if (malo) {
-      setInvalido('Las tasas van de 0 a 100 (por ciento) y la capilla en pesos enteros.');
+      setInvalido('Las tasas van de 0 a 100 (por ciento); la capilla, en pesos enteros; las personas extra, un número entero.');
       return;
     }
     setInvalido('');
@@ -139,6 +148,23 @@ export function ParametrosSeccion({
               limpiar();
               setInvalido('');
               setCapilla(v);
+            }}
+          />
+        </Field>
+        {/* Personas extra: con 20, un evento de 110 se cobra como el nivel de 100
+            más 10 personas a precio del nivel, en renta y alimentos; con 121 ya
+            brinca al nivel siguiente. */}
+        <Field
+          label="Personas extra antes de brincar de nivel"
+          hint="Ej. 20: de 101 a 120 personas se cobra el nivel de 100 más cada persona extra a precio del nivel. 0 = siempre brinca."
+        >
+          <TextInput
+            inputMode="numeric"
+            value={tolerancia}
+            onChange={(e) => {
+              limpiar();
+              setInvalido('');
+              setTolerancia(e.target.value.replace(/\D/g, ''));
             }}
           />
         </Field>

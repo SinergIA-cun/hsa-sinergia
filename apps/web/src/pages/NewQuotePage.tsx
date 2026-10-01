@@ -66,7 +66,7 @@ export function NewQuotePage() {
         to="/eventos"
         className="mb-4 inline-flex items-center gap-1.5 text-sm text-charcoal-soft hover:text-ink"
       >
-        <ArrowLeft size={15} /> Contratos
+        <ArrowLeft size={15} /> Eventos
       </Link>
       <ArrowDivider>Nuevo</ArrowDivider>
       <h1 className="mb-8 mt-2 font-display text-4xl text-ink">Nuevo evento</h1>

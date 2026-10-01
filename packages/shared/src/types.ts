@@ -43,6 +43,9 @@ export interface Catalog {
   extraHourRate: number;        // 0.05 de la renta por hora
   foodDiscountRate: number;     // 0.05 de la renta si hay alimentos
   capillaSabado: number;        // renta de capilla en sábado (cortesía el resto)
+  /** Hasta cuántas personas por encima del tope de un nivel se cobran como
+   *  "personas extra" del nivel anterior en vez de brincar al siguiente. 0 = nunca. */
+  toleranciaExtras?: number;
   djHoraExtraByEventType: Record<string, number>; // precio del DJ por hora extra, por eventTypeId
   rentalPrices: RentalPriceRow[];      // renta por tipo de día (eventos normales)
   rentalPricesFlat: RentalPriceRow[];  // renta plana (Team Building): mismo precio todos los días

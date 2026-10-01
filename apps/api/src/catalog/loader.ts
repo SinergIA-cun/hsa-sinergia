@@ -68,6 +68,7 @@ export async function loadCatalog(
     extraHourRate: priceList.extraHourRate,
     foodDiscountRate: priceList.foodDiscountRate,
     capillaSabado: priceList.capillaSabado,
+    toleranciaExtras: priceList.toleranciaExtras,
     djHoraExtraByEventType,
     // Un solo catálogo lleva las dos rentas; `tipo` en el renglón las distingue.
     rentalPrices: toRentalRows(rentals.filter((r) => r.tipo === 'dia')),

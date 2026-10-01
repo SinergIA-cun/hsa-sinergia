@@ -150,6 +150,8 @@ export async function abonarDesdeDeposito(
      * se guarda tal cual; sin esto el default de la base gastaría uno.
      */
     folio: number | null;
+    /** Su letra entre las aplicaciones del depósito (`I 5340-C`). */
+    folioLetra: string;
     fechaDeposito: Date;
     actorId: string;
   },
@@ -158,6 +160,7 @@ export async function abonarDesdeDeposito(
     data: {
       apartadoId: args.apartadoId,
       folio: args.folio,
+      folioLetra: args.folioLetra,
       monto: args.monto,
       metodo: args.metodo,
       fecha: args.fechaDeposito,

@@ -5,6 +5,8 @@ import { loadEstadoCuenta } from '../quotes/service.js';
 /** Un pago tal como quedó, con su folio: la foto no depende de la tabla viva. */
 export interface PagoFoto {
   folio: number;
+  /** Su letra si salió de un depósito repartido (`I 5340-B`). Fotos viejas no la traen. */
+  folioLetra?: string | null;
   monto: number;
   metodo: string;
   concepto: string;
@@ -147,6 +149,7 @@ export async function armarFoto(
 
   const pagos: PagoFoto[] = payments.map((p) => ({
     folio: p.folio,
+    folioLetra: p.folioLetra,
     monto: p.monto,
     metodo: p.metodo,
     concepto: p.conceptoManual ?? p.concepto,

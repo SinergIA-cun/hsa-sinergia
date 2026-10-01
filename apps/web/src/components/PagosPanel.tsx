@@ -94,7 +94,7 @@ export function PagosPanel({ quoteId, publicToken, isAdmin, estadoCuenta, paymen
       setMonto(''); setReferencia(''); setComprobante(null); setFileKey((k) => k + 1);
       setFormas(formasIniciales(formas.dividido ? 'transferencia' : formas.forma));
       setInfo(
-        `Pago registrado con el folio ${formatFolio(body.payment.folio)}.` +
+        `Pago registrado con el folio ${formatFolio(body.payment.folio, body.payment.folioLetra)}.` +
           (body.nuevoEstatus ? ` Estatus actualizado automáticamente a ${STATUS_LABEL[body.nuevoEstatus]}.` : ''),
       );
       await refresh();
@@ -232,7 +232,7 @@ export function PagosPanel({ quoteId, publicToken, isAdmin, estadoCuenta, paymen
             {payments.map((p) => (
               <li key={p.id} className={`flex flex-wrap items-center justify-between gap-x-4 gap-y-1 py-2.5 text-sm ${p.anuladoAt ? 'opacity-50 line-through' : ''}`}>
                 <span className="flex flex-wrap items-center gap-x-1.5 gap-y-1">
-                  <span className="font-medium text-charcoal-soft">{formatFolio(p.folio)}</span> · {formatEventDate(p.fecha)} ·{' '}
+                  <span className="font-medium text-charcoal-soft">{formatFolio(p.folio, p.folioLetra)}</span> · {formatEventDate(p.fecha)} ·{' '}
                   {/* El concepto es editable en el renglón: corregirlo es un error
                       de captura, no un movimiento de dinero. En los pagos anulados
                       no se toca (son evidencia y el servidor lo rechaza). */}
@@ -240,7 +240,7 @@ export function PagosPanel({ quoteId, publicToken, isAdmin, estadoCuenta, paymen
                     <span>{CONCEPTO_LABEL[p.concepto]}</span>
                   ) : (
                     <label className="inline-flex items-center">
-                      <span className="sr-only">Concepto del pago {formatFolio(p.folio)}</span>
+                      <span className="sr-only">Concepto del pago {formatFolio(p.folio, p.folioLetra)}</span>
                       <select
                         value={p.concepto}
                         onChange={(e) => corregirConcepto.mutate({ paymentId: p.id, concepto: e.target.value })}
@@ -347,7 +347,7 @@ export function PagosPanel({ quoteId, publicToken, isAdmin, estadoCuenta, paymen
           <Card className="w-full max-w-md space-y-4 p-6">
             <h2 className="font-display text-xl text-ink">Marcar pago como facturado</h2>
             <p className="text-sm text-charcoal">
-              Pago <strong>{formatFolio(pagoAFacturar.folio)}</strong> de{' '}
+              Pago <strong>{formatFolio(pagoAFacturar.folio, pagoAFacturar.folioLetra)}</strong> de{' '}
               <strong>{formatMXN(pagoAFacturar.monto)}</strong> del {formatEventDate(pagoAFacturar.fecha)}.
             </p>
             <p className="rounded-lg bg-cream-200/70 px-3 py-2 text-sm text-ink">

@@ -108,7 +108,7 @@ function Renglon({
     <li className="text-xs">
       <div className={`flex flex-wrap items-center justify-between gap-2 ${anulado ? 'text-charcoal-soft line-through' : 'text-ink'}`}>
         <span className="tabular-nums">
-          <span className="font-semibold">{formatFolio(abono.folio)}</span> · {formatEventDate(abono.fecha)} ·{' '}
+          <span className="font-semibold">{formatFolio(abono.folio, abono.folioLetra)}</span> · {formatEventDate(abono.fecha)} ·{' '}
           <strong>{formatMXN(abono.monto)}</strong>{' '}
           <span className="text-charcoal-soft">{describirFormasPago(abono)}</span>
           {/* De dónde salió: el saldo del banquetero o un pago directo a la fecha. */}

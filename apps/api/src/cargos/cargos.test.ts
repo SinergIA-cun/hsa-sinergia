@@ -12,6 +12,9 @@ import { ServerStorage } from '../payments/storage.js';
 import { registerPayment, anularPayment } from '../payments/service.js';
 import { registrarCargo, anularCargo, cuentaDelEvento, productosDelEvento } from './service.js';
 import { biCargos, biEventos, biPagos } from '../bi/service.js';
+import { clonarCatalogo } from '../pricelists/service.js';
+import { editarParametros } from '../pricelists/editar.js';
+import { borrarCatalogoDePrueba } from '../pricelists/testSupport.js';
 
 /**
  * El punto de venta del evento. La regla que se protege es la del dueño: lo que
@@ -96,6 +99,26 @@ describe('cargos a la cuenta del evento', () => {
     const dj = productos.find((p) => p.producto === 'djHoraExtra');
     expect(dj?.precioSugerido).toBe(2_950);
     expect(productos.find((p) => p.producto === 'multa')!.precioSugerido).toBeNull();
+    // Invitados extra: la renta de una persona en su nivel. 250 en Arcos sábado
+    // cae en 201–300 → $108,500 / 300.
+    expect(productos.find((p) => p.producto === 'invitadoExtra')!.precioSugerido).toBe(Math.round(108_500 / 300));
+    // Sin paquete de alimentos no se ofrecen los alimentos de los invitados extra.
+    expect(productos.some((p) => p.producto === 'invitadoExtraAlimentos')).toBe(false);
+  });
+
+  it('el tope de personas extra viaja al clonar el catálogo y se edita como parámetro', async () => {
+    const activo = await prisma.priceList.findFirstOrThrow({ where: { activa: true } });
+    const clon = await clonarCatalogo(prisma, { nombre: `Extras ${randomUUID().slice(0, 6)}`, anio: 2099, clonarDe: activo.id });
+    try {
+      const editado = await editarParametros(prisma, clon.id, { toleranciaExtras: 20 }, admin);
+      expect(editado.toleranciaExtras).toBe(20);
+      const otro = await clonarCatalogo(prisma, { nombre: `Extras2 ${randomUUID().slice(0, 6)}`, anio: 2099, clonarDe: clon.id });
+      expect(otro.toleranciaExtras).toBe(20);
+      await borrarCatalogoDePrueba(prisma, otro.id);
+      await expect(editarParametros(prisma, clon.id, { toleranciaExtras: 2.5 }, admin)).rejects.toBeTruthy();
+    } finally {
+      await borrarCatalogoDePrueba(prisma, clon.id);
+    }
   });
 
   it('dos horas extra NO cambian el valor del evento ni su plan de pagos', async () => {
