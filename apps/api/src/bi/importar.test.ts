@@ -170,7 +170,7 @@ describe('conciliar contra lo que ya está aquí', () => {
   async function eventoNativo(fecha: string) {
     const q = await createQuote(
       prisma,
-      { fecha, invitados: 220, spaceIds: [arcosId], eventTypeId: (await prisma.eventType.findFirstOrThrow({ where: { slug: 'boda' } })).id, client: { nombre: 'Capturado Aquí' } },
+      { fecha, invitados: 220, spaceIds: [arcosId], eventTypeId: (await prisma.eventType.findFirstOrThrow({ where: { slug: 'boda' } })).id, client: { telefono: '5555550000', nombre: 'Capturado Aquí' } },
       admin,
     );
     quotesNativas.push(q.id);

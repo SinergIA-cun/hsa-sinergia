@@ -42,7 +42,7 @@ function siguienteSabado(): string {
 async function nuevoEvento() {
   const q = await createQuote(
     prisma,
-    { fecha: siguienteSabado(), invitados: 250, spaceIds: [arcosId], eventTypeId, client: { nombre: 'Devoluciones Test' } },
+    { fecha: siguienteSabado(), invitados: 250, spaceIds: [arcosId], eventTypeId, client: { telefono: '5555550000', nombre: 'Devoluciones Test' } },
     admin,
   );
   quotes.push(q.id);

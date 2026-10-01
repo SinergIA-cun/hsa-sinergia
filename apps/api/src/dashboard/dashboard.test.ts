@@ -70,7 +70,7 @@ describe('getDashboard', () => {
     // Borrador HOY → NO es evento; no aparece en el panel operativo.
     const borrador = await createQuote(
       prisma,
-      { fecha: HOY, invitados: 200, spaceIds: [arcosId], eventTypeId, client: { nombre: 'Dash Borrador' } },
+      { fecha: HOY, invitados: 200, spaceIds: [arcosId], eventTypeId, client: { telefono: '5555550000', nombre: 'Dash Borrador' } },
       actor,
     );
     created.push(borrador.id);
@@ -83,7 +83,7 @@ describe('getDashboard', () => {
     // Apartada HOY → evento del mes y ficha de la semana; sin hoja operativa ⇒ semáforo rojo.
     const apartada = await createQuote(
       prisma,
-      { fecha: HOY, invitados: 250, spaceIds: [arcosId], eventTypeId, client: { nombre: 'Dash Apartada' } },
+      { fecha: HOY, invitados: 250, spaceIds: [arcosId], eventTypeId, client: { telefono: '5555550000', nombre: 'Dash Apartada' } },
       actor,
     );
     created.push(apartada.id);
@@ -124,7 +124,7 @@ describe('getDashboard · lo que el tablero grita', () => {
 
     const q = await createQuote(
       prisma,
-      { fecha: iso, invitados: 180, spaceIds: [arcosId], eventTypeId, client: { nombre: 'Dash Pasado' } },
+      { fecha: iso, invitados: 180, spaceIds: [arcosId], eventTypeId, client: { telefono: '5555550000', nombre: 'Dash Pasado' } },
       actor,
     );
     created.push(q.id);
@@ -152,7 +152,7 @@ describe('getDashboard · lo que el tablero grita', () => {
         invitados: 100,
         spaceIds: [arcosId],
         eventTypeId,
-        client: { nombre: 'Dash Borrador Viejo' },
+        client: { telefono: '5555550000', nombre: 'Dash Borrador Viejo' },
       },
       actor,
     );

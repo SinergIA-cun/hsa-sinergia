@@ -59,7 +59,7 @@ describe('reparto de un depósito', () => {
     for (const fecha of ['2047-01-05', '2047-01-12']) {
       const q = await createQuote(
         prisma,
-        { fecha, invitados: 250, spaceIds: [arcos.id], eventTypeId: boda.id, client: { nombre: 'Reparto Tx' }, banqueteroId },
+        { fecha, invitados: 250, spaceIds: [arcos.id], eventTypeId: boda.id, client: { telefono: '5555550000', nombre: 'Reparto Tx' }, banqueteroId },
         actor,
       );
       quotes.push(q.id);

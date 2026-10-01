@@ -131,7 +131,7 @@ describe('quotes service', () => {
       invitados: 250,
       spaceIds: [arcosId],
       eventTypeId,
-      client: { nombre: 'Cliente Test' },
+      client: { telefono: '5555550000', nombre: 'Cliente Test' },
     }, actor);
     createdQuoteIds.push(q.id);
     createdClientIds.push(q.clientId);
@@ -146,7 +146,7 @@ describe('quotes service', () => {
       invitados: 250,
       spaceIds: [arcosId],
       eventTypeId,
-      client: { nombre: 'Cliente Token' },
+      client: { telefono: '5555550000', nombre: 'Cliente Token' },
     }, actor);
     createdQuoteIds.push(q.id);
     createdClientIds.push(q.clientId);
@@ -159,7 +159,7 @@ describe('quotes service', () => {
     const { eventTypeId, arcosId } = await ids();
     const q = await createQuote(
       prisma,
-      { fecha: '2027-06-14', invitados: 250, spaceIds: [arcosId], eventTypeId, client: { nombre: 'Desfase Test' } },
+      { fecha: '2027-06-14', invitados: 250, spaceIds: [arcosId], eventTypeId, client: { telefono: '5555550000', nombre: 'Desfase Test' } },
       actor,
     );
     createdQuoteIds.push(q.id);
@@ -182,7 +182,7 @@ describe('quotes service', () => {
     const { eventTypeId, arcosId } = await ids();
     const q = await createQuote(
       prisma,
-      { fecha: '2027-07-20', invitados: 250, spaceIds: [arcosId], eventTypeId, client: { nombre: 'Original Dup' } },
+      { fecha: '2027-07-20', invitados: 250, spaceIds: [arcosId], eventTypeId, client: { telefono: '5555550000', nombre: 'Original Dup' } },
       actor,
     );
     createdQuoteIds.push(q.id);
@@ -204,7 +204,7 @@ describe('quotes service', () => {
     const { eventTypeId, arcosId } = await ids();
     const q = await createQuote(
       prisma,
-      { fecha: '2029-06-16', invitados: 250, spaceIds: [arcosId], eventTypeId, client: { nombre: 'Fecha Apartado' } },
+      { fecha: '2029-06-16', invitados: 250, spaceIds: [arcosId], eventTypeId, client: { telefono: '5555550000', nombre: 'Fecha Apartado' } },
       actor,
     );
     createdQuoteIds.push(q.id);
@@ -228,7 +228,7 @@ describe('quotes service', () => {
     const { eventTypeId, arcosId } = await ids();
     const ocupa = await createQuote(
       prisma,
-      { fecha: '2029-08-11', invitados: 250, spaceIds: [arcosId], eventTypeId, client: { nombre: 'Ocupa Arcos' } },
+      { fecha: '2029-08-11', invitados: 250, spaceIds: [arcosId], eventTypeId, client: { telefono: '5555550000', nombre: 'Ocupa Arcos' } },
       actor,
     );
     createdQuoteIds.push(ocupa.id);
@@ -238,7 +238,7 @@ describe('quotes service', () => {
     await expect(
       createQuote(
         prisma,
-        { fecha: '2029-08-11', invitados: 200, spaceIds: [arcosId], eventTypeId, client: { nombre: 'Encima' } },
+        { fecha: '2029-08-11', invitados: 200, spaceIds: [arcosId], eventTypeId, client: { telefono: '5555550000', nombre: 'Encima' } },
         actor,
       ),
     ).rejects.toThrow(/no está disponible/i);
@@ -251,7 +251,7 @@ describe('quotes service', () => {
     const { eventTypeId, arcosId } = await ids();
     const q = await createQuote(
       prisma,
-      { fecha: '2029-08-12', invitados: 250, spaceIds: [arcosId], eventTypeId, client: { nombre: 'Auto Bloqueo' } },
+      { fecha: '2029-08-12', invitados: 250, spaceIds: [arcosId], eventTypeId, client: { telefono: '5555550000', nombre: 'Auto Bloqueo' } },
       actor,
     );
     createdQuoteIds.push(q.id);
@@ -276,7 +276,7 @@ describe('quotes service', () => {
         invitados: 250,
         spaceIds: [arcosId, camposId],
         eventTypeId,
-        client: { nombre: 'Dos Salones' },
+        client: { telefono: '5555550000', nombre: 'Dos Salones' },
       },
       actor,
     );
@@ -292,7 +292,7 @@ describe('quotes service', () => {
     const { eventTypeId, arcosId, camposId } = await ids();
     const q = await createQuote(
       prisma,
-      { fecha: '2029-10-06', invitados: 250, spaceIds: [arcosId, camposId], eventTypeId, client: { nombre: 'Plan Dos Salones' } },
+      { fecha: '2029-10-06', invitados: 250, spaceIds: [arcosId, camposId], eventTypeId, client: { telefono: '5555550000', nombre: 'Plan Dos Salones' } },
       actor,
     );
     createdQuoteIds.push(q.id);
@@ -316,7 +316,7 @@ describe('quotes service', () => {
         spaceIds: [arcosId, camposId],
         eventTypeId,
         horasExtra: 2,
-        client: { nombre: 'Prorrateo Horas Extra' },
+        client: { telefono: '5555550000', nombre: 'Prorrateo Horas Extra' },
       },
       actor,
     );
@@ -354,7 +354,7 @@ describe('quotes service', () => {
     // 40 invitados: es el rango que Los Balcones sí cubre (1–50 y 51–70).
     const q = await createQuote(
       prisma,
-      { fecha: '2029-10-13', invitados: 40, spaceIds: [arcosId, balconesId], eventTypeId, client: { nombre: 'Plan Incompleto' } },
+      { fecha: '2029-10-13', invitados: 40, spaceIds: [arcosId, balconesId], eventTypeId, client: { telefono: '5555550000', nombre: 'Plan Incompleto' } },
       actor,
     );
     createdQuoteIds.push(q.id);
@@ -376,7 +376,7 @@ describe('quotes service', () => {
           invitados: 250,
           spaceIds: [arcosId, camposId, cupulaId, balconesId],
           eventTypeId,
-          client: { nombre: 'Cuatro Salones' },
+          client: { telefono: '5555550000', nombre: 'Cuatro Salones' },
         },
         actor,
       ),
@@ -388,7 +388,7 @@ describe('quotes service', () => {
     const { eventTypeId, arcosId, camposId } = await ids();
     const ocupa = await createQuote(
       prisma,
-      { fecha: '2029-08-13', invitados: 250, spaceIds: [camposId], eventTypeId, client: { nombre: 'Ocupa Campos' } },
+      { fecha: '2029-08-13', invitados: 250, spaceIds: [camposId], eventTypeId, client: { telefono: '5555550000', nombre: 'Ocupa Campos' } },
       actor,
     );
     createdQuoteIds.push(ocupa.id);
@@ -404,7 +404,7 @@ describe('quotes service', () => {
           invitados: 250,
           spaceIds: [arcosId, camposId],
           eventTypeId,
-          client: { nombre: 'Dos Salones Uno Ocupado' },
+          client: { telefono: '5555550000', nombre: 'Dos Salones Uno Ocupado' },
         },
         actor,
       ),
@@ -416,7 +416,7 @@ describe('quotes service', () => {
     // 2029-12-01 es sábado; 2029-12-04 es martes (domAJue, más barato).
     const q = await createQuote(
       prisma,
-      { fecha: '2029-12-01', invitados: 200, spaceIds: [camposId], eventTypeId, client: { nombre: 'Mover Fecha' } },
+      { fecha: '2029-12-01', invitados: 200, spaceIds: [camposId], eventTypeId, client: { telefono: '5555550000', nombre: 'Mover Fecha' } },
       actor,
     );
     createdQuoteIds.push(q.id);
@@ -434,7 +434,7 @@ describe('quotes service', () => {
       prisma,
       // 2030-02: ventana libre. Las fechas de diciembre las ocupan los tests
       // fiscales, y "liquidada" bloquea la disponibilidad de ese día.
-      { fecha: '2030-02-09', invitados: 200, spaceIds: [camposId], eventTypeId, client: { nombre: 'Mover Liquidada' } },
+      { fecha: '2030-02-09', invitados: 200, spaceIds: [camposId], eventTypeId, client: { telefono: '5555550000', nombre: 'Mover Liquidada' } },
       actor,
     );
     createdQuoteIds.push(q.id);
@@ -448,7 +448,7 @@ describe('quotes service', () => {
     const { eventTypeId, cupulaId } = await ids();
     const ocupa = await createQuote(
       prisma,
-      { fecha: '2029-12-22', invitados: 200, spaceIds: [cupulaId], eventTypeId, client: { nombre: 'Ocupa Destino' } },
+      { fecha: '2029-12-22', invitados: 200, spaceIds: [cupulaId], eventTypeId, client: { telefono: '5555550000', nombre: 'Ocupa Destino' } },
       actor,
     );
     createdQuoteIds.push(ocupa.id);
@@ -457,7 +457,7 @@ describe('quotes service', () => {
 
     const mover = await createQuote(
       prisma,
-      { fecha: '2029-12-29', invitados: 200, spaceIds: [cupulaId], eventTypeId, client: { nombre: 'Quiere Mover' } },
+      { fecha: '2029-12-29', invitados: 200, spaceIds: [cupulaId], eventTypeId, client: { telefono: '5555550000', nombre: 'Quiere Mover' } },
       actor,
     );
     createdQuoteIds.push(mover.id);
@@ -470,7 +470,7 @@ describe('quotes service', () => {
     const { eventTypeId, camposId } = await ids();
     const q = await createQuote(
       prisma,
-      { fecha: '2030-01-12', invitados: 200, spaceIds: [camposId], eventTypeId, client: { nombre: 'Bitacora Mover' } },
+      { fecha: '2030-01-12', invitados: 200, spaceIds: [camposId], eventTypeId, client: { telefono: '5555550000', nombre: 'Bitacora Mover' } },
       actor,
     );
     createdQuoteIds.push(q.id);
@@ -490,7 +490,7 @@ describe('quotes service', () => {
     const { eventTypeId, arcosId, camposId } = await ids();
     const q = await createQuote(
       prisma,
-      { fecha: '2030-03-09', invitados: 200, spaceIds: [arcosId], eventTypeId, client: { nombre: 'Bitacora Rica' } },
+      { fecha: '2030-03-09', invitados: 200, spaceIds: [arcosId], eventTypeId, client: { telefono: '5555550000', nombre: 'Bitacora Rica' } },
       actor,
     );
     createdQuoteIds.push(q.id);
@@ -518,7 +518,7 @@ describe('quotes service', () => {
     const { eventTypeId, camposId } = await ids();
     const q = await createQuote(
       prisma,
-      { fecha: '2030-03-16', invitados: 200, spaceIds: [camposId], eventTypeId, client: { nombre: 'Sin Cambios' } },
+      { fecha: '2030-03-16', invitados: 200, spaceIds: [camposId], eventTypeId, client: { telefono: '5555550000', nombre: 'Sin Cambios' } },
       actor,
     );
     createdQuoteIds.push(q.id);
@@ -554,7 +554,7 @@ describe('quotes HTTP', () => {
         invitados: 250,
         spaceIds: [arcosId],
         eventTypeId,
-        client: { nombre: 'Cliente HTTP' },
+        client: { telefono: '5555550000', nombre: 'Cliente HTTP' },
       },
     });
     expect(res.statusCode).toBe(201);
@@ -576,7 +576,7 @@ describe('quotes HTTP', () => {
     const { eventTypeId, arcosId } = await ids();
     const ocupa = await createQuote(
       prisma,
-      { fecha: '2030-01-26', invitados: 250, spaceIds: [arcosId], eventTypeId, client: { nombre: 'Ocupa HTTP' } },
+      { fecha: '2030-01-26', invitados: 250, spaceIds: [arcosId], eventTypeId, client: { telefono: '5555550000', nombre: 'Ocupa HTTP' } },
       actor,
     );
     createdQuoteIds.push(ocupa.id);
@@ -599,7 +599,7 @@ describe('quotes HTTP', () => {
         invitados: 200,
         spaceIds: [arcosId],
         eventTypeId,
-        client: { nombre: 'Encima HTTP' },
+        client: { telefono: '5555550000', nombre: 'Encima HTTP' },
       },
     });
 
@@ -616,7 +616,7 @@ describe('quotes HTTP', () => {
       prisma,
       // Fecha propia: este caso llega a liquidada, así que deja el espacio
       // comprometido y el servidor ya rechaza cualquier otra cotización ahí.
-      { fecha: '2030-01-19', invitados: 250, spaceIds: [arcosId], eventTypeId, client: { nombre: 'Ciclo Test' } },
+      { fecha: '2030-01-19', invitados: 250, spaceIds: [arcosId], eventTypeId, client: { telefono: '5555550000', nombre: 'Ciclo Test' } },
       actor,
     );
     createdQuoteIds.push(q.id);
@@ -674,7 +674,7 @@ describe('papelera (soft-delete)', () => {
   it('borra borrador → papelera; no-borrador 409; restaurar; excluye de la lista', async () => {
     const { eventTypeId, arcosId } = await ids();
     // Borrador → se puede eliminar
-    const q = await createQuote(prisma, { fecha: '2028-03-10', invitados: 200, spaceIds: [arcosId], eventTypeId, client: { nombre: 'Papelera Test' } }, actor);
+    const q = await createQuote(prisma, { fecha: '2028-03-10', invitados: 200, spaceIds: [arcosId], eventTypeId, client: { telefono: '5555550000', nombre: 'Papelera Test' } }, actor);
     createdQuoteIds.push(q.id); createdClientIds.push(q.clientId);
 
     await softDeleteQuote(prisma, q.id, actor);
@@ -700,7 +700,7 @@ describe('papelera (soft-delete)', () => {
 
   it('no se puede eliminar un borrador con pagos registrados (anti-irregularidades)', async () => {
     const { eventTypeId, arcosId } = await ids();
-    const q = await createQuote(prisma, { fecha: '2028-03-11', invitados: 150, spaceIds: [arcosId], eventTypeId, client: { nombre: 'Papelera Pagos' } }, actor);
+    const q = await createQuote(prisma, { fecha: '2028-03-11', invitados: 150, spaceIds: [arcosId], eventTypeId, client: { telefono: '5555550000', nombre: 'Papelera Pagos' } }, actor);
     createdQuoteIds.push(q.id); createdClientIds.push(q.clientId);
 
     await prisma.payment.create({
@@ -726,7 +726,7 @@ describe('contador de papelera (sin ver)', () => {
     const { eventTypeId, arcosId } = await ids();
     const q = await createQuote(
       prisma,
-      { fecha, invitados: 150, spaceIds: [arcosId], eventTypeId, client: { nombre } },
+      { fecha, invitados: 150, spaceIds: [arcosId], eventTypeId, client: { telefono: '5555550000', nombre } },
       quien,
     );
     createdQuoteIds.push(q.id);
@@ -820,6 +820,7 @@ describe('datos fiscales (CFDI 4.0)', () => {
         requiereFactura: true,
         client: {
           nombre: 'Con Factura',
+          telefono: '5555550000',
           rfc: 'GODE561231GR8',
           razonSocial: 'Juan Pérez López',
           regimenFiscal: '612',
@@ -849,7 +850,7 @@ describe('datos fiscales (CFDI 4.0)', () => {
         invitados: 200,
         spaceIds: [camposId],
         eventTypeId,
-        client: { nombre: 'Reuso Fiscal', rfc: 'ABC120101XYZ', cpFiscal: '11000' },
+        client: { telefono: '5555550000', nombre: 'Reuso Fiscal', rfc: 'ABC120101XYZ', cpFiscal: '11000' },
       },
       actor,
     );
@@ -879,7 +880,7 @@ describe('datos fiscales (CFDI 4.0)', () => {
         invitados: 150,
         spaceIds: [camposId],
         eventTypeId,
-        client: { nombre: 'Vuelve Sin RFC' },
+        client: { telefono: '5555550000', nombre: 'Vuelve Sin RFC' },
       },
       actor,
     );
@@ -897,7 +898,7 @@ describe('datos fiscales (CFDI 4.0)', () => {
         eventTypeId,
         requiereFactura: true,
         clientId: primera.clientId,
-        client: { nombre: 'Vuelve Sin RFC', rfc: 'ABC120101XYZ', cpFiscal: '11000' },
+        client: { telefono: '5555550000', nombre: 'Vuelve Sin RFC', rfc: 'ABC120101XYZ', cpFiscal: '11000' },
       },
       actor,
     );
@@ -925,6 +926,7 @@ describe('datos fiscales (CFDI 4.0)', () => {
         requiereFactura: true,
         client: {
           nombre: 'Vuelve Con RFC',
+          telefono: '5555550000',
           rfc: 'GODE561231GR8',
           razonSocial: 'Juan Pérez López',
           regimenFiscal: '612',
@@ -1080,7 +1082,7 @@ describe('casamiento con el catálogo', () => {
     const { eventTypeId, arcosId } = await ids();
     const q = await createQuote(
       prisma,
-      { fecha: '2031-03-15', invitados: 200, spaceIds: [arcosId], eventTypeId, client: { nombre: 'Casada al catálogo' } },
+      { fecha: '2031-03-15', invitados: 200, spaceIds: [arcosId], eventTypeId, client: { telefono: '5555550000', nombre: 'Casada al catálogo' } },
       actor,
     );
     createdQuoteIds.push(q.id);
@@ -1093,7 +1095,7 @@ describe('casamiento con el catálogo', () => {
     const { eventTypeId, arcosId } = await ids();
     const q = await createQuote(
       prisma,
-      { fecha: '2031-04-19', invitados: 200, spaceIds: [arcosId], eventTypeId, client: { nombre: 'No me represies' } },
+      { fecha: '2031-04-19', invitados: 200, spaceIds: [arcosId], eventTypeId, client: { telefono: '5555550000', nombre: 'No me represies' } },
       actor,
     );
     createdQuoteIds.push(q.id);
@@ -1106,7 +1108,7 @@ describe('casamiento con el catálogo', () => {
       const editada = await updateQuote(
         prisma,
         q.id,
-        { fecha: '2031-04-19', invitados: 200, spaceIds: [arcosId], eventTypeId, client: { nombre: 'Sigo igual' } },
+        { fecha: '2031-04-19', invitados: 200, spaceIds: [arcosId], eventTypeId, client: { telefono: '5555550000', nombre: 'Sigo igual' } },
         actor,
       );
       expect(editada.priceListId).toBe(viejo.id);
@@ -1130,7 +1132,7 @@ describe('casamiento con el catálogo', () => {
         eventTypeId,
         horasExtra: 2,
         usaDjHoraExtra: true,
-        client: { nombre: 'DJ No Me Represies' },
+        client: { telefono: '5555550000', nombre: 'DJ No Me Represies' },
       },
       actor,
     );
@@ -1178,7 +1180,7 @@ describe('casamiento con el catálogo', () => {
           eventTypeId,
           horasExtra: 2,
           usaDjHoraExtra: true,
-          client: { nombre: 'DJ Al Doble' },
+          client: { telefono: '5555550000', nombre: 'DJ Al Doble' },
         },
         actor,
       );
@@ -1220,7 +1222,7 @@ describe('mover de catálogo', () => {
     const { eventTypeId, camposId } = await ids();
     const q = await createQuote(
       prisma,
-      { fecha, invitados: 200, spaceIds: [camposId], eventTypeId, client: { nombre } },
+      { fecha, invitados: 200, spaceIds: [camposId], eventTypeId, client: { telefono: '5555550000', nombre } },
       actor,
     );
     createdQuoteIds.push(q.id);
@@ -1286,7 +1288,7 @@ describe('mover de catálogo', () => {
         eventTypeId,
         foodPackageId: paquete.id,
         addOns: [{ addOnId: servicio.id, cantidad: 1 }],
-        client: { nombre: 'Mover Con Alimentos' },
+        client: { telefono: '5555550000', nombre: 'Mover Con Alimentos' },
       },
       actor,
     );
@@ -1435,7 +1437,7 @@ describe('servicios sueltos del evento (extras)', () => {
         spaceIds: [arcosId],
         eventTypeId,
         extras: [extraMenu],
-        client: { nombre: 'Extra Menú' },
+        client: { telefono: '5555550000', nombre: 'Extra Menú' },
       },
       actor,
     );
@@ -1459,12 +1461,12 @@ describe('servicios sueltos del evento (extras)', () => {
     const { eventTypeId, arcosId } = await ids();
     const base = { fecha: '2032-03-13', invitados: 250, spaceIds: [arcosId], eventTypeId };
 
-    const sin = await createQuote(prisma, { ...base, client: { nombre: 'Sin extra' } }, actor);
+    const sin = await createQuote(prisma, { ...base, client: { telefono: '5555550000', nombre: 'Sin extra' } }, actor);
     createdQuoteIds.push(sin.id);
     createdClientIds.push(sin.clientId);
     const con = await createQuote(
       prisma,
-      { ...base, fecha: '2032-03-20', extras: [extraMenu], client: { nombre: 'Con extra' } },
+      { ...base, fecha: '2032-03-20', extras: [extraMenu], client: { telefono: '5555550000', nombre: 'Con extra' } },
       actor,
     );
     createdQuoteIds.push(con.id);
@@ -1489,7 +1491,7 @@ describe('servicios sueltos del evento (extras)', () => {
     const { eventTypeId, arcosId } = await ids();
     const q = await createQuote(
       prisma,
-      { fecha: '2032-04-10', invitados: 250, spaceIds: [arcosId], eventTypeId, extras: [extraMenu], client: { nombre: 'Extra Editable' } },
+      { fecha: '2032-04-10', invitados: 250, spaceIds: [arcosId], eventTypeId, extras: [extraMenu], client: { telefono: '5555550000', nombre: 'Extra Editable' } },
       actor,
     );
     createdQuoteIds.push(q.id);
@@ -1517,7 +1519,7 @@ describe('servicios sueltos del evento (extras)', () => {
     const { eventTypeId, arcosId } = await ids();
     const q = await createQuote(
       prisma,
-      { fecha: '2032-05-08', invitados: 250, spaceIds: [arcosId], eventTypeId, extras: [extraMenu], client: { nombre: 'Extra Duplicable' } },
+      { fecha: '2032-05-08', invitados: 250, spaceIds: [arcosId], eventTypeId, extras: [extraMenu], client: { telefono: '5555550000', nombre: 'Extra Duplicable' } },
       actor,
     );
     createdQuoteIds.push(q.id);
@@ -1542,7 +1544,7 @@ describe('servicios sueltos del evento (extras)', () => {
           spaceIds: [arcosId],
           eventTypeId,
           extras: [{ ...extraMenu, monto: 200.5 }],
-          client: { nombre: 'Extra Roto' },
+          client: { telefono: '5555550000', nombre: 'Extra Roto' },
         },
         actor,
       ),
@@ -1567,7 +1569,7 @@ describe('descuento de cortesía', () => {
         esCortesia: true,
         descuentoPct: 100,
         descuentoMotivo: 'Boda de la hija del dueño',
-        client: { nombre: 'Cortesía Total' },
+        client: { telefono: '5555550000', nombre: 'Cortesía Total' },
       },
       actor,
     );
@@ -1594,7 +1596,7 @@ describe('descuento de cortesía', () => {
           spaceIds: [arcosId],
           eventTypeId,
           descuentoPct: 50,
-          client: { nombre: 'Sin Motivo' },
+          client: { telefono: '5555550000', nombre: 'Sin Motivo' },
         },
         actor,
       ),
@@ -1613,7 +1615,7 @@ describe('descuento de cortesía', () => {
           eventTypeId,
           descuentoPct: 120,
           descuentoMotivo: 'Más que gratis',
-          client: { nombre: 'Ciento Veinte' },
+          client: { telefono: '5555550000', nombre: 'Ciento Veinte' },
         },
         actor,
       ),
@@ -1627,7 +1629,7 @@ describe('descuento de cortesía', () => {
     const { eventTypeId, arcosId } = await ids();
     const q = await createQuote(
       prisma,
-      { fecha: '2032-10-09', invitados: 250, spaceIds: [arcosId], eventTypeId, esCortesia: true, client: { nombre: 'Cortesía Sin Descuento' } },
+      { fecha: '2032-10-09', invitados: 250, spaceIds: [arcosId], eventTypeId, esCortesia: true, client: { telefono: '5555550000', nombre: 'Cortesía Sin Descuento' } },
       actor,
     );
     createdQuoteIds.push(q.id);
@@ -1645,12 +1647,12 @@ describe('descuento de cortesía', () => {
   it('el descuento baja la base del complemento: es renta que ya no se va a cobrar', async () => {
     const { eventTypeId, arcosId } = await ids();
     const base = { invitados: 250, spaceIds: [arcosId], eventTypeId };
-    const sin = await createQuote(prisma, { ...base, fecha: '2032-11-13', client: { nombre: 'Renta Completa' } }, actor);
+    const sin = await createQuote(prisma, { ...base, fecha: '2032-11-13', client: { telefono: '5555550000', nombre: 'Renta Completa' } }, actor);
     createdQuoteIds.push(sin.id);
     createdClientIds.push(sin.clientId);
     const con = await createQuote(
       prisma,
-      { ...base, fecha: '2032-11-20', descuentoPct: 50, descuentoMotivo: 'Media cortesía', client: { nombre: 'Media Renta' } },
+      { ...base, fecha: '2032-11-20', descuentoPct: 50, descuentoMotivo: 'Media cortesía', client: { telefono: '5555550000', nombre: 'Media Renta' } },
       actor,
     );
     createdQuoteIds.push(con.id);
@@ -1672,7 +1674,7 @@ describe('descuento de cortesía', () => {
         eventTypeId,
         descuentoPct: 100,
         descuentoMotivo: 'Cortesía que se cancela',
-        client: { nombre: 'Cortesía Revocable' },
+        client: { telefono: '5555550000', nombre: 'Cortesía Revocable' },
       },
       actor,
     );
@@ -1722,7 +1724,7 @@ describe('el contrato cuadra: renglones de renta contra su total', () => {
         foodPackageId: paquete.id,
         descuentoPct: 50,
         descuentoMotivo: 'Boda de la sobrina',
-        client: { nombre: 'Contrato Que Cuadra' },
+        client: { telefono: '5555550000', nombre: 'Contrato Que Cuadra' },
       },
       actor,
     );
@@ -1782,7 +1784,7 @@ describe('arrastrar en la agenda no pierde el descuento ni los extras', () => {
         extras: [extraMenu],
         descuentoPct: 50,
         descuentoMotivo: 'Cortesía que el arrastre no debe borrar',
-        client: { nombre: 'Arrastre Con Descuento' },
+        client: { telefono: '5555550000', nombre: 'Arrastre Con Descuento' },
       },
       actor,
     );
@@ -1802,7 +1804,7 @@ describe('arrastrar en la agenda no pierde el descuento ni los extras', () => {
         extras: [extraMenu],
         descuentoPct: 50,
         descuentoMotivo: 'Cortesía que el arrastre no debe borrar',
-        client: { nombre: 'Arrastre Referencia' },
+        client: { telefono: '5555550000', nombre: 'Arrastre Referencia' },
       },
       actor,
     );
@@ -1841,7 +1843,7 @@ describe('arrastrar en la agenda no pierde el descuento ni los extras', () => {
         extras: [extraMenu],
         descuentoPct: 50,
         descuentoMotivo: 'Cortesía que el catálogo no debe borrar',
-        client: { nombre: 'Catálogo Con Descuento' },
+        client: { telefono: '5555550000', nombre: 'Catálogo Con Descuento' },
       },
       actor,
     );
@@ -1889,7 +1891,7 @@ describe('folio y etiqueta', () => {
         invitados: 250,
         spaceIds: [cupulaId],
         eventTypeId,
-        client: { nombre: 'Carlos Bolado' },
+        client: { telefono: '5555550000', nombre: 'Carlos Bolado' },
       },
       actor,
     );
@@ -1907,7 +1909,7 @@ describe('folio y etiqueta', () => {
   it('dos eventos seguidos toman folios distintos y consecutivos', async () => {
     const { eventTypeId, cupulaId } = await ids();
     const base = { fecha: '2034-02-20', invitados: 250, spaceIds: [cupulaId], eventTypeId };
-    const uno = await createQuote(prisma, { ...base, client: { nombre: 'Colisión Exacta' } }, actor);
+    const uno = await createQuote(prisma, { ...base, client: { telefono: '5555550000', nombre: 'Colisión Exacta' } }, actor);
     createdQuoteIds.push(uno.id);
     createdClientIds.push(uno.clientId);
     // MISMO cliente, MISMA fecha, MISMO salón: antes esto obligaba a un sufijo
@@ -1932,7 +1934,7 @@ describe('folio y etiqueta', () => {
         invitados: 250,
         spaceIds: [cupulaId],
         eventTypeId,
-        client: { nombre: 'Frida Congelada' },
+        client: { telefono: '5555550000', nombre: 'Frida Congelada' },
       },
       actor,
     );
@@ -1973,7 +1975,7 @@ describe('folio y etiqueta', () => {
         invitados: 250,
         spaceIds: [cupulaId],
         eventTypeId,
-        client: { nombre: 'Ana Movible' },
+        client: { telefono: '5555550000', nombre: 'Ana Movible' },
       },
       actor,
     );
@@ -1989,7 +1991,7 @@ describe('folio y etiqueta', () => {
         invitados: 250,
         spaceIds: [cupulaId],
         eventTypeId,
-        client: { nombre: 'Ana Recapturada' },
+        client: { telefono: '5555550000', nombre: 'Ana Recapturada' },
       },
       actor,
     );
@@ -2006,7 +2008,7 @@ describe('folio y etiqueta', () => {
         invitados: 250,
         spaceIds: [cupulaId],
         eventTypeId,
-        client: { nombre: 'Diego Duplicado' },
+        client: { telefono: '5555550000', nombre: 'Diego Duplicado' },
       },
       actor,
     );
@@ -2090,7 +2092,7 @@ describe('banquetero / cliente y festejado', () => {
         invitados: 250,
         spaceIds: [cupulaId],
         eventTypeId,
-        client: { nombre: 'Sin Banquetero Referencia' },
+        client: { telefono: '5555550000', nombre: 'Sin Banquetero Referencia' },
       },
       actor,
     );
@@ -2111,7 +2113,7 @@ describe('banquetero / cliente y festejado', () => {
         eventTypeId,
         banqueteroId,
         festejado: 'Generación 2035',
-        client: { nombre: `Banquetero Hoja ${SUF}` },
+        client: { telefono: '5555550000', nombre: `Banquetero Hoja ${SUF}` },
       },
       actor,
     );
@@ -2133,7 +2135,7 @@ describe('banquetero / cliente y festejado', () => {
     const { eventTypeId, arcosId } = await ids();
     const q = await createQuote(
       prisma,
-      { fecha: '2035-08-11', invitados: 250, spaceIds: [arcosId], eventTypeId, client: { nombre: 'Festejado Legado' } },
+      { fecha: '2035-08-11', invitados: 250, spaceIds: [arcosId], eventTypeId, client: { telefono: '5555550000', nombre: 'Festejado Legado' } },
       actor,
     );
     createdQuoteIds.push(q.id);
@@ -2156,7 +2158,7 @@ describe('banquetero / cliente y festejado', () => {
         eventTypeId,
         banqueteroId,
         festejado: 'Regina',
-        client: { nombre: `Banquetero Editable ${SUF}` },
+        client: { telefono: '5555550000', nombre: `Banquetero Editable ${SUF}` },
       },
       actor,
     );
@@ -2201,7 +2203,7 @@ describe('banquetero / cliente y festejado', () => {
         banqueteroId,
         festejado: 'Ximena',
         festejadoTelefono: '9990001122',
-        client: { nombre: `Banquetero Arrastre ${SUF}` },
+        client: { telefono: '5555550000', nombre: `Banquetero Arrastre ${SUF}` },
       },
       actor,
     );
@@ -2226,7 +2228,7 @@ describe('banquetero / cliente y festejado', () => {
         eventTypeId,
         banqueteroId,
         festejado: 'Camila',
-        client: { nombre: `Banquetero Duplicable ${SUF}` },
+        client: { telefono: '5555550000', nombre: `Banquetero Duplicable ${SUF}` },
       },
       actor,
     );
@@ -2251,7 +2253,7 @@ describe('banquetero / cliente y festejado', () => {
           spaceIds: [arcosId],
           eventTypeId,
           banqueteroId: 'banquetero-que-no-existe',
-          client: { nombre: 'Banquetero Fantasma' },
+          client: { telefono: '5555550000', nombre: 'Banquetero Fantasma' },
         },
         actor,
       ),
@@ -2263,7 +2265,7 @@ describe('banquetero / cliente y festejado', () => {
     const { eventTypeId, arcosId } = await ids();
     const q = await createQuote(
       prisma,
-      { fecha: '2036-01-10', invitados: 250, spaceIds: [arcosId], eventTypeId, client: { nombre: 'Cliente Directo' } },
+      { fecha: '2036-01-10', invitados: 250, spaceIds: [arcosId], eventTypeId, client: { telefono: '5555550000', nombre: 'Cliente Directo' } },
       actor,
     );
     createdQuoteIds.push(q.id);
@@ -2305,7 +2307,7 @@ describe('estatus retirados (punto 8)', () => {
     const { eventTypeId, arcosId } = await ids();
     const q = await createQuote(
       prisma,
-      { fecha: '2036-02-14', invitados: 250, spaceIds: [arcosId], eventTypeId, client: { nombre: 'Estatus Retirado' } },
+      { fecha: '2036-02-14', invitados: 250, spaceIds: [arcosId], eventTypeId, client: { telefono: '5555550000', nombre: 'Estatus Retirado' } },
       actor,
     );
     createdQuoteIds.push(q.id);
@@ -2330,7 +2332,7 @@ describe('estatus retirados (punto 8)', () => {
     const { eventTypeId, arcosId } = await ids();
     const q = await createQuote(
       prisma,
-      { fecha: '2036-03-21', invitados: 200, spaceIds: [arcosId], eventTypeId, client: { nombre: 'Borrador Viejo' } },
+      { fecha: '2036-03-21', invitados: 200, spaceIds: [arcosId], eventTypeId, client: { telefono: '5555550000', nombre: 'Borrador Viejo' } },
       actor,
     );
     createdQuoteIds.push(q.id);

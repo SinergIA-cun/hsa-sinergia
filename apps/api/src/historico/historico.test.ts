@@ -62,7 +62,7 @@ async function eventoPasado(nombre: string, extra: Record<string, unknown> = {})
       extras: [],
       eventTypeId,
       requiereFactura: false,
-      client: { nombre },
+      client: { telefono: '5555550000', nombre },
       ...extra,
     },
     actor,
@@ -114,7 +114,7 @@ describe('qué se archiva y qué no', () => {
         extras: [],
         eventTypeId,
         requiereFactura: false,
-        client: { nombre: 'Histórico · todavía no pasa' },
+        client: { telefono: '5555550000', nombre: 'Histórico · todavía no pasa' },
       },
       actor,
     );

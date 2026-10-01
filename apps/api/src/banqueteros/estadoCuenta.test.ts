@@ -51,7 +51,7 @@ async function evento(deQuien: string, nombre: string) {
       eventTypeId,
       banqueteroId: deQuien,
       festejado: nombre,
-      client: { nombre: 'Cliente del banquetero' },
+      client: { telefono: '5555550000', nombre: 'Cliente del banquetero' },
     },
     actor,
   );
@@ -77,9 +77,9 @@ beforeAll(async () => {
   arcosId = (await prisma.space.findFirst({ where: { nombre: 'Salón Los Arcos' } }))!.id;
   eventTypeId = (await prisma.eventType.findFirst({ where: { slug: 'boda' } }))!.id;
   const [r, vac, vec] = await Promise.all([
-    prisma.banquetero.create({ data: { nombre: `Ramírez EC ${randomUUID().slice(0, 6)}` } }),
-    prisma.banquetero.create({ data: { nombre: `Vacío EC ${randomUUID().slice(0, 6)}` } }),
-    prisma.banquetero.create({ data: { nombre: `Vecino EC ${randomUUID().slice(0, 6)}` } }),
+    prisma.banquetero.create({ data: { telefono: '5555550000', nombre: `Ramírez EC ${randomUUID().slice(0, 6)}` } }),
+    prisma.banquetero.create({ data: { telefono: '5555550000', nombre: `Vacío EC ${randomUUID().slice(0, 6)}` } }),
+    prisma.banquetero.create({ data: { telefono: '5555550000', nombre: `Vecino EC ${randomUUID().slice(0, 6)}` } }),
   ]);
   ramirezId = r.id;
   vacioId = vac.id;
@@ -154,7 +154,7 @@ describe('estado de cuenta del banquetero', () => {
   });
 
   it('el saldo sin asignar es Σ depósitos vivos − Σ asignaciones vivas', async () => {
-    const b = await prisma.banquetero.create({ data: { nombre: `Saldos ${randomUUID().slice(0, 6)}` } });
+    const b = await prisma.banquetero.create({ data: { telefono: '5555550000', nombre: `Saldos ${randomUUID().slice(0, 6)}` } });
     banqueteros.push(b.id);
     const uno = await evento(b.id, 'Uno');
 
@@ -201,7 +201,7 @@ describe('estado de cuenta del banquetero', () => {
   });
 
   it('las cotizaciones en la papelera NO aparecen', async () => {
-    const b = await prisma.banquetero.create({ data: { nombre: `Papelera ${randomUUID().slice(0, 6)}` } });
+    const b = await prisma.banquetero.create({ data: { telefono: '5555550000', nombre: `Papelera ${randomUUID().slice(0, 6)}` } });
     banqueteros.push(b.id);
     const viva = await evento(b.id, 'Viva');
     const muerta = await evento(b.id, 'A la papelera');
@@ -213,7 +213,7 @@ describe('estado de cuenta del banquetero', () => {
   });
 
   it('trae los apartados y los que vencen en los próximos 30 días', async () => {
-    const b = await prisma.banquetero.create({ data: { nombre: `Vence ${randomUUID().slice(0, 6)}` } });
+    const b = await prisma.banquetero.create({ data: { telefono: '5555550000', nombre: `Vence ${randomUUID().slice(0, 6)}` } });
     banqueteros.push(b.id);
     /*
      * Las fechas salen del reloj y NO de constantes, para que la prueba no sea
@@ -304,7 +304,7 @@ describe('el enlace compartible de solo lectura', () => {
   });
 
   it('la vista pública es una proyección: no filtra comprobantes, actores ni motivos', async () => {
-    const b = await prisma.banquetero.create({ data: { nombre: `Proyección ${randomUUID().slice(0, 6)}` } });
+    const b = await prisma.banquetero.create({ data: { telefono: '5555550000', nombre: `Proyección ${randomUUID().slice(0, 6)}` } });
     banqueteros.push(b.id);
     const q = await evento(b.id, 'Proyectado');
     const dep = await registrarDeposito(
@@ -334,7 +334,7 @@ describe('el enlace compartible de solo lectura', () => {
   });
 
   it('un depósito anulado no le sube el saldo a favor a nadie', async () => {
-    const b = await prisma.banquetero.create({ data: { nombre: `Anulado ${randomUUID().slice(0, 6)}` } });
+    const b = await prisma.banquetero.create({ data: { telefono: '5555550000', nombre: `Anulado ${randomUUID().slice(0, 6)}` } });
     banqueteros.push(b.id);
     const dep = await registrarDeposito(prisma, storage, b.id, { monto: 10_000, metodo: 'efectivo', fecha: '2026-03-05' }, actor);
     await prisma.pagoBanquetero.update({ where: { id: dep.id }, data: { anuladoAt: new Date() } });
@@ -355,7 +355,7 @@ describe('el enlace compartible de solo lectura', () => {
      * campo nuevo se publicaba solo. Lo que esta prueba cuida es que no vuelva a
      * pasar — por eso también busca el monto suelto, no solo el nombre del campo.
      */
-    const b = await prisma.banquetero.create({ data: { nombre: `Privado ${randomUUID().slice(0, 6)}` } });
+    const b = await prisma.banquetero.create({ data: { telefono: '5555550000', nombre: `Privado ${randomUUID().slice(0, 6)}` } });
     banqueteros.push(b.id);
     const q = await evento(b.id, 'Del privado');
     const dep = await registrarDeposito(prisma, storage, b.id, { monto: 1_234_567, metodo: 'transferencia', fecha: '2026-03-05', referencia: 'SPEI-PRIVADO' }, actor);
@@ -413,7 +413,7 @@ describe('el dinero de una fecha que se soltó vuelve como saldo a favor', () =>
   }
 
   it('un abono DIRECTO a una fecha vencida se vuelve saldo a favor', async () => {
-    const b = await prisma.banquetero.create({ data: { nombre: `Vencio ${randomUUID().slice(0, 6)}` } });
+    const b = await prisma.banquetero.create({ data: { telefono: '5555550000', nombre: `Vencio ${randomUUID().slice(0, 6)}` } });
     banqueteros.push(b.id);
 
     const apartado = await apartadoVencido(b.id, 30_000);
@@ -434,7 +434,7 @@ describe('el dinero de una fecha que se soltó vuelve como saldo a favor', () =>
   });
 
   it('cancelar la fecha libera el dinero igual que dejarla vencer', async () => {
-    const b = await prisma.banquetero.create({ data: { nombre: `Cancelo ${randomUUID().slice(0, 6)}` } });
+    const b = await prisma.banquetero.create({ data: { telefono: '5555550000', nombre: `Cancelo ${randomUUID().slice(0, 6)}` } });
     banqueteros.push(b.id);
     const { apartado } = await crearApartado(
       prisma,
@@ -455,7 +455,7 @@ describe('el dinero de una fecha que se soltó vuelve como saldo a favor', () =>
      * depósito vuelve a tenerlo sin repartir. Si además se contara como liberado,
      * el banquetero aparecería con el doble de dinero del que dio.
      */
-    const b = await prisma.banquetero.create({ data: { nombre: `Desde dep ${randomUUID().slice(0, 6)}` } });
+    const b = await prisma.banquetero.create({ data: { telefono: '5555550000', nombre: `Desde dep ${randomUUID().slice(0, 6)}` } });
     banqueteros.push(b.id);
     const dep = await registrarDeposito(prisma, storage, b.id, { monto: 100_000, metodo: 'transferencia', fecha: '2026-03-05' }, actor);
     const { apartado } = await crearApartado(prisma, b.id, { fechaEvento: siguienteSabado(), spaceIds: [arcosId] }, actor);
@@ -479,7 +479,7 @@ describe('el dinero de una fecha que se soltó vuelve como saldo a favor', () =>
   it('una fecha CONVERTIDA no libera nada: su dinero es del contrato', async () => {
     // El apartado convertido tampoco está vivo, pero su dinero ya se volvió pago
     // de la cotización. Contarlo como saldo a favor sería regalarlo dos veces.
-    const b = await prisma.banquetero.create({ data: { nombre: `Convertido ${randomUUID().slice(0, 6)}` } });
+    const b = await prisma.banquetero.create({ data: { telefono: '5555550000', nombre: `Convertido ${randomUUID().slice(0, 6)}` } });
     banqueteros.push(b.id);
     const { apartado } = await crearApartado(
       prisma,
@@ -490,9 +490,11 @@ describe('el dinero de una fecha que se soltó vuelve como saldo a favor', () =>
     const { quote } = await convertirApartado(prisma, storage, apartado.id, {
       invitados: 250,
       eventTypeId,
-      client: { nombre: 'Cliente del convertido' },
+      client: { telefono: '5555550000', nombre: 'Cliente del convertido' },
     }, actor);
     quotes.push(quote.id);
+    // La conversión crea la ficha del banquetero como cliente: también se limpia.
+    clients.push(quote.clientId);
 
     const ec = await estadoCuentaBanquetero(prisma, b.id);
     expect(ec.totales.saldoLiberado).toBe(0);

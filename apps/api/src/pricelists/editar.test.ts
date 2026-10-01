@@ -106,7 +106,7 @@ async function cotizacionEn(priceListId: string, fecha: string) {
         invitados: 250,
         spaceIds: [arcos.id],
         eventTypeId: eventType.id,
-        client: { nombre: `Cliente editar ${randomUUID().slice(0, 6)}` },
+        client: { telefono: '5555550000', nombre: `Cliente editar ${randomUUID().slice(0, 6)}` },
       },
       actor,
     );
@@ -746,7 +746,7 @@ describe('DJ y parámetros del catálogo', () => {
             eventTypeId: boda,
             horasExtra: 2,
             usaDjHoraExtra: true,
-            client: { nombre: `Cliente DJ ${randomUUID().slice(0, 6)}` },
+            client: { telefono: '5555550000', nombre: `Cliente DJ ${randomUUID().slice(0, 6)}` },
           },
           actor,
         );
@@ -1136,7 +1136,7 @@ describe('el catálogo se elige al crear el contrato', () => {
         invitados: 250,
         spaceIds: [arcos.id],
         eventTypeId: eventType.id,
-        client: { nombre: `Cliente catálogo ${randomUUID().slice(0, 6)}` },
+        client: { telefono: '5555550000', nombre: `Cliente catálogo ${randomUUID().slice(0, 6)}` },
         ...cuerpo,
       },
     });
