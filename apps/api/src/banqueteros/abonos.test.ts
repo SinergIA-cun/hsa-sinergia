@@ -8,6 +8,7 @@ import type { Actor } from '../quotes/service.js';
 import { registrarDeposito, asignarDeposito, saldoSinAsignar } from './cuenta.js';
 import { crearApartado, convertirApartado, listarApartados, cancelarApartado } from './apartados.js';
 import { anularAbono, registrarAbono, totalAbonado } from './abonos.js';
+import { borrarCatalogoDePrueba } from '../pricelists/testSupport.js';
 
 /**
  * Abonar a una fecha apartada.
@@ -30,6 +31,13 @@ let camposId: string;
 let eventTypeId: string;
 let banqueteroId: string;
 const banqueteros: string[] = [];
+/**
+ * Los catálogos que crean las pruebas de conversión. Sin esta lista se quedaban
+ * para siempre en la base de desarrollo —que es la misma de las pruebas— y
+ * llenaban el selector de "Lista de precios" de "Garantizado…" y
+ * "Convertir-lab…": había 50 tras 25 corridas.
+ */
+const priceLists: string[] = [];
 const quotes: string[] = [];
 const clients: string[] = [];
 
@@ -80,6 +88,9 @@ afterAll(async () => {
   await prisma.client.deleteMany({ where: { id: { in: clients } } });
   await prisma.pagoBanquetero.deleteMany({ where: { banqueteroId: { in: banqueteros } } });
   await prisma.banquetero.deleteMany({ where: { id: { in: banqueteros } } });
+  // Al final: los RESTRICT a `PriceList` exigen que ya no quede ningún apartado
+  // ni cotización apuntándoles.
+  for (const id of priceLists) await borrarCatalogoDePrueba(prisma, id);
 });
 
 describe('una fecha se abona de a poco', () => {
@@ -398,6 +409,7 @@ describe('al convertir se puede armar el contrato completo', () => {
       },
       select: { id: true },
     });
+    priceLists.push(otro.id);
 
     const { quote } = await convertirApartado(
       prisma,
@@ -430,6 +442,7 @@ describe('al convertir se puede armar el contrato completo', () => {
       },
       select: { id: true },
     });
+    priceLists.push(garantizado.id);
     const apartado = await nuevoApartado({ priceListId: garantizado.id });
 
     const activo = await prisma.priceList.findFirstOrThrow({ where: { activa: true } });

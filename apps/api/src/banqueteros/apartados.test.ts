@@ -10,6 +10,7 @@ import { loadConfig } from '../config.js';
 import { hashPassword } from '../auth/password.js';
 import { createQuote, updateStatus, type Actor } from '../quotes/service.js';
 import { clonarCatalogo } from '../pricelists/service.js';
+import { borrarCatalogoDePrueba } from '../pricelists/testSupport.js';
 import { getAvailability, getAgenda } from '../availability/service.js';
 import { cotizacionesDesplazadas } from '../quotes/empalmes.js';
 import { biEventos } from '../bi/service.js';
@@ -86,14 +87,10 @@ afterAll(async () => {
   await prisma.quote.deleteMany({ where: { id: { in: quotes } } });
   await prisma.client.deleteMany({ where: { id: { in: clients } } });
   await prisma.banquetero.deleteMany({ where: { id: { in: banqueteros } } });
-  // Los catálogos de prueba, de adentro hacia afuera: los FK son RESTRICT y las
-  // cotizaciones que los apuntaban ya se borraron arriba.
-  await prisma.foodPackagePrice.deleteMany({ where: { package: { priceListId: { in: priceLists } } } });
-  await prisma.foodPackage.deleteMany({ where: { priceListId: { in: priceLists } } });
-  await prisma.addOn.deleteMany({ where: { priceListId: { in: priceLists } } });
-  await prisma.rentalPrice.deleteMany({ where: { priceListId: { in: priceLists } } });
-  await prisma.djHoraExtraPrice.deleteMany({ where: { priceListId: { in: priceLists } } });
-  await prisma.priceList.deleteMany({ where: { id: { in: priceLists } } });
+  // Los catálogos de prueba, con el helper que conoce el orden de sus hijos
+  // (incluida su bitácora, que la copia a mano de antes no borraba). Los FK son
+  // RESTRICT y las cotizaciones que los apuntaban ya se borraron arriba.
+  for (const id of priceLists) await borrarCatalogoDePrueba(prisma, id);
   await prisma.user.delete({ where: { id: ventas.id } });
   await app.close();
 });
