@@ -75,7 +75,7 @@ beforeAll(async () => {
   arcosId = (await prisma.space.findFirst({ where: { nombre: 'Salón Los Arcos' } }))!.id;
   camposId = (await prisma.space.findFirst({ where: { nombre: 'Jardín Los Campos' } }))!.id;
   eventTypeId = (await prisma.eventType.findFirst({ where: { slug: 'boda' } }))!.id;
-  const b = await prisma.banquetero.create({ data: { nombre: `Apartador ${randomUUID().slice(0, 6)}` } });
+  const b = await prisma.banquetero.create({ data: { telefono: '5555550000', nombre: `Apartador ${randomUUID().slice(0, 6)}` } });
   banqueteroId = b.id;
   banqueteros.push(b.id);
 });
@@ -96,7 +96,7 @@ afterAll(async () => {
 });
 
 /** El cuerpo mínimo de una cotización, que es lo que el apartado NO tenía. */
-const cuerpoCotizacion = { eventTypeId: '', invitados: 250, client: { nombre: 'Festejo Convertido' } };
+const cuerpoCotizacion = { eventTypeId: '', invitados: 250, client: { telefono: '5555550000', nombre: 'Festejo Convertido' } };
 function cuerpo(over: Record<string, unknown> = {}) {
   return { ...cuerpoCotizacion, eventTypeId, ...over };
 }
@@ -137,7 +137,7 @@ describe('un apartado bloquea la fecha', () => {
 
     // Y el servidor rechaza cotizar encima, por el mismo camino que ya existía.
     await expect(
-      createQuote(prisma, { fecha, invitados: 250, spaceIds: [arcosId], eventTypeId, client: { nombre: 'Intruso' } }, actor),
+      createQuote(prisma, { fecha, invitados: 250, spaceIds: [arcosId], eventTypeId, client: { telefono: '5555550000', nombre: 'Intruso' } }, actor),
     ).rejects.toMatchObject({ status: 409 });
   });
 
@@ -179,7 +179,7 @@ describe('un apartado bloquea la fecha', () => {
     const fecha = siguienteSabado();
     const q = await createQuote(
       prisma,
-      { fecha, invitados: 200, spaceIds: [camposId], eventTypeId, client: { nombre: 'Agenda Con Apartado' } },
+      { fecha, invitados: 200, spaceIds: [camposId], eventTypeId, client: { telefono: '5555550000', nombre: 'Agenda Con Apartado' } },
       actor,
     );
     quotes.push(q.id);
@@ -216,7 +216,7 @@ describe('un apartado bloquea la fecha', () => {
     const fecha = siguienteSabado();
     const borrador = await createQuote(
       prisma,
-      { fecha, invitados: 200, spaceIds: [arcosId], eventTypeId, client: { nombre: 'Borrador Desplazable' } },
+      { fecha, invitados: 200, spaceIds: [arcosId], eventTypeId, client: { telefono: '5555550000', nombre: 'Borrador Desplazable' } },
       actor,
     );
     quotes.push(borrador.id);
@@ -256,7 +256,7 @@ describe('apartar sobre una fecha comprometida: avisa, no bloquea', () => {
     const fecha = siguienteSabado();
     const q = await createQuote(
       prisma,
-      { fecha, invitados: 250, spaceIds: [arcosId], eventTypeId, client: { nombre: 'Ya Comprometido' } },
+      { fecha, invitados: 250, spaceIds: [arcosId], eventTypeId, client: { telefono: '5555550000', nombre: 'Ya Comprometido' } },
       actor,
     );
     quotes.push(q.id);
@@ -371,7 +371,7 @@ describe('convertir el apartado', () => {
       prisma,
       storage,
       apartado.id,
-      cuerpo({ client: { nombre: 'Alguien que no es el banquetero' } }),
+      cuerpo({ client: { telefono: '5555550000', nombre: 'Alguien que no es el banquetero' } }),
       actor,
     );
     quotes.push(quote.id);
@@ -501,7 +501,7 @@ describe('validaciones y permisos', () => {
   });
 
   it('listarApartados marca vivo/vencido y trae el catálogo garantizado', async () => {
-    const soloDeEste = await prisma.banquetero.create({ data: { nombre: `Solo ${randomUUID().slice(0, 6)}` } });
+    const soloDeEste = await prisma.banquetero.create({ data: { telefono: '5555550000', nombre: `Solo ${randomUUID().slice(0, 6)}` } });
     banqueteros.push(soloDeEste.id);
     const { apartado } = await nuevoApartado({ banqueteroId: soloDeEste.id });
     const lista = await listarApartados(prisma, soloDeEste.id);
@@ -593,10 +593,11 @@ describe('renovar un apartado', () => {
     // La fecha quedó libre y se vendió: ahora hay una cotización encima.
     const q = await createQuote(
       prisma,
-      { fecha, invitados: 200, spaceIds: [arcosId], eventTypeId, client: { nombre: 'Quien sí llegó' } },
+      { fecha, invitados: 200, spaceIds: [arcosId], eventTypeId, client: { telefono: '5555550000', nombre: 'Quien sí llegó' } },
       actor,
     );
     quotes.push(q.id);
+    clients.push(q.clientId);
     await updateStatus(prisma, q.id, 'formalizada', actor);
 
     await expect(renovarApartado(prisma, apartado.id, {}, actor)).rejects.toMatchObject({ status: 409 });

@@ -32,7 +32,7 @@ describe('getAvailability', () => {
 
     const q = await createQuote(
       prisma,
-      { fecha: FECHA, invitados: 250, spaceIds: [arcosId], eventTypeId, client: { nombre: 'Dispo Test' } },
+      { fecha: FECHA, invitados: 250, spaceIds: [arcosId], eventTypeId, client: { telefono: '5555550000', nombre: 'Dispo Test' } },
       actor,
     );
     created.push(q.id);
@@ -65,7 +65,7 @@ describe('getAvailability', () => {
 
     const q = await createQuote(
       prisma,
-      { fecha: FECHA_CAP, invitados: 200, spaceIds: [arcosId], eventTypeId, usaCapilla: true, capillaHorario: '13:00', client: { nombre: 'Capilla Test' } },
+      { fecha: FECHA_CAP, invitados: 200, spaceIds: [arcosId], eventTypeId, usaCapilla: true, capillaHorario: '13:00', client: { telefono: '5555550000', nombre: 'Capilla Test' } },
       actor,
     );
     created.push(q.id);
@@ -89,7 +89,7 @@ describe('getAvailability', () => {
     const FECHA_VIEJA = '2029-05-20';
     const q = await createQuote(
       prisma,
-      { fecha: FECHA_VIEJA, invitados: 200, spaceIds: [arcosId], eventTypeId, client: { nombre: 'Vigencia Pasada' } },
+      { fecha: FECHA_VIEJA, invitados: 200, spaceIds: [arcosId], eventTypeId, client: { telefono: '5555550000', nombre: 'Vigencia Pasada' } },
       actor,
     );
     created.push(q.id);
@@ -110,7 +110,7 @@ describe('getAgenda sin el filtro de vencida', () => {
     const FECHA_AG = '2029-06-09';
     const borrador = await createQuote(
       prisma,
-      { fecha: FECHA_AG, invitados: 200, spaceIds: [arcosId], eventTypeId, client: { nombre: 'Agenda Borrador' } },
+      { fecha: FECHA_AG, invitados: 200, spaceIds: [arcosId], eventTypeId, client: { telefono: '5555550000', nombre: 'Agenda Borrador' } },
       actor,
     );
     created.push(borrador.id);
@@ -130,7 +130,7 @@ describe('getAgenda sin el filtro de vencida', () => {
     const FECHA_PAP = '2029-06-10';
     const q = await createQuote(
       prisma,
-      { fecha: FECHA_PAP, invitados: 200, spaceIds: [arcosId], eventTypeId, client: { nombre: 'Agenda Papelera' } },
+      { fecha: FECHA_PAP, invitados: 200, spaceIds: [arcosId], eventTypeId, client: { telefono: '5555550000', nombre: 'Agenda Papelera' } },
       actor,
     );
     created.push(q.id);

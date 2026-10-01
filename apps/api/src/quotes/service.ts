@@ -10,6 +10,8 @@ import {
   hoyCivilMexico,
   motivoObligatorio,
   prorratearRenta,
+  tieneContacto,
+  MENSAJE_SIN_CONTACTO,
   type QuoteExtra,
   type QuoteSelection,
 } from '@hsa/shared';
@@ -163,6 +165,30 @@ async function assertBanquetero(db: PrismaClient, banqueteroId: string | null | 
   if (!banqueteroId) return;
   const existe = await db.banquetero.findUnique({ where: { id: banqueteroId }, select: { id: true } });
   if (!existe) throw new QuoteError(400, 'El banquetero elegido no existe.');
+}
+
+/**
+ * Teléfono o correo: al menos uno (decisión del dueño). Un cliente al que no se
+ * le puede avisar nada no se da de alta.
+ *
+ * Se revisa cómo QUEDARÍA el cliente y no lo que trae la petición: al reutilizar
+ * uno existente, lo que no se manda se conserva (así escribe Prisma), y un cliente
+ * viejo sin contacto tiene que completarlo la próxima vez que se edite su evento.
+ * Corre antes de cualquier escritura: un rechazo no deja nada a medias.
+ */
+async function assertContactoCliente(
+  db: PrismaClient,
+  clientId: string | undefined,
+  datos: { telefono?: string | null; correo?: string | null } | undefined,
+): Promise<void> {
+  const actual = clientId
+    ? await db.client.findUnique({ where: { id: clientId }, select: { telefono: true, correo: true } })
+    : null;
+  const final = {
+    telefono: datos?.telefono !== undefined ? datos.telefono : actual?.telefono,
+    correo: datos?.correo !== undefined ? datos.correo : actual?.correo,
+  };
+  if (!tieneContacto(final)) throw new QuoteError(400, MENSAJE_SIN_CONTACTO);
 }
 
 /**
@@ -640,6 +666,7 @@ export async function createQuote(
   // rechazada no debe dejar un cliente huérfano en la base.
   await assertEspaciosDisponibles(db, input.fecha, input.spaceIds, undefined, opts.excludeApartadoId);
   await assertBanquetero(db, input.banqueteroId);
+  await assertContactoCliente(db, input.clientId, input.client);
   // El catálogo se fija AQUÍ y queda casado a la cotización: reeditarla más
   // adelante recalcula contra este, no contra el que esté activo ese día.
   const catalogo = opts.priceListId
@@ -821,6 +848,9 @@ export async function updateQuote(db: PrismaClient, id: string, rawInput: unknow
   // Se excluye a sí misma: editar sin mover fecha ni espacio no se auto-bloquea.
   await assertEspaciosDisponibles(db, input.fecha, input.spaceIds, id);
   await assertBanquetero(db, input.banqueteroId);
+  // Solo si el formulario trae al cliente: mover la fecha o el catálogo no lo
+  // toca, y no tiene por qué tropezar con un cliente viejo sin contacto.
+  if (input.client) await assertContactoCliente(db, existing.clientId, input.client);
   // Con el catálogo que la cotización FIJÓ al crearse, nunca con el activo:
   // reeditar una cotización de 2027 debe usar precios de 2027 aunque el catálogo
   // vigente ya sea 2028. Sin esto, cambiarle el nombre al cliente la represia.

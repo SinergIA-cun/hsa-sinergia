@@ -63,7 +63,7 @@ function siguienteSabado(): string {
 }
 
 async function nuevaQuote() {
-  const q = await createQuote(prisma, { fecha: siguienteSabado(), invitados: 250, spaceIds: [arcosId], eventTypeId, client: { nombre: 'Pago Test' } }, actor);
+  const q = await createQuote(prisma, { fecha: siguienteSabado(), invitados: 250, spaceIds: [arcosId], eventTypeId, client: { telefono: '5555550000', nombre: 'Pago Test' } }, actor);
   quotes.push(q.id); clients.push(q.clientId);
   return q;
 }
@@ -376,7 +376,7 @@ describe('candado de facturación', () => {
 
     const actualizada = await updateQuote(prisma, q.id, {
       ...selectionDe(q),
-      client: { nombre: 'Pago Test', rfc: 'XAXX010101000', razonSocial: 'Cliente Nuevo' },
+      client: { telefono: '5555550000', nombre: 'Pago Test', rfc: 'XAXX010101000', razonSocial: 'Cliente Nuevo' },
     }, actor);
     expect(actualizada.client.rfc).toBe('XAXX010101000');
   });
@@ -392,14 +392,14 @@ describe('candado de facturación', () => {
     const sinCambioFiscal = await updateQuote(prisma, q.id, {
       ...selectionDe(q),
       invitados: 260,
-      client: { nombre: 'Pago Test', rfc: null, razonSocial: null, regimenFiscal: null, cpFiscal: null, usoCfdi: null, correoFacturacion: null },
+      client: { telefono: '5555550000', nombre: 'Pago Test', rfc: null, razonSocial: null, regimenFiscal: null, cpFiscal: null, usoCfdi: null, correoFacturacion: null },
     }, actor);
     expect(sinCambioFiscal.invitados).toBe(260);
 
     const conRfc = await updateQuote(prisma, q.id, {
       ...selectionDe(q),
       invitados: 260,
-      client: { nombre: 'Pago Test', rfc: 'XAXX010101000' },
+      client: { telefono: '5555550000', nombre: 'Pago Test', rfc: 'XAXX010101000' },
     }, actor);
     expect(conRfc.client.rfc).toBe('XAXX010101000');
   });
@@ -539,7 +539,7 @@ describe('datos fiscales con una factura emitida', () => {
     await expect(
       updateQuote(prisma, quoteId, {
         ...selectionDe(quote),
-        client: { nombre: 'Pago Test', rfc: 'XAXX010101000' },
+        client: { telefono: '5555550000', nombre: 'Pago Test', rfc: 'XAXX010101000' },
       }, ventas),
     ).rejects.toThrow(/factura/i);
 
@@ -553,7 +553,7 @@ describe('datos fiscales con una factura emitida', () => {
 
     const actualizada = await updateQuote(prisma, quoteId, {
       ...selectionDe(quote),
-      client: { nombre: 'Pago Test', rfc: 'XAXX010101000' },
+      client: { telefono: '5555550000', nombre: 'Pago Test', rfc: 'XAXX010101000' },
     }, actor);
     expect(actualizada.client.rfc).toBe('XAXX010101000');
 
@@ -573,7 +573,7 @@ describe('datos fiscales con una factura emitida', () => {
     const actualizada = await updateQuote(prisma, quoteId, {
       ...selectionDe(quote),
       invitados: 180,
-      client: { nombre: 'Pago Test', ...fiscalesSinCambio },
+      client: { telefono: '5555550000', nombre: 'Pago Test', ...fiscalesSinCambio },
     }, ventas);
     expect(actualizada.invitados).toBe(180);
   });
@@ -584,7 +584,7 @@ describe('datos fiscales con una factura emitida', () => {
     const { quoteId, paymentId, quote } = await crearPagoDePrueba();
     await updateQuote(prisma, quoteId, {
       ...selectionDe(quote),
-      client: { nombre: 'Pago Test', rfc: 'XAXX010101000' },
+      client: { telefono: '5555550000', nombre: 'Pago Test', rfc: 'XAXX010101000' },
     }, actor);
     await marcarFacturadoComoAdmin(quoteId, paymentId);
 
@@ -592,7 +592,7 @@ describe('datos fiscales con una factura emitida', () => {
     const actualizada = await updateQuote(prisma, quoteId, {
       ...selectionDe(quote),
       invitados: 190,
-      client: { nombre: 'Pago Test' },
+      client: { telefono: '5555550000', nombre: 'Pago Test' },
     }, ventas);
     expect(actualizada.invitados).toBe(190);
     expect(actualizada.client.rfc).toBe('XAXX010101000');
@@ -602,7 +602,7 @@ describe('datos fiscales con una factura emitida', () => {
     const { quoteId, quote } = await crearPagoDePrueba();
     await updateQuote(prisma, quoteId, {
       ...selectionDe(quote),
-      client: { nombre: 'Pago Test', rfc: 'XAXX010101000' },
+      client: { telefono: '5555550000', nombre: 'Pago Test', rfc: 'XAXX010101000' },
     }, actor);
 
     const logs = await prisma.activityLog.findMany({ where: { quoteId, tipo: 'fiscal' } });
@@ -729,7 +729,7 @@ describe('concepto de pago deducido', () => {
     const balconesId = (await prisma.space.findFirstOrThrow({ where: { nombre: 'Salón Los Balcones' } })).id;
     const q = await createQuote(prisma, {
       fecha: siguienteSabado(), invitados: 40, spaceIds: [arcosId, balconesId], eventTypeId,
-      client: { nombre: 'Pago Sin Plan' },
+      client: { telefono: '5555550000', nombre: 'Pago Sin Plan' },
     }, actor);
     quotes.push(q.id); clients.push(q.clientId);
 
@@ -745,7 +745,7 @@ describe('corregir el concepto a mano', () => {
     const ventas = { id: ventasId, role: 'ventas' as const };
     const q = await createQuote(prisma, {
       fecha: siguienteSabado(), invitados: 250, spaceIds: [arcosId], eventTypeId,
-      client: { nombre: 'Pago De Ventas' },
+      client: { telefono: '5555550000', nombre: 'Pago De Ventas' },
     }, ventas);
     quotes.push(q.id); clients.push(q.clientId);
 

@@ -56,7 +56,7 @@ async function nuevoEvento(deQuien: string | null, creador: Actor = actor) {
       invitados: 250,
       spaceIds: [arcosId],
       eventTypeId,
-      client: { nombre: 'Banquetero Cuenta Test' },
+      client: { telefono: '5555550000', nombre: 'Banquetero Cuenta Test' },
       ...(deQuien ? { banqueteroId: deQuien } : {}),
     },
     creador,

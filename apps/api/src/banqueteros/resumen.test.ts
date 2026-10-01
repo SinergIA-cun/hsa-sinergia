@@ -75,7 +75,7 @@ async function evento(deQuien: string) {
       spaceIds: [arcosId],
       eventTypeId,
       banqueteroId: deQuien,
-      client: { nombre: 'Cliente del resumen' },
+      client: { telefono: '5555550000', nombre: 'Cliente del resumen' },
     },
     actor,
   );

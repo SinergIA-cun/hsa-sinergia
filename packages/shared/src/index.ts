@@ -16,3 +16,4 @@ export * from './apartados/vigencia.js';
 export * from './pagos/formas.js';
 export * from './pos/productos.js';
 export * from './bi/importacion.js';
+export * from './clientes/contacto.js';

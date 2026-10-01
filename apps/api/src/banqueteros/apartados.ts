@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import type { PrismaClient } from '@hsa/database';
 import {
+  correoValido,
   hoyCivilMexico,
   vigenciaDeApartado,
   metodoCapturaSchema,
@@ -301,7 +302,7 @@ export async function convertirApartado(
 
   const banquetero = await db.banquetero.findUniqueOrThrow({
     where: { id: apartado.banqueteroId },
-    select: { nombre: true, telefono: true },
+    select: { nombre: true, telefono: true, correo: true },
   });
 
   /**
@@ -351,7 +352,7 @@ export async function convertirApartado(
       banqueteroId: apartado.banqueteroId,
       ...(fichaExistente
         ? { clientId: fichaExistente.id }
-        : { client: { nombre: banquetero.nombre, telefono: banquetero.telefono ?? undefined } }),
+        : { client: { nombre: banquetero.nombre, telefono: banquetero.telefono ?? undefined, correo: correoValido(banquetero.correo) ? banquetero.correo! : undefined } }),
     },
     actor,
     {

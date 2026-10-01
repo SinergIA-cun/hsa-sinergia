@@ -48,7 +48,7 @@ async function nuevoEvento(deBanquetero = false) {
       invitados: 250,
       spaceIds: [arcosId],
       eventTypeId,
-      client: { nombre: 'Folios Test' },
+      client: { telefono: '5555550000', nombre: 'Folios Test' },
       ...(deBanquetero ? { banqueteroId } : {}),
     },
     admin,
@@ -70,7 +70,7 @@ beforeAll(async () => {
   admin = { id: u.id, role: 'admin' };
   arcosId = (await prisma.space.findFirstOrThrow({ where: { nombre: 'Salón Los Arcos' } })).id;
   eventTypeId = (await prisma.eventType.findFirstOrThrow({ where: { slug: 'boda' } })).id;
-  banqueteroId = (await prisma.banquetero.create({ data: { nombre: `Folios ${randomUUID().slice(0, 6)}` } })).id;
+  banqueteroId = (await prisma.banquetero.create({ data: { telefono: '5555550000', nombre: `Folios ${randomUUID().slice(0, 6)}` } })).id;
 });
 
 afterAll(async () => {
@@ -235,7 +235,7 @@ describe('un folio por cada dinero que entra', () => {
     expect(directo.folio).toBe(antes);
 
     const { quote } = await convertirApartado(
-      prisma, storage, apartado.id, { eventTypeId, invitados: 250, client: { nombre: 'Folios Convertido' } }, admin,
+      prisma, storage, apartado.id, { eventTypeId, invitados: 250, client: { telefono: '5555550000', nombre: 'Folios Convertido' } }, admin,
     );
     quotes.push(quote.id);
     clients.push(quote.clientId);

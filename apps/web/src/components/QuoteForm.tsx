@@ -3,6 +3,8 @@ import { useQuery } from '@tanstack/react-query';
 import {
   capacidadTotal,
   computeQuote,
+  tieneContacto,
+  MENSAJE_SIN_CONTACTO,
   type DatosFiscales,
   type QuoteBreakdown,
   type QuoteLine,
@@ -11,7 +13,7 @@ import { Sparkles, AlertTriangle, CheckCircle2, Ban, UserCheck, X, Plus, Trash2 
 import { api } from '../lib/api.ts';
 import { formatMXN } from '../lib/money.ts';
 import { Button, Card, Field, MoneyInput, TextInput, SelectInput } from './ui.tsx';
-import { ClienteSearch, type ClienteLite } from './ClienteSearch.tsx';
+import { ClienteCombobox, type ClienteLite } from './ClienteSearch.tsx';
 import { BanqueteroPicker, type ModoVenta } from './banqueteros/BanqueteroPicker.tsx';
 import { FacturacionSection } from './FacturacionSection.tsx';
 import { BreakdownGrouped } from './BreakdownGrouped.tsx';
@@ -222,8 +224,7 @@ export function QuoteForm({
     });
   }
   function desvincular() {
-    // El guard no es cosmético: esto corre en CADA tecla del nombre, teléfono y
-    // correo. Sin él, capturar los datos fiscales de un cliente nuevo y luego
+    // El guard no es cosmético: esto corre en CADA tecla del nombre. Sin él, capturar los datos fiscales de un cliente nuevo y luego
     // corregir una letra de su nombre los borraría.
     if (!pickedClientId) return;
     setPickedClientId(undefined);
@@ -446,8 +447,10 @@ export function QuoteForm({
   // El motivo es obligatorio cuando hay descuento: un descuento de cientos de
   // miles sin explicación es un problema de auditoría, no un campo opcional.
   const faltaMotivo = pctValido != null && descuentoMotivo.trim() === '';
+  // Teléfono o correo, al menos uno (decisión del dueño). La misma regla que exige la API.
+  const faltaContacto = !tieneContacto({ telefono, correo });
   const canSave = Boolean(
-    nombre && eventTypeId && fecha && spaceIds.length >= 1 && spaceIds.length <= MAX_ESPACIOS &&
+    nombre && !faltaContacto && eventTypeId && fecha && spaceIds.length >= 1 && spaceIds.length <= MAX_ESPACIOS &&
     breakdown && !calcError && !blocked && !faltaMotivo,
   );
 
@@ -516,7 +519,9 @@ export function QuoteForm({
     <div className="grid gap-8 lg:grid-cols-[1.4fr_1fr]">
       {/* Formulario */}
       <div className="space-y-6">
-        <Card className="space-y-4 p-6">
+        {/* relative z-10: la lista de clientes que ya existen se despliega encima
+            de la tarjeta de abajo, no detrás. */}
+        <Card className="relative z-10 space-y-4 p-6">
           <h2 className="font-display text-xl text-ink">Cliente</h2>
 
           {/* ¿Para quién es este evento? Con banquetero, ÉL es el cliente de la
@@ -553,15 +558,8 @@ export function QuoteForm({
               El banquetero es el cliente de la hacienda: <strong>firma él y se le factura a él</strong>.
               Sus datos quedan de solo lectura; para corregirlos, edítalo en{' '}
               <a href="/banqueteros" className="underline">Banqueteros</a>.
-              {enableClientSearch && ' Si ya tiene ficha de cliente, búscala aquí abajo para no duplicarla.'}
+              {enableClientSearch && ' Si ya tiene ficha de cliente, aparece abajo de su nombre: úsala para no duplicarla.'}
             </p>
-          )}
-
-          {/* Dos buscadores encimados confunden: mientras se busca al banquetero,
-              el de clientes se guarda. Vuelve en cuanto hay banquetero elegido,
-              que es cuando sí sirve —para no duplicarle la ficha. */}
-          {enableClientSearch && !pickedClientId && !buscandoBanquetero && (
-            <ClienteSearch onPick={pickCliente} />
           )}
 
           {pickedClientId && (
@@ -576,41 +574,51 @@ export function QuoteForm({
             </div>
           )}
 
-          <Field label={esDeBanquetero ? 'Nombre (del banquetero)' : 'Nombre'}>
-            <TextInput
-              value={nombre}
-              readOnly={esDeBanquetero}
-              onChange={(e) => {
-                setNombre(e.target.value);
-                desvincular();
-              }}
-              placeholder="Nombre del cliente"
-            />
-          </Field>
+          {/* El nombre ES el buscador: mientras se escribe aparecen los clientes
+              que ya existen. Mientras se busca al banquetero no busca —dos
+              listas encimadas confunden—; con banquetero elegido enseña su ficha
+              si ya tiene una, para no duplicarla. */}
+          <ClienteCombobox
+            label={esDeBanquetero ? 'Nombre (del banquetero)' : 'Nombre'}
+            value={nombre}
+            readOnly={esDeBanquetero}
+            buscar={enableClientSearch && !pickedClientId && !buscandoBanquetero}
+            onPick={pickCliente}
+            onChange={(v) => {
+              setNombre(v);
+              desvincular();
+            }}
+          />
           <div className="grid gap-4 sm:grid-cols-2">
+            {/* Cambiar el teléfono o el correo de un cliente existente NO lo
+                desvincula: es el mismo cliente con su dato al día, y así se
+                completa la ficha de uno viejo que no traía contacto. */}
             <Field label="Teléfono">
               <TextInput
+                type="tel"
                 value={telefono}
                 readOnly={esDeBanquetero}
-                onChange={(e) => {
-                  setTelefono(e.target.value);
-                  desvincular();
-                }}
-                placeholder="Opcional"
+                onChange={(e) => setTelefono(e.target.value)}
+                placeholder="55 1234 5678"
               />
             </Field>
             <Field label="Correo">
               <TextInput
                 type="email"
                 value={correo}
-                onChange={(e) => {
-                  setCorreo(e.target.value);
-                  desvincular();
-                }}
-                placeholder="Opcional"
+                onChange={(e) => setCorreo(e.target.value)}
+                placeholder="nombre@correo.com"
               />
             </Field>
           </div>
+          {/* En rojo solo cuando ya es lo único que falta: gritarlo desde la
+              primera letra del nombre regaña antes de tiempo. */}
+          <p className={`-mt-2 text-xs ${faltaContacto && nombre && fecha && spaceIds.length > 0 ? 'text-wine' : 'text-charcoal-soft'}`}>
+            {faltaContacto && nombre && fecha && spaceIds.length > 0
+              ? `${MENSAJE_SIN_CONTACTO}${esDeBanquetero && !telefono ? ' El banquetero no tiene teléfono: captura su correo.' : ''}`
+              : 'Teléfono o correo: al menos uno es obligatorio.'}
+            {pickedClientId && !faltaContacto && ' Si lo cambias, se actualiza en su ficha.'}
+          </p>
 
           {/* El festejado: el cliente FINAL de la reventa. Solo aparece con
               banquetero, porque es ahí donde "quién compró" y "quién festeja"
