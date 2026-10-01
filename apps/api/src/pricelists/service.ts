@@ -103,6 +103,7 @@ export async function clonarCatalogo(db: PrismaClient, rawInput: unknown) {
         data: addOns.map((a) => ({
           priceListId: creado.id,
           nombre: a.nombre,
+          categoria: a.categoria,
           kind: a.kind,
           price: conIncremento(a.price, pct),
           activo: a.activo,

@@ -1,4 +1,5 @@
 import type { FastifyInstance } from 'fastify';
+import type { PrismaClient } from '@hsa/database';
 import { requireAuth } from '../auth/plugin.js';
 import { loadCatalog } from './loader.js';
 
@@ -54,6 +55,30 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
       // quitarlo desde la interfaz y la cotización queda ineditable.
       app.prisma.addOn.findMany({ where: delCatalogo, orderBy: { nombre: 'asc' } }),
     ]);
-    return { engine, spaces, eventTypes, addOns };
+    return { engine, spaces, eventTypes, addOns: await conUsos(app.prisma, addOns) };
   });
+}
+
+/**
+ * Cuántas cotizaciones de su catálogo llevan cada servicio, para ofrecer primero
+ * los más usados: con decenas de servicios, los cuatro o cinco que salen en casi
+ * todos los eventos no deberían tener que buscarse.
+ *
+ * Se deriva, no se guarda: un contador en la tabla se desincronizaría con cada
+ * edición de cotización. Se cuentan las vivas (la papelera no es uso).
+ */
+async function conUsos<T extends { id: string; priceListId: string }>(db: PrismaClient, addOns: T[]) {
+  if (addOns.length === 0) return [];
+  const listas = [...new Set(addOns.map((a) => a.priceListId))];
+  const quotes = await db.quote.findMany({
+    where: { priceListId: { in: listas }, deletedAt: null },
+    select: { addOns: true },
+  });
+  const usos = new Map<string, number>();
+  for (const q of quotes) {
+    for (const sel of (q.addOns as { addOnId?: string }[] | null) ?? []) {
+      if (sel?.addOnId) usos.set(sel.addOnId, (usos.get(sel.addOnId) ?? 0) + 1);
+    }
+  }
+  return addOns.map((a) => ({ ...a, usos: usos.get(a.id) ?? 0 }));
 }

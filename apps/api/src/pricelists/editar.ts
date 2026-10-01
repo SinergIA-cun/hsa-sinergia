@@ -131,8 +131,17 @@ export async function editarRentas(
 
 const KINDS = ['fijo', 'porPersona', 'porUnidad'] as const;
 
+/** Vacía = sin categoría: se guarda `null`, no una cadena vacía que agruparía aparte. */
+const categoria = z
+  .string()
+  .trim()
+  .max(40)
+  .transform((v) => (v === '' ? null : v))
+  .nullish();
+
 export const servicioCreateSchema = z.object({
   nombre: z.string().min(1).max(80),
+  categoria,
   kind: z.enum(KINDS),
   price: precio,
   activo: z.boolean().default(true),
@@ -141,6 +150,7 @@ export const servicioCreateSchema = z.object({
 export const servicioUpdateSchema = z
   .object({
     nombre: z.string().min(1).max(80).optional(),
+    categoria,
     kind: z.enum(KINDS).optional(),
     price: precio.optional(),
     activo: z.boolean().optional(),
@@ -183,7 +193,7 @@ export async function crearServicio(
         priceListId,
         tipo: 'servicio',
         descripcion: `Servicio "${addOn.nombre}" agregado (${addOn.price} · ${addOn.kind})`,
-        meta: { accion: 'alta', addOnId: addOn.id, despues: { nombre: addOn.nombre, kind: addOn.kind, price: addOn.price, activo: addOn.activo } },
+        meta: { accion: 'alta', addOnId: addOn.id, despues: { nombre: addOn.nombre, categoria: addOn.categoria, kind: addOn.kind, price: addOn.price, activo: addOn.activo } },
       },
       actor,
     );
@@ -223,8 +233,8 @@ export async function editarServicio(
         meta: {
           accion: 'edicion',
           addOnId,
-          antes: { nombre: antes.nombre, kind: antes.kind, price: antes.price, activo: antes.activo },
-          despues: { nombre: addOn.nombre, kind: addOn.kind, price: addOn.price, activo: addOn.activo },
+          antes: { nombre: antes.nombre, categoria: antes.categoria, kind: antes.kind, price: antes.price, activo: antes.activo },
+          despues: { nombre: addOn.nombre, categoria: addOn.categoria, kind: addOn.kind, price: addOn.price, activo: addOn.activo },
         },
       },
       actor,
