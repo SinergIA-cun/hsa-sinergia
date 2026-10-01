@@ -205,7 +205,14 @@ async function catalogoPorId(db: PrismaClient, priceListId: string): Promise<{ i
 /** Calcula el desglose y enriquece las líneas de renta con el nombre del espacio. */
 async function computeAndEnrich(db: PrismaClient, selection: QuoteSelection, priceListId?: string) {
   const catalog = await loadCatalog(db, priceListId ? { priceListId } : {});
-  const breakdown = computeQuote(catalog, selection);
+  // Lo que el motor rechaza ("Arcos no se ofrece en sábado", "no caben") es un
+  // problema de los datos de la cotización, no del servidor: 400 con su mensaje.
+  let breakdown: ReturnType<typeof computeQuote>;
+  try {
+    breakdown = computeQuote(catalog, selection);
+  } catch (e) {
+    throw new QuoteError(400, e instanceof Error ? e.message : 'No se pudo calcular la cotización.');
+  }
   const spaces = await db.space.findMany({ where: { id: { in: selection.spaceIds } } });
   const nameById = new Map(spaces.map((s) => [s.id, s.nombre]));
   const enriched = {

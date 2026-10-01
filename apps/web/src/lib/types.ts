@@ -123,10 +123,11 @@ export interface RentaRenglon {
   tipo: string;
   min: number;
   max: number | null;
-  viernes: number;
-  viernesEspecial: number;
-  sabado: number;
-  domAJue: number;
+  /** `null` = no aplica: ese día no se ofrece (el viernes especial cae a viernes). */
+  viernes: number | null;
+  viernesEspecial: number | null;
+  sabado: number | null;
+  domAJue: number | null;
 }
 
 export interface PaqueteCatalogo {

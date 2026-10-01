@@ -1049,10 +1049,10 @@ describe('casamiento con el catálogo', () => {
         tipo: r.tipo,
         min: r.min,
         max: r.max,
-        viernes: r.viernes * factor,
-        viernesEspecial: r.viernesEspecial * factor,
-        sabado: r.sabado * factor,
-        domAJue: r.domAJue * factor,
+        viernes: r.viernes! * factor,
+        viernesEspecial: r.viernesEspecial! * factor,
+        sabado: r.sabado! * factor,
+        domAJue: r.domAJue! * factor,
       })),
     });
     const dj = await prisma.djHoraExtraPrice.findMany({ where: { priceListId: viejo.id } });

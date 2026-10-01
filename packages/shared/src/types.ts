@@ -8,7 +8,8 @@ export interface CapacityBracket {
 
 export interface RentalPriceRow extends CapacityBracket {
   spaceId: string;
-  prices: Record<DayType, number>; // con IVA, en pesos
+  /** Con IVA, en pesos. `null` = no aplica: ese día no se ofrece (ver `precioDelDia`). */
+  prices: Record<DayType, number | null>;
 }
 
 export interface FoodPackageRow extends CapacityBracket {
@@ -52,6 +53,8 @@ export interface Catalog {
   flatRentalEventTypeIds: string[];    // tipos de evento que usan la renta plana
   foodPackages: FoodPackage[];
   addOns: AddOn[];
+  /** Nombre de cada espacio por id, para que un error diga "Arcos" y no un id. */
+  spaceNames?: Record<string, string>;
 }
 
 // QuoteSelection se define en schemas.ts (derivado del esquema zod) para evitar

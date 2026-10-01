@@ -3,7 +3,15 @@ import type { Catalog, RentalPriceRow } from '@hsa/shared';
 
 /** Mapea filas de RentalPrice de Prisma al shape del motor. */
 function toRentalRows(
-  rows: { spaceId: string; min: number; max: number | null; viernes: number; viernesEspecial: number; sabado: number; domAJue: number }[],
+  rows: {
+    spaceId: string;
+    min: number;
+    max: number | null;
+    viernes: number | null;
+    viernesEspecial: number | null;
+    sabado: number | null;
+    domAJue: number | null;
+  }[],
 ): RentalPriceRow[] {
   return rows.map((r) => ({
     spaceId: r.spaceId,
@@ -37,7 +45,7 @@ export async function loadCatalog(
     );
   }
 
-  const [rentals, packages, addOns, djPrices, eventTypes] = await Promise.all([
+  const [rentals, packages, addOns, djPrices, eventTypes, spaces] = await Promise.all([
     db.rentalPrice.findMany({ where: { priceListId: priceList.id } }),
     db.foodPackage.findMany({ where: { priceListId: priceList.id }, include: { brackets: true } }),
     // SIN filtrar por `activo`: el catálogo tiene que RESOLVER todos los
@@ -50,6 +58,8 @@ export async function loadCatalog(
     db.djHoraExtraPrice.findMany({ where: { priceListId: priceList.id } }),
     // `EventType` sigue haciendo falta, pero solo por `rentaPlana`.
     db.eventType.findMany({ select: { id: true, rentaPlana: true } }),
+    // Para que el motor diga "Arcos no se ofrece en sábado" y no un id.
+    db.space.findMany({ select: { id: true, nombre: true } }),
   ]);
 
   // Un tipo de evento SIN renglón no ofrece el servicio (hoy: graduación, renta
@@ -93,5 +103,6 @@ export async function loadCatalog(
       price: a.price,
       activo: a.activo,
     })),
+    spaceNames: Object.fromEntries(spaces.map((s) => [s.id, s.nombre])),
   } satisfies Catalog;
 }

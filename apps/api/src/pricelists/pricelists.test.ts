@@ -125,10 +125,10 @@ describe('catálogos', () => {
     const rc = await prisma.rentalPrice.findFirstOrThrow({
       where: { priceListId: clon.id, spaceId: rb.spaceId, min: rb.min, tipo: rb.tipo },
     });
-    expect(rc.sabado).toBe(Math.round(rb.sabado * 1.1));
-    expect(rc.viernes).toBe(Math.round(rb.viernes * 1.1));
-    expect(rc.viernesEspecial).toBe(Math.round(rb.viernesEspecial * 1.1));
-    expect(rc.domAJue).toBe(Math.round(rb.domAJue * 1.1));
+    expect(rc.sabado).toBe(Math.round(rb.sabado! * 1.1));
+    expect(rc.viernes).toBe(Math.round(rb.viernes! * 1.1));
+    expect(rc.viernesEspecial).toBe(Math.round(rb.viernesEspecial! * 1.1));
+    expect(rc.domAJue).toBe(Math.round(rb.domAJue! * 1.1));
 
     const ab = await prisma.addOn.findFirstOrThrow({ where: { priceListId: base.id }, orderBy: { nombre: 'asc' } });
     const ac = await prisma.addOn.findFirstOrThrow({ where: { priceListId: clon.id, nombre: ab.nombre } });
@@ -167,7 +167,7 @@ describe('catálogos', () => {
       const rb = rentasBase[i]!;
       for (const campo of ['viernes', 'viernesEspecial', 'sabado', 'domAJue'] as const) {
         expect(Number.isInteger(rc[campo])).toBe(true);
-        expect(rc[campo]).toBe(Math.round(rb[campo] * factor));
+        expect(rc[campo]).toBe(Math.round(rb[campo]! * factor));
       }
     }
 
@@ -392,7 +392,7 @@ describe('catálogos HTTP', () => {
     // exactamente cómo se edita el catálogo equivocado.
     const rb = await prisma.rentalPrice.findFirstOrThrow({ where: { priceListId: base.id }, orderBy: { id: 'asc' } });
     const rc = c.renta.find((r) => r.spaceId === rb.spaceId && r.min === rb.min && r.tipo === rb.tipo);
-    expect(rc?.sabado).toBe(Math.round(rb.sabado * 1.1));
+    expect(rc?.sabado).toBe(Math.round(rb.sabado! * 1.1));
 
     expect(c.paquetes.length).toBeGreaterThan(0);
     expect(c.paquetes.every((p) => p.brackets.length > 0)).toBe(true);

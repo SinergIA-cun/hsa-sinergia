@@ -218,7 +218,8 @@ describe('computeQuote', () => {
         { spaceId: 'roto', min: 1, max: null, prices: { viernes: 0, viernesEspecial: 0, domAJue: 0 } as unknown as Record<'viernes' | 'viernesEspecial' | 'sabado' | 'domAJue', number> },
       ],
     };
-    expect(() => computeQuote(roto, mk({ spaceIds: ['roto'], invitados: 100 }))).toThrow(/Falta precio/i);
+    // Sin precio de sábado = "no aplica": no se cotiza (antes decía "Falta precio").
+    expect(() => computeQuote(roto, mk({ spaceIds: ['roto'], invitados: 100 }))).toThrow(/no se ofrece en sábado/i);
   });
 
   it('las líneas de renta llevan spaceId; las demás no', () => {

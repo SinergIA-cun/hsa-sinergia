@@ -18,28 +18,49 @@ const ETIQUETA: Record<Campo, string> = {
 
 export interface RentaCambio {
   id: string;
-  viernes: number;
-  viernesEspecial: number;
-  sabado: number;
-  domAJue: number;
+  /** `null` = no aplica. */
+  viernes: number | null;
+  viernesEspecial: number | null;
+  sabado: number | null;
+  domAJue: number | null;
 }
+
+/**
+ * "No aplica": ese día no se ofrece con esta renta. Antes se capturaba un cero, y
+ * el cotizador lo cobraba como renta de $0 (decisión del dueño, 1-oct-2026).
+ */
+const NO_APLICA = 'no-aplica';
 
 /** Lo que se está escribiendo, por renglón. Cadenas, no números: un input vacío no es 0. */
 type Borrador = Record<string, Record<Campo, string>>;
 
+const aTexto = (v: number | null): string => (v == null ? NO_APLICA : String(v));
+
 const deRenglon = (r: RentaRenglon): Record<Campo, string> => ({
-  viernes: String(r.viernes),
-  viernesEspecial: String(r.viernesEspecial),
-  sabado: String(r.sabado),
-  domAJue: String(r.domAJue),
+  viernes: aTexto(r.viernes),
+  viernesEspecial: aTexto(r.viernesEspecial),
+  sabado: aTexto(r.sabado),
+  domAJue: aTexto(r.domAJue),
 });
 
-/** Un precio válido: entero de pesos, no negativo. Prisma TRUNCA los flotantes. */
-function aPrecio(v: string): number | null {
+/**
+ * Lo capturado en una celda: pesos enteros, `null` si no aplica, o `undefined`
+ * si es inválido (vacío o con decimales). Prisma TRUNCA los flotantes.
+ */
+function aPrecio(v: string): number | null | undefined {
+  if (v === NO_APLICA) return null;
   const n = Number(v);
-  if (v.trim() === '' || Number.isNaN(n) || !Number.isInteger(n) || n < 0) return null;
+  if (v.trim() === '' || Number.isNaN(n) || !Number.isInteger(n) || n < 0) return undefined;
   return n;
 }
+
+/** Qué pasa cuando una columna no aplica, dicho para quien captura. */
+const EFECTO_NO_APLICA: Record<Campo, string> = {
+  viernes: 'No se ofrece en viernes (tampoco el viernes especial si también está apagado).',
+  viernesEspecial: 'El viernes especial se cobra como viernes normal.',
+  sabado: 'No se ofrece en sábado.',
+  domAJue: 'No se ofrece de domingo a jueves.',
+};
 
 const rango = (r: RentaRenglon) => `${r.min}–${r.max ?? '∞'}`;
 
@@ -75,22 +96,22 @@ export function RentaSeccion({
       const base = porId.get(id);
       if (!base) continue;
       const numeros = CAMPOS.map((c) => aPrecio(valores[c]));
-      if (numeros.some((n) => n === null)) continue; // inválido: no se manda
+      if (numeros.some((n) => n === undefined)) continue; // inválido: no se manda
       const distinto = CAMPOS.some((c, i) => numeros[i] !== base[c]);
       if (!distinto) continue;
       out.push({
         id,
-        viernes: numeros[0]!,
-        viernesEspecial: numeros[1]!,
-        sabado: numeros[2]!,
-        domAJue: numeros[3]!,
+        viernes: numeros[0] ?? null,
+        viernesEspecial: numeros[1] ?? null,
+        sabado: numeros[2] ?? null,
+        domAJue: numeros[3] ?? null,
       });
     }
     return out;
   }, [borrador, porId]);
 
   const hayInvalidos = Object.entries(borrador).some(([, v]) =>
-    CAMPOS.some((c) => aPrecio(v[c]) === null),
+    CAMPOS.some((c) => aPrecio(v[c]) === undefined),
   );
 
   function editar(r: RentaRenglon, campo: Campo, valor: string) {
@@ -102,9 +123,27 @@ export function RentaSeccion({
     }));
   }
 
+  /**
+   * Apaga o prende una columna entera de una tabla. Al prenderla, cada celda
+   * vuelve a su precio guardado (si tenía) o queda vacía para capturarlo.
+   */
+  function alternarColumna(renglones: RentaRenglon[], campo: Campo, apagar: boolean) {
+    limpiar();
+    setInvalido('');
+    setBorrador((prev) => {
+      const next = { ...prev };
+      for (const r of renglones) {
+        const actual = next[r.id] ?? deRenglon(r);
+        const guardado = r[campo];
+        next[r.id] = { ...actual, [campo]: apagar ? NO_APLICA : guardado == null ? '' : String(guardado) };
+      }
+      return next;
+    });
+  }
+
   async function guardar() {
     if (hayInvalidos) {
-      setInvalido('Hay precios vacíos o con decimales. Usa pesos enteros, sin centavos.');
+      setInvalido('Hay precios vacíos o con decimales. Usa pesos enteros, sin centavos, o márcalos "No aplica".');
       return;
     }
     setInvalido('');
@@ -140,14 +179,19 @@ export function RentaSeccion({
         Solo se editan los precios. Los rangos de invitados no se agregan ni se quitan: un hueco
         entre rangos deja sin precio a ese número de invitados y el cotizador revienta al capturarlo.
       </p>
+      <p className="rounded-lg bg-cream-200/60 px-3 py-2 text-sm text-ink">
+        <strong>No aplica</strong> apaga un precio sin dejarlo en cero. El <strong>viernes especial</strong>{' '}
+        apagado se cobra como viernes normal; cualquier otro día apagado <strong>no se ofrece</strong>: el
+        cotizador avisa en vez de cobrar $0. Se apaga por celda, o la columna entera desde su encabezado.
+      </p>
 
       {porTipo.map((g) => (
         <div key={g.tipo} className="space-y-1.5">
           <h4 className="font-display text-base text-ink">{g.titulo}</h4>
           {g.tipo === 'plano' && (
             <p className="text-xs text-charcoal-soft">
-              La renta plana cobra lo mismo todos los días: los cuatro precios de un renglón deberían
-              coincidir.
+              La renta plana cobra lo mismo todos los días que se ofrece: los precios de un renglón que
+              sí aplican deberían coincidir.
             </p>
           )}
           <div className="overflow-x-auto">
@@ -156,11 +200,24 @@ export function RentaSeccion({
                 <tr className="border-b border-cream-300 text-left text-xs uppercase tracking-wide text-charcoal-soft">
                   <th className="py-1.5 pr-3 font-medium">Espacio</th>
                   <th className="py-1.5 pr-3 font-medium">Invitados</th>
-                  {CAMPOS.map((c) => (
-                    <th key={c} className="py-1.5 pr-3 font-medium">
-                      {ETIQUETA[c]}
-                    </th>
-                  ))}
+                  {CAMPOS.map((c) => {
+                    const apagada = g.renglones.every(
+                      (r) => (borrador[r.id] ?? deRenglon(r))[c] === NO_APLICA,
+                    );
+                    return (
+                      <th key={c} className="py-1.5 pr-3 align-bottom font-medium">
+                        <span className="block">{ETIQUETA[c]}</span>
+                        <button
+                          type="button"
+                          onClick={() => alternarColumna(g.renglones, c, !apagada)}
+                          title={apagada ? 'Volver a ofrecer esta columna' : EFECTO_NO_APLICA[c]}
+                          className="mt-0.5 text-[0.65rem] font-semibold normal-case tracking-normal text-gold hover:underline"
+                        >
+                          {apagada ? 'Activar columna' : 'Columna: no aplica'}
+                        </button>
+                      </th>
+                    );
+                  })}
                 </tr>
               </thead>
               <tbody>
@@ -221,8 +278,11 @@ function Renglon({
   primeroDelGrupo: boolean;
   onEditar: (campo: Campo, valor: string) => void;
 }) {
+  // En renta plana los días que SÍ se ofrecen cobran lo mismo; los que no
+  // aplican no cuentan (es normal apagar viernes y sábado).
   const desigual =
-    renglon.tipo === 'plano' && new Set(CAMPOS.map((c) => valores[c])).size > 1;
+    renglon.tipo === 'plano' &&
+    new Set(CAMPOS.map((c) => valores[c]).filter((v) => v !== NO_APLICA)).size > 1;
 
   /*
    * El fondo del renglón, en orden de prioridad.
@@ -254,26 +314,51 @@ function Renglon({
       <td className="py-1.5 pr-3 text-charcoal-soft">
         {rango(renglon)}
         {desigual && (
-          <span className="ml-1 text-wine" title="En renta plana los cuatro precios deberían coincidir">
+          <span className="ml-1 text-wine" title="En renta plana los precios que sí aplican deberían coincidir">
             ≠
           </span>
         )}
       </td>
       {CAMPOS.map((campo) => {
-        const malo = aPrecio(valores[campo]) === null;
-        const cambiado = aPrecio(valores[campo]) !== renglon[campo];
+        const leido = aPrecio(valores[campo]);
+        const malo = leido === undefined;
+        const noAplica = leido === null;
+        const cambiado = !malo && leido !== renglon[campo];
+        const guardado = renglon[campo];
+        const antes = guardado == null ? 'no aplicaba' : formatMXN(guardado);
+        const etiqueta = `${renglon.espacio} ${rango(renglon)} ${ETIQUETA[campo]}`;
         return (
-          <td key={campo} className="py-1.5 pr-3">
-            <MoneyInput
-              aria-label={`${renglon.espacio} ${rango(renglon)} ${ETIQUETA[campo]}`}
-              className={`w-28 px-2 py-1 text-sm ${malo ? 'border-wine' : ''}`}
-              value={valores[campo]}
-              onValue={(v) => onEditar(campo, v)}
-            />
-            {cambiado && !malo && (
-              <span className="mt-0.5 block text-[0.65rem] text-charcoal-soft">
-                antes {formatMXN(renglon[campo])}
-              </span>
+          <td key={campo} className="py-1.5 pr-3 align-top">
+            {noAplica ? (
+              <button
+                type="button"
+                onClick={() => onEditar(campo, guardado == null ? '' : String(guardado))}
+                title={`${EFECTO_NO_APLICA[campo]} Clic para volver a ofrecerlo.`}
+                aria-label={`${etiqueta}: no aplica. Volver a ofrecerlo`}
+                className="w-28 rounded-lg border border-dashed border-ink/25 bg-ink/[0.03] px-2 py-1 text-left text-xs font-medium text-charcoal-soft hover:border-gold hover:text-ink"
+              >
+                No aplica
+              </button>
+            ) : (
+              <>
+                <MoneyInput
+                  aria-label={etiqueta}
+                  className={`w-28 px-2 py-1 text-sm ${malo ? 'border-wine' : ''}`}
+                  value={valores[campo]}
+                  onValue={(v) => onEditar(campo, v)}
+                />
+                <button
+                  type="button"
+                  onClick={() => onEditar(campo, NO_APLICA)}
+                  title={EFECTO_NO_APLICA[campo]}
+                  className="mt-0.5 block text-[0.65rem] text-charcoal-soft hover:text-wine hover:underline"
+                >
+                  No aplica
+                </button>
+              </>
+            )}
+            {cambiado && (
+              <span className="mt-0.5 block text-[0.65rem] text-charcoal-soft">antes {antes}</span>
             )}
           </td>
         );

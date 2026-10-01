@@ -14,12 +14,15 @@ import { registrarCambioCatalogo } from './audit.js';
  * abajo.
  */
 const precio = z.number().int().nonnegative();
+/** Un precio de renta: pesos enteros, o `null` = no aplica (ese día no se ofrece). */
+const precioRenta = precio.nullable();
 
 /**
  * Ningún precio entra a la base sin pasar por aquí, aunque Zod ya haya exigido
  * `int()`. Es la última red antes de Prisma, que trunca en silencio.
  */
 const aPesos = (n: number): number => Math.round(n);
+const aPesosONull = (n: number | null): number | null => (n == null ? null : Math.round(n));
 
 /** Existe el catálogo, o 404. Se hace dentro de la transacción del cambio. */
 async function assertCatalogo(tx: Prisma.TransactionClient, priceListId: string): Promise<void> {
@@ -30,10 +33,10 @@ async function assertCatalogo(tx: Prisma.TransactionClient, priceListId: string)
 /** Los cuatro precios de un renglón. NO se toca `min`/`max`: ver `editarRentas`. */
 const rentaCambioSchema = z.object({
   id: z.string().min(1),
-  viernes: precio,
-  viernesEspecial: precio,
-  sabado: precio,
-  domAJue: precio,
+  viernes: precioRenta,
+  viernesEspecial: precioRenta,
+  sabado: precioRenta,
+  domAJue: precioRenta,
 });
 
 export const editarRentasSchema = z.object({
@@ -90,10 +93,10 @@ export async function editarRentas(
     for (const c of cambios) {
       const actual = porId.get(c.id)!;
       const despues = {
-        viernes: aPesos(c.viernes),
-        viernesEspecial: aPesos(c.viernesEspecial),
-        sabado: aPesos(c.sabado),
-        domAJue: aPesos(c.domAJue),
+        viernes: aPesosONull(c.viernes),
+        viernesEspecial: aPesosONull(c.viernesEspecial),
+        sabado: aPesosONull(c.sabado),
+        domAJue: aPesosONull(c.domAJue),
       };
       await tx.rentalPrice.update({ where: { id: c.id }, data: despues });
       renglones.push({
