@@ -171,6 +171,8 @@ export async function biPagos(db: PrismaClient, r: RangoBI) {
       // de venta (otros ingresos del evento, fuera de su valor).
       destino: p.destino,
       concepto: p.concepto,
+      // Lo que anotó quien registró el pago para entenderlo.
+      notas: p.notas,
       registradoPor: p.registradoBy?.nombre ?? null,
       anulado: p.anuladoAt != null,
       anuladoPor: p.anuladoBy?.nombre ?? null,
@@ -318,6 +320,7 @@ export async function biIngresos(db: PrismaClient, r: RangoBI) {
       metodo: p.metodo,
       formas: partesDePago(p),
       referencia: p.referencia,
+      notas: p.notas,
       anulado: p.anuladoAt != null,
       de: p.quote?.client?.nombre ?? null,
       quoteId: p.quoteId,
@@ -336,6 +339,7 @@ export async function biIngresos(db: PrismaClient, r: RangoBI) {
       metodo: d.metodo,
       formas: partesDePago(d),
       referencia: d.referencia,
+      notas: d.notas,
       anulado: d.anuladoAt != null,
       de: d.banquetero.nombre,
       quoteId: null,
@@ -354,6 +358,7 @@ export async function biIngresos(db: PrismaClient, r: RangoBI) {
       metodo: a.metodo,
       formas: partesDePago(a),
       referencia: a.referencia,
+      notas: a.notas,
       anulado: a.anuladoAt != null,
       de: a.apartado.banquetero.nombre,
       quoteId: null,

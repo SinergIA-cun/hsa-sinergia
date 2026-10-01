@@ -213,6 +213,10 @@ Real, de `GET /api/bi/pagos?desde=2026-08-01&hasta=2026-08-31`:
 persona en la app: `"El pago está anulado."`, `"Ya se facturó este pago."` o
 `"Cerró marzo sin CFDI: este pago se facturó a público en general."`.
 
+> **Notas.** `/pagos` e `/ingresos` traen `notas`: lo que anotó quien registró el dinero para
+> entenderlo ("pagó la tía", "el cheque se cobra el lunes"). Texto libre, puede ser `null`. Un
+> pago que salió de repartir un depósito hereda las notas del depósito.
+
 ### `GET /api/bi/ingresos`
 
 **Cada dinero que entró, una fila por folio.** Es la hoja foliada de la hacienda (serie

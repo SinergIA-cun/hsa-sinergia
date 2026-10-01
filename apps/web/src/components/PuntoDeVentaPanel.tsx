@@ -9,6 +9,7 @@ import { Button, Card, Field, MoneyInput, TextInput } from './ui.tsx';
 import { FormasPagoCampo, errorFormas, formasEnFormData, formasIniciales } from './FormasPagoCampo.tsx';
 import { apiErrorMessage } from './admin/shared.tsx';
 import type { CuentaEvento, ProductoPuntoDeVenta } from '../lib/types.ts';
+import { NotasCampo } from './NotasPago.tsx';
 
 /**
  * El punto de venta del evento.
@@ -328,6 +329,7 @@ function CobrarCuenta({ quoteId, saldo, onListo }: { quoteId: string; saldo: num
   const [formas, setFormas] = useState(() => formasIniciales('tarjetaCredito'));
   const [fecha, setFecha] = useState(hoy);
   const [referencia, setReferencia] = useState('');
+  const [notas, setNotas] = useState('');
   const [error, setError] = useState('');
   const [ok, setOk] = useState('');
   const [busy, setBusy] = useState(false);
@@ -355,12 +357,14 @@ function CobrarCuenta({ quoteId, saldo, onListo }: { quoteId: string; saldo: num
       fd.set('destino', 'cargos');
       formasEnFormData(fd, formas);
       if (referencia.trim()) fd.set('referencia', referencia.trim());
+      if (notas.trim()) fd.set('notas', notas.trim());
       const res = await fetch(`${apiBase}/api/quotes/${quoteId}/payments`, { method: 'POST', credentials: 'include', body: fd });
       const cuerpo = (await res.json().catch(() => null)) as { error?: string; payment?: { folio: number } } | null;
       if (!res.ok) throw new Error(cuerpo?.error ?? 'No se pudo registrar el cobro.');
       setOk(`Cobro registrado con el folio ${formatFolio(cuerpo?.payment?.folio)}.`);
       setFormas(formasIniciales('tarjetaCredito'));
       setReferencia('');
+      setNotas('');
       await onListo();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo registrar el cobro.');
@@ -382,6 +386,9 @@ function CobrarCuenta({ quoteId, saldo, onListo }: { quoteId: string; saldo: num
       <Field label="Referencia (opcional)">
         <TextInput value={referencia} onChange={(e) => setReferencia(e.target.value)} />
       </Field>
+      <div className="sm:col-span-2">
+        <NotasCampo value={notas} onChange={setNotas} />
+      </div>
       {error && <p className="text-sm text-wine sm:col-span-2">{error}</p>}
       {ok && <p className="text-sm text-emerald-700 sm:col-span-2">{ok}</p>}
       <div className="sm:col-span-2">

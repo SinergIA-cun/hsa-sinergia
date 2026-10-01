@@ -6,6 +6,7 @@ import {
   anularPayment,
   anularSchema,
   editarConcepto,
+  editarNotasPago,
   desbloquearFactura,
   marcarFacturado,
   marcarFacturadoSchema,
@@ -58,6 +59,7 @@ export async function paymentRoutes(app: FastifyInstance): Promise<void> {
         concepto: fields.concepto,
         fecha: fields.fecha,
         referencia: fields.referencia || undefined,
+        notas: fields.notas || undefined,
         destino: fields.destino || undefined,
       };
     } else {
@@ -102,6 +104,20 @@ export async function paymentRoutes(app: FastifyInstance): Promise<void> {
       } catch (e) {
         if (e instanceof QuoteError) return reply.code(e.status).send({ error: e.message });
         throw e; // ZodError → 400 vía el handler global
+      }
+    },
+  );
+
+  // Notas del pago: ventas sobre lo suyo, queda en bitácora.
+  app.patch<{ Params: { id: string; paymentId: string } }>(
+    '/quotes/:id/payments/:paymentId/notas',
+    { preHandler: requireAuth },
+    async (req, reply) => {
+      try {
+        return await editarNotasPago(app.prisma, req.params.id, req.params.paymentId, req.body, req.user as Actor);
+      } catch (e) {
+        if (e instanceof QuoteError) return reply.code(e.status).send({ error: e.message });
+        throw e;
       }
     },
   );

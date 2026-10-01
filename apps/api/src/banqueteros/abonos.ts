@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { notasSchema, notaONull, editarNotasSchema } from '../payments/notas.js';
 import type { PrismaClient, Prisma, PaymentMethod } from '@hsa/database';
 import { metodoCapturaSchema, formasPagoSchema } from '@hsa/shared';
 import { QuoteError, type Actor } from '../quotes/service.js';
@@ -33,6 +34,7 @@ export const abonoSchema = z.object({
   /** Cuándo se RECIBIÓ el dinero, no cuándo se captura. */
   fecha: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   referencia: z.string().max(120).optional(),
+  notas: notasSchema.optional(),
 });
 
 export const anularAbonoSchema = z.object({ motivo: z.string().min(3) });
@@ -119,6 +121,7 @@ export async function registrarAbono(
       // de México, que vive en ese mismo espacio.
       fecha: new Date(`${input.fecha}T00:00:00.000Z`),
       referencia: input.referencia ?? null,
+      notas: notaONull(input.notas),
       comprobanteKey,
       comprobanteMime,
       registradoById: actor.id,
@@ -154,6 +157,8 @@ export async function abonarDesdeDeposito(
     folioLetra: string;
     fechaDeposito: Date;
     actorId: string;
+    /** Las notas del depósito: explican también el abono que sale de él. */
+    notas?: string | null;
   },
 ) {
   return db.abonoApartado.create({
@@ -165,6 +170,7 @@ export async function abonarDesdeDeposito(
       metodo: args.metodo,
       fecha: args.fechaDeposito,
       referencia: 'Del saldo del banquetero',
+      notas: args.notas ?? null,
       pagoBanqueteroId: args.depositoId,
       registradoById: args.actorId,
     },
@@ -216,4 +222,13 @@ export async function loadComprobanteAbono(
   if (!abono?.comprobanteKey) return null;
   const data = await storage.load(abono.comprobanteKey);
   return data ? { data, mime: abono.comprobanteMime ?? 'image/jpeg' } : null;
+}
+
+/** Corregir o completar las notas de un abono. Admin, como todo lo del abono. */
+export async function editarNotasAbono(db: PrismaClient, abonoId: string, raw: unknown, actor: Actor) {
+  if (actor.role !== 'admin') throw new QuoteError(403, 'Solo un admin edita los abonos.');
+  const { notas } = editarNotasSchema.parse(raw);
+  const abono = await db.abonoApartado.findUnique({ where: { id: abonoId }, select: { id: true } });
+  if (!abono) throw new QuoteError(404, 'Abono no encontrado');
+  return db.abonoApartado.update({ where: { id: abonoId }, data: { notas: notaONull(notas) }, select: { id: true, notas: true } });
 }
