@@ -8,7 +8,16 @@ export async function cargoRoutes(app: FastifyInstance): Promise<void> {
   app.get<{ Params: { id: string } }>('/quotes/:id/cuenta', { preHandler: requireAuth }, async (req, reply) => {
     const quote = await app.prisma.quote.findFirst({
       where: { id: req.params.id, ...ownershipWhere(req.user as Actor) },
-      select: { id: true, priceListId: true, eventTypeId: true, breakdown: true },
+      select: {
+        id: true,
+        priceListId: true,
+        eventTypeId: true,
+        breakdown: true,
+        fechaEvento: true,
+        invitados: true,
+        spaceIds: true,
+        foodPackageId: true,
+      },
     });
     if (!quote) return reply.code(404).send({ error: 'Evento no encontrado' });
     const [cuenta, productos] = await Promise.all([

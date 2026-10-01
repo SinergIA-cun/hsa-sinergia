@@ -28,6 +28,7 @@ export interface PagoCreado {
   quoteId: string;
   paymentId: string;
   folio: number;
+  folioLetra?: string | null;
   monto: number;
   concepto: string;
 }

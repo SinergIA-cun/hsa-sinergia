@@ -82,6 +82,8 @@ export interface OrigenDeposito {
    * que pasa también con los depósitos y abonos viejos, que no tienen folio).
    */
   folio?: number | null;
+  /** La letra de esta aplicación dentro de su depósito (`I 5340-B`). */
+  folioLetra?: string | null;
   /**
    * La forma de pago heredada de la entrada madre. Un depósito dividido repartido
    * en tres eventos no dice cuánto de cada forma le tocó a cada uno, así que el
@@ -156,6 +158,7 @@ export async function registerPayment(
       destino: input.destino,
       // Sin folio heredado, el default de la base toma el siguiente de la serie.
       ...(origen?.folio != null ? { folio: origen.folio } : {}),
+      folioLetra: origen?.folioLetra ?? null,
     },
   });
 
@@ -186,7 +189,7 @@ export async function registerPayment(
 
   await logActivity(db, {
     quoteId, tipo: 'pago',
-    descripcion: `Pago ${formatFolio(payment.folio)} ${conceptoEfectivo} $${input.monto} (${describirFormasPago(payment)})`,
+    descripcion: `Pago ${formatFolio(payment.folio, payment.folioLetra)} ${conceptoEfectivo} $${input.monto} (${describirFormasPago(payment)})`,
     meta: {
       paymentId: payment.id, folio: payment.folio, monto: input.monto, concepto: conceptoEfectivo, metodo, formas,
       // Lo tecleado se guarda solo cuando la deducción no le hizo caso: es el
@@ -242,7 +245,7 @@ export async function anularPayment(
   });
   await logActivity(db, {
     quoteId, tipo: 'pagoAnulado',
-    descripcion: `Pago ${formatFolio(payment.folio)} anulado $${payment.monto}: ${motivo}`,
+    descripcion: `Pago ${formatFolio(payment.folio, payment.folioLetra)} anulado $${payment.monto}: ${motivo}`,
     meta: { paymentId, motivo }, actorId: actor.id,
   });
 
@@ -294,7 +297,7 @@ export async function editarConcepto(
     quoteId,
     tipo: 'edicion',
     descripcion:
-      `Concepto del pago ${formatFolio(pago.folio)}: ${pago.concepto} → ${efectivo}` +
+      `Concepto del pago ${formatFolio(pago.folio, pago.folioLetra)}: ${pago.concepto} → ${efectivo}` +
       (efectivo === input.concepto ? '' : ` (se pidió ${input.concepto}; manda el saldo)`),
     meta: { paymentId, folio: pago.folio, de: pago.concepto, a: efectivo, pedido: input.concepto },
     actorId: actor.id,
@@ -334,7 +337,7 @@ export async function desbloquearFactura(
   await logActivity(db, {
     quoteId,
     tipo: 'edicion',
-    descripcion: `Desbloqueo de facturación del pago ${formatFolio(pago.folio)}`,
+    descripcion: `Desbloqueo de facturación del pago ${formatFolio(pago.folio, pago.folioLetra)}`,
     meta: { paymentId, folio: pago.folio },
     actorId: actor.id,
   });
@@ -378,7 +381,7 @@ export async function marcarFacturado(
   await logActivity(db, {
     quoteId,
     tipo: 'factura',
-    descripcion: `Pago ${formatFolio(pago.folio)} marcado como facturado${input.facturaUuid ? ` (UUID ${input.facturaUuid})` : ''}`,
+    descripcion: `Pago ${formatFolio(pago.folio, pago.folioLetra)} marcado como facturado${input.facturaUuid ? ` (UUID ${input.facturaUuid})` : ''}`,
     meta: { paymentId, folio: pago.folio, facturaUuid: input.facturaUuid ?? null },
     actorId: actor.id,
   });

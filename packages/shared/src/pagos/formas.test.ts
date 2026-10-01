@@ -5,6 +5,7 @@ import {
   describirFormasPago,
   formasPagoSchema,
   formatFolio,
+  letraDeAplicacion,
   FormasPagoError,
 } from './formas.js';
 
@@ -86,6 +87,13 @@ describe('partesDePago y describirFormasPago', () => {
 describe('formatFolio', () => {
   it('imprime la serie I', () => {
     expect(formatFolio(5332)).toBe('I 5332');
+  });
+  it('con letra, la aplicación de un depósito repartido', () => {
+    expect(formatFolio(5340, 'B')).toBe('I 5340-B');
+    expect(formatFolio(5340, null)).toBe('I 5340');
+  });
+  it('las letras siguen como columnas de Excel', () => {
+    expect([0, 1, 2, 25, 26, 27, 51, 52].map(letraDeAplicacion)).toEqual(['A', 'B', 'C', 'Z', 'AA', 'AB', 'AZ', 'BA']);
   });
   it('los movimientos de antes del folio dicen sin folio', () => {
     expect(formatFolio(null)).toBe('sin folio');

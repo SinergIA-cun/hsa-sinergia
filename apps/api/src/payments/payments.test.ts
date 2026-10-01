@@ -225,7 +225,7 @@ describe('getByToken (vista pública)', () => {
     // `formas`: las partes de un pago dividido, para el recibo. Es del cliente —él
     // pagó con esas tarjetas—; lo que sigue fuera es lo interno.
     // `destino`: si abona a la renta o a la cuenta del punto de venta.
-    expect(Object.keys(pago).sort()).toEqual(['concepto', 'destino', 'fecha', 'folio', 'formas', 'id', 'metodo', 'monto', 'tieneComprobante']);
+    expect(Object.keys(pago).sort()).toEqual(['concepto', 'destino', 'fecha', 'folio', 'folioLetra', 'formas', 'id', 'metodo', 'monto', 'tieneComprobante']);
     expect('referencia' in pago).toBe(false);
     expect('comprobanteKey' in pago).toBe(false);
     expect('registradoById' in pago).toBe(false);

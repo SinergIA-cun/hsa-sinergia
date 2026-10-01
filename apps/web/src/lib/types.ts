@@ -145,6 +145,8 @@ export interface CatalogoContenido {
     extraHourRate: number;
     foodDiscountRate: number;
     capillaSabado: number;
+    /** Personas extra antes de brincar de nivel (0 = nunca). */
+    toleranciaExtras: number;
   };
   renta: RentaRenglon[];
   servicios: AddOn[];
@@ -294,6 +296,8 @@ export interface Payment {
   id: string;
   /** Serie I. Los pagos que salen de un mismo depósito comparten el suyo. */
   folio: number;
+  /** Su letra dentro del depósito repartido (`I 5340-B`); `null` = pago directo. */
+  folioLetra?: string | null;
   monto: number;
   metodo: PaymentMethod;
   /** Las partes si vino dividido; `null` en los pagos de antes de la división. */
@@ -518,6 +522,8 @@ export interface AsignacionDeposito {
   quoteId: string;
   monto: number;
   folio: number;
+  /** Su letra dentro del depósito: A, B, C… */
+  folioLetra?: string | null;
   fecha: string;
   concepto: PaymentConcept;
   anuladoAt: string | null;
@@ -559,6 +565,7 @@ export interface AbonoApartado {
   id: string;
   /** Serie I; si salió de un depósito, el del depósito. `null` = de antes del folio. */
   folio: number | null;
+  folioLetra?: string | null;
   monto: number;
   metodo: PaymentMethod;
   formas: PartePago[] | null;
@@ -977,6 +984,7 @@ export interface PaginaAuditoria {
 /** Un pago tal como quedó en la foto. */
 export interface PagoFoto {
   folio: number;
+  folioLetra?: string | null;
   monto: number;
   metodo: string;
   concepto: string;

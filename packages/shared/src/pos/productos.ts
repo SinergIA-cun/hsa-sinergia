@@ -12,6 +12,7 @@ export const PRODUCTOS_CARGO = [
   'horaExtra',
   'djHoraExtra',
   'invitadoExtra',
+  'invitadoExtraAlimentos',
   'danos',
   'multa',
   'gastoImprevisto',
@@ -25,6 +26,10 @@ export type PrecioProducto =
   | 'horaDeRenta'
   /** El precio del DJ por hora extra del catálogo, según el tipo de evento. */
   | 'djDelCatalogo'
+  /** La renta de una persona en el nivel del evento (precio del nivel ÷ su tope). */
+  | 'rentaPorPersona'
+  /** El precio por persona del paquete de alimentos del evento, en su nivel, con IVA. */
+  | 'alimentosPorPersona'
   /** Lo teclea quien cobra: una multa o un daño no tienen tarifa. */
   | 'manual';
 
@@ -41,7 +46,14 @@ export interface ProductoInfo {
 export const PRODUCTO_INFO: Record<ProductoCargo, ProductoInfo> = {
   horaExtra: { producto: 'horaExtra', nombre: 'Hora extra de salón', unidad: 'horas', precio: 'horaDeRenta', pideDescripcion: false },
   djHoraExtra: { producto: 'djHoraExtra', nombre: 'Hora extra de DJ', unidad: 'horas', precio: 'djDelCatalogo', pideDescripcion: false },
-  invitadoExtra: { producto: 'invitadoExtra', nombre: 'Invitados extra', unidad: 'invitados', precio: 'manual', pideDescripcion: false },
+  invitadoExtra: { producto: 'invitadoExtra', nombre: 'Invitados extra', unidad: 'invitados', precio: 'rentaPorPersona', pideDescripcion: false },
+  invitadoExtraAlimentos: {
+    producto: 'invitadoExtraAlimentos',
+    nombre: 'Invitados extra — alimentos',
+    unidad: 'invitados',
+    precio: 'alimentosPorPersona',
+    pideDescripcion: false,
+  },
   danos: { producto: 'danos', nombre: 'Daños a las instalaciones', unidad: 'piezas', precio: 'manual', pideDescripcion: true },
   multa: { producto: 'multa', nombre: 'Multa', unidad: 'multas', precio: 'manual', pideDescripcion: true },
   gastoImprevisto: { producto: 'gastoImprevisto', nombre: 'Gasto imprevisto', unidad: 'piezas', precio: 'manual', pideDescripcion: true },

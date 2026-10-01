@@ -5,6 +5,7 @@ import {
   metodoCapturaSchema,
   formasPagoSchema,
   partesDePago,
+  letraDeAplicacion,
 } from '@hsa/shared';
 import { QuoteError, ownershipWhere, assertNotTrashed, type Actor } from '../quotes/service.js';
 import { registerPayment, anularPayment, resolverOError } from '../payments/service.js';
@@ -194,6 +195,7 @@ const CON_ASIGNACIONES = {
       quoteId: true,
       monto: true,
       folio: true,
+      folioLetra: true,
       fecha: true,
       concepto: true,
       anuladoAt: true,
@@ -393,7 +395,11 @@ export async function asignarDeposito(
       // `$transaction`/`$connect`, que ese camino no usa (verificado).
       const txDb = tx as unknown as PrismaClient;
       await tx.$queryRaw`SELECT id FROM "PagoBanquetero" WHERE id = ${depositoId} FOR UPDATE`;
-      const disponible = saldoDeDeposito(await cargarDeposito(txDb, depositoId));
+      const actual = await cargarDeposito(txDb, depositoId);
+      const disponible = saldoDeDeposito(actual);
+      const abonosConvertidos = new Set(
+        actual.abonosApartado.map((a) => a.paymentId).filter((id): id is string => id != null),
+      );
       if (pedido > disponible) {
         throw new QuoteError(
           409,
@@ -401,6 +407,17 @@ export async function asignarDeposito(
         );
       }
 
+      /*
+       * Cada aplicación del depósito lleva su letra en orden: I 5340-A, -B, -C.
+       * Se cuentan TODAS las que ya tiene —anuladas incluidas, igual que un folio
+       * no se reutiliza— y los abonos a fechas apartadas también, que son
+       * aplicaciones del mismo dinero. Un pago que nació de convertir un abono no
+       * cuenta aparte: ya contó su abono. Adentro de la transacción y con la fila
+       * bloqueada, dos repartos no pueden sacar la misma letra.
+       */
+      let siguienteLetra =
+        actual.asignaciones.filter((a) => !abonosConvertidos.has(a.id)).length + actual.abonosApartado.length;
+      const tomarLetra = () => letraDeAplicacion(siguienteLetra++);
       const fechaDeposito = deposito.fecha.toISOString().slice(0, 10);
       const pagos = [];
       for (const a of input.asignaciones) {
@@ -423,6 +440,7 @@ export async function asignarDeposito(
             // Repartir no es dinero nuevo: el pago lleva el folio del depósito, que
             // es la hoja foliada que se llenó cuando el dinero entró.
             folio: deposito.folio,
+            folioLetra: tomarLetra(),
             ...formaHeredada(deposito),
             // El comprobante del depósito es el comprobante de cada recibo que sale
             // de él: hay un solo movimiento bancario detrás de los tres pagos.
@@ -434,6 +452,7 @@ export async function asignarDeposito(
           quoteId: a.quoteId,
           paymentId: payment.id,
           folio: payment.folio,
+          folioLetra: payment.folioLetra,
           monto: payment.monto,
           fecha: payment.fecha,
           concepto: payment.concepto,
@@ -452,6 +471,7 @@ export async function asignarDeposito(
           monto: a.monto,
           metodo: formaHeredada(deposito).metodo,
           folio: deposito.folio,
+          folioLetra: tomarLetra(),
           fechaDeposito: deposito.fecha,
           actorId: actor.id,
         });

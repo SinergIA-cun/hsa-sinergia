@@ -1603,6 +1603,7 @@ export async function getByToken(db: PrismaClient, token: string) {
   const aPublico = (p: (typeof payments)[number]) => ({
       id: p.id,
       folio: p.folio,
+      folioLetra: p.folioLetra,
       monto: p.monto,
       concepto: p.concepto,
       metodo: p.metodo,

@@ -11,6 +11,7 @@ import { FORMA_PAGO_LABEL, formatFolio, partesDePago, type MetodoPago } from '@h
 interface PublicPago {
   id: string;
   folio: number;
+  folioLetra?: string | null;
   monto: number;
   concepto: string;
   metodo: string;
@@ -96,7 +97,7 @@ export function ReciboPage() {
         <div className="recibo-title">Recibo de pago</div>
         {/* La serie I de las hojas foliadas: el recibo sigue la misma numeración
             que el papel, así que es el número que se busca en la carpeta. */}
-        <div className="recibo-folio">Folio {formatFolio(pago.folio)}</div>
+        <div className="recibo-folio">Folio {formatFolio(pago.folio, pago.folioLetra)}</div>
 
         <div className="recibo-monto">{formatMXN(pago.monto)}</div>
 

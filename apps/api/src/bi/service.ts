@@ -120,7 +120,8 @@ export async function biPagos(db: PrismaClient, r: RangoBI) {
     return {
       id: p.id,
       folio: p.folio,
-      folioTexto: formatFolio(p.folio),
+      folioLetra: p.folioLetra,
+      folioTexto: formatFolio(p.folio, p.folioLetra),
       quoteId: p.quoteId,
       cliente: p.quote?.client?.nombre ?? null,
       fecha: p.fecha.toISOString().slice(0, 10),

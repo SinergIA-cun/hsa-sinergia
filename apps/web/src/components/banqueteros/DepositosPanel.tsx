@@ -142,7 +142,7 @@ function DepositoCard({
                   {a.quote?.folio ?? 'Evento'}
                 </Link>
                 <span className="ml-2 text-xs text-charcoal-soft">
-                  {formatFolio(a.folio)} · {a.concepto}
+                  {formatFolio(a.folio, a.folioLetra)} · {a.concepto}
                 </span>
               </span>
               <span className="flex items-center gap-3">

@@ -148,7 +148,7 @@ export function PuntoDeVentaPanel({
                 className={`flex flex-wrap items-center justify-between gap-2 py-2 ${p.anuladoAt ? 'line-through opacity-50' : ''}`}
               >
                 <span>
-                  <span className="font-medium text-charcoal-soft">{formatFolio(p.folio)}</span> ·{' '}
+                  <span className="font-medium text-charcoal-soft">{formatFolio(p.folio, p.folioLetra)}</span> ·{' '}
                   {formatEventDate(p.fecha)} · {describirFormasPago(p)}
                 </span>
                 <span className="flex items-center gap-3">
@@ -280,7 +280,15 @@ function AgregarCargo({
           </Field>
           <Field
             label="Precio c/u (con IVA)"
-            hint={elegido.precio === 'horaDeRenta' ? 'Sugerido: 5% de la renta del evento.' : undefined}
+            hint={
+              elegido.precio === 'horaDeRenta'
+                ? 'Sugerido: 5% de la renta del evento.'
+                : elegido.precio === 'rentaPorPersona'
+                  ? 'Sugerido: la renta de una persona en el nivel del evento.'
+                  : elegido.precio === 'alimentosPorPersona'
+                    ? 'Sugerido: el precio por persona de su paquete, con IVA. Se le paga al proveedor.'
+                    : undefined
+            }
           >
             <MoneyInput value={precio} onValue={setPrecio} />
           </Field>

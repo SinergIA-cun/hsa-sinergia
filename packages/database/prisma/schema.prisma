@@ -72,6 +72,9 @@ enum ProductoCargo {
   horaExtra
   djHoraExtra
   invitadoExtra
+  /// Los alimentos de los invitados extra, aparte de su renta: se le pagan al
+  /// proveedor, y en el BI tienen que poder distinguirse de lo que cobra la hacienda.
+  invitadoExtraAlimentos
   danos
   multa
   gastoImprevisto
@@ -115,6 +118,11 @@ model PriceList {
   // última fuente global capaz de represiar TODA cotización al reeditarla.
   ivaRate          Float @default(0.16)
   extraHourRate    Float @default(0.05)
+  /// Personas extra antes de brincar de nivel: con 20, un evento de 110 o 120
+  /// personas se cobra como el nivel de 100 más 10 o 20 personas a precio del
+  /// nivel (renta: precio del nivel entre su tope; alimentos: su precio por
+  /// persona). Con 121 ya se cobra el nivel siguiente. 0 = nunca (como antes).
+  toleranciaExtras Int   @default(0)
   foodDiscountRate Float @default(0.05)
   capillaSabado    Int   @default(5000)
 
@@ -372,6 +380,8 @@ model AbonoApartado {
   /// salió del saldo de un depósito lleva el folio de ese depósito: no es dinero
   /// nuevo. `null` = abono de antes del folio.
   folio            Int?            @default(dbgenerated("nextval('recibo_folio_seq')"))
+  /// Su letra si salió de un depósito (`I 5340-C`). Ver `Payment.folioLetra`.
+  folioLetra       String?
   monto            Int
   metodo           PaymentMethod
   /// Partes del abono si vino dividido. Ver `Payment.formas`.
@@ -684,6 +694,10 @@ model Payment {
   /// pagos. Los tres llevan el folio del depósito. La unicidad la da la secuencia
   /// `recibo_folio_seq`, que es la misma para pagos, depósitos y abonos.
   folio            Int             @default(dbgenerated("nextval('recibo_folio_seq')"))
+  /// La letra de este pago dentro de su depósito (`I 5340-B`): un depósito
+  /// repartido es un solo folio y cada evento al que se aplica lleva su letra, en
+  /// orden. `null` = pago directo, o aplicación de antes de las letras.
+  folioLetra       String?
   /// El id del pago en el BI, si vino de una importación.
   importadoBI      String?
   /// A qué va: la renta del evento o su cuenta de cargos. Ver `PaymentDestino`.

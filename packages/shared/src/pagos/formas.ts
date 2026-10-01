@@ -124,6 +124,23 @@ export function describirFormasPago(pago: { monto: number; metodo: string; forma
  * abonos viejos), que se muestra como "sin folio".
  */
 export const SERIE_FOLIO = 'I';
-export function formatFolio(folio: number | null | undefined): string {
-  return folio == null ? 'sin folio' : `${SERIE_FOLIO} ${folio}`;
+/**
+ * `I 5340`, o `I 5340-B` para la segunda aplicación de un depósito repartido: el
+ * depósito es UN dinero que entró (un folio) y cada evento al que se aplica lleva
+ * su letra, así cada recibo se distingue sin gastar folios.
+ */
+export function formatFolio(folio: number | null | undefined, letra?: string | null): string {
+  if (folio == null) return 'sin folio';
+  return letra ? `${SERIE_FOLIO} ${folio}-${letra}` : `${SERIE_FOLIO} ${folio}`;
+}
+
+/** La letra de la n-ésima aplicación (0 → A, 25 → Z, 26 → AA), como las columnas de Excel. */
+export function letraDeAplicacion(indice: number): string {
+  let n = indice;
+  let letra = '';
+  do {
+    letra = String.fromCharCode(65 + (n % 26)) + letra;
+    n = Math.floor(n / 26) - 1;
+  } while (n >= 0);
+  return letra;
 }

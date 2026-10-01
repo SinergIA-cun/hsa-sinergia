@@ -396,6 +396,7 @@ export async function convertirApartado(
         // El abono ya fue la entrada de dinero: el pago hereda su folio y su forma
         // de pago en vez de gastar un folio nuevo.
         folio: abono.folio,
+        folioLetra: abono.folioLetra,
         metodo: abono.metodo,
         formas: (abono.formas as PartePago[] | null) ?? null,
         // Y su comprobante viaja con él, en vez de quedarse huérfano en el abono.

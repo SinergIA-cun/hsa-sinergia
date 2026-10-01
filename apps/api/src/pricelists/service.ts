@@ -68,6 +68,8 @@ export async function clonarCatalogo(db: PrismaClient, rawInput: unknown) {
               extraHourRate: origen.extraHourRate,
               foodDiscountRate: origen.foodDiscountRate,
               capillaSabado: origen.capillaSabado,
+              // Es una regla de cobro, no un precio: viaja tal cual.
+              toleranciaExtras: origen.toleranciaExtras,
             }
           : {}),
       },

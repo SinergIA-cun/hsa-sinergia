@@ -10,7 +10,7 @@ import { createQuote, QuoteError, type Actor } from '../quotes/service.js';
 import { ServerStorage } from './storage.js';
 import { registerPayment } from './service.js';
 import { estadoFolios, fijarSiguienteFolio } from './folios.js';
-import { registrarDeposito, asignarDeposito } from '../banqueteros/cuenta.js';
+import { registrarDeposito, asignarDeposito, anularAsignacion } from '../banqueteros/cuenta.js';
 import { crearApartado, convertirApartado } from '../banqueteros/apartados.js';
 import { registrarAbono } from '../banqueteros/abonos.js';
 import { biIngresos, biPagos } from '../bi/service.js';
@@ -205,6 +205,8 @@ describe('un folio por cada dinero que entra', () => {
       admin,
     );
     expect(pagos.map((p) => p.folio)).toEqual([deposito.folio, deposito.folio]);
+    // Cada evento con su letra: I 5340-A, I 5340-B.
+    expect(pagos.map((p) => p.folioLetra)).toEqual(['A', 'B']);
     // Repartir no gastó folios.
     expect(await siguienteFolio()).toBe(despuesDelDeposito);
     // Y los pagos heredan que fue en varias formas, sin inventar las proporciones.
@@ -224,6 +226,7 @@ describe('un folio por cada dinero que entra', () => {
     );
     const desdeDeposito = await prisma.abonoApartado.findUniqueOrThrow({ where: { id: abonos[0]!.abonoId } });
     expect(desdeDeposito.folio).toBe(deposito.folio);
+    expect(desdeDeposito.folioLetra).toBe('A');
 
     const antes = await siguienteFolio();
     const directo = await registrarAbono(
@@ -238,8 +241,35 @@ describe('un folio por cada dinero que entra', () => {
     clients.push(quote.clientId);
     const pagos = await prisma.payment.findMany({ where: { quoteId: quote.id }, orderBy: { fecha: 'asc' } });
     expect(pagos.map((p) => p.folio)).toEqual([deposito.folio, directo.folio]);
+    // El pago que nació del abono conserva su letra; el abono directo no tiene.
+    expect(pagos.map((p) => p.folioLetra)).toEqual(['A', null]);
     // Convertir tampoco gastó folios.
     expect(await siguienteFolio()).toBe(antes + 1);
+  });
+});
+
+describe('las letras de un depósito repartido', () => {
+  it('un segundo reparto sigue la letra donde se quedó el primero, y una anulada no se reutiliza', async () => {
+    const [a, b, c] = [await nuevoEvento(true), await nuevoEvento(true), await nuevoEvento(true)];
+    const deposito = await registrarDeposito(
+      prisma, storage, banqueteroId, { monto: 90_000, metodo: 'transferencia', fecha: '2026-10-10' }, admin,
+    );
+    const primero = await asignarDeposito(
+      prisma, storage, deposito.id, { asignaciones: [{ quoteId: a.id, monto: 30_000 }] }, admin,
+    );
+    await anularAsignacion(prisma, deposito.id, primero.pagos[0]!.paymentId, 'iba a otro evento', admin);
+    const segundo = await asignarDeposito(
+      prisma, storage, deposito.id,
+      { asignaciones: [{ quoteId: b.id, monto: 30_000 }, { quoteId: c.id, monto: 30_000 }] }, admin,
+    );
+    expect(primero.pagos.map((p) => p.folioLetra)).toEqual(['A']);
+    expect(segundo.pagos.map((p) => p.folioLetra)).toEqual(['B', 'C']);
+    const bi = (await biPagos(prisma, {
+      desde: new Date('2026-10-10T00:00:00Z'), hasta: new Date('2026-10-10T23:59:59Z'), limit: 500,
+    })).filter((p) => p.pagoBanqueteroId === deposito.id);
+    expect(bi.map((p) => p.folioTexto).sort()).toEqual([
+      `I ${deposito.folio}-A`, `I ${deposito.folio}-B`, `I ${deposito.folio}-C`,
+    ]);
   });
 });
 

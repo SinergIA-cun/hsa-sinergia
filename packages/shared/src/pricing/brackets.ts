@@ -61,3 +61,29 @@ export function findBracket<T extends CapacityBracket>(
     (r) => invitados >= r.min && (r.max === null || invitados <= r.max),
   );
 }
+
+/**
+ * Personas extra en vez de brincar de nivel.
+ *
+ * La práctica de la hacienda: un evento de 110 personas no paga el nivel de
+ * 101–200 completo, paga el de 100 más 10 personas extra. El catálogo dice hasta
+ * cuántas personas por encima del tope de un nivel se cobra así (`tolerancia`);
+ * pasando de ahí, ya se cobra el nivel siguiente.
+ *
+ * Recibe el rango que contiene al invitado y devuelve el que se COBRA: el mismo
+ * (sin extras) o el anterior —el que termina justo antes— con cuántas personas
+ * le sobran. Con `tolerancia` 0 es exactamente `findBracket`.
+ */
+export function nivelConExtras<T extends CapacityBracket>(
+  rows: readonly T[],
+  rango: T,
+  invitados: number,
+  tolerancia: number,
+): { row: T; extras: number } {
+  if (!(tolerancia > 0)) return { row: rango, extras: 0 };
+  const anterior = rows.find((r) => r.max != null && r.max === rango.min - 1);
+  if (!anterior || anterior.max == null) return { row: rango, extras: 0 };
+  const extras = invitados - anterior.max;
+  if (extras <= 0 || extras > tolerancia) return { row: rango, extras: 0 };
+  return { row: anterior, extras };
+}

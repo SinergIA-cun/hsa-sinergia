@@ -1,6 +1,6 @@
 import type { Catalog, QuoteBreakdown, QuoteLine } from '../types.js';
 import type { QuoteSelection } from '../schemas.js';
-import { findBracket } from './brackets.js';
+import { findBracket, nivelConExtras } from './brackets.js';
 import { bracketDeParte, capacidadTotal, repartirInvitados } from './reparto.js';
 import { dayType } from './day-type.js';
 
@@ -76,16 +76,30 @@ export function computeQuote(
           : `El espacio ${spaceId} no tiene rango de renta para ${sel.invitados} invitados`,
       );
     }
-    const monto = row.prices[dt];
-    if (monto == null) {
+    if (row.prices[dt] == null) {
       throw new Error(`Falta precio para el espacio ${spaceId} en día ${dt}`);
     }
+    // Personas extra: si se pasa del nivel anterior por poquito, se cobra ese
+    // nivel más cada persona extra a precio del nivel entre su tope (Arcos sábado:
+    // $76,000 / 100 = $760). Va en el MISMO renglón del salón —con su `spaceId`—
+    // para que el plan de pagos y los descuentos lo vean como renta de ese salón.
+    const nivel = nivelConExtras(rows, row, tocan, catalog.toleranciaExtras ?? 0);
+    const precioNivel = nivel.row.prices[dt];
+    const usaExtras = nivel.extras > 0 && precioNivel != null && nivel.row.max != null;
+    const porPersonaExtra = usaExtras ? Math.round(precioNivel! / nivel.row.max!) : 0;
+    const monto = usaExtras ? precioNivel! + nivel.extras * porPersonaExtra : row.prices[dt]!;
     rentaEspacios += monto;
-    lines.push({
-      concepto: `Renta ${spaceId}`,
+    const detalles = [
       // Con un solo salón el reparto no es noticia; con varios, decir cuántos le
       // tocaron es lo que evita que el precio parezca sacado de la manga.
-      detalle: variosEspacios ? `${tocan} de ${sel.invitados} invitados` : undefined,
+      variosEspacios ? `${tocan} de ${sel.invitados} invitados` : null,
+      usaExtras
+        ? `nivel hasta ${nivel.row.max} + ${nivel.extras} persona${nivel.extras === 1 ? '' : 's'} extra × ${porPersonaExtra}`
+        : null,
+    ].filter(Boolean);
+    lines.push({
+      concepto: `Renta ${spaceId}`,
+      detalle: detalles.length ? detalles.join(' · ') : undefined,
       monto: round2(monto),
       ivaIncluido: true,
       grupo: 'renta',
@@ -150,18 +164,23 @@ export function computeQuote(
   if (sel.foodPackageId) {
     const pkg = catalog.foodPackages.find((p) => p.id === sel.foodPackageId);
     if (!pkg) throw new Error(`Paquete de alimentos ${sel.foodPackageId} no existe`);
-    const row = findBracket(pkg.brackets, sel.invitados);
-    if (!row) {
+    const rango = findBracket(pkg.brackets, sel.invitados);
+    if (!rango) {
       throw new Error(
         `El paquete ${pkg.name} no tiene rango para ${sel.invitados} invitados`,
       );
     }
+    // Mismas personas extra que la renta: todos al precio por persona del nivel
+    // anterior si apenas se pasan de él.
+    const { row, extras } = nivelConExtras(pkg.brackets, rango, sel.invitados, catalog.toleranciaExtras ?? 0);
     const monto = row.pricePerPerson * sel.invitados;
     if (pkg.ivaIncluded) otrosConIva += monto;
     else alimentosBaseSinIva += monto;
     lines.push({
       concepto: `Alimentos ${pkg.name}`,
-      detalle: `${sel.invitados} × ${row.pricePerPerson}`,
+      detalle:
+        `${sel.invitados} × ${row.pricePerPerson}` +
+        (extras > 0 ? ` (precio del nivel hasta ${row.max}: ${extras} extra)` : ''),
       monto: round2(monto),
       ivaIncluido: pkg.ivaIncluded,
       grupo: 'otros',
@@ -275,4 +294,52 @@ export function computeQuote(
     otrosIva,
     otrosTotal,
   };
+}
+
+/**
+ * Cuánto cuesta UNA persona más en este evento, al precio de su nivel. Es lo que
+ * el punto de venta sugiere para "invitados extra" cuando llegan más de los
+ * contratados.
+ *
+ * - `renta`: el precio del nivel que se cobra entre su tope (Arcos sábado
+ *   $76,000 / 100 = $760), con el mismo nivel —y las mismas personas extra— que
+ *   usó el motor. Con varios salones, la renta de todos entre la suma de topes.
+ * - `alimentos`: el precio por persona del paquete en ese nivel, con IVA.
+ *
+ * `null` = no aplica (sin paquete de alimentos, o sin precio para ese día).
+ */
+export function porPersonaDelNivel(
+  catalog: Catalog,
+  sel: QuoteSelection,
+): { renta: number | null; alimentos: number | null } {
+  const dt = dayType(sel.fecha);
+  const tol = catalog.toleranciaExtras ?? 0;
+  const usaFlat = sel.eventTypeId != null && catalog.flatRentalEventTypeIds.includes(sel.eventTypeId);
+  const rentalRows = usaFlat ? catalog.rentalPricesFlat : catalog.rentalPrices;
+  const reparto = repartirInvitados(sel.spaceIds, rentalRows, sel.invitados);
+  let precio = 0;
+  let topes = 0;
+  for (const spaceId of sel.spaceIds) {
+    const rows = rentalRows.filter((r) => r.spaceId === spaceId);
+    const tocan = reparto.get(spaceId) ?? sel.invitados;
+    const rango = sel.spaceIds.length > 1 ? bracketDeParte(rows, tocan) : findBracket(rows, tocan);
+    if (!rango) return { renta: null, alimentos: null };
+    const { row } = nivelConExtras(rows, rango, tocan, tol);
+    const p = row.prices[dt];
+    if (p == null) return { renta: null, alimentos: null };
+    precio += p;
+    topes += row.max ?? Math.max(row.min, tocan);
+  }
+  const renta = topes > 0 ? Math.round(precio / topes) : null;
+
+  let alimentos: number | null = null;
+  const pkg = sel.foodPackageId ? catalog.foodPackages.find((p) => p.id === sel.foodPackageId) : undefined;
+  if (pkg) {
+    const rango = findBracket(pkg.brackets, sel.invitados);
+    if (rango) {
+      const { row } = nivelConExtras(pkg.brackets, rango, sel.invitados, tol);
+      alimentos = Math.round(row.pricePerPerson * (pkg.ivaIncluded ? 1 : 1 + catalog.ivaRate));
+    }
+  }
+  return { renta, alimentos };
 }

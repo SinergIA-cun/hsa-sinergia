@@ -610,6 +610,8 @@ export const editarParametrosSchema = z
     foodDiscountRate: tasa.optional(),
     /** La capilla en sábado sí es un PRECIO en pesos: entero, como todos. */
     capillaSabado: precio.optional(),
+    /** Personas extra antes de brincar de nivel. Un conteo: entero, 0 = nunca. */
+    toleranciaExtras: z.number().int().min(0).max(1000).optional(),
   })
   .refine((o) => Object.values(o).some((v) => v !== undefined), {
     message: 'No hay nada que cambiar',
