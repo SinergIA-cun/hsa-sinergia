@@ -48,9 +48,13 @@ export interface EventType {
 export interface AddOn {
   id: string;
   nombre: string;
+  /** Para agruparlos al cotizar; la pone el admin. `null` = sin categoría. */
+  categoria?: string | null;
   kind: 'fijo' | 'porPersona' | 'porUnidad';
   price: number;
   activo: boolean;
+  /** Cuántas cotizaciones de su catálogo lo llevan (para ofrecer primero los más usados). */
+  usos?: number;
 }
 
 export interface Catalog {

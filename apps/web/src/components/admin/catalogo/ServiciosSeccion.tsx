@@ -12,8 +12,28 @@ const KIND_LABEL: Record<AddOn['kind'], string> = {
   porUnidad: 'Por unidad',
 };
 
-export type ServicioPatch = Partial<Pick<AddOn, 'nombre' | 'kind' | 'price' | 'activo'>>;
-export type ServicioNuevo = Pick<AddOn, 'nombre' | 'kind' | 'price'>;
+export type ServicioPatch = Partial<Pick<AddOn, 'nombre' | 'categoria' | 'kind' | 'price' | 'activo'>>;
+export type ServicioNuevo = Pick<AddOn, 'nombre' | 'categoria' | 'kind' | 'price'>;
+
+/** Los servicios sin categoría van al final, bajo este nombre (igual que al cotizar). */
+const SIN_CATEGORIA = 'Otros servicios';
+const ID_CATEGORIAS = 'categorias-de-servicio';
+
+/**
+ * Campo de categoría con las que ya existen como sugerencia: así "Iluminación" no
+ * termina escrita de tres formas y partida en tres grupos.
+ */
+function CategoriaInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  return (
+    <TextInput
+      value={value}
+      list={ID_CATEGORIAS}
+      aria-label="Categoría"
+      placeholder="Categoría (ej. Iluminación)"
+      onChange={(e) => onChange(e.target.value)}
+    />
+  );
+}
 
 function KindSelect({
   value,
@@ -53,22 +73,45 @@ export function ServiciosSeccion({
   onEditar: (id: string, datos: ServicioPatch) => Promise<unknown>;
   onBorrar: (id: string) => Promise<unknown>;
 }) {
+  const categorias = [...new Set(servicios.map((s) => s.categoria?.trim()).filter((c): c is string => !!c))].sort(
+    (a, b) => a.localeCompare(b, 'es'),
+  );
+  // Agrupados como se ven al cotizar: alfabético por categoría, "Otros" al final.
+  const grupos = [...categorias, SIN_CATEGORIA]
+    .map((c) => ({
+      categoria: c,
+      lista: servicios.filter((s) => (s.categoria?.trim() || SIN_CATEGORIA) === c),
+    }))
+    .filter((g) => g.lista.length > 0);
+
   return (
     <div className="grid gap-6 lg:grid-cols-[1.4fr_1fr]">
-      <div>
+      <datalist id={ID_CATEGORIAS}>
+        {categorias.map((c) => (
+          <option key={c} value={c} />
+        ))}
+      </datalist>
+      <div className="space-y-5">
         {servicios.length === 0 ? (
           <p className="text-sm text-charcoal-soft">Este catálogo todavía no tiene servicios.</p>
         ) : (
-          <ul className="divide-y divide-cream-300">
-            {servicios.map((s) => (
-              <ServicioRow
-                key={s.id}
-                servicio={s}
-                onEditar={(datos) => onEditar(s.id, datos)}
-                onBorrar={() => onBorrar(s.id)}
-              />
-            ))}
-          </ul>
+          grupos.map((g) => (
+            <section key={g.categoria}>
+              <h4 className="mb-1 text-xs font-semibold uppercase tracking-[0.08em] text-ink-500">
+                {g.categoria} <span className="font-normal text-charcoal-soft">· {g.lista.length}</span>
+              </h4>
+              <ul className="divide-y divide-cream-300">
+                {g.lista.map((s) => (
+                  <ServicioRow
+                    key={s.id}
+                    servicio={s}
+                    onEditar={(datos) => onEditar(s.id, datos)}
+                    onBorrar={() => onBorrar(s.id)}
+                  />
+                ))}
+              </ul>
+            </section>
+          ))
         )}
       </div>
       <NuevoServicio onCrear={onCrear} />
@@ -87,6 +130,7 @@ function ServicioRow({
 }) {
   const [editando, setEditando] = useState(false);
   const [nombre, setNombre] = useState(servicio.nombre);
+  const [categoria, setCategoria] = useState(servicio.categoria ?? '');
   const [kind, setKind] = useState<AddOn['kind']>(servicio.kind);
   const [price, setPrice] = useState(String(servicio.price));
   const { correr, pendiente, error } = useGuardar('No se pudo guardar el servicio.');
@@ -94,6 +138,7 @@ function ServicioRow({
   function descartar() {
     setEditando(false);
     setNombre(servicio.nombre);
+    setCategoria(servicio.categoria ?? '');
     setKind(servicio.kind);
     setPrice(String(servicio.price));
   }
@@ -102,7 +147,7 @@ function ServicioRow({
     const n = Number(price);
     if (!nombre.trim() || !Number.isInteger(n) || n < 0) return;
     const bien = await correr(
-      () => onEditar({ nombre: nombre.trim(), kind, price: n }),
+      () => onEditar({ nombre: nombre.trim(), categoria: categoria.trim() || null, kind, price: n }),
       'Guardado.',
     );
     if (bien) setEditando(false);
@@ -111,12 +156,13 @@ function ServicioRow({
   if (editando) {
     return (
       <li className="space-y-2 py-3 first:pt-0 last:pb-0">
-        <div className="grid gap-2 sm:grid-cols-[1.5fr_1fr_0.8fr]">
+        <div className="grid gap-2 sm:grid-cols-[1.5fr_1.2fr_1fr_0.8fr]">
           <TextInput
             value={nombre}
             aria-label="Nombre del servicio"
             onChange={(e) => setNombre(e.target.value)}
           />
+          <CategoriaInput value={categoria} onChange={setCategoria} />
           <KindSelect value={kind} onChange={setKind} />
           <MoneyInput aria-label="Precio del servicio" value={price} onValue={setPrice} />
         </div>
@@ -192,6 +238,7 @@ function ServicioRow({
 
 function NuevoServicio({ onCrear }: { onCrear: (datos: ServicioNuevo) => Promise<unknown> }) {
   const [nombre, setNombre] = useState('');
+  const [categoria, setCategoria] = useState('');
   const [kind, setKind] = useState<AddOn['kind']>('fijo');
   const [price, setPrice] = useState('');
   const [invalido, setInvalido] = useState('');
@@ -206,10 +253,12 @@ function NuevoServicio({ onCrear }: { onCrear: (datos: ServicioNuevo) => Promise
     }
     setInvalido('');
     const bien = await correr(
-      () => onCrear({ nombre: nombre.trim(), kind, price: n }),
+      () => onCrear({ nombre: nombre.trim(), categoria: categoria.trim() || null, kind, price: n }),
       `“${nombre.trim()}” agregado.`,
     );
     if (bien) {
+      // La categoría se queda: casi siempre se dan de alta varios de la misma
+      // categoría seguidos (toda la iluminación, luego todo el mobiliario).
       setNombre('');
       setKind('fijo');
       setPrice('');
@@ -225,6 +274,9 @@ function NuevoServicio({ onCrear }: { onCrear: (datos: ServicioNuevo) => Promise
           onChange={(e) => setNombre(e.target.value)}
           placeholder="Mesa de dulces"
         />
+      </Field>
+      <Field label="Categoría" hint="Agrupa los servicios al cotizar. Elige una existente o escribe una nueva.">
+        <CategoriaInput value={categoria} onChange={setCategoria} />
       </Field>
       <Field label="Tipo de cobro">
         <KindSelect value={kind} onChange={setKind} />

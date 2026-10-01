@@ -357,6 +357,37 @@ describe('servicios del catálogo', () => {
     expect(resuelto!.price).toBe(60);
   });
 
+  it('la categoría se guarda, se cambia, se quita (vacía = sin categoría) y viaja al clonar', async () => {
+    const cat = await catalogoDePrueba('SERV-CATEG', 2079);
+    const s = await crearServicio(
+      prisma, cat.id, { nombre: 'Luz cálida', categoria: '  Iluminación ', kind: 'fijo', price: 3000 }, actor,
+    );
+    expect(s.categoria).toBe('Iluminación');
+    expect((await editarServicio(prisma, cat.id, s.id, { categoria: 'Luces' }, actor)).categoria).toBe('Luces');
+    expect((await editarServicio(prisma, cat.id, s.id, { categoria: '' }, actor)).categoria).toBeNull();
+    await editarServicio(prisma, cat.id, s.id, { categoria: 'Iluminación' }, actor);
+
+    const clon = await clonarCatalogo(prisma, { nombre: `CLON-CATEG-${SUF}`, anio: 2080, clonarDe: cat.id });
+    creados.push(clon.id);
+    const copia = await prisma.addOn.findFirstOrThrow({ where: { priceListId: clon.id, nombre: 'Luz cálida' } });
+    expect(copia.categoria).toBe('Iluminación');
+  });
+
+  it('GET /catalog dice cuántas cotizaciones usan cada servicio (para los más usados)', async () => {
+    const cat = await catalogoDePrueba('SERV-USOS', 2081);
+    const usado = await crearServicio(prisma, cat.id, { nombre: 'Barra libre', kind: 'fijo', price: 9000 }, actor);
+    const nuevo = await crearServicio(prisma, cat.id, { nombre: 'Fuegos fríos', kind: 'fijo', price: 7000 }, actor);
+    for (const fecha of ['2033-02-05', '2033-02-12']) {
+      const q = await cotizacionEn(cat.id, fecha);
+      await prisma.quote.update({ where: { id: q.id }, data: { addOns: [{ addOnId: usado.id, cantidad: 1 }] } });
+    }
+    const r = await app.inject({ method: 'GET', url: `/api/catalog?priceListId=${cat.id}`, cookies: await adminCookies() });
+    expect(r.statusCode).toBe(200);
+    const addOns = r.json().addOns as { id: string; usos: number }[];
+    expect(addOns.find((a) => a.id === usado.id)!.usos).toBe(2);
+    expect(addOns.find((a) => a.id === nuevo.id)!.usos).toBe(0);
+  });
+
   it('borrar un servicio EN USO responde 409 y no lo borra', async () => {
     const cat = await catalogoDePrueba('SERV-EN-USO', 2068);
     const s = await crearServicio(prisma, cat.id, { nombre: 'Servicio usado', kind: 'fijo', price: 800 }, actor);

@@ -645,6 +645,10 @@ model FoodPackagePrice {
 model AddOn {
   id          String    @id @default(cuid())
   nombre      String
+  /// Para agruparlos al cotizar ("Mobiliario", "Iluminación", "Bebidas"…). Texto
+  /// libre que pone el admin; `null` = sin categoría. Son muchos servicios y una
+  /// sola lista plana ya no se podía recorrer.
+  categoria   String?
   kind        AddOnKind
   price       Int
   activo      Boolean   @default(true)

@@ -66,6 +66,7 @@ export async function contenidoDeCatalogo(db: PrismaClient, priceListId: string)
     servicios: servicios.map((s) => ({
       id: s.id,
       nombre: s.nombre,
+      categoria: s.categoria,
       kind: s.kind,
       price: s.price,
       activo: s.activo,
