@@ -329,3 +329,45 @@ describe('BI', () => {
     expect(pagos.every((p) => p.pagoBanqueteroId === deposito.id)).toBe(true);
   });
 });
+
+describe('folio de papel', () => {
+  // "Los recibos de papel de septiembre en adelante conservan su número" (el
+  // dueño, 5-oct-2026).
+  it('el pago lleva el número de la hoja y la serie automática queda por encima', async () => {
+    const q = await nuevoEvento();
+    const antes = await siguienteFolio();
+    const papel = antes + 50;
+    const { payment } = await registerPayment(
+      prisma, storage, q.id, { monto: 5_000, metodo: 'efectivo', fecha: '2026-09-12', folioPapel: papel }, admin,
+    );
+    expect(payment.folio).toBe(papel);
+    expect(await siguienteFolio()).toBe(papel + 1);
+
+    // Uno de papel MÁS BAJO que la serie no la hace retroceder.
+    const { payment: otro } = await registerPayment(
+      prisma, storage, q.id, { monto: 1_000, metodo: 'efectivo', fecha: '2026-09-13', folioPapel: antes + 10 }, admin,
+    );
+    expect(otro.folio).toBe(antes + 10);
+    expect(await siguienteFolio()).toBe(papel + 1);
+  });
+
+  it('no acepta un folio que ya tiene otro dinero, ni lo captura alguien que no es admin', async () => {
+    const q = await nuevoEvento();
+    const { payment } = await registerPayment(prisma, storage, q.id, { monto: 2_000, metodo: 'efectivo', fecha: '2026-10-02' }, admin);
+    await expect(
+      registerPayment(prisma, storage, q.id, { monto: 2_000, metodo: 'efectivo', fecha: '2026-10-02', folioPapel: payment.folio }, admin),
+    ).rejects.toMatchObject({ status: 409 });
+    await expect(
+      registerPayment(prisma, storage, q.id, { monto: 2_000, metodo: 'efectivo', fecha: '2026-10-02', folioPapel: payment.folio + 70 }, { id: admin.id, role: 'ventas' }),
+    ).rejects.toMatchObject({ status: 403 });
+  });
+
+  it('también en un depósito de banquetero', async () => {
+    const antes = await siguienteFolio();
+    const dep = await registrarDeposito(
+      prisma, storage, banqueteroId, { monto: 10_000, metodo: 'transferencia', fecha: '2026-09-20', folioPapel: antes + 80 }, admin,
+    );
+    expect(dep.folio).toBe(antes + 80);
+    expect(await siguienteFolio()).toBe(antes + 81);
+  });
+});

@@ -72,6 +72,7 @@ export async function banqueteroRoutes(app: FastifyInstance): Promise<void> {
           fecha: fields.fecha,
           referencia: fields.referencia || undefined,
           notas: fields.notas || undefined,
+          folioPapel: fields.folioPapel ? Number(fields.folioPapel) : undefined,
         };
       } else {
         rawInput = (req.body ?? {}) as Record<string, unknown>;
@@ -285,6 +286,7 @@ export async function banqueteroRoutes(app: FastifyInstance): Promise<void> {
           fecha: fields.fecha,
           referencia: fields.referencia || undefined,
           notas: fields.notas || undefined,
+          folioPapel: fields.folioPapel ? Number(fields.folioPapel) : undefined,
         };
       } else {
         rawInput = (req.body ?? {}) as Record<string, unknown>;

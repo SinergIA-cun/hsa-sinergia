@@ -9,6 +9,7 @@ import { Button, Field, MoneyInput, TextInput } from '../ui.tsx';
 import { FormasPagoCampo, errorFormas, formasIniciales, formasParaEnviar } from '../FormasPagoCampo.tsx';
 import { apiErrorMessage } from '../admin/shared.tsx';
 import type { AbonoApartado, ApartadoFecha } from '../../lib/types.ts';
+import { FolioPapelCampo, folioPapelParaEnviar } from '../FolioPapelCampo.tsx';
 import { NotasCampo, NotasEditables } from '../NotasPago.tsx';
 
 /**
@@ -189,6 +190,7 @@ function FormaAbono({
   const [fecha, setFecha] = useState(() => new Date().toISOString().slice(0, 10));
   const [referencia, setReferencia] = useState('');
   const [notas, setNotas] = useState('');
+  const [folioPapel, setFolioPapel] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
@@ -211,10 +213,12 @@ function FormaAbono({
         fecha,
         referencia: referencia.trim() || undefined,
         notas: notas.trim() || undefined,
+        folioPapel: folioPapelParaEnviar(folioPapel),
       });
       setMonto('');
       setReferencia('');
       setNotas('');
+      setFolioPapel('');
       await onListo();
       onCerrar();
     } catch (err) {
@@ -236,6 +240,7 @@ function FormaAbono({
       <Field label="Referencia (opcional)">
         <TextInput value={referencia} onChange={(e) => setReferencia(e.target.value)} className="py-1.5 text-sm" />
       </Field>
+      <FolioPapelCampo value={folioPapel} onChange={setFolioPapel} />
       <div className="sm:col-span-2">
         <NotasCampo value={notas} onChange={setNotas} />
       </div>
