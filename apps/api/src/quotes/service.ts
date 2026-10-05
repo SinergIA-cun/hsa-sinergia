@@ -13,6 +13,7 @@ import {
   MENSAJE_SIN_CONTACTO,
   type QuoteExtra,
   type QuoteSelection,
+  formasSinNotas,
 } from '@hsa/shared';
 import { loadCatalog } from '../catalog/loader.js';
 import { getAvailability } from '../availability/service.js';
@@ -1750,7 +1751,8 @@ export async function getByToken(db: PrismaClient, token: string) {
       metodo: p.metodo,
       // Las partes de un pago dividido, para que el recibo diga cuánto fue con
       // cada tarjeta. No es dato sensible: el cliente es quien pagó.
-      formas: p.formas,
+      // Las notas de cada parte son internas, como las del pago.
+      formas: formasSinNotas(p.formas),
       fecha: p.fecha.toISOString(),
       tieneComprobante: Boolean(p.comprobanteKey),
       destino: p.destino,

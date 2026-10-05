@@ -6,6 +6,9 @@ import { z } from 'zod';
  * Un mismo pago puede venir dividido: "toma mi tarjeta de débito y mi tarjeta de
  * crédito, a cada una cóbrale tanto". Es UN pago con UN folio, no dos, así que la
  * división vive dentro del pago (`formas`) y no como pagos separados.
+ *
+ * La misma forma puede repetirse ("hago 2 transferencias"), y cada parte lleva
+ * una nota opcional: de qué banco vino, quién la hizo (el dueño, 5-oct-2026).
  */
 export const FORMAS_PAGO = ['efectivo', 'cheque', 'transferencia', 'tarjetaDebito', 'tarjetaCredito'] as const;
 export type FormaPago = (typeof FORMAS_PAGO)[number];
@@ -36,7 +39,10 @@ export const FORMA_PAGO_LABEL: Record<MetodoPago, string> = {
  * guarda en una columna JSON, y Prisma solo acepta ahí tipos con firma de índice
  * implícita, que las interfaces no tienen.
  */
-export type PartePago = { forma: FormaPago; monto: number };
+export type PartePago = { forma: FormaPago; monto: number; nota?: string };
+
+/** Lo más largo que puede ser la nota de una parte: "BBVA · ref 0043128 · pagó la tía". */
+export const NOTA_PARTE_MAX = 120;
 
 export const formaPagoSchema = z.enum(FORMAS_PAGO);
 
@@ -52,12 +58,21 @@ export const metodoCapturaSchema = z.enum([...FORMAS_PAGO, 'tarjeta']);
  * flotantes al escribir, así que un decimal aquí perdería centavos en silencio.
  */
 export const formasPagoSchema = z
-  .array(z.object({ forma: formaPagoSchema, monto: z.number().int().positive() }))
+  .array(
+    z.object({
+      forma: formaPagoSchema,
+      monto: z.number().int().positive(),
+      // En blanco no es nota: no se guarda.
+      nota: z
+        .string()
+        .trim()
+        .max(NOTA_PARTE_MAX)
+        .optional()
+        .transform((v) => (v ? v : undefined)),
+    }),
+  )
   .min(1, 'El pago necesita al menos una forma de pago.')
-  .max(FORMAS_PAGO.length)
-  .refine((partes) => new Set(partes.map((p) => p.forma)).size === partes.length, {
-    message: 'Cada forma de pago va una sola vez: si son dos tarjetas de crédito, súmalas.',
-  });
+  .max(10, 'Un pago se divide en 10 partes como máximo.');
 
 /** El error que se lanza cuando la captura no cuadra. */
 export class FormasPagoError extends Error {}
@@ -103,19 +118,31 @@ export function partesDePago(pago: {
   monto: number;
   metodo: string;
   formas?: unknown;
-}): { forma: MetodoPago; monto: number }[] {
+}): { forma: MetodoPago; monto: number; nota?: string }[] {
   const parsed = formasPagoSchema.safeParse(pago.formas);
   if (parsed.success) return parsed.data;
   return [{ forma: pago.metodo as MetodoPago, monto: pago.monto }];
 }
 
-/** "Tarjeta de débito $6,000 · Tarjeta de crédito $4,000", o solo "Efectivo". */
+/** "Transferencia $6,000 (BBVA) · Transferencia $4,000 (Santander)", o solo "Efectivo". */
 export function describirFormasPago(pago: { monto: number; metodo: string; formas?: unknown }): string {
   const partes = partesDePago(pago);
-  if (partes.length === 1) return FORMA_PAGO_LABEL[partes[0]!.forma] ?? partes[0]!.forma;
+  const nota = (p: { nota?: string }) => (p.nota ? ` (${p.nota})` : '');
+  if (partes.length === 1) return `${FORMA_PAGO_LABEL[partes[0]!.forma] ?? partes[0]!.forma}${nota(partes[0]!)}`;
   return partes
-    .map((p) => `${FORMA_PAGO_LABEL[p.forma] ?? p.forma} $${p.monto.toLocaleString('es-MX')}`)
+    .map((p) => `${FORMA_PAGO_LABEL[p.forma] ?? p.forma} $${p.monto.toLocaleString('es-MX')}${nota(p)}`)
     .join(' · ');
+}
+
+/** Las partes sin sus notas: lo que puede ver el cliente (las notas son internas). */
+export function formasSinNotas(formas: unknown): unknown {
+  if (!Array.isArray(formas)) return formas;
+  return formas.map((p) => {
+    if (p == null || typeof p !== 'object') return p;
+    const { nota: _nota, ...resto } = p as Record<string, unknown>;
+    void _nota;
+    return resto;
+  });
 }
 
 /**

@@ -134,3 +134,33 @@ describe('notas de un depósito', () => {
     expect(r.notas).toBeNull();
   });
 });
+
+describe('notas por parte de un pago dividido', () => {
+  // "Si hago 2 transferencias, poder agregar de qué banco vino cada una" (el
+  // dueño, 5-oct-2026).
+  it('dos transferencias, cada una con su banco; la bitácora las dice y el cliente no las ve', async () => {
+    const q = await evento();
+    const { payment } = await registerPayment(
+      prisma, storage, q.id,
+      {
+        monto: 10_000,
+        formas: [
+          { forma: 'transferencia', monto: 6_000, nota: 'BBVA' },
+          { forma: 'transferencia', monto: 4_000, nota: 'Santander, la hizo el papá' },
+        ],
+        fecha: '2026-10-01',
+      },
+      admin,
+    );
+    expect(payment.metodo).toBe('mixto');
+    expect(payment.formas).toEqual([
+      { forma: 'transferencia', monto: 6_000, nota: 'BBVA' },
+      { forma: 'transferencia', monto: 4_000, nota: 'Santander, la hizo el papá' },
+    ]);
+    const log = await prisma.activityLog.findFirstOrThrow({ where: { quoteId: q.id, tipo: 'pago' }, orderBy: { createdAt: 'desc' } });
+    expect(log.descripcion).toContain('(BBVA)');
+    const pub = await getByToken(prisma, q.publicToken);
+    expect(JSON.stringify(pub)).not.toContain('Santander');
+  });
+});
+
