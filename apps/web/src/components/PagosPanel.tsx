@@ -12,10 +12,13 @@ import { FolioPapelCampo, folioPapelParaEnviar } from './FolioPapelCampo.tsx';
 import { NotasCampo, NotasEditables } from './NotasPago.tsx';
 import type { EstadoCuenta, Payment, PaymentConcept, ActivityEntry, QuoteStatus } from '../lib/types.ts';
 
-/** Los cuatro conceptos, con la etiqueta que ve la vendedora. */
+/**
+ * Los conceptos que se pueden elegir, con la etiqueta que ve la vendedora. Son
+ * los del BI (5-oct-2026): sin "complemento", que solo sigue en la etiqueta de
+ * pagos viejos.
+ */
 const CONCEPTOS: { value: PaymentConcept; label: string }[] = [
   { value: 'anticipo', label: 'Anticipo' },
-  { value: 'complemento', label: 'Complemento' },
   { value: 'aCuenta', label: 'A cuenta' },
   { value: 'finiquito', label: 'Finiquito' },
 ];
