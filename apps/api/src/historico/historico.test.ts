@@ -19,6 +19,8 @@ import {
 import { archivarEvento, barridoHistorico } from './archivar.js';
 import { listarHistorico, detalleHistorico } from './consulta.js';
 import type { FotoEvento } from './foto.js';
+import { eliminarDelHistorico } from './eliminar.js';
+import { registrarCargo } from '../cargos/service.js';
 
 /**
  * El histórico de eventos.
@@ -90,6 +92,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  await prisma.cargoEvento.deleteMany({ where: { quoteId: { in: quotes } } });
   await prisma.eventoHistorico.deleteMany({ where: { quoteId: { in: quotes } } });
   await prisma.payment.deleteMany({ where: { quoteId: { in: quotes } } });
   await prisma.activityLog.deleteMany({ where: { quoteId: { in: quotes } } });
@@ -415,5 +418,72 @@ describe('la consulta', () => {
 
     const sinSesion = await app.inject({ method: 'GET', url: '/api/historico' });
     expect(sinSesion.statusCode).toBe(401);
+  });
+});
+
+describe('eliminar del Histórico un evento de prueba', () => {
+  // "Quiero un botón para borrar, solo para el admin. De eventos históricos"
+  // (el dueño, 5-oct-2026).
+  async function eventoDePrueba(nombre: string) {
+    const q = await eventoPasado(nombre);
+    await updateStatus(prisma, q.id, 'formalizada', actor);
+    await registerPayment(prisma, storage, q.id, { monto: 20_000, metodo: 'efectivo', fecha: '2019-01-15' }, actor);
+    await registrarCargo(prisma, q.id, { producto: 'multa', cantidad: 1, precioUnitario: 3_000, descripcion: 'Prueba', fecha: '2019-03-02' }, actor);
+    await archivarEvento(prisma, q.id);
+    return q;
+  }
+
+  it('un admin lo manda a la papelera aunque esté formalizado y con pagos, y deja de verse en el Histórico', async () => {
+    const nombre = `Prueba borrable ${randomUUID().slice(0, 6)}`;
+    const q = await eventoDePrueba(nombre);
+    const antes = await listarHistorico(prisma, { q: nombre, pagina: 0 });
+    expect(antes.filas).toHaveLength(1);
+
+    await eliminarDelHistorico(prisma, q.id, { motivo: 'Era de prueba' }, actor);
+
+    expect((await listarHistorico(prisma, { q: nombre, pagina: 0 })).filas).toHaveLength(0);
+    expect(await detalleHistorico(prisma, antes.filas[0]!.id)).toBeNull();
+    expect((await prisma.quote.findUniqueOrThrow({ where: { id: q.id } })).deletedAt).not.toBeNull();
+    const log = await prisma.activityLog.findFirstOrThrow({ where: { quoteId: q.id, tipo: 'eliminada' } });
+    expect(log.descripcion).toContain('Era de prueba');
+    expect(log.actorId).toBe(actor.id);
+  });
+
+  it('solo admin, con motivo, y solo eventos que ya pasaron', async () => {
+    const q = await eventoDePrueba(`Prueba candados ${randomUUID().slice(0, 6)}`);
+    await expect(eliminarDelHistorico(prisma, q.id, { motivo: 'x' }, { id: actor.id, role: 'ventas' })).rejects.toMatchObject({ status: 403 });
+    await expect(eliminarDelHistorico(prisma, q.id, { motivo: '' }, actor)).rejects.toThrow();
+
+    const futuro = await createQuote(
+      prisma,
+      {
+        fecha: '2037-06-13', invitados: 150, spaceIds: [arcosId], horasExtra: 0, usaCapilla: false, esCortesia: false,
+        usaDjHoraExtra: false, addOns: [], extras: [], eventTypeId, requiereFactura: false,
+        client: { telefono: '5555550000', nombre: 'Histórico · futuro no se borra' },
+      },
+      actor,
+    );
+    quotes.push(futuro.id);
+    clients.push(futuro.clientId);
+    await expect(eliminarDelHistorico(prisma, futuro.id, { motivo: 'No debe' }, actor)).rejects.toMatchObject({ status: 409 });
+  });
+
+  it('por HTTP: sin sesión no entra', async () => {
+    const q = await eventoDePrueba(`Prueba http ${randomUUID().slice(0, 6)}`);
+    const sinSesion = await app.inject({ method: 'POST', url: `/api/admin/historico/${q.id}/eliminar`, payload: { motivo: 'Prueba' } });
+    expect(sinSesion.statusCode).toBe(401);
+  });
+
+  it('a los 30 días la purga lo borra con sus pagos, cargos y fotos', async () => {
+    const q = await eventoDePrueba(`Prueba purga ${randomUUID().slice(0, 6)}`);
+    await eliminarDelHistorico(prisma, q.id, { motivo: 'Era de prueba' }, actor);
+    await prisma.quote.update({ where: { id: q.id }, data: { deletedAt: new Date(Date.now() - 40 * 86_400_000) } });
+
+    await purgeExpiredTrash(prisma);
+
+    expect(await prisma.quote.findUnique({ where: { id: q.id } })).toBeNull();
+    expect(await prisma.payment.count({ where: { quoteId: q.id } })).toBe(0);
+    expect(await prisma.cargoEvento.count({ where: { quoteId: q.id } })).toBe(0);
+    expect(await prisma.eventoHistorico.count({ where: { quoteId: q.id } })).toBe(0);
   });
 });

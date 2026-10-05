@@ -1549,8 +1549,12 @@ export async function purgeExpiredTrash(db: PrismaClient): Promise<void> {
     // de vaciarse para siempre sin que nadie se enterara.
     //
     // Se pueden borrar sin remordimiento: a la papelera solo llegan BORRADORES
-    // sin pagos (lo exige `softDeleteQuote`), así que una foto de aquí es la de
-    // una cotización que nunca se cerró, no la de un evento que sucedió.
+    // sin pagos (lo exige `softDeleteQuote`) o eventos que el admin quitó del
+    // Histórico por ser de prueba (`eliminarDelHistorico`). Ninguno es un evento
+    // que sucedió. Los segundos pueden traer cargos y devoluciones, que también
+    // son RESTRICT.
+    await db.cargoEvento.deleteMany({ where: { quoteId: { in: ids } } });
+    await db.devolucion.deleteMany({ where: { quoteId: { in: ids } } });
     await db.eventoHistorico.deleteMany({ where: { quoteId: { in: ids } } });
     await db.quote.deleteMany({ where: { id: { in: ids } } });
   } catch {

@@ -78,9 +78,14 @@ export async function listarHistorico(
   // `DISTINCT ON` es la herramienta de Postgres para esto y Prisma no la tiene.
   // Se pide en crudo solo los ids —no las filas— y el resto de la consulta sigue
   // siendo Prisma, con sus filtros y su paginación.
+  //
+  // Lo que está en la papelera no se enseña: un evento de prueba que el admin
+  // quitó del Histórico desaparece de aquí en ese momento, no a los 30 días.
   const ultimas = await db.$queryRaw<{ id: string }[]>`
-    SELECT DISTINCT ON ("quoteId") "id" FROM "EventoHistorico"
-    ORDER BY "quoteId", "version" DESC
+    SELECT DISTINCT ON (h."quoteId") h."id" FROM "EventoHistorico" h
+    JOIN "Quote" q ON q."id" = h."quoteId"
+    WHERE q."deletedAt" IS NULL
+    ORDER BY h."quoteId", h."version" DESC
   `;
   if (ultimas.length === 0) return { filas: [], total: 0, hayMas: false, anios: [] };
   const filtroUltimas: Prisma.EventoHistoricoWhereInput = {
@@ -153,8 +158,8 @@ export async function detalleHistorico(
   db: PrismaClient,
   id: string,
 ): Promise<DetalleHistorico | null> {
-  const fila = await db.eventoHistorico.findUnique({ where: { id } });
-  if (!fila) return null;
+  const fila = await db.eventoHistorico.findUnique({ where: { id }, include: { quote: { select: { deletedAt: true } } } });
+  if (!fila || fila.quote.deletedAt) return null;
   const hermanas = await db.eventoHistorico.findMany({
     where: { quoteId: fila.quoteId },
     orderBy: { version: 'desc' },
