@@ -449,17 +449,13 @@ Real, de `GET /api/bi/facturacion?desde=2031-01-01&hasta=2031-12-31`:
 
 ## Importar y conciliar (escritura, llave aparte)
 
-El BI tiene la historia completa: eventos de años anteriores y los pagos de este año hasta
-agosto. Entran los eventos que se celebran del **1 de agosto de 2026** en adelante:
+El BI puede mandar eventos de **cualquier fecha**, sin corte:
 
-- **Los que todavía no se celebran**, sin importar cuándo se contrataron (un evento del
-  1-ene-2027 contratado el 2-feb-2026 entra). Entran como eventos normales: bloquean su
-  fecha y sus pagos siguen aquí.
-- **Los ya cerrados de agosto y septiembre de 2026**, como historial. Se mandan igual, con
-  sus pagos; al importarse quedan archivados en el Histórico y se les pueden cargar horas
-  extra, multas, etc. desde el evento.
-
-Los de julio de 2026 o antes se quedan en el BI (`fueraDeCorte`).
+- **Los que todavía no se celebran**, sin importar cuándo se contrataron. Entran como
+  eventos normales: bloquean su fecha y sus pagos siguen aquí.
+- **Los que ya pasaron**, de cualquier año, como historial. Se mandan igual, con sus pagos;
+  al importarse quedan archivados en el Histórico y se les pueden cargar horas extra,
+  multas, etc. desde el evento.
 
 Llave: encabezado `x-api-key` con `BI_IMPORT_API_KEY` (distinta de `BI_API_KEY`). Sin esa
 variable estas rutas no existen (404).
@@ -507,14 +503,14 @@ primero, revisar, e importar después.
 | `folioHSA` | Opcional. Folio de un evento que ya existe aquí (`26SEP-0184`), para ligarlo en vez de crearlo. |
 | `codigo` | Opcional. El código con el que el evento ya circula (`04SEP26-HLANGRUEN-CUPULA`). Si aquí hay un evento que lo tiene **o lo tuvo**, se liga a ese. Si no hay ninguno, el evento nuevo nace con ese mismo código, para no cambiarle el nombre a algo que ya está en papel. |
 | `fechaContratacion` | Cuándo se vendió. El folio del evento sale de este mes (`26FEB-…`), no de la fecha de importación. |
-| `tipoEvento`, `salones` | Por nombre. Se comparan sin acentos ni mayúsculas y sin "Jardín/Salón/La/Los": `"Cúpula"` = `"Jardín La Cúpula"`. Lo que no coincide exacto **no se adivina**: el evento sale `invalido`. |
+| `tipoEvento`, `salones` | Por nombre. Se comparan sin acentos ni mayúsculas y sin "Jardín/Salón/La/Los": `"Cúpula"` = `"Jardín La Cúpula"`. Lo que no coincide exacto **no se adivina**: el evento sale `invalido`. Tipos de evento: Boda, XV, Cumpleaños, Bautizo, Primera comunión, Empresarial, Fin de año, Renta, Graduación, Sesión de fotos, Team Building. |
 | `banquetero`, `vendedora` | Por nombre. Si no se reconocen, el evento entra sin ellos y se avisa. |
 | `renta.total` | Lo que cobra la hacienda, con IVA. Es el **precio pactado**. |
 | `otros.total` | Alimentos y servicios (se pagan al proveedor), con IVA. |
 | `pagos[].folio` | **Obligatorio**: el folio de la hoja foliada (serie I). Se conserva tal cual. |
 | `pagos[].metodo` / `formas` | Igual que en `/pagos`: una forma, o las partes de un pago dividido (deben sumar `monto`). |
 | `pagosHasta` | Hasta qué fecha tiene pagos el BI. Del lado de la hacienda solo se comparan los pagos hasta ese día: los de septiembre en adelante solo existen aquí y **es lo esperado**. |
-| `completo` | `true` = el lote trae TODOS los eventos del BI del corte en adelante. Solo así se reporta `soloEnHSA`. |
+| `completo` | `true` = el lote trae TODOS los eventos del BI. Solo así se reporta `soloEnHSA`. |
 
 Hasta 200 eventos por llamada; para más, se manda por partes (todo es idempotente).
 
@@ -522,7 +518,6 @@ Hasta 200 eventos por llamada; para más, se manda por partes (todo es idempoten
 
 ```json
 {
-  "corte": "2026-08-01",
   "resumen": { "nuevo": 1, "difiere": 1, "creados": 1 },
   "resultados": [
     { "idBI": "EV-10233", "estado": "nuevo", "accion": "creado", "folioHSA": "26FEB-0213", "codigoHSA": "13MAR27-JPEREZ-ARCOS", "quoteId": "cm…" },
@@ -544,7 +539,6 @@ Hasta 200 eventos por llamada; para más, se manda por partes (todo es idempoten
 | `igual` | Ya existe y cuadra. | Nada. |
 | `difiere` | Ya existe y algo no cuadra (`diferencias`). **No se sobrescribe**: desde la importación la operación vive en la hacienda. | Cuadrarlo a mano en el sistema que esté mal. |
 | `posibleDuplicado` | No está ligado, pero aquí ya hay algo esa fecha en ese salón (`candidatos`: un evento o un apartado). No se importa. | Si es el mismo evento, reenviarlo con `folioHSA` o `codigo` para ligarlo. Si no, es un empalme real. |
-| `fueraDeCorte` | Se celebra antes del 1-ago-2026. | Nada: se queda en el BI. |
 | `invalido` | Un salón o tipo de evento no reconocido, formas que no suman, folios repetidos… (`errores`). | Corregir en el BI y reenviar. |
 
 `diferencias[].campo` es uno de `fechaEvento`, `salones`, `invitados`, `tipoEvento`,

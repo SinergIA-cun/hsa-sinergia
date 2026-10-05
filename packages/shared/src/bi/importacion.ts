@@ -1,18 +1,13 @@
 import type { QuoteBreakdown, QuoteLine } from '../types.js';
 
-/**
+/*
  * Importar del BI los eventos que ya estaban vendidos antes del sistema.
  *
- * El BI tiene la historia completa —eventos de años anteriores y los pagos de
- * este año hasta agosto—. Entran:
- *  - los que TODAVÍA NO SE CELEBRAN, sin importar cuándo se contrataron (un evento
- *    del 1 de enero de 2027 contratado el 2 de febrero de 2026 entra), y
- *  - los ya CERRADOS de agosto y septiembre de 2026, "para tener un poco de
- *    historial" (el dueño, 5-oct-2026): pasan directo al Histórico y se les pueden
- *    cargar horas extra, multas, etc. como a cualquier evento pasado.
- * Uno de julio o antes, no: se queda en el BI.
+ * Sin corte de fecha: "que pueda subir lo que sea" (el dueño, 5-oct-2026). Un
+ * evento que todavía no se celebra entra como evento normal; uno que ya pasó
+ * entra igual y queda archivado en el Histórico, donde se le pueden cargar
+ * horas extra, multas, etc.
  */
-export const FECHA_CORTE_IMPORTACION = '2026-08-01';
 
 /**
  * Nombre comparable: sin acentos, sin mayúsculas y sin las palabras que cada

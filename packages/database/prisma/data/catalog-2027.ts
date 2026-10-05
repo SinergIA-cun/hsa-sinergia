@@ -79,11 +79,15 @@ export const EVENT_TYPES_2027: EventTypeDef[] = [
   },
   { nombre: 'Cumpleaños', slug: 'cumpleanos', djHoraExtra: 2750, packages: TRES_TIEMPOS_TAQUIZA },
   { nombre: 'Bautizo', slug: 'bautizo', djHoraExtra: 2750, packages: TRES_TIEMPOS_TAQUIZA },
+  // Primera comunión: evento familiar como el bautizo; arranca con sus mismos
+  // paquetes y DJ. Si se cobra distinto, se ajusta en Admin → Catálogos.
+  { nombre: 'Primera comunión', slug: 'primera-comunion', djHoraExtra: 2750, packages: TRES_TIEMPOS_TAQUIZA },
   { nombre: 'Empresarial', slug: 'empresarial', djHoraExtra: 2950, packages: EMPRESARIAL_PACKAGES },
   { nombre: 'Fin de año', slug: 'fin-de-ano', djHoraExtra: 2950, packages: EMPRESARIAL_PACKAGES },
   // Solo renta del espacio (sin alimentos):
   { nombre: 'Renta', slug: 'renta', packages: [] },
   { nombre: 'Graduación', slug: 'graduacion', packages: [] },
+  { nombre: 'Sesión de fotos', slug: 'sesion-de-fotos', packages: [] },
   // Team Building: solo renta, con la tabla PLANA (RENTA 2027), sin variar por día.
   { nombre: 'Team Building', slug: 'team-building', packages: [], rentaPlana: true },
 ];
@@ -103,6 +107,7 @@ export async function applyCatalog2027(prisma: PrismaClient): Promise<void> {
   if (!catalogo) throw new Error('No hay catálogo (PriceList) activo al que colgar los paquetes de alimentos.');
 
   for (const et of EVENT_TYPES_2027) {
+    const yaExistia = await prisma.eventType.findUnique({ where: { slug: et.slug }, select: { id: true } });
     const type = await prisma.eventType.upsert({
       where: { slug: et.slug },
       update: { nombre: et.nombre, rentaPlana: et.rentaPlana ?? false },
@@ -124,6 +129,13 @@ export async function applyCatalog2027(prisma: PrismaClient): Promise<void> {
       });
     }
 
+    // Los paquetes y sus precios se siembran SOLO cuando el tipo de evento es
+    // nuevo. Esto corre en cada arranque: antes reescribía los precios de todos
+    // los paquetes con los de este archivo, así que lo que el dueño ajustaba en
+    // Admin → Catálogos → Alimentos se perdía con el siguiente despliegue (y un
+    // catálogo 2028 activo habría vuelto a los precios de 2027). Desde que el
+    // admin edita paquetes, el catálogo vivo es la fuente de verdad.
+    if (yaExistia) continue;
     for (const pkg of et.packages) {
       const existing = await prisma.foodPackage.findFirst({
         where: { eventTypeId: type.id, nombre: pkg.nombre, priceListId: catalogo.id },

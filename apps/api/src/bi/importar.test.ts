@@ -14,8 +14,8 @@ import { registrarCargo } from '../cargos/service.js';
 import { archivarEvento } from '../historico/archivar.js';
 
 /**
- * Importar del BI los eventos vendidos antes del sistema que se celebran del
- * corte en adelante, y conciliarlos. Lo que se protege: idempotencia, que nunca
+ * Importar del BI los eventos vendidos antes del sistema, de cualquier fecha, y
+ * conciliarlos. Lo que se protege: idempotencia, que nunca
  * se pise lo que ya existe, y que el precio pactado no se recotice.
  */
 
@@ -193,13 +193,29 @@ describe('eventos ya cerrados (agosto y septiembre de 2026)', () => {
   });
 });
 
-describe('lo que no se importa', () => {
-  it('un evento que se celebra antes del corte (julio o antes) se queda en el BI', async () => {
-    const r = await conciliarLote(prisma, {
-      eventos: [eventoBI({ fechaEvento: '2026-05-16' }), eventoBI({ fechaEvento: '2026-07-31' })],
-    });
-    expect(r.resultados.map((x) => x.estado)).toEqual(['fueraDeCorte', 'fueraDeCorte']);
+describe('sin corte de fecha', () => {
+  // "El corte que no sea 1ero de agosto para el BI, no le pongas corte, que pueda
+  // subir lo que sea" (el dueño, 5-oct-2026). Martes de 2018: en el dev no hay
+  // nada ese día.
+  it('un evento de hace años entra y queda en el Histórico', async () => {
+    const ev = eventoBI({ fechaEvento: '2018-05-15', fechaContratacion: '2017-11-03', pagos: [] });
+    const r = await importarLote(prisma, { eventos: [ev] });
+    expect(r.resultados[0]).toMatchObject({ estado: 'nuevo', accion: 'creado' });
+    expect(r).not.toHaveProperty('corte');
+    const q = await prisma.quote.findUniqueOrThrow({ where: { importadoBI: ev.idBI } });
+    expect(q.folio).toMatch(/^17NOV-\d{4,}$/);
+    expect(await prisma.eventoHistorico.count({ where: { quoteId: q.id } })).toBe(1);
   });
+
+  it('reconoce Primera comunión y Sesión de fotos, que el BI usa seguido', async () => {
+    const r = await conciliarLote(prisma, {
+      eventos: [eventoBI({ tipoEvento: 'Primera Comunión' }), eventoBI({ tipoEvento: 'SESION DE FOTOS' })],
+    });
+    expect(r.resultados.map((x) => x.estado)).toEqual(['nuevo', 'nuevo']);
+  });
+});
+
+describe('lo que no se importa', () => {
 
   it('un salón que no se reconoce no se adivina', async () => {
     const r = await importarLote(prisma, { eventos: [eventoBI({ salones: ['Terraza'] })] });
