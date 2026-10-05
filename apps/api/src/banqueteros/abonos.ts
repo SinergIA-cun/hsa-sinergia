@@ -5,6 +5,7 @@ import { metodoCapturaSchema, formasPagoSchema } from '@hsa/shared';
 import { QuoteError, type Actor } from '../quotes/service.js';
 import type { ComprobanteStorage } from '../payments/storage.js';
 import { resolverOError } from '../payments/service.js';
+import { folioPapelSchema, subirSecuenciaSobre, validarFolioDePapel } from '../payments/folios.js';
 
 /**
  * Los abonos sobre una fecha apartada.
@@ -35,6 +36,8 @@ export const abonoSchema = z.object({
   fecha: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   referencia: z.string().max(120).optional(),
   notas: notasSchema.optional(),
+  /** El número de la hoja de papel, si el recibo se llenó a mano. */
+  folioPapel: folioPapelSchema.optional(),
 });
 
 export const anularAbonoSchema = z.object({ motivo: z.string().min(3) });
@@ -101,6 +104,7 @@ export async function registrarAbono(
   const input = abonoSchema.parse(rawInput);
   const forma = resolverOError(input);
   await apartadoQuePuedeRecibir(db, apartadoId);
+  if (input.folioPapel != null) await validarFolioDePapel(db, input.folioPapel, actor);
 
   let comprobanteKey: string | null = null;
   let comprobanteMime: string | null = null;
@@ -110,7 +114,7 @@ export async function registrarAbono(
     comprobanteMime = stored.mime;
   }
 
-  return db.abonoApartado.create({
+  const abono = await db.abonoApartado.create({
     data: {
       apartadoId,
       monto: input.monto,
@@ -125,8 +129,11 @@ export async function registrarAbono(
       comprobanteKey,
       comprobanteMime,
       registradoById: actor.id,
+      ...(input.folioPapel != null ? { folio: input.folioPapel } : {}),
     },
   });
+  if (input.folioPapel != null) await subirSecuenciaSobre(db, input.folioPapel);
+  return abono;
 }
 
 /**

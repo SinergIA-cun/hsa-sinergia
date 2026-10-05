@@ -60,6 +60,7 @@ export async function paymentRoutes(app: FastifyInstance): Promise<void> {
         fecha: fields.fecha,
         referencia: fields.referencia || undefined,
         notas: fields.notas || undefined,
+        folioPapel: fields.folioPapel ? Number(fields.folioPapel) : undefined,
         destino: fields.destino || undefined,
       };
     } else {

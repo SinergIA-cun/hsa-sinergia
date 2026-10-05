@@ -97,3 +97,39 @@ export async function fijarSiguienteFolio(db: PrismaClient, rawInput: unknown, a
   await db.cambioFolio.create({ data: { siguiente, anterior, actorId: actor.id } });
   return estadoFolios(db);
 }
+
+/**
+ * El folio de la hoja de papel, capturado a mano.
+ *
+ * "Los recibos de papel de septiembre en adelante conservan su número" (el
+ * dueño, 5-oct-2026): la hacienda sigue llenando la hoja foliada en el mostrador
+ * y lo captura después, así que el número del sistema no puede inventar otro.
+ */
+export const folioPapelSchema = z.number().int().positive().max(2_000_000_000);
+
+/**
+ * Valida un folio de papel ANTES de escribir: solo admin, y que no lo tenga ya
+ * otro dinero. Un folio repetido es justo lo que la hoja foliada existe para
+ * impedir.
+ */
+export async function validarFolioDePapel(db: PrismaClient, folio: number, actor: Actor): Promise<void> {
+  if (actor.role !== 'admin') throw new QuoteError(403, 'Solo un admin puede capturar el folio de papel.');
+  const [fila] = await db.$queryRaw<{ usado: boolean }[]>`
+    SELECT EXISTS (SELECT 1 FROM "Payment" WHERE "folio" = ${folio})
+        OR EXISTS (SELECT 1 FROM "PagoBanquetero" WHERE "folio" = ${folio})
+        OR EXISTS (SELECT 1 FROM "AbonoApartado" WHERE "folio" = ${folio}) AS usado`;
+  if (fila?.usado) {
+    throw new QuoteError(409, `El folio ${formatFolio(folio)} ya está registrado en otro pago.`);
+  }
+}
+
+/**
+ * Deja la secuencia automática por ENCIMA de un folio de papel recién usado. Si
+ * ya estaba arriba no la toca: capturar hoy la hoja 5336 cuando el sistema va en
+ * la 5340 no debe hacer retroceder ni saltar nada.
+ */
+export async function subirSecuenciaSobre(db: PrismaClient, folio: number): Promise<void> {
+  await db.$executeRaw`
+    SELECT setval('recibo_folio_seq', ${folio}::bigint + 1, false)
+    WHERE (SELECT CASE WHEN is_called THEN last_value + 1 ELSE last_value END FROM recibo_folio_seq) <= ${folio}::bigint`;
+}

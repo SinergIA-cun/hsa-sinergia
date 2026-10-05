@@ -13,6 +13,7 @@ import { registerPayment, anularPayment, resolverOError } from '../payments/serv
 import type { ComprobanteStorage } from '../payments/storage.js';
 import { abonarDesdeDeposito } from './abonos.js';
 import { apartadoVivo } from './apartados.js';
+import { folioPapelSchema, subirSecuenciaSobre, validarFolioDePapel } from '../payments/folios.js';
 
 /**
  * La cuenta corriente del banquetero.
@@ -45,6 +46,8 @@ export const depositoSchema = z.object({
   fecha: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   referencia: z.string().max(120).optional(),
   notas: notasSchema.optional(),
+  /** El número de la hoja de papel, si el recibo se llenó a mano. */
+  folioPapel: folioPapelSchema.optional(),
 });
 
 export const asignarSchema = z
@@ -267,6 +270,7 @@ export async function registrarDeposito(
   const forma = resolverOError(input);
   const banquetero = await db.banquetero.findUnique({ where: { id: banqueteroId }, select: { id: true } });
   if (!banquetero) throw new QuoteError(404, 'Banquetero no encontrado');
+  if (input.folioPapel != null) await validarFolioDePapel(db, input.folioPapel, actor);
 
   let comprobanteKey: string | null = null;
   let comprobanteMime: string | null = null;
@@ -291,9 +295,11 @@ export async function registrarDeposito(
       comprobanteKey,
       comprobanteMime,
       registradoById: actor.id,
+      ...(input.folioPapel != null ? { folio: input.folioPapel } : {}),
     },
     include: CON_ASIGNACIONES,
   });
+  if (input.folioPapel != null) await subirSecuenciaSobre(db, input.folioPapel);
   return conSaldo(deposito);
 }
 

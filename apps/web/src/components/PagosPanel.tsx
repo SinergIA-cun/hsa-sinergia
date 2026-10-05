@@ -8,6 +8,7 @@ import { describirFormasPago, formatFolio } from '@hsa/shared';
 import { Button, Card, MoneyInput, TextInput, SelectInput, Field } from './ui.tsx';
 import { FormasPagoCampo, errorFormas, formasEnFormData, formasIniciales } from './FormasPagoCampo.tsx';
 import { STATUS_LABEL } from '../lib/status.ts';
+import { FolioPapelCampo, folioPapelParaEnviar } from './FolioPapelCampo.tsx';
 import { NotasCampo, NotasEditables } from './NotasPago.tsx';
 import type { EstadoCuenta, Payment, PaymentConcept, ActivityEntry, QuoteStatus } from '../lib/types.ts';
 
@@ -57,6 +58,7 @@ export function PagosPanel({
   const [fecha, setFecha] = useState(() => new Date().toISOString().slice(0, 10));
   const [referencia, setReferencia] = useState('');
   const [notas, setNotas] = useState('');
+  const [folioPapel, setFolioPapel] = useState('');
   const [comprobante, setComprobante] = useState<File | null>(null);
   const [fileKey, setFileKey] = useState(0);
   const [info, setInfo] = useState('');
@@ -92,6 +94,8 @@ export function PagosPanel({
       fd.set('fecha', fecha);
       if (referencia) fd.set('referencia', referencia);
       if (notas.trim()) fd.set('notas', notas.trim());
+      const folio = isAdmin ? folioPapelParaEnviar(folioPapel) : undefined;
+      if (folio) fd.set('folioPapel', String(folio));
       if (comprobante) fd.set('comprobante', comprobante);
 
       const res = await fetch(`${apiBase}/api/quotes/${quoteId}/payments`, {
@@ -105,7 +109,7 @@ export function PagosPanel({
       }
       const body = (await res.json()) as { nuevoEstatus: QuoteStatus | null; payment: Payment };
 
-      setMonto(''); setReferencia(''); setNotas(''); setComprobante(null); setFileKey((k) => k + 1);
+      setMonto(''); setReferencia(''); setNotas(''); setFolioPapel(''); setComprobante(null); setFileKey((k) => k + 1);
       setFormas(formasIniciales(formas.dividido ? 'transferencia' : formas.forma));
       setInfo(
         `Pago registrado con el folio ${formatFolio(body.payment.folio, body.payment.folioLetra)}.` +
@@ -230,6 +234,7 @@ export function PagosPanel({
               className="block w-full text-sm text-charcoal file:mr-3 file:rounded-lg file:border-0 file:bg-ink file:px-3 file:py-2 file:text-sm file:text-cream hover:file:bg-ink-700"
             />
           </Field>
+          {isAdmin && <FolioPapelCampo value={folioPapel} onChange={setFolioPapel} />}
           <div className="sm:col-span-2">
             <NotasCampo value={notas} onChange={setNotas} />
           </div>

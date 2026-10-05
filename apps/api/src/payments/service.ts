@@ -19,6 +19,7 @@ import { logActivity } from '../quotes/activityLog.js';
 import { archivarEvento } from '../historico/archivar.js';
 import { esUpgrade, type PaymentStatus } from '../quotes/estadoCuenta.js';
 import { reclasificarConceptos } from './conceptos.js';
+import { folioPapelSchema, subirSecuenciaSobre, validarFolioDePapel } from './folios.js';
 import type { ComprobanteStorage } from './storage.js';
 import { validarCobroDeCargos, descripcionPagoCargos } from '../cargos/service.js';
 
@@ -51,6 +52,8 @@ export const registerPaymentSchema = z.object({
    * extra, multas, daños— y NO toca el plan ni el valor del evento.
    */
   destino: z.enum(['evento', 'cargos']).default('evento'),
+  /** El número de la hoja de papel, si el recibo se llenó a mano. Solo admin. */
+  folioPapel: folioPapelSchema.optional(),
 });
 
 export const anularSchema = z.object({ motivo: z.string().min(3) });
@@ -133,6 +136,9 @@ export async function registerPayment(
   }
   const input = registerPaymentSchema.parse(rawInput);
   const { metodo, formas } = formasAGuardar(input, origen);
+  // Un pago que sale de un depósito o de un abono ya trae el folio de su entrada.
+  const folioPapel = origen?.folio == null ? input.folioPapel : undefined;
+  if (folioPapel != null) await validarFolioDePapel(db, folioPapel, actor);
   // Un depósito de banquetero o un abono solo pagan la renta del evento: la
   // cuenta del punto de venta se cobra en el mostrador.
   if (input.destino === 'cargos') {
@@ -165,10 +171,11 @@ export async function registerPayment(
       pagoBanqueteroId: origen?.pagoBanqueteroId ?? null,
       destino: input.destino,
       // Sin folio heredado, el default de la base toma el siguiente de la serie.
-      ...(origen?.folio != null ? { folio: origen.folio } : {}),
+      ...(origen?.folio != null ? { folio: origen.folio } : folioPapel != null ? { folio: folioPapel } : {}),
       folioLetra: origen?.folioLetra ?? null,
     },
   });
+  if (folioPapel != null) await subirSecuenciaSobre(db, folioPapel);
 
   // Un cobro a la cuenta del punto de venta no toca nada de la renta: ni
   // conceptos, ni hitos, ni estatus. Solo su bitácora y la foto del histórico.
