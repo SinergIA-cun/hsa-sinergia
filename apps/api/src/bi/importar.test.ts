@@ -296,7 +296,14 @@ describe('conciliar contra lo que ya está aquí', () => {
 
 describe('las rutas', () => {
   // Toda ruta de escritura del BI va aquí: la de lectura no abre ninguna.
-  const RUTAS_DE_ESCRITURA = ['/api/bi/importar/eventos', '/api/bi/conciliar', '/api/bi/importar/banqueteros', '/api/bi/conciliar/banqueteros'];
+  const RUTAS_DE_ESCRITURA = [
+    '/api/bi/importar/eventos',
+    '/api/bi/conciliar',
+    '/api/bi/importar/banqueteros',
+    '/api/bi/conciliar/banqueteros',
+    '/api/bi/importar/apartados',
+    '/api/bi/conciliar/apartados',
+  ];
 
   it('la llave de LECTURA no abre la importación', async () => {
     for (const url of RUTAS_DE_ESCRITURA) {

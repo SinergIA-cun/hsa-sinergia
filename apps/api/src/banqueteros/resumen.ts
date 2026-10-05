@@ -74,7 +74,10 @@ export async function resumenBanqueteros(
         devoluciones: { select: { monto: true, anuladoAt: true } },
       },
     }),
+    // Solo los de banquetero: esto es la cartera de los banqueteros. Los que
+    // apartó un cliente directo viven en la agenda y en su propia ficha.
     db.apartadoFecha.findMany({
+      where: { banqueteroId: { not: null } },
       include: {
         banquetero: { select: { nombre: true } },
         priceList: { select: { nombre: true } },
@@ -101,7 +104,8 @@ export async function resumenBanqueteros(
 
   const pendientes: ApartadoPendiente[] = vivos.map((a) => ({
     apartadoId: a.id,
-    banqueteroId: a.banqueteroId,
+    // El filtro de la consulta deja solo los de banquetero.
+    banqueteroId: a.banqueteroId!,
     banquetero: a.banquetero?.nombre ?? 'Banquetero',
     fechaEventoISO: a.fechaEvento.toISOString(),
     venceISO: a.vence.toISOString(),

@@ -20,6 +20,8 @@ import { calcularCodigo, eventoPorCodigo, renglonDeCodigo } from '../quotes/codi
 import { reclasificarConceptos } from '../payments/conceptos.js';
 import { apartadoVivo } from '../banqueteros/apartados.js';
 import { archivarEvento } from '../historico/archivar.js';
+import { subirSecuenciaSobre } from '../payments/folios.js';
+import { INCLUDE_TITULAR, titularDeApartado } from '../banqueteros/titular.js';
 
 /**
  * El BI le manda a la hacienda los eventos que ya estaban vendidos antes del
@@ -139,14 +141,14 @@ export interface Resultado {
   accion?: 'creado' | 'ligado';
 }
 
-interface Catalogos {
+export interface Catalogos {
   espacios: { id: string; nombre: string }[];
   tipos: { id: string; nombre: string; slug: string }[];
   banqueteros: { id: string; nombre: string }[];
   usuarios: { id: string; nombre: string }[];
 }
 
-async function cargarCatalogos(db: PrismaClient): Promise<Catalogos> {
+export async function cargarCatalogos(db: PrismaClient): Promise<Catalogos> {
   const [espacios, tipos, banqueteros, usuarios] = await Promise.all([
     db.space.findMany({ select: { id: true, nombre: true } }),
     db.eventType.findMany({ select: { id: true, nombre: true, slug: true } }),
@@ -323,14 +325,14 @@ async function conciliarUno(
     }),
     db.apartadoFecha.findMany({
       where: { fechaEvento: fecha, quoteId: null, canceladoAt: null, spaceIds: { hasSome: r.spaceIds } },
-      select: { id: true, canceladoAt: true, quoteId: true, vence: true, banquetero: { select: { nombre: true } } },
+      select: { id: true, canceladoAt: true, quoteId: true, vence: true, ...INCLUDE_TITULAR },
     }),
   ]);
   const candidatos: Candidato[] = [
     ...mismos.map((q) => ({ tipo: 'evento' as const, id: q.id, folio: q.folio, cliente: q.client?.nombre ?? null, estatus: q.status })),
     ...apartados
       .filter((a) => apartadoVivo(a))
-      .map((a) => ({ tipo: 'apartado' as const, id: a.id, folio: null, cliente: a.banquetero.nombre, estatus: 'apartado' })),
+      .map((a) => ({ tipo: 'apartado' as const, id: a.id, folio: null, cliente: titularDeApartado(a), estatus: 'apartado' })),
   ];
   if (candidatos.length) {
     return {
@@ -491,6 +493,10 @@ async function crearImportado(db: PrismaClient, ev: EventoBI, r: ReturnType<type
     }
     return q;
   }, db);
+  // La serie automática queda por encima de los folios de papel que trajo: el
+  // siguiente recibo del mostrador no puede repetir uno de ellos.
+  const maxFolio = Math.max(0, ...ev.pagos.map((p) => p.folio));
+  if (maxFolio > 0) await subirSecuenciaSobre(db, maxFolio);
 
   await logActivity(db, {
     quoteId: quote.id,

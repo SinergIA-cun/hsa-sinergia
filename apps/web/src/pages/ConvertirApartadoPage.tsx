@@ -30,17 +30,21 @@ interface CatalogoElegible {
  * bloqueado: es lo que se apartó y lo que ya se pagó.
  */
 export function ConvertirApartadoPage() {
-  const { id: banqueteroId, apartadoId } = useParams<{ id: string; apartadoId: string }>();
+  // Se llega desde la cuenta del banquetero (`/banqueteros/:id/apartados/…`) o
+  // desde la ficha de un apartado de cliente directo (`/apartados/…`). En los
+  // dos casos el apartado se lee por su propio id.
+  const { apartadoId } = useParams<{ id?: string; apartadoId: string }>();
   const navigate = useNavigate();
   const qc = useQueryClient();
   const [error, setError] = useState('');
 
   const apartadosQ = useQuery({
-    queryKey: ['apartados', banqueteroId],
-    queryFn: () => api.get<{ apartados: ApartadoFecha[] }>(`/api/banqueteros/${banqueteroId}/apartados`),
-    enabled: Boolean(banqueteroId),
+    queryKey: ['apartado', apartadoId],
+    queryFn: () => api.get<{ apartado: ApartadoFecha }>(`/api/apartados/${apartadoId}`),
   });
-  const apartado = apartadosQ.data?.apartados.find((a) => a.id === apartadoId);
+  const apartado = apartadosQ.data?.apartado;
+  const banqueteroId = apartado?.banqueteroId ?? null;
+  const deCliente = apartado != null && apartado.banqueteroId == null;
 
   const { data: listas } = useQuery({
     queryKey: ['price-lists-elegibles'],
@@ -80,6 +84,8 @@ export function ConvertirApartadoPage() {
         qc.invalidateQueries({ queryKey: ['quotes'] }),
         qc.invalidateQueries({ queryKey: ['banquetero', banqueteroId] }),
         qc.invalidateQueries({ queryKey: ['apartados', banqueteroId] }),
+        qc.invalidateQueries({ queryKey: ['apartado', apartadoId] }),
+        qc.invalidateQueries({ queryKey: ['agenda'] }),
       ]);
       navigate(`/eventos/${res.quote.id}?creado=1`);
     } catch (e) {
@@ -91,10 +97,10 @@ export function ConvertirApartadoPage() {
 
   const volver = (
     <Link
-      to={`/banqueteros/${banqueteroId}`}
+      to={banqueteroId ? `/banqueteros/${banqueteroId}` : `/apartados/${apartadoId}`}
       className="mb-4 inline-flex items-center gap-1.5 text-sm text-charcoal-soft hover:text-ink"
     >
-      <ArrowLeft size={15} /> Cuenta del banquetero
+      <ArrowLeft size={15} /> {banqueteroId ? 'Cuenta del banquetero' : 'Ficha del apartado'}
     </Link>
   );
 
@@ -151,8 +157,8 @@ export function ConvertirApartadoPage() {
             <span className="text-ink">{formatEventDate(apartado.fechaEvento, 'long')}</span>
           </p>
           <p>
-            <span className="text-charcoal-soft">Banquetero · </span>
-            <span className="text-ink">{apartado.banquetero?.nombre ?? '—'}</span>
+            <span className="text-charcoal-soft">{deCliente ? 'Cliente · ' : 'Banquetero · '}</span>
+            <span className="text-ink">{apartado.banquetero?.nombre ?? apartado.client?.nombre ?? '—'}</span>
           </p>
           <p>
             <span className="text-charcoal-soft">Catálogo · </span>
@@ -163,6 +169,16 @@ export function ConvertirApartadoPage() {
             </span>
           </p>
         </div>
+
+        {apartado.precioAcordado != null && (
+          /* El precio que se pactó al apartar. No se impone al desglose (el
+             apartado no dice si cubre solo la renta o también los alimentos): se
+             enseña aquí para que la cotización lo respete, y queda en la bitácora. */
+          <p className="mt-2 rounded-lg border border-wine/30 bg-wine/5 p-3 text-sm text-ink">
+            Precio acordado al apartar: <strong>{formatMXN(apartado.precioAcordado)}</strong>. Arma la
+            cotización para que respete ese precio.
+          </p>
+        )}
 
         {abonosVivos.length > 0 && (
           <div className="mt-2 rounded-lg border border-gold/30 bg-gold/5 p-3 text-xs text-charcoal-soft">
@@ -193,10 +209,12 @@ export function ConvertirApartadoPage() {
         initial={{
           fecha: apartado.fechaEvento.slice(0, 10),
           spaceIds: apartado.spaceIds,
-          banqueteroId: apartado.banqueteroId,
-          nombre: apartado.banquetero?.nombre ?? '',
+          banqueteroId: apartado.banqueteroId ?? undefined,
+          nombre: apartado.banquetero?.nombre ?? apartado.client?.nombre ?? '',
+          ...(deCliente ? { telefono: apartado.client?.telefono ?? '', correo: apartado.client?.correo ?? '' } : {}),
+          ...(apartado.eventTypeId ? { eventTypeId: apartado.eventTypeId } : {}),
         }}
-        bloqueado={{ fecha: true, espacios: true, banquetero: true }}
+        bloqueado={{ fecha: true, espacios: true, banquetero: !deCliente, cliente: deCliente }}
         excludeApartadoId={apartado.id}
         submitLabel="Convertir en evento"
         onSubmit={convertir}

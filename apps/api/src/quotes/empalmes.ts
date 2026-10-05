@@ -1,6 +1,7 @@
 import type { PrismaClient } from '@hsa/database';
 import { ownershipWhere, type Actor } from './service.js';
 import { apartadoVivo } from '../banqueteros/apartados.js';
+import { INCLUDE_TITULAR, titularDeApartado } from '../banqueteros/titular.js';
 
 /**
  * Estatus que ocupan la fecha de verdad. Debe seguir a `BLOQUEO` de
@@ -68,7 +69,7 @@ export async function cotizacionesDesplazadas(db: PrismaClient, actor: Actor): P
         canceladoAt: true,
         quoteId: true,
         vence: true,
-        banquetero: { select: { nombre: true } },
+        ...INCLUDE_TITULAR,
       },
       orderBy: { createdAt: 'asc' },
     }),
@@ -76,7 +77,7 @@ export async function cotizacionesDesplazadas(db: PrismaClient, actor: Actor): P
   const bloqueantes = [
     ...eventos.map((e) => ({ ...e, nombre: e.client.nombre, tipo: 'evento' as const })),
     // Un apartado vencido ya soltó la fecha (se libera solo, sin que nadie lo toque).
-    ...apartados.filter((a) => apartadoVivo(a)).map((a) => ({ ...a, nombre: a.banquetero.nombre, tipo: 'apartado' as const })),
+    ...apartados.filter((a) => apartadoVivo(a)).map((a) => ({ ...a, nombre: titularDeApartado(a), tipo: 'apartado' as const })),
   ];
   if (bloqueantes.length === 0) return [];
 

@@ -78,15 +78,19 @@ export function ApartadosPanel({
   );
 }
 
-function ApartadoRow({
+export function ApartadoRow({
   apartado: a,
   banqueteroId,
   nombreEspacio,
   isAdmin,
   onCambio,
+  mostrarTitular = false,
 }: {
   apartado: ApartadoFecha;
-  banqueteroId: string;
+  /** El banquetero de cuya cuenta se ve. `null` en la ficha de un apartado de cliente. */
+  banqueteroId: string | null;
+  /** En la ficha suelta se dice quién apartó; en la cuenta del banquetero sobra. */
+  mostrarTitular?: boolean;
   nombreEspacio: (id: string) => string;
   isAdmin: boolean;
   onCambio: () => Promise<void>;
@@ -144,6 +148,11 @@ function ApartadoRow({
           <p className="font-medium text-ink">
             {formatEventDate(a.fechaEvento, 'long')}
           </p>
+          {mostrarTitular && (
+            <p className="text-sm text-ink">
+              {a.banquetero ? `Banquetero: ${a.banquetero.nombre}` : `Cliente: ${a.client?.nombre ?? '—'}`}
+            </p>
+          )}
           <p className="text-xs text-charcoal-soft">
             {a.spaceIds.map(nombreEspacio).join(' y ')}
             {a.priceList ? ` · precio garantizado ${a.priceList.nombre}` : ' · sin precio garantizado'}
@@ -152,6 +161,13 @@ function ApartadoRow({
             Vence {formatEventDate(a.vence)}
             {a.abonado > 0 ? ` · abonado ${formatMXN(a.abonado)}` : ' · sin abonos'}
           </p>
+          {(a.eventType || a.precioAcordado != null) && (
+            <p className="mt-1 text-xs text-ink">
+              {[a.eventType?.nombre, a.precioAcordado != null ? `precio acordado ${formatMXN(a.precioAcordado)}` : null]
+                .filter(Boolean)
+                .join(' · ')}
+            </p>
+          )}
           {a.nota && <p className="mt-1 text-xs italic text-charcoal-soft">{a.nota}</p>}
           {a.quote && (
             <p className="mt-1 text-xs">
@@ -176,7 +192,7 @@ function ApartadoRow({
                completo —tipo de evento, invitados, alimentos, servicios— con su
                desglose en vivo, y eso no cabe en una ventanita. */
             <Link
-              to={`/banqueteros/${banqueteroId}/apartados/${a.id}/convertir`}
+              to={banqueteroId ? `/banqueteros/${banqueteroId}/apartados/${a.id}/convertir` : `/apartados/${a.id}/convertir`}
               className="text-xs font-medium text-gold hover:underline"
             >
               Convertir en contrato
@@ -189,7 +205,8 @@ function ApartadoRow({
             entrado a esa fecha. No pide fecha: da el plazo de la casa.
             Aparece también en los VENCIDOS, que es cuando más se pide.
           */}
-          {isAdmin && !a.quote && !a.canceladoAt && !armado && (
+          {/* Uno que vino del BI vive hasta su fecha: renovarlo no le daría nada. */}
+          {isAdmin && !a.quote && !a.canceladoAt && !armado && !(a.importadoBI && a.vivo) && (
             <button
               type="button"
               className="text-xs font-medium text-ink hover:underline disabled:opacity-50"

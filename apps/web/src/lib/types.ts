@@ -649,7 +649,14 @@ export interface AbonoApartado {
 
 export interface ApartadoFecha {
   id: string;
-  banqueteroId: string;
+  /** Quién apartó: un banquetero O un cliente directo (uno de los dos). */
+  banqueteroId: string | null;
+  clientId: string | null;
+  /** El precio que ya se pactó por la fecha, si lo hay. */
+  precioAcordado: number | null;
+  eventTypeId: string | null;
+  /** El idBI si vino del BI. */
+  importadoBI: string | null;
   fechaEvento: string;
   spaceIds: string[];
   priceListId: string | null;
@@ -663,7 +670,9 @@ export interface ApartadoFecha {
   canceladoAt: string | null;
   motivoCancelacion: string | null;
   createdAt: string;
-  banquetero?: { id: string; nombre: string; telefono: string | null };
+  banquetero?: { id: string; nombre: string; telefono: string | null } | null;
+  client?: { id: string; nombre: string; telefono: string | null; correo: string | null } | null;
+  eventType?: { id: string; nombre: string } | null;
   priceList?: { id: string; nombre: string; anio: number } | null;
   quote?: { id: string; folio: string; etiqueta: string | null; total: number; status: QuoteStatus } | null;
   /** Sigue bloqueando su fecha: ni cancelado, ni convertido, ni vencido. */
@@ -868,7 +877,10 @@ export interface AgendaEvent {
  */
 export interface AgendaApartado {
   apartadoId: string;
-  banqueteroId: string;
+  /** `null` si lo apartó un cliente directo: el chip abre la ficha del apartado. */
+  banqueteroId: string | null;
+  clienteId: string | null;
+  /** Quien apartó, por nombre: el banquetero o el cliente. */
   banquetero: string;
   fechaEvento: string;
   spaceIds: string[];

@@ -21,6 +21,7 @@ import { AuditoriaPage } from './pages/AuditoriaPage.tsx';
 import { HistoricoPage } from './pages/HistoricoPage.tsx';
 import { PapeleraPage } from './pages/PapeleraPage.tsx';
 import { ConvertirApartadoPage } from './pages/ConvertirApartadoPage.tsx';
+import { ApartadoPage } from './pages/ApartadoPage.tsx';
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { refetchOnWindowFocus: false } },
@@ -147,6 +148,24 @@ export function App() {
             {/* Convertir una fecha apartada en contrato. Es una PANTALLA y no un
                 modal: convertir es armar un contrato completo, con su desglose
                 en vivo, y eso no cabe en una ventanita. */}
+            {/* Los apartados de un cliente directo no tienen cuenta de banquetero:
+                tienen su propia ficha, y se convierten desde ahí. */}
+            <Route
+              path="/apartados/:apartadoId"
+              element={
+                <Protected>
+                  <ApartadoPage />
+                </Protected>
+              }
+            />
+            <Route
+              path="/apartados/:apartadoId/convertir"
+              element={
+                <Protected>
+                  <ConvertirApartadoPage />
+                </Protected>
+              }
+            />
             <Route
               path="/banqueteros/:id/apartados/:apartadoId/convertir"
               element={

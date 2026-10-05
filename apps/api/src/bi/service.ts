@@ -309,7 +309,7 @@ export async function biIngresos(db: PrismaClient, r: RangoBI) {
     }),
     db.abonoApartado.findMany({
       where: { fecha: rango, pagoBanqueteroId: null },
-      include: { apartado: { select: { id: true, banquetero: { select: { id: true, nombre: true } } } } },
+      include: { apartado: { select: { id: true, banquetero: { select: { id: true, nombre: true } }, client: { select: { nombre: true } } } } },
     }),
   ]);
   const filas = [
@@ -363,11 +363,12 @@ export async function biIngresos(db: PrismaClient, r: RangoBI) {
       referencia: a.referencia,
       notas: a.notas,
       anulado: a.anuladoAt != null,
-      de: a.apartado.banquetero.nombre,
+      // Un apartado puede ser de un banquetero o de un cliente directo.
+      de: a.apartado.banquetero?.nombre ?? a.apartado.client?.nombre ?? null,
       quoteId: null,
       eventoFolio: null,
       eventoCodigo: null,
-      banqueteroId: a.apartado.banquetero.id,
+      banqueteroId: a.apartado.banquetero?.id ?? null,
       apartadoId: a.apartado.id,
     })),
   ].sort((a, b) => a.fecha.getTime() - b.fecha.getTime() || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
