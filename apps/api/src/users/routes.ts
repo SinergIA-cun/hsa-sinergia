@@ -12,6 +12,8 @@ const createUserSchema = z.object({
 
 const updateUserSchema = z.object({
   nombre: z.string().min(1).optional(),
+  /** El correo es con el que entra: cambiarlo cambia su usuario de acceso. */
+  email: z.string().trim().toLowerCase().email('Correo inválido').optional(),
   role: z.enum(['ventas', 'admin']).optional(),
   activo: z.boolean().optional(),
   password: z.string().min(8, 'La contraseña debe tener al menos 8 caracteres').optional(),
@@ -63,11 +65,16 @@ export async function userRoutes(app: FastifyInstance): Promise<void> {
       return reply.code(409).send({ error: 'No puedes dejar el sistema sin un admin activo.' });
     }
 
-    const { nombre, role, activo, password } = parsed.data;
+    const { nombre, email, role, activo, password } = parsed.data;
+    if (email !== undefined && email !== target.email) {
+      const otro = await app.prisma.user.findUnique({ where: { email } });
+      if (otro) return reply.code(409).send({ error: 'Ya hay otro usuario con ese correo.' });
+    }
     const user = await app.prisma.user.update({
       where: { id },
       data: {
         ...(nombre !== undefined ? { nombre } : {}),
+        ...(email !== undefined ? { email } : {}),
         ...(role !== undefined ? { role } : {}),
         ...(activo !== undefined ? { activo } : {}),
         ...(password !== undefined ? { passwordHash: await hashPassword(password) } : {}),

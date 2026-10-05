@@ -86,3 +86,39 @@ describe('errores del que llama', () => {
     expect(vacio.json().error).toContain('Body cannot be empty');
   });
 });
+
+describe('usuarios: cambiar el correo', () => {
+  it('un admin le cambia el correo a un usuario; entra con el nuevo; un correo de otro se rechaza', async () => {
+    const { prisma } = await import('@hsa/database');
+    const login = await app.inject({
+      method: 'POST',
+      url: '/api/auth/login',
+      payload: { email: 'admin@haciendasanandres.com.mx', password: 'admin1234' },
+    });
+    const c = login.cookies[0]!;
+    const cookies = { [c.name]: c.value };
+    const suf = Math.random().toString(36).slice(2, 8);
+    const creado = await app.inject({
+      method: 'POST',
+      url: '/api/users',
+      cookies,
+      payload: { nombre: `Correo ${suf}`, email: `viejo-${suf}@prueba.test`, password: 'prueba1234' },
+    });
+    const id = creado.json().user.id as string;
+    try {
+      const cambio = await app.inject({ method: 'PATCH', url: `/api/users/${id}`, cookies, payload: { email: `Nuevo-${suf}@Prueba.test` } });
+      expect(cambio.statusCode).toBe(200);
+      expect(cambio.json().user.email).toBe(`nuevo-${suf}@prueba.test`);
+      const entra = await app.inject({
+        method: 'POST',
+        url: '/api/auth/login',
+        payload: { email: `nuevo-${suf}@prueba.test`, password: 'prueba1234' },
+      });
+      expect(entra.statusCode).toBe(200);
+      const choca = await app.inject({ method: 'PATCH', url: `/api/users/${id}`, cookies, payload: { email: 'admin@haciendasanandres.com.mx' } });
+      expect(choca.statusCode).toBe(409);
+    } finally {
+      await prisma.user.delete({ where: { id } });
+    }
+  });
+});

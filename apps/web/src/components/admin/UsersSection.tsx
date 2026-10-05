@@ -9,7 +9,7 @@ import { MARCA } from '../../lib/marca.ts';
 
 const ROLE_LABEL: Record<User['role'], string> = { admin: 'Admin', ventas: 'Ventas' };
 
-type UserPatch = { nombre?: string; role?: User['role']; activo?: boolean; password?: string };
+type UserPatch = { nombre?: string; email?: string; role?: User['role']; activo?: boolean; password?: string };
 
 export function UsersSection() {
   const qc = useQueryClient();
@@ -136,19 +136,25 @@ function UserRow({
 }) {
   const [editing, setEditing] = useState(false);
   const [nombre, setNombre] = useState(u.nombre);
+  const [email, setEmail] = useState(u.email);
   const [role, setRole] = useState<User['role']>(u.role);
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
 
   async function guardar() {
-    if (!nombre.trim()) return;
+    if (!nombre.trim() || !email.trim()) return;
     if (password && password.length < 8) {
       setError('La contraseña nueva debe tener al menos 8 caracteres.');
       return;
     }
     setError('');
     try {
-      await onSave({ nombre: nombre.trim(), role, ...(password ? { password } : {}) });
+      await onSave({
+        nombre: nombre.trim(),
+        role,
+        ...(email.trim().toLowerCase() !== u.email ? { email: email.trim() } : {}),
+        ...(password ? { password } : {}),
+      });
       setPassword('');
       setEditing(false);
     } catch (e) {
@@ -167,6 +173,13 @@ function UserRow({
           </SelectInput>
         </div>
         <TextInput
+          type="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          placeholder="Correo (con el que entra)"
+          aria-label="Correo"
+        />
+        <TextInput
           type="password"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
@@ -181,7 +194,7 @@ function UserRow({
             type="button"
             variant="ghost"
             className="px-3 py-1.5 text-xs"
-            onClick={() => { setEditing(false); setNombre(u.nombre); setRole(u.role); setPassword(''); setError(''); }}
+            onClick={() => { setEditing(false); setNombre(u.nombre); setEmail(u.email); setRole(u.role); setPassword(''); setError(''); }}
           >
             Cancela
           </Button>
