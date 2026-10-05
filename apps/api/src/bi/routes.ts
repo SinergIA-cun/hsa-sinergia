@@ -3,6 +3,7 @@ import type { PrismaClient } from '@hsa/database';
 import { z } from 'zod';
 import { requireApiKey } from './apiKey.js';
 import { importarLote, conciliarLote } from './importar.js';
+import { conciliarBanqueteros, importarBanqueteros } from './banqueteros.js';
 import { biEventos, biPagos, biIngresos, biCargos, biDevoluciones, biPagosEsperados, biCambios, biFacturacion, type RangoBI } from './service.js';
 
 const LIMITE_MAX = 500;
@@ -82,7 +83,8 @@ export async function biRoutes(app: FastifyInstance): Promise<void> {
  * (`BI_IMPORT_API_KEY`); sin ella estas rutas no existen.
  *
  * `/conciliar` nunca escribe. `/importar/eventos` crea los nuevos y liga los que
- * vienen con `folioHSA`; lo que ya existe no se sobrescribe, se reporta.
+ * vienen con `folioHSA`; lo que ya existe no se sobrescribe, se reporta. Los
+ * banqueteros van igual: `/conciliar/banqueteros` y `/importar/banqueteros`.
  */
 async function rutasDeImportacion(app: FastifyInstance): Promise<void> {
   const llave = app.config.BI_IMPORT_API_KEY;
@@ -92,4 +94,6 @@ async function rutasDeImportacion(app: FastifyInstance): Promise<void> {
   const opciones = { preHandler: guardia, bodyLimit: 5 * 1024 * 1024 };
   app.post('/bi/conciliar', opciones, async (req) => conciliarLote(app.prisma, req.body));
   app.post('/bi/importar/eventos', opciones, async (req) => importarLote(app.prisma, req.body));
+  app.post('/bi/conciliar/banqueteros', opciones, async (req) => conciliarBanqueteros(app.prisma, req.body));
+  app.post('/bi/importar/banqueteros', opciones, async (req) => importarBanqueteros(app.prisma, req.body));
 }

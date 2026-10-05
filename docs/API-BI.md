@@ -555,3 +555,41 @@ los que solo tiene la hacienda).
 - En `/eventos`: `origen: "bi"`, `idBI` y `contratadoEl`. Los vendidos aquí traen
   `origen: "hsa"`.
 - El cliente se reutiliza solo si el **teléfono** coincide exacto; si no, se crea uno nuevo.
+
+### `POST /api/bi/conciliar/banqueteros` y `POST /api/bi/importar/banqueteros`
+
+Dan de alta a los banqueteros del BI para que los eventos y apartados que se manden
+después se liguen solos por el campo `banquetero`. Misma llave (`BI_IMPORT_API_KEY`).
+`conciliar` **nunca escribe**; `importar` crea los que no existen. Es idempotente.
+
+```json
+{ "banqueteros": [ { "nombre": "Salvador Tenorio" }, { "nombre": "Carlos Barrera", "telefono": "5512345678" } ] }
+```
+
+| Campo | Regla |
+|---|---|
+| `nombre` | Obligatorio. Se compara como salones y tipos: sin acentos, mayúsculas ni puntuación. |
+| `telefono`, `correo` | Opcionales. Solo se usan al **crear**; uno que ya existe no se toca. |
+
+Hasta 200 por llamada. Respuesta:
+
+```json
+{
+  "resumen": { "creado": 32, "existe": 1 },
+  "resultados": [
+    { "nombre": "Salvador Tenorio", "estado": "creado", "id": "cm…" },
+    { "nombre": "Carlos Barrera", "estado": "existe", "id": "cm…" }
+  ]
+}
+```
+
+| `estado` | Qué pasó |
+|---|---|
+| `nuevo` | (Solo en `conciliar`.) No existe aquí; `importar` lo crearía. `id: null`. |
+| `creado` | (Solo en `importar`.) Se dio de alta. |
+| `existe` | Ya estaba (o venía antes en el mismo lote). No se tocó. |
+| `ambiguo` | El nombre coincide con **dos o más** banqueteros de aquí (`coincidencias`). No se crea ni se liga: se resuelve a mano. |
+
+Un banquetero sin teléfono ni correo puede tener eventos, pero para **convertir uno de sus
+apartados** en evento la hacienda le tiene que capturar al menos uno de los dos (el
+contrato los exige).

@@ -295,14 +295,19 @@ describe('conciliar contra lo que ya está aquí', () => {
 });
 
 describe('las rutas', () => {
+  // Toda ruta de escritura del BI va aquí: la de lectura no abre ninguna.
+  const RUTAS_DE_ESCRITURA = ['/api/bi/importar/eventos', '/api/bi/conciliar', '/api/bi/importar/banqueteros', '/api/bi/conciliar/banqueteros'];
+
   it('la llave de LECTURA no abre la importación', async () => {
-    const r = await app.inject({
-      method: 'POST',
-      url: '/api/bi/importar/eventos',
-      headers: { 'x-api-key': LLAVE_LEER },
-      payload: { eventos: [eventoBI()] },
-    });
-    expect(r.statusCode).toBe(401);
+    for (const url of RUTAS_DE_ESCRITURA) {
+      const r = await app.inject({
+        method: 'POST',
+        url,
+        headers: { 'x-api-key': LLAVE_LEER },
+        payload: { eventos: [eventoBI()], banqueteros: [{ nombre: 'No debe entrar' }] },
+      });
+      expect(r.statusCode, url).toBe(401);
+    }
   });
 
   it('con la llave de importación responde el reporte', async () => {
@@ -329,13 +334,15 @@ describe('las rutas', () => {
   it('sin BI_IMPORT_API_KEY las rutas no existen', async () => {
     const sin = await buildServer({ config: { ...loadConfig(), BI_API_KEY: LLAVE_LEER, BI_IMPORT_API_KEY: undefined } });
     await sin.ready();
-    const r = await sin.inject({
-      method: 'POST',
-      url: '/api/bi/importar/eventos',
-      headers: { 'x-api-key': LLAVE_IMPORTAR },
-      payload: { eventos: [eventoBI()] },
-    });
-    expect(r.statusCode).toBe(404);
+    for (const url of RUTAS_DE_ESCRITURA) {
+      const r = await sin.inject({
+        method: 'POST',
+        url,
+        headers: { 'x-api-key': LLAVE_IMPORTAR },
+        payload: { eventos: [eventoBI()], banqueteros: [{ nombre: 'No debe entrar' }] },
+      });
+      expect(r.statusCode, url).toBe(404);
+    }
     await sin.close();
   });
 });
