@@ -20,21 +20,17 @@ import { SinFechaPanel } from '../components/SinFechaPanel.tsx';
 import { DESPLAZADAS_KEY, useDesplazadas } from '../lib/desplazadas.ts';
 import { STATUS_LABEL } from '../lib/status.ts';
 import type { AgendaApartado, AgendaEvent, AgendaResponse, Catalog, QuoteDetail } from '../lib/types.ts';
+import { prioridadEspacio } from '@hsa/shared';
 
 const DIAS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
 const pad = (n: number) => String(n).padStart(2, '0');
 const hoyISO = new Date().toISOString().slice(0, 10);
 
-// Orden operativo de espacios: Cúpula → Arcos → Campos → (otros).
-const SPACE_ORDER = ['cúpula', 'arcos', 'campos'];
-function spacePriority(nombre: string): number {
-  const n = nombre.toLowerCase();
-  const idx = SPACE_ORDER.findIndex((s) => n.includes(s));
-  return idx === -1 ? SPACE_ORDER.length : idx;
-}
+// Orden operativo de espacios: Cúpula → Arcos → Campos → Balcones → Pajaritos.
+const spacePriority = prioridadEspacio;
 /** Espacio "principal" del evento = el de mayor prioridad operativa. */
 function primarySpace(e: AgendaEvent, nombreById: Map<string, string>): { nombre: string; prio: number } {
-  let best = { nombre: '', prio: SPACE_ORDER.length + 1 };
+  let best = { nombre: '', prio: Number.MAX_SAFE_INTEGER };
   for (const id of e.spaceIds) {
     const nombre = nombreById.get(id) ?? '';
     const prio = spacePriority(nombre);
@@ -63,7 +59,7 @@ const LEYENDA: { label: string; dot: string }[] = [
 
 /** El espacio "principal" de un apartado, con el mismo orden operativo. */
 function primarySpaceApartado(a: AgendaApartado, nombreById: Map<string, string>): string {
-  let best = { nombre: '', prio: SPACE_ORDER.length + 1 };
+  let best = { nombre: '', prio: Number.MAX_SAFE_INTEGER };
   for (const id of a.spaceIds) {
     const nombre = nombreById.get(id) ?? '';
     const prio = spacePriority(nombre);

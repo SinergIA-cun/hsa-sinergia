@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import type { PrismaClient } from '@hsa/database';
 import { requireAuth } from '../auth/plugin.js';
 import { loadCatalog } from './loader.js';
+import { ordenarEspacios } from '@hsa/shared';
 
 export async function catalogRoutes(app: FastifyInstance): Promise<void> {
   // Catálogo para el wizard del cotizador. Incluye:
@@ -55,7 +56,9 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
       // quitarlo desde la interfaz y la cotización queda ineditable.
       app.prisma.addOn.findMany({ where: delCatalogo, orderBy: { nombre: 'asc' } }),
     ]);
-    return { engine, spaces, eventTypes, addOns: await conUsos(app.prisma, addOns) };
+    // El orden de la hacienda (Cúpula, Arcos, Campos, Balcones, Pajaritos), no el
+    // alfabético: todas las pantallas los pintan en el orden en que llegan.
+    return { engine, spaces: ordenarEspacios(spaces), eventTypes, addOns: await conUsos(app.prisma, addOns) };
   });
 }
 
