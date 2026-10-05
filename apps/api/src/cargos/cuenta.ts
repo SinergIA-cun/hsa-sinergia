@@ -6,6 +6,7 @@ import {
   precioHoraExtra,
   rentaBaseDeDesglose,
   saldoDeCargos,
+  afectaContrato,
 } from '@hsa/shared';
 import { loadCatalog } from '../catalog/loader.js';
 
@@ -99,6 +100,9 @@ export async function cuentaDelEvento(db: PrismaClient, quoteId: string) {
   ]);
   // Lo devuelto de la cuenta resta de lo cobrado.
   const netos = [...pagos, ...devoluciones.map((d) => ({ monto: -d.monto, anuladoAt: null }))];
-  return { cargos, pagos, ...saldoDeCargos(cargos, netos) };
+  // Los que suben el contrato (horas extra, PAX extra) se listan, pero se cobran
+  // con el evento: no suman a esta cuenta.
+  const aparte = cargos.filter((c) => !afectaContrato(c.producto));
+  return { cargos, pagos, ...saldoDeCargos(aparte, netos) };
 }
 

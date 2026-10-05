@@ -119,7 +119,7 @@ describe('devolverle al cliente de un evento', () => {
   it('de la cuenta del punto de venta: resta de lo cobrado ahí, no de la renta', async () => {
     const q = await nuevoEvento();
     await registerPayment(prisma, storage, q.id, { monto: 20_000, metodo: 'transferencia', fecha: '2026-10-01' }, admin);
-    await registrarCargo(prisma, q.id, { producto: 'horaExtra', cantidad: 1, precioUnitario: 5_425, fecha: '2026-10-02' }, admin);
+    await registrarCargo(prisma, q.id, { producto: 'djHoraExtra', cantidad: 1, precioUnitario: 5_425, fecha: '2026-10-02' }, admin);
     await registerPayment(prisma, storage, q.id, { monto: 5_425, metodo: 'efectivo', destino: 'cargos', fecha: '2026-10-02' }, admin);
     const rentaAntes = (await loadEstadoCuenta(prisma, q)).estadoCuenta.pagado;
 

@@ -1,10 +1,18 @@
+import type { QuoteBreakdown, QuoteLine } from '../types.js';
+
 /**
  * Lo que se le puede cargar a un evento en el punto de venta.
  *
  * El punto de venta es lo que pasa DESPUÉS de contratar: "durante el evento
  * quieren extender, entonces agrego un producto a su cuenta que es horas extras y
- * pongo cuántas fueron" (el dueño). Nada de esto cambia el valor del evento: es
- * una venta aparte, casada a él, con sus propios pagos.
+ * pongo cuántas fueron" (el dueño).
+ *
+ * Dos clases (decisión del dueño, 5-oct-2026):
+ * - **Suben el contrato** (`afectaContrato`): horas extra de salón y PAX extra
+ *   (invitados de más, renta). Se suman al desglose del evento, suben su total y
+ *   su saldo, y se cobran con pagos normales del evento.
+ * - **Cuenta aparte**: lo demás (multas, daños, DJ, alimentos, PAX banquete…). No
+ *   cambia el valor del evento y se cobra en la cuenta del punto de venta.
  *
  * Mismo juego de valores que el enum `ProductoCargo` de Postgres.
  */
@@ -17,6 +25,7 @@ export const PRODUCTOS_CARGO = [
   'multa',
   'gastoImprevisto',
   'otro',
+  'paxBanquete',
 ] as const;
 export type ProductoCargo = (typeof PRODUCTOS_CARGO)[number];
 
@@ -41,23 +50,73 @@ export interface ProductoInfo {
   precio: PrecioProducto;
   /** Si hay que describir qué pasó (un daño sin descripción no sirve de nada). */
   pideDescripcion: boolean;
+  /** Sube el valor del contrato (se suma al desglose) en vez de ir a la cuenta aparte. */
+  afectaContrato: boolean;
 }
 
 export const PRODUCTO_INFO: Record<ProductoCargo, ProductoInfo> = {
-  horaExtra: { producto: 'horaExtra', nombre: 'Hora extra de salón', unidad: 'horas', precio: 'horaDeRenta', pideDescripcion: false },
-  djHoraExtra: { producto: 'djHoraExtra', nombre: 'Hora extra de DJ', unidad: 'horas', precio: 'djDelCatalogo', pideDescripcion: false },
-  invitadoExtra: { producto: 'invitadoExtra', nombre: 'Invitados extra', unidad: 'invitados', precio: 'rentaPorPersona', pideDescripcion: false },
+  horaExtra: { producto: 'horaExtra', nombre: 'Hora extra de salón', unidad: 'horas', precio: 'horaDeRenta', pideDescripcion: false, afectaContrato: true },
+  djHoraExtra: { producto: 'djHoraExtra', nombre: 'Hora extra de DJ', unidad: 'horas', precio: 'djDelCatalogo', pideDescripcion: false, afectaContrato: false },
+  invitadoExtra: { producto: 'invitadoExtra', nombre: 'Invitados extra (PAX)', unidad: 'invitados', precio: 'rentaPorPersona', pideDescripcion: false, afectaContrato: true },
   invitadoExtraAlimentos: {
     producto: 'invitadoExtraAlimentos',
     nombre: 'Invitados extra — alimentos',
     unidad: 'invitados',
     precio: 'alimentosPorPersona',
     pideDescripcion: false,
+    afectaContrato: false,
   },
-  danos: { producto: 'danos', nombre: 'Daños a las instalaciones', unidad: 'piezas', precio: 'manual', pideDescripcion: true },
-  multa: { producto: 'multa', nombre: 'Multa', unidad: 'multas', precio: 'manual', pideDescripcion: true },
-  gastoImprevisto: { producto: 'gastoImprevisto', nombre: 'Gasto imprevisto', unidad: 'piezas', precio: 'manual', pideDescripcion: true },
-  otro: { producto: 'otro', nombre: 'Otro', unidad: 'piezas', precio: 'manual', pideDescripcion: true },
+  danos: { producto: 'danos', nombre: 'Daños a las instalaciones', unidad: 'piezas', precio: 'manual', pideDescripcion: true, afectaContrato: false },
+  multa: { producto: 'multa', nombre: 'Multa', unidad: 'multas', precio: 'manual', pideDescripcion: true, afectaContrato: false },
+  gastoImprevisto: { producto: 'gastoImprevisto', nombre: 'Gasto imprevisto', unidad: 'piezas', precio: 'manual', pideDescripcion: true, afectaContrato: false },
+  otro: { producto: 'otro', nombre: 'Otro', unidad: 'piezas', precio: 'manual', pideDescripcion: true, afectaContrato: false },
+  // Personas adicionales del BANQUETERO: aparte de la renta, no sube el valor del
+  // evento; el precio se teclea en cada cargo (decisión del dueño, 5-oct-2026).
+  paxBanquete: { producto: 'paxBanquete', nombre: 'PAX banquete', unidad: 'invitados', precio: 'manual', pideDescripcion: false, afectaContrato: false },
+}
+
+/** ¿Este producto sube el valor del contrato? */
+export const afectaContrato = (producto: ProductoCargo): boolean => PRODUCTO_INFO[producto].afectaContrato;
+
+/**
+ * El desglose del evento con los cargos que SUBEN EL CONTRATO puestos como
+ * renglones de renta (marcados con `cargoId`). Idempotente: quita los que ya
+ * tuviera y pone los que se le pasan, así sirve igual para agregar, anular o
+ * volver a poner los cargos después de un recálculo del catálogo.
+ *
+ * Todo en renta trae IVA incluido, así que los totales se recalculan sumando.
+ */
+export function conCargosDelContrato(b: QuoteBreakdown, cargos: QuoteLine[], ivaRate: number): QuoteBreakdown {
+  const r2 = (n: number) => Math.round(n * 100) / 100;
+  const lines = [...b.lines.filter((l) => !l.cargoId), ...cargos];
+  const rentaTotal = r2(lines.filter((l) => l.grupo === 'renta').reduce((s, l) => s + l.monto, 0));
+  const rentaSubtotal = r2(rentaTotal / (1 + ivaRate));
+  const rentaIva = r2(rentaTotal - rentaSubtotal);
+  const otrosTotal = b.otrosTotal ?? 0;
+  const otrosSubtotal = b.otrosSubtotal ?? 0;
+  const otrosIva = b.otrosIva ?? 0;
+  return {
+    ...b,
+    lines,
+    rentaTotal,
+    rentaSubtotal,
+    rentaIva,
+    subtotal: r2(rentaSubtotal + otrosSubtotal),
+    iva: r2(rentaIva + otrosIva),
+    total: r2(rentaTotal + otrosTotal),
+  };
+}
+
+/** El renglón de renta de un cargo que sube el contrato. */
+export function lineaDeCargo(c: { id: string; producto: ProductoCargo; descripcion: string; cantidad: number; precioUnitario: number; total: number }): QuoteLine {
+  return {
+    concepto: c.descripcion || PRODUCTO_INFO[c.producto].nombre,
+    detalle: `${c.cantidad} × $${c.precioUnitario.toLocaleString('es-MX')} · punto de venta`,
+    monto: c.total,
+    ivaIncluido: true,
+    grupo: 'renta',
+    cargoId: c.id,
+  };
 };
 
 /** Un renglón del desglose guardado, lo mínimo que se necesita leer. */

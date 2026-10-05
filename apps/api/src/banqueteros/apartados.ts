@@ -441,8 +441,9 @@ export async function convertirApartado(
       where: { id: quote.id },
       data: {
         breakdown: desglose as unknown as Prisma.InputJsonValue,
-        total: desglose.total,
-        rentaTotal: desglose.rentaTotal,
+        // Columnas enteras: las horas extra pueden traer centavos.
+        total: Math.round(desglose.total),
+        rentaTotal: Math.round(desglose.rentaTotal),
         precioPactado: true,
       },
     });

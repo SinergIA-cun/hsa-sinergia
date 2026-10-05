@@ -181,9 +181,13 @@ describe('eventos ya cerrados (agosto y septiembre de 2026)', () => {
     );
     const ultima = await prisma.eventoHistorico.findFirstOrThrow({ where: { quoteId: q.id }, orderBy: { version: 'desc' } });
     expect(ultima.version).toBe(2);
-    const foto = ultima.foto as { cargos?: { total: number }[]; cuentaCargos?: { saldo: number } };
+    const foto = ultima.foto as { cargos?: { total: number }[]; totales: { rentaTotal: number; saldoRenta: number } };
     expect(foto.cargos?.map((c) => c.total)).toEqual([9_500]);
-    expect(foto.cuentaCargos?.saldo).toBe(9_500);
+    // Las horas extra suben el contrato: la renta pasa a 104,500 y el evento, que
+    // estaba liquidado, vuelve a deber esas dos horas.
+    expect(foto.totales.rentaTotal).toBe(104_500);
+    expect(foto.totales.saldoRenta).toBe(9_500);
+    expect((await prisma.quote.findUniqueOrThrow({ where: { id: q.id } })).status).toBe('complementada');
   });
 
   it('un evento sin cargos no gana una versión nueva por el campo de cargos', async () => {

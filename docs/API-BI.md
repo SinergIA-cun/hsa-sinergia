@@ -189,6 +189,11 @@ factura en el mes en que se recibe; pasado ese mes se va a la global de público
 Incluye los pagos anulados, marcados como tales — el BI decide si los descuenta.
 
 - **Rango sobre:** `fecha` del pago (la fecha en que entró el dinero, no la del evento).
+- **`concepto`** (etiquetas del BI desde el 5-oct-2026): `anticipo` = el primer pago; `finiquito` =
+  el que deja lo que se debe del contrato en \$1,000 o menos por primera vez (si un solo pago lo
+  cubre todo, es finiquito); `aCuenta` = los demás. Se recalcula con cada cambio de dinero (y
+  cada reclasificación queda en `/cambios`). `complemento` ya no se usa; los hitos del plan de
+  pagos (`/pagos-esperados`) sí conservan el suyo.
 - **`idBI`**: el `idBI` con el que el pago llegó del BI (un pago de evento importado, o el abono de
   un apartado importado que se convirtió); `null` si **nació en el Cotizador**. Es la llave para no
   contar dos veces lo que el BI ya tiene: el folio solo no basta (hubo folios repetidos) ni la fecha
@@ -277,11 +282,19 @@ existiera el folio; nada se renumeró.
 
 ### `GET /api/bi/cargos`
 
-**Otros ingresos del evento**: lo cargado a su cuenta en el punto de venta después de
-contratar — horas extra, DJ extra, invitados de más, multas, daños y gastos imprevistos.
-**No forman parte del valor del evento**: `/eventos.total` no cambia. Cada evento trae
-además `cargosAdicionales: { total, pagado, saldo }` en `/eventos`, y los cobros llegan por
-`/pagos` con `destino: "cargos"` (los de la renta traen `destino: "evento"`).
+Lo cargado al evento en el punto de venta **después de contratar**. Cada renglón trae
+**`afectaContrato`** (decisión del dueño, 5-oct-2026):
+
+- **`true`: sube el valor del contrato.** Hora extra de salón (`horaExtra`) e invitados extra,
+  PAX (`invitadoExtra`). Se suman al desglose del evento: **ya están en `total` y en
+  `renta.total` de `/eventos`**, mueven su saldo y su estatus (un evento liquidado vuelve a
+  deber), y se cobran con pagos normales del evento (`destino: "evento"`). No sumarlos aparte.
+- **`false`: cuenta aparte.** Hora extra de DJ, alimentos de invitados extra, PAX banquete
+  (personas adicionales del banquetero, precio tecleado), daños, multas, gastos imprevistos y
+  otros. **No** cambian `/eventos.total`; van en `cargosAdicionales: { total, pagado, saldo }`
+  de `/eventos`, y se cobran con `destino: "cargos"`.
+
+La lista con su `afectaContrato` está en `/catalogos.productosCargo`.
 
 - **Rango sobre:** `fecha` del cargo (el día de la venta). Incluye los anulados, marcados.
 
@@ -332,7 +345,7 @@ parte `mixto`: el detalle por forma vive en el depósito (en `/ingresos`).
 
 ### `GET /api/bi/pagos-esperados`
 
-Hitos de cobro **pendientes** (anticipo, complemento, finiquito) del plan de pagos de los
+Hitos de cobro **pendientes** (apartar, complemento, finiquito) del plan de pagos de los
 eventos formalizados y complementados. Los hitos ya cubiertos no aparecen.
 
 - **Rango sobre:** `venceISO`, la fecha de vencimiento del hito.
@@ -431,7 +444,7 @@ vencimiento automático por vigencia).
 
 Los valores fijos de las demás rutas, para traducir sin adivinar. Sin rango ni paginación:
 `espacios` (`id`, `nombre`), `tiposEvento` (`id`, `nombre`, `slug`), `estatusEvento`,
-`conceptosPago`, `destinosPago`, `productosCargo` (`producto`, `nombre`, `unidad`),
+`conceptosPago`, `destinosPago`, `productosCargo` (`producto`, `nombre`, `unidad`, `afectaContrato`),
 `tiposIngreso`, `destinosDevolucion` y `tiposCambio`. `/eventos` además trae `salones` (los
 nombres de `espacios`, en el mismo orden).
 

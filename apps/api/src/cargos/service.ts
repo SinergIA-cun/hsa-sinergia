@@ -1,8 +1,11 @@
 import { z } from 'zod';
 import type { PrismaClient } from '@hsa/database';
-import { PRODUCTOS_CARGO, PRODUCTO_INFO, formatFolio, type ProductoCargo } from '@hsa/shared';
+import { PRODUCTOS_CARGO, PRODUCTO_INFO, afectaContrato, formatFolio, type ProductoCargo } from '@hsa/shared';
 import { cuentaDelEvento } from './cuenta.js';
-import { QuoteError, ownershipWhere, assertNotTrashed, type Actor } from '../quotes/service.js';
+import { sincronizarContrato } from './contrato.js';
+import { QuoteError, ownershipWhere, assertNotTrashed, loadEstadoCuenta, type Actor } from '../quotes/service.js';
+import { esUpgrade } from '../quotes/estadoCuenta.js';
+import { reclasificarConceptos } from '../payments/conceptos.js';
 import { logActivity } from '../quotes/activityLog.js';
 import { archivarEvento } from '../historico/archivar.js';
 
@@ -12,10 +15,13 @@ import { archivarEvento } from '../historico/archivar.js';
  * Lo que se vende DESPUÉS de contratar —horas extra, DJ extra, invitados de más,
  * multas, daños, gastos imprevistos— se carga aquí. Dos reglas del dueño:
  *
- *  1. **No aumenta el valor del evento.** `Quote.total`, `rentaTotal` y el plan
- *     de pagos quedan como se firmaron. Es una venta aparte, casada al evento.
- *  2. **Sus pagos se registran y se reportan al BI**, con folio de la serie I
- *     como cualquier otro dinero que entra (`Payment.destino = cargos`).
+ *  1. **Horas extra de salón y PAX extra SUBEN el contrato** (5-oct-2026: "debe
+ *     reflejarse en ambos lados, punto de venta y BI"). Se suman al desglose,
+ *     suben `total` y `rentaTotal`, y se cobran con pagos normales del evento:
+ *     el evento no queda liquidado hasta cubrirlos. Ver `contrato.ts`.
+ *  2. **Lo demás va a la cuenta aparte** (multas, daños, DJ, alimentos, PAX
+ *     banquete): no cambia el valor del evento y sus pagos van con
+ *     `Payment.destino = cargos`, con folio de la serie I.
  */
 
 const fechaISO = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
@@ -47,6 +53,40 @@ async function eventoParaCargos(db: PrismaClient, quoteId: string, actor: Actor)
   return quote;
 }
 
+/**
+ * Después de sumar o quitar un cargo del contrato: el desglose y el total al día,
+ * las etiquetas de los pagos (el finiquito puede moverse) y el estatus. Un evento
+ * liquidado al que se le suman horas extra REGRESA al estatus que dicen sus pagos:
+ * ya no está liquidado hasta cubrirlas. Y al anularlas puede volver a subir.
+ */
+async function alContrato(db: PrismaClient, quoteId: string, actorId: string, que: string) {
+  const { antes, despues } = await sincronizarContrato(db, quoteId);
+  await logActivity(db, {
+    quoteId,
+    tipo: 'edicion',
+    descripcion: `Contrato: ${que} · total ${antes} → ${despues}`,
+    meta: { totalAntes: antes, totalDespues: despues, origen: 'puntoDeVenta' },
+    actorId,
+  });
+  const quote = await db.quote.findUniqueOrThrow({ where: { id: quoteId } });
+  await reclasificarConceptos(db, quote, { actorId });
+  const { estadoCuenta } = await loadEstadoCuenta(db, quote);
+  const sugerido = estadoCuenta.sugerido;
+  let nuevo: string | null = null;
+  if (quote.status === 'liquidada' && sugerido && sugerido !== 'liquidada') nuevo = sugerido;
+  else if (esUpgrade(quote.status, sugerido)) nuevo = sugerido;
+  if (nuevo && nuevo !== quote.status) {
+    await db.quote.update({ where: { id: quoteId }, data: { status: nuevo as typeof quote.status } });
+    await logActivity(db, {
+      quoteId,
+      tipo: 'estatus',
+      descripcion: `Estatus: ${quote.status} → ${nuevo} (automático: cambió el valor del contrato)`,
+      meta: { de: quote.status, a: nuevo, auto: true },
+      actorId,
+    });
+  }
+}
+
 export async function registrarCargo(db: PrismaClient, quoteId: string, rawInput: unknown, actor: Actor) {
   await eventoParaCargos(db, quoteId, actor);
   const input = cargoSchema.parse(rawInput);
@@ -75,6 +115,7 @@ export async function registrarCargo(db: PrismaClient, quoteId: string, rawInput
     meta: { cargoId: cargo.id, producto: input.producto, cantidad: input.cantidad, precioUnitario: input.precioUnitario, total },
     actorId: actor.id,
   });
+  if (afectaContrato(input.producto as ProductoCargo)) await alContrato(db, quoteId, actor.id, `+${descripcion} $${total}`);
   // A un evento que ya pasó se le cargan las horas extra o la multa después: su
   // foto del Histórico se pone al día (no hace nada si todavía no se celebra).
   await archivarEvento(db, quoteId);
@@ -102,12 +143,23 @@ export async function anularCargo(
   if (!cargo) throw new QuoteError(404, 'Cargo no encontrado');
   if (cargo.anuladoAt) throw new QuoteError(409, 'Ese cargo ya está anulado.');
 
-  const cuenta = await cuentaDelEvento(db, quoteId);
-  if (cuenta.pagado > cuenta.total - cargo.total) {
-    throw new QuoteError(
-      409,
-      `La cuenta ya tiene cobrados $${cuenta.pagado}; sin este cargo quedaría en $${cuenta.total - cargo.total}. Anula primero el pago.`,
-    );
+  if (afectaContrato(cargo.producto)) {
+    // Sube el contrato: sin él, el evento no puede quedar con más pagado que su valor.
+    const { estadoCuenta } = await loadEstadoCuenta(db, quote);
+    if (estadoCuenta.pagado > quote.rentaTotal - cargo.total) {
+      throw new QuoteError(
+        409,
+        `El evento ya tiene pagados $${estadoCuenta.pagado}; sin este cargo su renta quedaría en $${quote.rentaTotal - cargo.total}. Anula primero un pago.`,
+      );
+    }
+  } else {
+    const cuenta = await cuentaDelEvento(db, quoteId);
+    if (cuenta.pagado > cuenta.total - cargo.total) {
+      throw new QuoteError(
+        409,
+        `La cuenta ya tiene cobrados $${cuenta.pagado}; sin este cargo quedaría en $${cuenta.total - cargo.total}. Anula primero el pago.`,
+      );
+    }
   }
   await db.cargoEvento.update({
     where: { id: cargoId },
@@ -120,6 +172,7 @@ export async function anularCargo(
     meta: { cargoId, total: cargo.total, motivo },
     actorId: actor.id,
   });
+  if (afectaContrato(cargo.producto)) await alContrato(db, quoteId, actor.id, `−${cargo.descripcion} $${cargo.total} (anulado)`);
   await archivarEvento(db, quoteId);
   return cuentaDelEvento(db, quoteId);
 }
