@@ -17,6 +17,12 @@ export interface RangoBI {
   hasta: Date;
   limit: number;
   cursor?: string;
+  /**
+   * Ids de EVENTOS. Si vienen, `/eventos`, `/pagos`, `/cargos` y `/devoluciones`
+   * devuelven lo de esos eventos sin importar la fecha: es como el BI relee lo
+   * que `/cambios` le dijo que cambió (una edición no mueve ninguna fecha).
+   */
+  ids?: string[];
 }
 
 /**
@@ -49,12 +55,13 @@ function rentaSubtotalDe(breakdown: unknown): number | null {
 /** Eventos del rango, con su desglose separado en renta vs. proveedor. */
 export async function biEventos(db: PrismaClient, r: RangoBI) {
   const quotes = await db.quote.findMany({
-    where: { fechaEvento: { gte: r.desde, lte: r.hasta }, deletedAt: null },
+    where: r.ids ? { id: { in: r.ids }, deletedAt: null } : { fechaEvento: { gte: r.desde, lte: r.hasta }, deletedAt: null },
     include: incluirEvento,
     orderBy: [{ fechaEvento: 'asc' }, DESEMPATE],
     take: r.limit,
     ...(r.cursor ? { skip: 1, cursor: { id: r.cursor } } : {}),
   });
+  const nombreEspacio = new Map((await db.space.findMany({ select: { id: true, nombre: true } })).map((s) => [s.id, s.nombre]));
   // La cuenta del punto de venta de cada evento, en bloque (sin N+1).
   const ids = quotes.map((q) => q.id);
   const [cargos, pagosCargos, codigos] = await Promise.all([
@@ -116,6 +123,8 @@ export async function biEventos(db: PrismaClient, r: RangoBI) {
     tipoEvento: q.eventType?.nombre ?? null,
     invitados: q.invitados,
     espacios: q.spaceIds,
+    // Los mismos, por nombre y en el mismo orden (Cúpula, Arcos, Campos…).
+    salones: q.spaceIds.map((id) => nombreEspacio.get(id) ?? id),
     esCortesia: q.esCortesia,
     // Descuento sobre la renta del local: de cortesía familiar o de promoción.
     esPromocion: q.esPromocion,
@@ -141,7 +150,7 @@ export async function biPagos(db: PrismaClient, r: RangoBI) {
   // más en el reporte que en la app.
   const ahora = hoyCivilMexico();
   const pagos = await db.payment.findMany({
-    where: { fecha: { gte: r.desde, lte: r.hasta }, quote: { deletedAt: null } },
+    where: r.ids ? { quoteId: { in: r.ids }, quote: { deletedAt: null } } : { fecha: { gte: r.desde, lte: r.hasta }, quote: { deletedAt: null } },
     include: {
       quote: { select: { id: true, etiqueta: true, fechaEvento: true, client: { select: { nombre: true } } } },
       registradoBy: { select: { nombre: true } },
@@ -236,11 +245,21 @@ export async function biPagosEsperados(db: PrismaClient, r: RangoBI) {
   return filas;
 }
 
-/** Bitácora: cambios de salón, invitados, fecha, estatus y pagos. */
+/**
+ * Bitácora de los eventos: altas, ediciones, estatus, pagos y anulaciones,
+ * cargos, devoluciones, facturas, datos fiscales, cambio de catálogo, standby,
+ * cancelación, reprogramación, papelera y restauración. Es la fuente para leer
+ * lo incremental: dice QUÉ evento cambió; lo de ese evento se relee con `?ids=`.
+ */
 export async function biCambios(db: PrismaClient, r: RangoBI) {
   const logs = await db.activityLog.findMany({
-    where: { createdAt: { gte: r.desde, lte: r.hasta }, quote: { deletedAt: null } },
-    include: { actor: { select: { nombre: true } }, quote: { select: { etiqueta: true, client: { select: { nombre: true } } } } },
+    // También los de eventos en la papelera: si no, el BI nunca se enteraría de
+    // que un evento se eliminó (`eliminada`) ni de que volvió (`restaurada`).
+    where: { createdAt: { gte: r.desde, lte: r.hasta } },
+    include: {
+      actor: { select: { nombre: true } },
+      quote: { select: { etiqueta: true, deletedAt: true, client: { select: { nombre: true } } } },
+    },
     orderBy: [{ createdAt: 'asc' }, DESEMPATE],
     take: r.limit,
     ...(r.cursor ? { skip: 1, cursor: { id: r.cursor } } : {}),
@@ -251,6 +270,8 @@ export async function biCambios(db: PrismaClient, r: RangoBI) {
     eventoCodigo: l.quote?.etiqueta ?? null,
     cliente: l.quote?.client?.nombre ?? null,
     tipo: l.tipo,
+    // El evento está HOY en la papelera: ya no sale en /eventos ni en /pagos.
+    eventoEnPapelera: l.quote?.deletedAt != null,
     descripcion: l.descripcion,
     detalle: l.meta,
     actor: l.actor?.nombre ?? null,
@@ -401,7 +422,7 @@ export async function biIngresos(db: PrismaClient, r: RangoBI) {
  */
 export async function biCargos(db: PrismaClient, r: RangoBI) {
   const cargos = await db.cargoEvento.findMany({
-    where: { fecha: { gte: r.desde, lte: r.hasta }, quote: { deletedAt: null } },
+    where: r.ids ? { quoteId: { in: r.ids }, quote: { deletedAt: null } } : { fecha: { gte: r.desde, lte: r.hasta }, quote: { deletedAt: null } },
     include: {
       quote: { select: { id: true, folio: true, etiqueta: true, fechaEvento: true, client: { select: { nombre: true } } } },
       registradoBy: { select: { nombre: true } },
@@ -439,7 +460,7 @@ export async function biCargos(db: PrismaClient, r: RangoBI) {
  */
 export async function biDevoluciones(db: PrismaClient, r: RangoBI) {
   const devs = await db.devolucion.findMany({
-    where: { fecha: { gte: r.desde, lte: r.hasta } },
+    where: r.ids ? { quoteId: { in: r.ids } } : { fecha: { gte: r.desde, lte: r.hasta } },
     include: {
       quote: { select: { id: true, folio: true, etiqueta: true, client: { select: { nombre: true } } } },
       banquetero: { select: { id: true, nombre: true } },
@@ -542,4 +563,29 @@ export async function biApartados(db: PrismaClient, r: RangoBI) {
       createdAt: a.createdAt.toISOString(),
     };
   });
+}
+
+/**
+ * `/catalogos`: los valores fijos con los que vienen las demás rutas, para que el
+ * BI traduzca sin adivinar. No pagina ni lleva rango.
+ */
+export async function biCatalogos(db: PrismaClient) {
+  const [espacios, tipos] = await Promise.all([
+    db.space.findMany({ select: { id: true, nombre: true }, orderBy: { nombre: 'asc' } }),
+    db.eventType.findMany({ select: { id: true, nombre: true, slug: true }, orderBy: { nombre: 'asc' } }),
+  ]);
+  return {
+    espacios,
+    tiposEvento: tipos,
+    estatusEvento: ['borrador', 'formalizada', 'complementada', 'liquidada', 'standby', 'cancelada'],
+    conceptosPago: ['anticipo', 'complemento', 'aCuenta', 'finiquito'],
+    destinosPago: ['evento', 'cargos'],
+    productosCargo: Object.values(PRODUCTO_INFO).map((p) => ({ producto: p.producto, nombre: p.nombre, unidad: p.unidad })),
+    tiposIngreso: ['pago', 'deposito', 'abono'],
+    destinosDevolucion: ['evento', 'cargos', 'banquetero'],
+    tiposCambio: [
+      'creada', 'edicion', 'estatus', 'pago', 'pagoAnulado', 'cargo', 'cargoAnulado', 'devolucion', 'devolucionAnulada',
+      'factura', 'fiscal', 'catalogo', 'standby', 'cancelada', 'reprogramada', 'eliminada', 'restaurada',
+    ],
+  };
 }

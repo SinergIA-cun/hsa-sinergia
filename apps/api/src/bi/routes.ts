@@ -5,7 +5,7 @@ import { requireApiKey } from './apiKey.js';
 import { importarLote, conciliarLote } from './importar.js';
 import { conciliarBanqueteros, importarBanqueteros } from './banqueteros.js';
 import { conciliarApartados, importarApartados } from './apartados.js';
-import { biEventos, biPagos, biIngresos, biCargos, biDevoluciones, biPagosEsperados, biCambios, biFacturacion, biApartados, type RangoBI } from './service.js';
+import { biEventos, biPagos, biIngresos, biCargos, biDevoluciones, biPagosEsperados, biCambios, biFacturacion, biApartados, biCatalogos, type RangoBI } from './service.js';
 
 const LIMITE_MAX = 500;
 const LIMITE_DEFAULT = 100;
@@ -15,6 +15,12 @@ const querySchema = z.object({
   hasta: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   limit: z.coerce.number().int().positive().optional(),
   cursor: z.string().optional(),
+  /** Ids de eventos separados por coma (hasta 100): relee esos sin importar la fecha. */
+  ids: z
+    .string()
+    .transform((v) => v.split(',').map((x) => x.trim()).filter(Boolean))
+    .pipe(z.array(z.string().max(40)).min(1).max(100))
+    .optional(),
 });
 
 /** Rango por omisión: el año en curso. El BI casi siempre manda el suyo. */
@@ -24,7 +30,7 @@ function aRango(q: z.infer<typeof querySchema>): RangoBI {
   const hasta = q.hasta ? new Date(`${q.hasta}T23:59:59.999Z`) : new Date(Date.UTC(hoy.getUTCFullYear(), 11, 31, 23, 59, 59));
   // El tope es duro: un BI que pida 100000 recibe 500, no un timeout.
   const limit = Math.min(q.limit ?? LIMITE_DEFAULT, LIMITE_MAX);
-  return { desde, hasta, limit, cursor: q.cursor };
+  return { desde, hasta, limit, cursor: q.cursor, ids: q.ids };
 }
 
 /**
@@ -54,6 +60,8 @@ export async function biRoutes(app: FastifyInstance): Promise<void> {
     ['facturacion', biFacturacion],
     ['apartados', biApartados],
   ];
+
+  app.get('/bi/catalogos', { preHandler: guardia }, async () => biCatalogos(app.prisma));
 
   for (const [nombre, consulta] of endpoints) {
     app.get(`/bi/${nombre}`, { preHandler: guardia }, async (req, reply) => {
