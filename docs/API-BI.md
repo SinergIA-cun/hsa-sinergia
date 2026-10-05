@@ -578,7 +578,13 @@ los que solo tiene la hacienda).
 - Sus pagos con el folio de papel, y el concepto deducido del saldo.
 - En `/eventos`: `origen: "bi"`, `idBI` y `contratadoEl`. Los vendidos aquí traen
   `origen: "hsa"`.
-- El cliente se reutiliza solo si el **teléfono** coincide exacto; si no, se crea uno nuevo.
+- **Evento de banquetero** (`banquetero` reconocido): el cliente **es el banquetero**. Se usa su ficha
+  de cliente (por nombre; se crea con sus datos si no la tiene), así que todos sus eventos quedan
+  con un solo cliente. El banquetero **nunca** se anota como festejado; el festejado solo es el
+  campo `festejado`, si lo mandan. Si `cliente.nombre` no es el banquetero, el evento queda igual a
+  nombre del banquetero y se avisa (`avisos`).
+- **Evento directo**: el cliente se reutiliza solo si el **teléfono** coincide exacto; si no, se crea
+  uno nuevo (uno por evento: dos personas con el mismo nombre nunca se mezclan).
 
 ### `POST /api/bi/conciliar/banqueteros` y `POST /api/bi/importar/banqueteros`
 
