@@ -88,6 +88,9 @@ export const EVENT_TYPES_2027: EventTypeDef[] = [
   { nombre: 'Renta', slug: 'renta', packages: [] },
   { nombre: 'Graduación', slug: 'graduacion', packages: [] },
   { nombre: 'Sesión de fotos', slug: 'sesion-de-fotos', packages: [] },
+  // Lo que no cabe en ningún otro tipo. Solo renta; si lleva alimentos se le
+  // agregan paquetes en Admin → Catálogos.
+  { nombre: 'Otros', slug: 'otros', packages: [] },
   // Team Building: solo renta, con la tabla PLANA (RENTA 2027), sin variar por día.
   { nombre: 'Team Building', slug: 'team-building', packages: [], rentaPlana: true },
 ];

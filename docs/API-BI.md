@@ -503,7 +503,7 @@ primero, revisar, e importar después.
 | `folioHSA` | Opcional. Folio de un evento que ya existe aquí (`26SEP-0184`), para ligarlo en vez de crearlo. |
 | `codigo` | Opcional. El código con el que el evento ya circula (`04SEP26-HLANGRUEN-CUPULA`). Si aquí hay un evento que lo tiene **o lo tuvo**, se liga a ese. Si no hay ninguno, el evento nuevo nace con ese mismo código, para no cambiarle el nombre a algo que ya está en papel. |
 | `fechaContratacion` | Cuándo se vendió. El folio del evento sale de este mes (`26FEB-…`), no de la fecha de importación. |
-| `tipoEvento`, `salones` | Por nombre. Se comparan sin acentos ni mayúsculas y sin "Jardín/Salón/La/Los": `"Cúpula"` = `"Jardín La Cúpula"`. Lo que no coincide exacto **no se adivina**: el evento sale `invalido`. Tipos de evento: Boda, XV, Cumpleaños, Bautizo, Primera comunión, Empresarial, Fin de año, Renta, Graduación, Sesión de fotos, Team Building. |
+| `tipoEvento`, `salones` | Por nombre. Se comparan sin acentos ni mayúsculas y sin "Jardín/Salón/La/Los": `"Cúpula"` = `"Jardín La Cúpula"`. Lo que no coincide exacto **no se adivina**: el evento sale `invalido`. Tipos de evento: Boda, XV, Cumpleaños, Bautizo, Primera comunión, Empresarial, Fin de año, Renta, Graduación, Sesión de fotos, Team Building, Otros. |
 | `banquetero`, `vendedora` | Por nombre. Si no se reconocen, el evento entra sin ellos y se avisa. |
 | `renta.total` | Lo que cobra la hacienda, con IVA. Es el **precio pactado**. |
 | `otros.total` | Alimentos y servicios (se pagan al proveedor), con IVA. |

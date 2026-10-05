@@ -207,11 +207,15 @@ describe('sin corte de fecha', () => {
     expect(await prisma.eventoHistorico.count({ where: { quoteId: q.id } })).toBe(1);
   });
 
-  it('reconoce Primera comunión y Sesión de fotos, que el BI usa seguido', async () => {
+  it('reconoce Primera comunión, Sesión de fotos y Otros, que el BI usa seguido', async () => {
     const r = await conciliarLote(prisma, {
-      eventos: [eventoBI({ tipoEvento: 'Primera Comunión' }), eventoBI({ tipoEvento: 'SESION DE FOTOS' })],
+      eventos: [
+        eventoBI({ tipoEvento: 'Primera Comunión' }),
+        eventoBI({ tipoEvento: 'SESION DE FOTOS' }),
+        eventoBI({ tipoEvento: 'otros' }),
+      ],
     });
-    expect(r.resultados.map((x) => x.estado)).toEqual(['nuevo', 'nuevo']);
+    expect(r.resultados.map((x) => x.estado)).toEqual(['nuevo', 'nuevo', 'nuevo']);
   });
 });
 
