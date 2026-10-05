@@ -1,24 +1,18 @@
 import type { PrismaClient, Prisma } from '@hsa/database';
-import { deducirConceptos, type HitosPago, type PaymentConcept } from '@hsa/shared';
+import { deducirConceptos, type PaymentConcept } from '@hsa/shared';
 import { loadEstadoCuenta, type QuoteEC } from '../quotes/service.js';
 import { logActivity } from '../quotes/activityLog.js';
 import type { Milestone } from '../quotes/estadoCuenta.js';
 
 /**
- * Los tres objetivos del plan, listos para la deducción. `null` cuando la
- * cotización no tiene plan: cuatro espacios todavía no tienen montos definidos y
- * ahí no hay hitos que cruzar, así que no se deduce nada.
+ * Lo que vale el contrato para la deducción: la renta completa (el objetivo del
+ * finiquito del plan, o `rentaTotal` si el espacio no tiene plan). Es lo que se
+ * paga a la hacienda; los alimentos de "otros" van al proveedor.
  */
-export function hitosDe(plan: Milestone[] | null): HitosPago | null {
-  if (!plan) return null;
-  const objetivo = (key: Milestone['key']) => plan.find((m) => m.key === key)?.objetivo;
-  const apartar = objetivo('apartar');
-  const complemento = objetivo('complemento');
-  const finiquito = objetivo('finiquito');
-  // Si falta cualquiera de los tres, el plan no está completo: mejor no deducir
-  // que deducir contra un hito inventado.
-  if (apartar == null || complemento == null || finiquito == null) return null;
-  return { apartar, complemento, finiquito };
+export function totalDelContrato(plan: Milestone[] | null, rentaTotal: number): number | null {
+  const finiquito = plan?.find((m) => m.key === 'finiquito')?.objetivo;
+  const total = finiquito ?? rentaTotal;
+  return total > 0 ? total : null;
 }
 
 export interface CambioConcepto {
@@ -57,7 +51,7 @@ export async function reclasificarConceptos(
   const ordenados = [...payments].sort(
     (a, b) => a.fecha.getTime() - b.fecha.getTime() || a.createdAt.getTime() - b.createdAt.getTime(),
   );
-  const efectivos = deducirConceptos(ordenados, hitosDe(estadoCuenta.plan));
+  const efectivos = deducirConceptos(ordenados, totalDelContrato(estadoCuenta.plan, quote.rentaTotal));
 
   const cambios: CambioConcepto[] = [];
   for (const p of ordenados) {

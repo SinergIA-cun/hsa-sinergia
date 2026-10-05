@@ -90,4 +90,6 @@ for fase in 6 7 8 9 11 12 13 14; do
   pnpm --filter @hsa/database run "backfill:fase$fase"
 done
 pnpm --filter @hsa/api exec tsx src/scripts/reconcile-statuses.ts
+# Las etiquetas de los pagos con la regla vigente (idempotente; ver el script).
+pnpm --filter @hsa/api exec tsx src/scripts/reclasificar-conceptos.ts
 exec pnpm --filter @hsa/api exec tsx src/index.ts
