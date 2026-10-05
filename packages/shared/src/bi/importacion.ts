@@ -54,14 +54,25 @@ const r2 = (n: number) => Math.round(n * 100) / 100;
  *
  * Con varios salones la renta se reparte en partes iguales —el BI no dice cuánto
  * fue de cada uno— y el último absorbe el redondeo, para que la suma sea exacta.
+ *
+ * Sin salón (un evento solo de capilla, una sesión de fotos) la renta va en un
+ * solo renglón con el nombre de lo que se rentó (`sinSalon`) y sin `spaceId`:
+ * no hay plan de pagos por salón que colgarle.
  */
 export function desgloseImportado(args: {
   salones: { spaceId: string; nombre: string }[];
   rentaTotal: number;
   otrosTotal: number;
   ivaRate: number;
+  sinSalon?: string;
 }): QuoteBreakdown {
   const { salones, rentaTotal, otrosTotal, ivaRate } = args;
+  if (salones.length === 0) {
+    return armarDesglose(
+      [{ concepto: `Renta ${args.sinSalon ?? 'del evento'}`, detalle: 'Precio pactado (importado del BI)', monto: rentaTotal, ivaIncluido: true, grupo: 'renta' }],
+      { rentaTotal, otrosTotal, ivaRate },
+    );
+  }
   const parte = Math.floor(rentaTotal / salones.length);
   const lines: QuoteLine[] = salones.map((s, i) => ({
     concepto: `Renta ${s.nombre}`,
@@ -71,6 +82,14 @@ export function desgloseImportado(args: {
     grupo: 'renta',
     spaceId: s.spaceId,
   }));
+  return armarDesglose(lines, { rentaTotal, otrosTotal, ivaRate });
+}
+
+function armarDesglose(
+  rentaLines: QuoteLine[],
+  { rentaTotal, otrosTotal, ivaRate }: { rentaTotal: number; otrosTotal: number; ivaRate: number },
+): QuoteBreakdown {
+  const lines = [...rentaLines];
   if (otrosTotal > 0) {
     lines.push({
       concepto: 'Alimentos y servicios',
@@ -107,10 +126,12 @@ export interface EventoComparable {
   pagado: number;
   /** Folios de los pagos, sin anulados. */
   folios: number[];
+  /** ¿Usa la capilla? Solo se compara si el BI lo manda. */
+  usaCapilla?: boolean;
 }
 
 export interface Diferencia {
-  campo: 'fechaEvento' | 'salones' | 'invitados' | 'tipoEvento' | 'rentaTotal' | 'pagado' | 'folios';
+  campo: 'fechaEvento' | 'salones' | 'invitados' | 'tipoEvento' | 'rentaTotal' | 'pagado' | 'folios' | 'usaCapilla';
   bi: unknown;
   hsa: unknown;
 }
@@ -144,5 +165,8 @@ export function compararEvento(bi: EventoComparable, hsa: EventoComparable): Dif
   const soloBi = [...fb].filter((f) => !fh.has(f)).sort((x, y) => x - y);
   const soloHsa = [...fh].filter((f) => !fb.has(f)).sort((x, y) => x - y);
   if (soloBi.length || soloHsa.length) d.push({ campo: 'folios', bi: soloBi, hsa: soloHsa });
+  if (bi.usaCapilla != null && bi.usaCapilla !== (hsa.usaCapilla ?? false)) {
+    d.push({ campo: 'usaCapilla', bi: bi.usaCapilla, hsa: hsa.usaCapilla ?? false });
+  }
   return d;
 }

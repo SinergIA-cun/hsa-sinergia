@@ -447,6 +447,28 @@ Real, de `GET /api/bi/facturacion?desde=2031-01-01&hasta=2031-12-31`:
 
 `faltantes` vacío significa que el cliente tiene todo lo que exige el CFDI 4.0.
 
+### `GET /api/bi/apartados`
+
+Las fechas apartadas (pagadas sin todos los datos del evento). Misma envoltura, parámetros y
+paginación que `/eventos`; **el rango va sobre la fecha apartada**.
+
+```json
+{ "id": "cm…", "importadoBI": "09ENE27-CQUIROZ-CUPULA", "fecha": "2027-01-09", "salones": ["Cúpula"],
+  "tipoEvento": "XV", "banquetero": null, "cliente": { "id": "cm…", "nombre": "…" }, "precioAcordado": 169000,
+  "abonado": 25000, "estado": "vivo", "vence": "2027-01-09", "canceladoAt": null, "motivoCancelacion": null,
+  "quoteId": null, "eventoFolio": null, "eventoCodigo": null,
+  "abonos": [ { "id": "cm…", "folio": 4467, "folioTexto": "I 4467", "fecha": "2025-11-25", "monto": 25000,
+                "metodo": "transferencia", "formas": [], "referencia": null, "notas": null, "anulado": false, "paymentId": null } ],
+  "createdAt": "2026-10-05T…" }
+```
+
+- `estado`: `vivo` (bloquea su fecha), `vencido`, `cancelado` o `convertido`.
+- Al **convertirse en evento**, `quoteId`, `eventoFolio` y `eventoCodigo` dicen a cuál; el evento ya
+  se lee en `/eventos`. Cada abono se vuelve un pago de ese evento con el mismo folio
+  (`paymentId`), así que **no se suman dos veces**: lo abonado de un apartado convertido ya está
+  en `/pagos` del evento.
+- `importadoBI` es el `idBI` con el que llegó del BI (`null` si se apartó aquí).
+
 ## Importar y conciliar (escritura, llave aparte)
 
 El BI puede mandar eventos de **cualquier fecha**, sin corte:
@@ -504,6 +526,8 @@ primero, revisar, e importar después.
 | `codigo` | Opcional. El código con el que el evento ya circula (`04SEP26-HLANGRUEN-CUPULA`). Si aquí hay un evento que lo tiene **o lo tuvo**, se liga a ese. Si no hay ninguno, el evento nuevo nace con ese mismo código, para no cambiarle el nombre a algo que ya está en papel. |
 | `fechaContratacion` | Cuándo se vendió. El folio del evento sale de este mes (`26FEB-…`), no de la fecha de importación. |
 | `tipoEvento`, `salones` | Por nombre. Se comparan sin acentos ni mayúsculas y sin "Jardín/Salón/La/Los": `"Cúpula"` = `"Jardín La Cúpula"`. Lo que no coincide exacto **no se adivina**: el evento sale `invalido`. Tipos de evento: Boda, XV, Cumpleaños, Bautizo, Primera comunión, Empresarial, Fin de año, Renta, Graduación, Sesión de fotos, Team Building, Otros. |
+| `salones: []` | Solo para un evento que **no ocupa salón**: uno solo de capilla (`usaCapilla: true`, código `…-CAPILLA`) o una **Sesión de fotos** (código `…-FOTOS`). No bloquea ningún salón ni sale `posibleDuplicado`. Cualquier otro evento sin salón sale `invalido`. |
+| `usaCapilla`, `capillaHorario` | Opcionales. La capilla es una **marca del evento**, no otro evento: no cambia el precio pactado y **no bloquea** (varios eventos la usan el mismo día a horas distintas). Si el BI la manda, entra a `difiere` como campo `usaCapilla`; si no la manda, no se compara. |
 | `banquetero`, `vendedora` | Por nombre. Si no se reconocen, el evento entra sin ellos y se avisa. |
 | `renta.total` | Lo que cobra la hacienda, con IVA. Es el **precio pactado**. |
 | `otros.total` | Alimentos y servicios (se pagan al proveedor), con IVA. |
@@ -542,7 +566,7 @@ Hasta 200 eventos por llamada; para más, se manda por partes (todo es idempoten
 | `invalido` | Un salón o tipo de evento no reconocido, formas que no suman, folios repetidos… (`errores`). | Corregir en el BI y reenviar. |
 
 `diferencias[].campo` es uno de `fechaEvento`, `salones`, `invitados`, `tipoEvento`,
-`rentaTotal`, `pagado` o `folios` (en `folios`, `bi` = folios que solo tiene el BI, `hsa` =
+`rentaTotal`, `pagado`, `folios` o `usaCapilla` (en `folios`, `bi` = folios que solo tiene el BI, `hsa` =
 los que solo tiene la hacienda).
 
 ### Qué queda aquí de un evento importado

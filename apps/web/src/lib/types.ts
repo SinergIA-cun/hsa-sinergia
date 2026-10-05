@@ -865,6 +865,7 @@ export interface AgendaEvent {
   spaceIds: string[];
   status: QuoteStatus;
   esCortesia: boolean;
+  usaCapilla?: boolean;
 }
 
 /**

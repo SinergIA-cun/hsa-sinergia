@@ -28,10 +28,19 @@ export interface DatosCodigo {
   cliente: string;
   /** En orden: el PRIMER espacio es el que entra al código. */
   spaceIds: string[];
+  /**
+   * Lo que va en el lugar del espacio cuando el evento no ocupa ninguno: un
+   * evento solo de capilla (`CAPILLA`) o una sesión de fotos (`FOTOS`). Solo
+   * al nacer; después se conserva el que ya traía su código.
+   */
+  sinSalon?: string;
 }
 
 /** El código que le corresponde, sin resolver repetidos. */
-async function codigoBase(db: PrismaClient, datos: DatosCodigo): Promise<string> {
+async function codigoBase(db: PrismaClient, datos: DatosCodigo, respaldo?: string): Promise<string> {
+  if (datos.spaceIds.length === 0) {
+    return etiquetaEvento({ fechaISO: datos.fecha, cliente: datos.cliente, espacios: [datos.sinSalon ?? respaldo ?? ''] });
+  }
   const spaces = await db.space.findMany({
     where: { id: { in: datos.spaceIds } },
     select: { id: true, nombre: true },
@@ -56,7 +65,9 @@ export async function calcularCodigo(
   datos: DatosCodigo,
   propio?: { id: string; etiqueta: string | null },
 ): Promise<string> {
-  const base = await codigoBase(db, datos);
+  // Sin salón, el lugar del espacio lo conserva el código que ya tenía
+  // (`08NOV26-KLATABAN-CAPILLA` movido de fecha sigue siendo `…-CAPILLA`).
+  const base = await codigoBase(db, datos, propio?.etiqueta?.split('-')[2]);
   const otros = await db.quote.findMany({
     where: {
       deletedAt: null,

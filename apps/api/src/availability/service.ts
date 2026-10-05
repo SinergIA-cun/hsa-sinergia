@@ -195,6 +195,8 @@ export interface AgendaEvent {
   spaceIds: string[];
   status: string;
   esCortesia: boolean;
+  /** Para nombrar en la agenda un evento que no ocupa salón (solo capilla). */
+  usaCapilla: boolean;
 }
 
 /**
@@ -255,6 +257,7 @@ export async function getAgenda(
       spaceIds: q.spaceIds,
       status: q.status,
       esCortesia: q.esCortesia,
+      usaCapilla: q.usaCapilla,
     })),
     apartados: apartados.map((a) => ({
       apartadoId: a.id,

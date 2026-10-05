@@ -8,6 +8,7 @@ import { ServerStorage } from '../payments/storage.js';
 import { convertirApartado, renovarApartado } from '../banqueteros/apartados.js';
 import { getAgenda } from '../availability/service.js';
 import { conciliarApartados, importarApartados, type ApartadoBI } from './apartados.js';
+import { biApartados } from './service.js';
 
 /**
  * El BI manda sus fechas apartadas (C5). Lo que se protege: idempotencia por
@@ -167,5 +168,21 @@ describe('importar apartados del BI', () => {
   it('banquetero y cliente a la vez (o ninguno) rechaza el lote entero', async () => {
     await expect(importarApartados(prisma, { apartados: [apartadoBI({ cliente: { nombre: 'Doble' } })] })).rejects.toThrow();
     await expect(importarApartados(prisma, { apartados: [apartadoBI({ banquetero: null })] })).rejects.toThrow();
+  });
+
+  it('/apartados (lectura) los lista por fecha y dice a qué evento pasó el convertido (C6)', async () => {
+    const ap = apartadoBI({ banquetero: null, cliente: { nombre: `Leído ${SUF}`, telefono: '5577889900' }, precioAcordado: 120_000 });
+    await importarApartados(prisma, { apartados: [ap] });
+    const creado = await prisma.apartadoFecha.findUniqueOrThrow({ where: { importadoBI: ap.idBI } });
+    const dia = new Date(`${ap.fecha}T00:00:00.000Z`);
+    const rango = { desde: dia, hasta: new Date(`${ap.fecha}T23:59:59.999Z`), limit: 500 };
+    const [antes] = (await biApartados(prisma, rango)).filter((x) => x.id === creado.id);
+    expect(antes).toMatchObject({ importadoBI: ap.idBI, estado: 'vivo', precioAcordado: 120_000, abonado: 25_000, quoteId: null, banquetero: null });
+    expect(antes!.cliente?.nombre).toBe(`Leído ${SUF}`);
+    expect(antes!.abonos[0]).toMatchObject({ folio: ap.pagos[0]!.folio, monto: 25_000, anulado: false });
+
+    const { quote } = await convertirApartado(prisma, storage, creado.id, { invitados: 150 }, admin);
+    const [despues] = (await biApartados(prisma, rango)).filter((x) => x.id === creado.id);
+    expect(despues).toMatchObject({ estado: 'convertido', quoteId: quote.id, eventoFolio: quote.folio });
   });
 });
