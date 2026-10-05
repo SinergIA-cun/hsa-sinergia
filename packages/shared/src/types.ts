@@ -74,6 +74,9 @@ export interface QuoteLine {
    *  Es el dato que permite repartir el plan de pagos entre varios salones sin
    *  tener que interpretar el texto del concepto. */
   spaceId?: string;
+  /** Si el renglón es un cargo del punto de venta que sube el contrato (horas
+   *  extra, PAX extra): el id del cargo. Se quita y se vuelve a poner con él. */
+  cargoId?: string;
 }
 
 export interface QuoteBreakdown {

@@ -10,6 +10,7 @@ import {
   PRODUCTO_INFO,
 } from '@hsa/shared';
 import { loadEstadoCuentaBulk } from '../quotes/service.js';
+import { PRODUCTOS_DEL_CONTRATO } from '../cargos/contrato.js';
 
 /** Rango de fechas y paginación comunes a todos los endpoints del BI. */
 export interface RangoBI {
@@ -65,7 +66,11 @@ export async function biEventos(db: PrismaClient, r: RangoBI) {
   // La cuenta del punto de venta de cada evento, en bloque (sin N+1).
   const ids = quotes.map((q) => q.id);
   const [cargos, pagosCargos, codigos] = await Promise.all([
-    db.cargoEvento.findMany({ where: { quoteId: { in: ids } }, select: { quoteId: true, total: true, anuladoAt: true } }),
+    // Solo los de la cuenta aparte: los que suben el contrato ya están en `total`.
+    db.cargoEvento.findMany({
+      where: { quoteId: { in: ids }, producto: { notIn: PRODUCTOS_DEL_CONTRATO } },
+      select: { quoteId: true, total: true, anuladoAt: true },
+    }),
     db.payment.findMany({
       where: { quoteId: { in: ids }, destino: 'cargos' },
       select: { quoteId: true, monto: true, anuladoAt: true },
@@ -137,8 +142,9 @@ export async function biEventos(db: PrismaClient, r: RangoBI) {
     renta: { subtotal: rentaSubtotalDe(q.breakdown), total: q.rentaTotal },
     otros: { total: q.total - q.rentaTotal },
     total: q.total,
-    // Lo vendido DESPUÉS de contratar en el punto de venta (horas extra, multas,
-    // daños). NO está en `total`: el valor del evento no cambia. Ver /cargos.
+    // La cuenta APARTE del punto de venta (multas, daños, DJ, alimentos, PAX
+    // banquete): NO está en `total`. Las horas extra de salón y los PAX extra sí
+    // están en `total` y en `renta` (suben el contrato). Ver /cargos.
     cargosAdicionales: cuentaDe(q.id),
   }));
 }
@@ -441,6 +447,9 @@ export async function biCargos(db: PrismaClient, r: RangoBI) {
     fecha: c.fecha.toISOString().slice(0, 10),
     producto: c.producto,
     productoNombre: PRODUCTO_INFO[c.producto].nombre,
+    // `true` = sube el valor del contrato: ya está en `total` y `renta` de
+    // /eventos y se cobra con pagos `destino: evento`. `false` = cuenta aparte.
+    afectaContrato: PRODUCTO_INFO[c.producto].afectaContrato,
     descripcion: c.descripcion,
     cantidad: c.cantidad,
     precioUnitario: c.precioUnitario,
@@ -581,7 +590,12 @@ export async function biCatalogos(db: PrismaClient) {
     // Las etiquetas del BI. `complemento` ya no se usa (5-oct-2026).
     conceptosPago: ['anticipo', 'aCuenta', 'finiquito'],
     destinosPago: ['evento', 'cargos'],
-    productosCargo: Object.values(PRODUCTO_INFO).map((p) => ({ producto: p.producto, nombre: p.nombre, unidad: p.unidad })),
+    productosCargo: Object.values(PRODUCTO_INFO).map((p) => ({
+      producto: p.producto,
+      nombre: p.nombre,
+      unidad: p.unidad,
+      afectaContrato: p.afectaContrato,
+    })),
     tiposIngreso: ['pago', 'deposito', 'abono'],
     destinosDevolucion: ['evento', 'cargos', 'banquetero'],
     tiposCambio: [

@@ -79,8 +79,10 @@ export function PuntoDeVentaPanel({
             <ShoppingBag size={18} className="text-gold" /> Punto de venta · cuenta del evento
           </h3>
           <p className="mt-1 max-w-xl text-sm text-charcoal-soft">
-            Lo que se agrega después de contratar: horas extra, invitados de más, multas, daños,
-            gastos imprevistos. <strong>No cambia el valor del evento</strong>; se cobra aparte.
+            Lo que se agrega después de contratar. <strong>Las horas extra de salón y los PAX extra
+            se suman al contrato</strong>: suben el total del evento y se cobran con sus pagos. Lo
+            demás (multas, daños, DJ, alimentos, PAX banquete) no cambia el valor del evento y se
+            cobra aquí, aparte.
           </p>
         </div>
         <div className="grid grid-cols-3 gap-4 text-center">
@@ -112,6 +114,11 @@ export function PuntoDeVentaPanel({
                   {c.descripcion}
                   {c.descripcion !== PRODUCTO_INFO[c.producto].nombre && (
                     <span className="block text-xs text-charcoal-soft">{PRODUCTO_INFO[c.producto].nombre}</span>
+                  )}
+                  {PRODUCTO_INFO[c.producto].afectaContrato && (
+                    <span className="mt-0.5 inline-block rounded-full bg-gold/15 px-2 py-0.5 text-[0.65rem] font-semibold uppercase tracking-wide text-gold">
+                      En el contrato
+                    </span>
                   )}
                   {c.anuladoAt && c.motivoAnulacion && (
                     <span className="block text-xs text-wine no-underline">Anulado: {c.motivoAnulacion}</span>
@@ -265,6 +272,7 @@ function AgregarCargo({
             <span className="block font-medium">{p.nombre}</span>
             <span className="block text-xs text-charcoal-soft">
               {p.precioSugerido != null ? `${formatMXN(p.precioSugerido)} c/u` : 'Precio a capturar'}
+              {p.afectaContrato && ' · suma al contrato'}
             </span>
           </button>
         ))}

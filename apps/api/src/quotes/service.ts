@@ -17,6 +17,7 @@ import {
 import { loadCatalog } from '../catalog/loader.js';
 import { getAvailability } from '../availability/service.js';
 import { cuentaDelEvento, productosDelEvento } from '../cargos/cuenta.js';
+import { sincronizarContrato } from '../cargos/contrato.js';
 import { logActivity } from './activityLog.js';
 import { calcularCodigo, motivosDelCambio, renglonDeCodigo, historialDeCodigos } from './codigo.js';
 import { resumenCancelacion } from './ciclo.js';
@@ -812,7 +813,10 @@ export async function duplicateQuote(db: PrismaClient, id: string, actor: Actor)
     meta: { duplicadaDe: src.id },
     actorId: actor.id,
   });
-  return created;
+  // Los cargos del punto de venta son del ORIGINAL: el desglose copiado los trae
+  // como renglones, y la copia no tiene ninguno.
+  const { despues } = await sincronizarContrato(db, created.id);
+  return despues === created.total ? created : db.quote.findUniqueOrThrow({ where: { id: created.id }, include: includeRels });
 }
 
 export class QuoteError extends Error {
@@ -1076,11 +1080,15 @@ export async function updateQuote(db: PrismaClient, id: string, rawInput: unknow
     });
   }
 
+  // Recalcular desde el catálogo deja fuera los cargos que suben el contrato
+  // (horas extra, PAX extra): se vuelven a poner.
+  const { antes: sinCargos, despues: conCargos } = await sincronizarContrato(db, id);
+
   // La foto se pone al día si el evento ya pasó (idempotente: si nada cambió, no
   // escribe versión nueva).
   await archivarEvento(db, id);
 
-  return updated;
+  return sinCargos === conCargos ? updated : db.quote.findUniqueOrThrow({ where: { id }, include: includeRels });
 }
 
 /**
@@ -1330,7 +1338,10 @@ export async function moverCatalogo(db: PrismaClient, id: string, priceListId: s
     actorId: actor.id,
   });
 
-  return { quote, antes, despues };
+  // Los cargos que suben el contrato sobreviven al cambio de catálogo.
+  const sync = await sincronizarContrato(db, id);
+  if (sync.antes === sync.despues) return { quote, antes, despues };
+  return { quote: await db.quote.findUniqueOrThrow({ where: { id }, include: includeRels }), antes, despues: sync.despues };
 }
 
 export async function updateStatus(

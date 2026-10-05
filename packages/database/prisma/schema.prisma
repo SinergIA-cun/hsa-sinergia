@@ -85,6 +85,8 @@ enum ProductoCargo {
   multa
   gastoImprevisto
   otro
+  /// Personas adicionales del banquetero: aparte de la renta, no sube el contrato.
+  paxBanquete
 }
 
 enum ActivityType {
