@@ -4,6 +4,7 @@ import { PRODUCTOS_CARGO, PRODUCTO_INFO, formatFolio, type ProductoCargo } from 
 import { cuentaDelEvento } from './cuenta.js';
 import { QuoteError, ownershipWhere, assertNotTrashed, type Actor } from '../quotes/service.js';
 import { logActivity } from '../quotes/activityLog.js';
+import { archivarEvento } from '../historico/archivar.js';
 
 /**
  * El punto de venta del evento: su cuenta de cargos.
@@ -74,6 +75,9 @@ export async function registrarCargo(db: PrismaClient, quoteId: string, rawInput
     meta: { cargoId: cargo.id, producto: input.producto, cantidad: input.cantidad, precioUnitario: input.precioUnitario, total },
     actorId: actor.id,
   });
+  // A un evento que ya pasó se le cargan las horas extra o la multa después: su
+  // foto del Histórico se pone al día (no hace nada si todavía no se celebra).
+  await archivarEvento(db, quoteId);
   return { cargo, cuenta: await cuentaDelEvento(db, quoteId) };
 }
 
@@ -116,6 +120,7 @@ export async function anularCargo(
     meta: { cargoId, total: cargo.total, motivo },
     actorId: actor.id,
   });
+  await archivarEvento(db, quoteId);
   return cuentaDelEvento(db, quoteId);
 }
 

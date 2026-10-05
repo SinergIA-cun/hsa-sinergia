@@ -1,6 +1,7 @@
 import { normalizaTexto, type QuoteBreakdown } from '@hsa/shared';
 import type { PrismaClient, Prisma } from '@hsa/database';
 import { loadEstadoCuenta } from '../quotes/service.js';
+import { cuentaDelEvento } from '../cargos/cuenta.js';
 
 /** Un pago tal como quedó, con su folio: la foto no depende de la tabla viva. */
 export interface PagoFoto {
@@ -17,6 +18,17 @@ export interface PagoFoto {
   facturaUuid: string | null;
   anulado: boolean;
   motivoAnulacion: string | null;
+}
+
+/** Un renglón de la cuenta del evento (hora extra, multa, invitados de más…). */
+export interface CargoFoto {
+  descripcion: string;
+  cantidad: number;
+  precioUnitario: number;
+  total: number;
+  fechaISO: string;
+  registradoPor: string | null;
+  anulado: boolean;
 }
 
 /**
@@ -69,6 +81,8 @@ export interface FotoEvento {
     usaCapilla: boolean;
     capillaHorario: string | null;
     esCortesia: boolean;
+    /** Solo viene cuando es `true`; ver `cargos` abajo. */
+    esPromocion?: boolean;
     descuentoPct: number | null;
     descuentoMotivo: string | null;
     usaDjHoraExtra: boolean;
@@ -88,6 +102,14 @@ export interface FotoEvento {
    */
   totales: { total: number; rentaTotal: number; pagado: number; saldoRenta: number };
   pagos: PagoFoto[];
+  /**
+   * La cuenta del evento: lo que se cargó aparte de la renta (horas extra, multas)
+   * y lo cobrado de eso. **Solo viene si hubo cargos**: así la foto de un evento
+   * sin cargos sigue siendo idéntica a la que ya estaba guardada y el barrido no
+   * escribe una versión nueva de todo el archivo por un campo vacío.
+   */
+  cargos?: CargoFoto[];
+  cuentaCargos?: { total: number; pagado: number; saldo: number };
   /** La hoja operativa completa, tal como quedó capturada. */
   operativa: Record<string, unknown> | null;
 }
@@ -132,7 +154,10 @@ export async function armarFoto(
   quote: QuoteParaFoto,
   nombresDeEspacios: Map<string, string>,
 ): Promise<{ foto: Omit<FotoEvento, 'tomadaEnISO'>; resumen: ResumenFoto }> {
-  const { estadoCuenta, payments } = await loadEstadoCuenta(db, quote);
+  const [{ estadoCuenta, payments }, cuenta] = await Promise.all([
+    loadEstadoCuenta(db, quote),
+    cuentaDelEvento(db, quote.id),
+  ]);
 
   const espacios = quote.spaceIds.map((id) => nombresDeEspacios.get(id) ?? id);
   const banquetero = quote.banquetero?.nombre ?? null;
@@ -197,6 +222,7 @@ export async function armarFoto(
       usaCapilla: quote.usaCapilla,
       capillaHorario: quote.capillaHorario,
       esCortesia: quote.esCortesia,
+      ...(quote.esPromocion ? { esPromocion: true } : {}),
       descuentoPct: quote.descuentoPct,
       descuentoMotivo: quote.descuentoMotivo,
       usaDjHoraExtra: quote.usaDjHoraExtra,
@@ -212,6 +238,20 @@ export async function armarFoto(
       saldoRenta: estadoCuenta.saldo,
     },
     pagos,
+    ...(cuenta.cargos.length
+      ? {
+          cargos: cuenta.cargos.map((c) => ({
+            descripcion: c.descripcion,
+            cantidad: c.cantidad,
+            precioUnitario: c.precioUnitario,
+            total: c.total,
+            fechaISO: c.fecha.toISOString(),
+            registradoPor: c.registradoBy?.nombre ?? null,
+            anulado: c.anuladoAt != null,
+          })),
+          cuentaCargos: { total: cuenta.total, pagado: cuenta.pagado, saldo: cuenta.saldo },
+        }
+      : {}),
     operativa: (quote.operativa ?? null) as Record<string, unknown> | null,
   };
 

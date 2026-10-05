@@ -1102,6 +1102,7 @@ export interface FotoEvento {
     usaCapilla: boolean;
     capillaHorario: string | null;
     esCortesia: boolean;
+    esPromocion?: boolean;
     descuentoPct: number | null;
     descuentoMotivo: string | null;
     usaDjHoraExtra: boolean;
@@ -1113,6 +1114,17 @@ export interface FotoEvento {
   /** `saldoRenta`: en esta aplicación el estado de cuenta se calcula sobre la RENTA. */
   totales: { total: number; rentaTotal: number; pagado: number; saldoRenta: number };
   pagos: PagoFoto[];
+  /** Solo si el evento tuvo cargos (horas extra, multas…). Fotos viejas no lo traen. */
+  cargos?: {
+    descripcion: string;
+    cantidad: number;
+    precioUnitario: number;
+    total: number;
+    fechaISO: string;
+    registradoPor: string | null;
+    anulado: boolean;
+  }[];
+  cuentaCargos?: { total: number; pagado: number; saldo: number };
   operativa: Record<string, unknown> | null;
 }
 

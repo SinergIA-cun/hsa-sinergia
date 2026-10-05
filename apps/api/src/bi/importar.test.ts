@@ -10,6 +10,8 @@ import { createQuote, updateQuote, moverCatalogo, type Actor } from '../quotes/s
 import { registerPayment } from '../payments/service.js';
 import { ServerStorage } from '../payments/storage.js';
 import { importarLote, conciliarLote, type EventoBI } from './importar.js';
+import { registrarCargo } from '../cargos/service.js';
+import { archivarEvento } from '../historico/archivar.js';
 
 /**
  * Importar del BI los eventos vendidos antes del sistema que se celebran del
@@ -74,6 +76,7 @@ afterAll(async () => {
   });
   const ids = quotes.map((q) => q.id);
   await prisma.payment.deleteMany({ where: { quoteId: { in: ids } } });
+  await prisma.cargoEvento.deleteMany({ where: { quoteId: { in: ids } } });
   await prisma.activityLog.deleteMany({ where: { quoteId: { in: ids } } });
   await prisma.eventoHistorico.deleteMany({ where: { quoteId: { in: ids } } });
   await prisma.quote.deleteMany({ where: { id: { in: ids } } });
@@ -146,10 +149,56 @@ describe('importar un evento nuevo', () => {
   });
 });
 
+describe('eventos ya cerrados (agosto y septiembre de 2026)', () => {
+  // "Nos van a mandar los eventos cerrados de agosto y septiembre 2026 para tener
+  // un poco de historial" (el dueño, 5-oct-2026). Martes: en el dev no hay nada
+  // esas fechas y no chocan con un sábado de verdad.
+  it('entra, queda archivado en el Histórico en ese momento y se le pueden cargar horas extra', async () => {
+    const ev = eventoBI({
+      fechaEvento: '2026-08-11',
+      fechaContratacion: '2026-01-20',
+      pagos: [
+        { folio: 5102, fecha: '2026-01-20', monto: 20_000, metodo: 'transferencia' },
+        { folio: 5191, fecha: '2026-08-03', monto: 75_000, metodo: 'transferencia' },
+      ],
+    });
+    const r = await importarLote(prisma, { eventos: [ev] });
+    expect(r.resultados[0]).toMatchObject({ estado: 'nuevo', accion: 'creado' });
+
+    const q = await prisma.quote.findUniqueOrThrow({ where: { importadoBI: ev.idBI } });
+    // Pagó la renta completa: queda liquidado, como uno capturado aquí.
+    expect(q.status).toBe('liquidada');
+    const fotos = await prisma.eventoHistorico.findMany({ where: { quoteId: q.id } });
+    expect(fotos).toHaveLength(1);
+    expect(fotos[0]).toMatchObject({ motivo: 'archivado', pagado: 95_000, saldo: 0, seRealizo: true });
+
+    await registrarCargo(
+      prisma,
+      q.id,
+      { producto: 'horaExtra', cantidad: 2, precioUnitario: 4_750, fecha: '2026-08-11' },
+      admin,
+    );
+    const ultima = await prisma.eventoHistorico.findFirstOrThrow({ where: { quoteId: q.id }, orderBy: { version: 'desc' } });
+    expect(ultima.version).toBe(2);
+    const foto = ultima.foto as { cargos?: { total: number }[]; cuentaCargos?: { saldo: number } };
+    expect(foto.cargos?.map((c) => c.total)).toEqual([9_500]);
+    expect(foto.cuentaCargos?.saldo).toBe(9_500);
+  });
+
+  it('un evento sin cargos no gana una versión nueva por el campo de cargos', async () => {
+    const ev = eventoBI({ fechaEvento: '2026-09-08' });
+    await importarLote(prisma, { eventos: [ev] });
+    const q = await prisma.quote.findUniqueOrThrow({ where: { importadoBI: ev.idBI } });
+    expect(await archivarEvento(prisma, q.id)).toMatchObject({ motivo: 'sin-cambios', version: 1 });
+  });
+});
+
 describe('lo que no se importa', () => {
-  it('un evento que se celebra antes del corte se queda en el BI', async () => {
-    const r = await conciliarLote(prisma, { eventos: [eventoBI({ fechaEvento: '2026-05-16' })] });
-    expect(r.resultados[0]!.estado).toBe('fueraDeCorte');
+  it('un evento que se celebra antes del corte (julio o antes) se queda en el BI', async () => {
+    const r = await conciliarLote(prisma, {
+      eventos: [eventoBI({ fechaEvento: '2026-05-16' }), eventoBI({ fechaEvento: '2026-07-31' })],
+    });
+    expect(r.resultados.map((x) => x.estado)).toEqual(['fueraDeCorte', 'fueraDeCorte']);
   });
 
   it('un salón que no se reconoce no se adivina', async () => {
