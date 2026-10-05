@@ -5,7 +5,7 @@ import { requireApiKey } from './apiKey.js';
 import { importarLote, conciliarLote } from './importar.js';
 import { conciliarBanqueteros, importarBanqueteros } from './banqueteros.js';
 import { conciliarApartados, importarApartados } from './apartados.js';
-import { biEventos, biPagos, biIngresos, biCargos, biDevoluciones, biPagosEsperados, biCambios, biFacturacion, type RangoBI } from './service.js';
+import { biEventos, biPagos, biIngresos, biCargos, biDevoluciones, biPagosEsperados, biCambios, biFacturacion, biApartados, type RangoBI } from './service.js';
 
 const LIMITE_MAX = 500;
 const LIMITE_DEFAULT = 100;
@@ -52,6 +52,7 @@ export async function biRoutes(app: FastifyInstance): Promise<void> {
     ['pagos-esperados', biPagosEsperados],
     ['cambios', biCambios],
     ['facturacion', biFacturacion],
+    ['apartados', biApartados],
   ];
 
   for (const [nombre, consulta] of endpoints) {

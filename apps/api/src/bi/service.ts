@@ -463,3 +463,72 @@ export async function biDevoluciones(db: PrismaClient, r: RangoBI) {
     motivoAnulacion: d.motivoAnulacion,
   }));
 }
+
+/**
+ * `/apartados`: las fechas apartadas (pagadas sin todos los datos del evento),
+ * por la fecha apartada. Tarea C6 del encargo del BI.
+ *
+ * `importadoBI` es el `idBI` con el que llegó, si vino del BI. Cuando un
+ * apartado se convierte en evento, `quoteId` y `eventoFolio`/`eventoCodigo`
+ * dicen a cuál: el evento ya se lee en `/eventos`.
+ */
+export async function biApartados(db: PrismaClient, r: RangoBI) {
+  const apartados = await db.apartadoFecha.findMany({
+    where: { fechaEvento: { gte: r.desde, lte: r.hasta } },
+    include: {
+      banquetero: { select: { id: true, nombre: true } },
+      client: { select: { id: true, nombre: true } },
+      eventType: { select: { nombre: true } },
+      quote: { select: { id: true, folio: true, etiqueta: true } },
+      abonos: { orderBy: [{ fecha: 'asc' }, { id: 'asc' }] },
+    },
+    orderBy: [{ fechaEvento: 'asc' }, DESEMPATE],
+    take: r.limit,
+    ...(r.cursor ? { skip: 1, cursor: { id: r.cursor } } : {}),
+  });
+  const espacios = new Map((await db.space.findMany({ select: { id: true, nombre: true } })).map((s) => [s.id, s.nombre]));
+  // El mismo "hoy" que la disponibilidad: un apartado vence el día siguiente a `vence`.
+  const hoy = hoyCivilMexico();
+  return apartados.map((a) => {
+    const vivos = a.abonos.filter((x) => x.anuladoAt == null);
+    return {
+      id: a.id,
+      importadoBI: a.importadoBI,
+      fecha: a.fechaEvento.toISOString().slice(0, 10),
+      salones: a.spaceIds.map((id) => espacios.get(id) ?? id),
+      tipoEvento: a.eventType?.nombre ?? null,
+      banquetero: a.banquetero ? { id: a.banquetero.id, nombre: a.banquetero.nombre } : null,
+      cliente: a.client ? { id: a.client.id, nombre: a.client.nombre } : null,
+      precioAcordado: a.precioAcordado,
+      abonado: vivos.reduce((s, x) => s + x.monto, 0),
+      estado: a.quoteId
+        ? 'convertido'
+        : a.canceladoAt
+          ? 'cancelado'
+          : a.vence.getTime() < hoy.getTime()
+            ? 'vencido'
+            : 'vivo',
+      vence: a.vence.toISOString().slice(0, 10),
+      canceladoAt: a.canceladoAt?.toISOString() ?? null,
+      motivoCancelacion: a.motivoCancelacion,
+      quoteId: a.quote?.id ?? null,
+      eventoFolio: a.quote?.folio ?? null,
+      eventoCodigo: a.quote?.etiqueta ?? null,
+      abonos: a.abonos.map((x) => ({
+        id: x.id,
+        folio: x.folio,
+        folioTexto: x.folio != null ? formatFolio(x.folio, x.folioLetra) : null,
+        fecha: x.fecha.toISOString().slice(0, 10),
+        monto: x.monto,
+        metodo: x.metodo,
+        formas: partesDePago(x),
+        referencia: x.referencia,
+        notas: x.notas,
+        anulado: x.anuladoAt != null,
+        // Al convertir, cada abono se vuelve un pago del evento (mismo folio).
+        paymentId: x.paymentId,
+      })),
+      createdAt: a.createdAt.toISOString(),
+    };
+  });
+}

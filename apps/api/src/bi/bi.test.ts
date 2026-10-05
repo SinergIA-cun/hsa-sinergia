@@ -55,7 +55,7 @@ describe('API del BI · sin llave configurada', () => {
 
 describe('API del BI · datos', () => {
   it('cada endpoint responde con la envoltura estándar', async () => {
-    for (const ruta of ['eventos', 'pagos', 'pagos-esperados', 'cambios', 'facturacion']) {
+    for (const ruta of ['eventos', 'pagos', 'pagos-esperados', 'cambios', 'facturacion', 'apartados']) {
       const r = await app.inject({
         method: 'GET',
         url: `/api/bi/${ruta}?desde=2020-01-01&hasta=2035-12-31`,
@@ -109,9 +109,11 @@ describe('API del BI · datos', () => {
   });
 
   it('no expone ningún endpoint de escritura', async () => {
-    for (const method of ['POST', 'PATCH', 'DELETE'] as const) {
-      const r = await app.inject({ method, url: '/api/bi/eventos', headers: { 'x-api-key': LLAVE } });
-      expect(r.statusCode, method).toBe(404);
+    for (const url of ['/api/bi/eventos', '/api/bi/apartados']) {
+      for (const method of ['POST', 'PATCH', 'DELETE'] as const) {
+        const r = await app.inject({ method, url, headers: { 'x-api-key': LLAVE } });
+        expect(r.statusCode, `${method} ${url}`).toBe(404);
+      }
     }
   });
 });

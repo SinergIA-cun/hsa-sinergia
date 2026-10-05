@@ -193,6 +193,68 @@ describe('eventos ya cerrados (agosto y septiembre de 2026)', () => {
   });
 });
 
+describe('capilla y eventos sin salón (C1, C2, C3)', () => {
+  // "La capilla es una marca del mismo evento, nunca un evento aparte. No crea
+  // otro evento, no ocupa otro salón y no cambia el precio." (encargo del BI)
+  it('usaCapilla se guarda sin tocar el precio, y dos eventos con capilla el mismo día entran los dos', async () => {
+    const fecha = siguienteSabado();
+    const a = eventoBI({ fechaEvento: fecha, usaCapilla: true });
+    const b = eventoBI({ fechaEvento: fecha, salones: ['Campos'], usaCapilla: true });
+    const r = await importarLote(prisma, { eventos: [a, b] });
+    expect(r.resultados.map((x) => x.estado)).toEqual(['nuevo', 'nuevo']);
+    const qa = await prisma.quote.findUniqueOrThrow({ where: { importadoBI: a.idBI } });
+    expect(qa.usaCapilla).toBe(true);
+    expect(qa.rentaTotal).toBe(95_000);
+    expect(qa.total).toBe(215_000);
+    // Reenviado sin capilla: se reporta, no se pisa.
+    const otra = await conciliarLote(prisma, { eventos: [{ ...a, usaCapilla: false }] });
+    expect(otra.resultados[0]!.diferencias!.map((d) => d.campo)).toContain('usaCapilla');
+    // Sin el campo, no se compara: un BI viejo no ve diferencias de capilla.
+    const { usaCapilla: _sin, ...sinCampo } = a;
+    void _sin;
+    const vieja = await conciliarLote(prisma, { eventos: [sinCampo] });
+    expect(vieja.resultados[0]!.estado).toBe('igual');
+  });
+
+  it('un evento solo de capilla entra sin salón, con código -CAPILLA, y no choca con el del salón', async () => {
+    const fecha = siguienteSabado();
+    const enArcos = eventoBI({ fechaEvento: fecha, usaCapilla: true });
+    const soloCapilla = eventoBI({
+      fechaEvento: fecha,
+      salones: [],
+      usaCapilla: true,
+      tipoEvento: 'Otros',
+      cliente: { nombre: 'Karla Lataban', telefono: '5512341234' },
+      renta: { total: 5_000 },
+      otros: { total: 0 },
+      pagos: [],
+    });
+    const r = await importarLote(prisma, { eventos: [enArcos, soloCapilla] });
+    expect(r.resultados.map((x) => x.estado)).toEqual(['nuevo', 'nuevo']);
+    const q = await prisma.quote.findUniqueOrThrow({ where: { importadoBI: soloCapilla.idBI } });
+    expect(q.spaceIds).toEqual([]);
+    expect(q.usaCapilla).toBe(true);
+    expect(q.etiqueta).toMatch(/-CAPILLA(-\d+)?$/);
+    expect(q.rentaTotal).toBe(5_000);
+    expect((q.breakdown as { lines: { concepto: string; spaceId?: string }[] }).lines[0]).toMatchObject({ concepto: 'Renta Capilla' });
+    // Movido de fecha, conserva el -CAPILLA.
+    const { calcularCodigo } = await import('../quotes/codigo.js');
+    const nuevo = await calcularCodigo(prisma, { fecha: '2043-12-26', cliente: 'Karla Lataban', spaceIds: [] }, { id: q.id, etiqueta: q.etiqueta });
+    expect(nuevo).toMatch(/^26DIC43-.*-CAPILLA$/);
+  });
+
+  it('una sesión de fotos entra sin salón con código -FOTOS; otro tipo sin salón es invalido', async () => {
+    const fotos = eventoBI({ salones: [], tipoEvento: 'Sesión de fotos', renta: { total: 4_000 }, otros: { total: 0 }, pagos: [] });
+    const boda = eventoBI({ salones: [] });
+    const r = await importarLote(prisma, { eventos: [fotos, boda] });
+    expect(r.resultados.map((x) => x.estado)).toEqual(['nuevo', 'invalido']);
+    expect(r.resultados[1]!.errores![0]).toContain('sin salón');
+    const q = await prisma.quote.findUniqueOrThrow({ where: { importadoBI: fotos.idBI } });
+    expect(q.spaceIds).toEqual([]);
+    expect(q.etiqueta).toMatch(/-FOTOS(-\d+)?$/);
+  });
+});
+
 describe('sin corte de fecha', () => {
   // "El corte que no sea 1ero de agosto para el BI, no le pongas corte, que pueda
   // subir lo que sea" (el dueño, 5-oct-2026). Martes de 2018: en el dev no hay

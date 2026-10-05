@@ -343,7 +343,10 @@ export function AgendaPage() {
                   </div>
                   <div className="space-y-1">
                     {eventos.map((e) => {
-                      const espacio = primarySpace(e, nombreById).nombre;
+                      // Un evento sin salón (solo capilla, una sesión de fotos) se
+                      // nombra por lo que es, no por un espacio vacío.
+                      const espacio =
+                        primarySpace(e, nombreById).nombre || (e.spaceIds.length === 0 && e.usaCapilla ? 'Capilla' : '');
                       const empalmada = desplazadas.has(e.quoteId);
                       return (
                         <ChipArrastrable

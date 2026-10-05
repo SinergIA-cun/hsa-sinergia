@@ -74,7 +74,17 @@ export const eventoBISchema = z.object({
   fechaContratacion: fechaISO,
   fechaEvento: fechaISO,
   tipoEvento: z.string().min(1).max(80),
-  salones: z.array(z.string().min(1).max(80)).min(1).max(3),
+  /**
+   * Vacío solo para un evento que no ocupa salón: uno solo de capilla
+   * (`usaCapilla: true`) o una sesión de fotos. Cualquier otro sale `invalido`.
+   */
+  salones: z.array(z.string().min(1).max(80)).max(3),
+  /**
+   * La capilla es una MARCA del evento, no otro evento: no cambia el precio
+   * pactado y no bloquea (varios eventos la usan el mismo día a horas distintas).
+   */
+  usaCapilla: z.boolean().optional(),
+  capillaHorario: z.string().max(60).nullish(),
   invitados: z.number().int().positive(),
   cliente: z.object({
     nombre: z.string().trim().min(1).max(200),
@@ -170,6 +180,13 @@ function resolver(ev: EventoBI, c: Catalogos) {
   }
   const tipo = emparejarNombre(ev.tipoEvento, c.tipos);
   if (!tipo) errores.push(`El tipo de evento "${ev.tipoEvento}" no se reconoce.`);
+  // Un evento sin salón: solo de capilla, o una sesión de fotos. Lo demás sin
+  // salón es un dato que falta, no un evento que no ocupa espacio.
+  const esFotos = tipo?.slug === 'sesion-de-fotos';
+  if (ev.salones.length === 0 && tipo && !ev.usaCapilla && !esFotos) {
+    errores.push('Un evento sin salón solo puede ser de capilla (usaCapilla: true) o una sesión de fotos.');
+  }
+  const sinSalon = ev.salones.length > 0 ? undefined : ev.usaCapilla ? 'Capilla' : 'Fotos';
   let banqueteroId: string | null = null;
   if (ev.banquetero) {
     const b = emparejarNombre(ev.banquetero, c.banqueteros);
@@ -195,7 +212,7 @@ function resolver(ev: EventoBI, c: Catalogos) {
   }
   const repetidos = ev.pagos.map((p) => p.folio).filter((f, i, a) => a.indexOf(f) !== i);
   if (repetidos.length) errores.push(`Folios repetidos en los pagos: ${[...new Set(repetidos)].join(', ')}.`);
-  return { errores, avisos, spaceIds, eventTypeId: tipo?.id ?? null, banqueteroId, vendedoraId };
+  return { errores, avisos, spaceIds, eventTypeId: tipo?.id ?? null, banqueteroId, vendedoraId, sinSalon };
 }
 
 const dia = (iso: string) => new Date(`${iso}T00:00:00.000Z`);
@@ -203,7 +220,7 @@ const dia = (iso: string) => new Date(`${iso}T00:00:00.000Z`);
 /** El lado de la hacienda de la comparación, recortado a la ventana del BI. */
 async function comparableHSA(
   db: PrismaClient,
-  quote: { id: string; fechaEvento: Date; spaceIds: string[]; invitados: number; eventTypeId: string; rentaTotal: number },
+  quote: { id: string; fechaEvento: Date; spaceIds: string[]; invitados: number; eventTypeId: string; rentaTotal: number; usaCapilla: boolean },
   pagosHasta?: string,
 ): Promise<EventoComparable> {
   const pagos = await db.payment.findMany({
@@ -221,6 +238,7 @@ async function comparableHSA(
     invitados: quote.invitados,
     eventTypeId: quote.eventTypeId,
     rentaTotal: quote.rentaTotal,
+    usaCapilla: quote.usaCapilla,
     pagado: pagos.reduce((s, p) => s + p.monto, 0),
     folios: pagos.map((p) => p.folio),
   };
@@ -235,6 +253,7 @@ const QUOTE_SELECT = {
   status: true,
   fechaEvento: true,
   spaceIds: true,
+  usaCapilla: true,
   invitados: true,
   eventTypeId: true,
   rentaTotal: true,
@@ -287,6 +306,7 @@ async function conciliarUno(
     rentaTotal: ev.renta.total,
     pagado: ev.pagos.reduce((s, p) => s + p.monto, 0),
     folios: ev.pagos.map((p) => p.folio),
+    usaCapilla: ev.usaCapilla,
   };
 
   if (existente) {
@@ -420,6 +440,7 @@ async function crearImportado(db: PrismaClient, ev: EventoBI, r: ReturnType<type
     rentaTotal: ev.renta.total,
     otrosTotal: ev.otros?.total ?? 0,
     ivaRate: lista.ivaRate,
+    sinSalon: r.sinSalon === 'Capilla' ? 'Capilla' : r.sinSalon ? 'Sesión de fotos' : undefined,
   });
 
   const quote = await enTransaccionConActor(async (tx) => {
@@ -440,7 +461,7 @@ async function crearImportado(db: PrismaClient, ev: EventoBI, r: ReturnType<type
       ).id;
 
     const folio = await folioDeContratacion(tx, ev.fechaContratacion);
-    const datosCodigo = { fecha: ev.fechaEvento, cliente: ev.cliente.nombre, spaceIds: r.spaceIds };
+    const datosCodigo = { fecha: ev.fechaEvento, cliente: ev.cliente.nombre, spaceIds: r.spaceIds, sinSalon: r.sinSalon };
     // El código con el que ya circula, si el BI lo mandó y nadie más lo usa aquí;
     // si no, el que le toca. (Si lo usara otro evento, la conciliación ya lo
     // habría ligado a ese y no estaríamos creando.)
@@ -457,6 +478,8 @@ async function crearImportado(db: PrismaClient, ev: EventoBI, r: ReturnType<type
         fechaEvento: dia(ev.fechaEvento),
         invitados: ev.invitados,
         spaceIds: r.spaceIds,
+        usaCapilla: ev.usaCapilla ?? false,
+        capillaHorario: ev.capillaHorario ?? null,
         breakdown: breakdown as unknown as Prisma.InputJsonValue,
         total: breakdown.total,
         rentaTotal: breakdown.rentaTotal,
