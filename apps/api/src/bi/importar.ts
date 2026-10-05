@@ -2,7 +2,6 @@ import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { enTransaccionConActor, type PrismaClient, type Prisma } from '@hsa/database';
 import {
-  FECHA_CORTE_IMPORTACION,
   compararEvento,
   desgloseImportado,
   emparejarNombre,
@@ -24,10 +23,8 @@ import { archivarEvento } from '../historico/archivar.js';
 
 /**
  * El BI le manda a la hacienda los eventos que ya estaban vendidos antes del
- * sistema, del corte en adelante (`FECHA_CORTE_IMPORTACION`: los que faltan por
- * celebrarse y los cerrados de agosto y septiembre de 2026), y los dos lados se
- * concilian. Uno que ya pasó entra igual que los demás y queda archivado en el
- * Histórico en ese momento.
+ * sistema, de cualquier fecha, y los dos lados se concilian. Uno que ya pasó
+ * entra igual que los demás y queda archivado en el Histórico en ese momento.
  *
  * Reglas de diseño:
  *  - **Idempotente por `idBI`.** Mandar el mismo lote dos veces no duplica nada.
@@ -102,8 +99,8 @@ export const loteSchema = z.object({
    */
   pagosHasta: fechaISO.optional(),
   /**
-   * El BI declara que el lote trae TODOS sus eventos del corte en adelante. Solo
-   * así tiene sentido reportar los que la hacienda tiene y el BI no.
+   * El BI declara que el lote trae TODOS sus eventos. Solo así tiene sentido
+   * reportar los que la hacienda tiene y el BI no.
    */
   completo: z.boolean().default(false),
 });
@@ -116,7 +113,6 @@ export type Estado =
   | 'igual'
   | 'difiere'
   | 'posibleDuplicado'
-  | 'fueraDeCorte'
   | 'invalido';
 
 export interface Candidato {
@@ -250,9 +246,6 @@ async function conciliarUno(
   c: Catalogos,
   pagosHasta: string | undefined,
 ): Promise<Resultado & { _resuelto?: ReturnType<typeof resolver> }> {
-  if (ev.fechaEvento < FECHA_CORTE_IMPORTACION) {
-    return { idBI: ev.idBI, estado: 'fueraDeCorte', avisos: [`Se celebra antes del ${FECHA_CORTE_IMPORTACION}: se queda en el BI.`] };
-  }
   const r = resolver(ev, c);
   if (r.errores.length) return { idBI: ev.idBI, estado: 'invalido', errores: r.errores, avisos: r.avisos };
 
@@ -353,13 +346,12 @@ async function conciliarUno(
   return { idBI: ev.idBI, estado: 'nuevo', avisos: r.avisos, _resuelto: r };
 }
 
-/** Los eventos del corte en adelante que la hacienda tiene y el BI no mandó. */
+/** Los eventos que la hacienda tiene y el BI no mandó. */
 async function soloEnHSA(db: PrismaClient, lote: Lote, resultados: Resultado[]) {
   const vistos = new Set(resultados.map((r) => r.quoteId).filter(Boolean));
   const idsBI = lote.eventos.map((e) => e.idBI);
   const quotes = await db.quote.findMany({
     where: {
-      fechaEvento: { gte: dia(FECHA_CORTE_IMPORTACION) },
       deletedAt: null,
       status: { notIn: ['borrador', 'standby', 'cancelada'] },
       OR: [{ importadoBI: null }, { importadoBI: { notIn: idsBI } }],
@@ -401,7 +393,6 @@ export async function conciliarLote(db: PrismaClient, raw: unknown) {
   const resultados: Resultado[] = [];
   for (const ev of lote.eventos) resultados.push(quitarInterno(await conciliarUno(db, ev, c, lote.pagosHasta)));
   return {
-    corte: FECHA_CORTE_IMPORTACION,
     resumen: resumen(resultados),
     resultados,
     ...(lote.completo ? { soloEnHSA: await soloEnHSA(db, lote, resultados) } : {}),
@@ -574,7 +565,6 @@ export async function importarLote(db: PrismaClient, raw: unknown) {
     resultados.push(quitarInterno(res));
   }
   return {
-    corte: FECHA_CORTE_IMPORTACION,
     resumen: resumen(resultados),
     resultados,
     ...(lote.completo ? { soloEnHSA: await soloEnHSA(db, lote, resultados) } : {}),

@@ -77,8 +77,8 @@ export async function biRoutes(app: FastifyInstance): Promise<void> {
 }
 
 /**
- * La única escritura del BI: mandar los eventos vendidos antes del sistema que se
- * celebran del corte en adelante, y conciliarlos. Con su propia llave
+ * La única escritura del BI: mandar los eventos vendidos antes del sistema, de
+ * cualquier fecha, y conciliarlos. Con su propia llave
  * (`BI_IMPORT_API_KEY`); sin ella estas rutas no existen.
  *
  * `/conciliar` nunca escribe. `/importar/eventos` crea los nuevos y liga los que
