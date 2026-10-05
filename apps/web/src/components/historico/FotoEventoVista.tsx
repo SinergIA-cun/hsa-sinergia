@@ -5,6 +5,8 @@ import { api } from '../../lib/api.ts';
 import { formatMXN } from '../../lib/money.ts';
 import { formatEventDate, formatFechaHora } from '../../lib/date.ts';
 import { BreakdownGrouped } from '../BreakdownGrouped.tsx';
+import { useAuth } from '../../auth/auth.tsx';
+import { EliminarDelHistorico } from './EliminarDelHistorico.tsx';
 import type { DetalleHistorico, FotoEvento } from '../../lib/types.ts';
 import { FORMA_PAGO_LABEL, formatFolio, type MetodoPago } from '@hsa/shared';
 
@@ -42,6 +44,7 @@ const CAMPOS_OPERATIVA: { llave: string; label: string }[] = [
  * todo viene copiado— para que siga significando lo mismo en diez años.
  */
 export function FotoEventoVista({ id }: { id: string }) {
+  const { user } = useAuth();
   const { data, isLoading, isError } = useQuery({
     queryKey: ['historico-detalle', id],
     queryFn: () => api.get<DetalleHistorico>(`/api/historico/${id}`),
@@ -61,12 +64,15 @@ export function FotoEventoVista({ id }: { id: string }) {
           {data.versiones.length > 1 && ` · versión ${data.version} de ${data.versiones.length}`}
         </p>
         {/* La cotización viva sigue existiendo: los pagos se registran ahí. */}
-        <Link
-          to={`/eventos/${data.quoteId}`}
-          className="inline-flex items-center gap-1.5 text-xs text-ink underline hover:text-gold"
-        >
-          <ExternalLink size={13} /> Abrir el contrato vivo
-        </Link>
+        <span className="inline-flex items-center gap-4">
+          <Link
+            to={`/eventos/${data.quoteId}`}
+            className="inline-flex items-center gap-1.5 text-xs text-ink underline hover:text-gold"
+          >
+            <ExternalLink size={13} /> Abrir el contrato vivo
+          </Link>
+          {user?.role === 'admin' && <EliminarDelHistorico quoteId={data.quoteId} cliente={data.foto.cliente.nombre} />}
+        </span>
       </div>
 
       <dl className="mb-6 grid gap-x-6 gap-y-3 sm:grid-cols-3 lg:grid-cols-4">
