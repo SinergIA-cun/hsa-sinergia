@@ -1,6 +1,7 @@
 import type { PrismaClient, Prisma } from '@hsa/database';
 import { totalAbonado } from '../banqueteros/abonos.js';
 import { hoyCivilMexico, ESTATUS_SIN_FECHA } from '@hsa/shared';
+import { INCLUDE_TITULAR, titularDeApartado } from '../banqueteros/titular.js';
 
 export type AvailabilityLevel = 'libre' | 'cotizaciones' | 'bloqueada';
 
@@ -134,7 +135,7 @@ export async function getAvailability(
         ...apartadosVivos(hoy),
         ...(opts.excludeApartadoId ? { id: { not: opts.excludeApartadoId } } : {}),
       },
-      include: { banquetero: { select: { nombre: true } }, abonos: { select: { monto: true, anuladoAt: true } } },
+      include: { ...INCLUDE_TITULAR, abonos: { select: { monto: true, anuladoAt: true } } },
     }),
   ]);
 
@@ -169,7 +170,7 @@ export async function getAvailability(
       quotes: relevantes.map((q) => ({ id: q.id, cliente: q.client?.nombre ?? 'Cliente', status: q.status })),
       apartados: apartadosDelEspacio.map((a) => ({
         apartadoId: a.id,
-        banquetero: a.banquetero?.nombre ?? 'Banquetero',
+        banquetero: titularDeApartado(a),
         venceISO: a.vence.toISOString(),
         // Lo que lleva juntado esa fecha, no un depósito único: un apartado se
         // paga de a poco.
@@ -206,8 +207,11 @@ export interface AgendaEvent {
 export interface AgendaApartado {
   apartadoId: string;
   /** Para que el chip de la agenda pueda abrir la ficha de su banquetero, que es
-   *  donde el apartado se cancela o se convierte. Sin él el chip no lleva a nada. */
-  banqueteroId: string;
+   *  donde el apartado se cancela o se convierte. `null` si lo apartó un cliente
+   *  directo: entonces el chip abre la ficha del apartado. */
+  banqueteroId: string | null;
+  clienteId: string | null;
+  /** Quien apartó, por nombre: el banquetero o el cliente directo. */
   banquetero: string;
   fechaEvento: string;
   spaceIds: string[];
@@ -238,7 +242,7 @@ export async function getAgenda(
     }),
     db.apartadoFecha.findMany({
       where: { fechaEvento: { gte, lt }, ...apartadosVivos(hoy) },
-      include: { banquetero: { select: { nombre: true } }, abonos: { select: { monto: true, anuladoAt: true } } },
+      include: { ...INCLUDE_TITULAR, abonos: { select: { monto: true, anuladoAt: true } } },
       orderBy: { fechaEvento: 'asc' },
     }),
   ]);
@@ -255,7 +259,10 @@ export async function getAgenda(
     apartados: apartados.map((a) => ({
       apartadoId: a.id,
       banqueteroId: a.banqueteroId,
-      banquetero: a.banquetero?.nombre ?? 'Banquetero',
+      clienteId: a.clientId,
+      // Quien apartó: el banquetero o el cliente directo. El nombre del campo se
+      // conserva por compatibilidad con la agenda.
+      banquetero: titularDeApartado(a),
       fechaEvento: a.fechaEvento.toISOString(),
       spaceIds: a.spaceIds,
       venceISO: a.vence.toISOString(),

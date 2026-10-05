@@ -144,7 +144,11 @@ interface Props {
    * Lo que viene de un apartado y no se toca aquí: la fecha, los espacios y el
    * banquetero son lo que se apartó y lo que se pagó. Se muestran, no se editan.
    */
-  bloqueado?: { fecha?: boolean; espacios?: boolean; banquetero?: boolean };
+  /**
+   * Lo que viene impuesto al convertir un apartado. `cliente`: lo apartó un
+   * cliente directo; su nombre no se cambia, solo se le completa el contacto.
+   */
+  bloqueado?: { fecha?: boolean; espacios?: boolean; banquetero?: boolean; cliente?: boolean };
   /** Habilita el buscador de clientes existentes (solo al crear). */
   enableClientSearch?: boolean;
   /**
@@ -533,7 +537,20 @@ export function QuoteForm({
           {/* ¿Para quién es este evento? Con banquetero, ÉL es el cliente de la
               hacienda: firma él y se le factura a él. El festejado (el cliente
               final) es dato operativo y no entra al contrato. */}
-          {bloqueado?.banquetero ? (
+          {bloqueado?.cliente ? (
+            /* Lo apartó un cliente directo: el evento es suyo. El nombre no se
+               toca (sería convertir la fecha a nombre de otra persona); el
+               teléfono o el correo sí, porque el contrato exige uno. */
+            <div className="rounded-lg border border-ink/10 bg-ink/[0.03] px-3 py-2.5">
+              <p className="text-[0.7rem] font-semibold uppercase tracking-wide text-charcoal-soft">
+                Cliente directo
+              </p>
+              <p className="mt-0.5 text-sm text-ink">{nombre}</p>
+              <p className="mt-1 text-xs text-charcoal-soft">
+                Es quien apartó la fecha. Completa su teléfono o correo si no los tiene.
+              </p>
+            </div>
+          ) : bloqueado?.banquetero ? (
             /* Al convertir un apartado, el banquetero es quien lo apartó y quien
                ya abonó. Ofrecer el interruptor invitaría a cambiarlo y a crear un
                cliente paralelo del mismo señor. */
@@ -587,8 +604,8 @@ export function QuoteForm({
           <ClienteCombobox
             label={esDeBanquetero ? 'Nombre (del banquetero)' : 'Nombre'}
             value={nombre}
-            readOnly={esDeBanquetero}
-            buscar={enableClientSearch && !pickedClientId && !buscandoBanquetero}
+            readOnly={esDeBanquetero || bloqueado?.cliente}
+            buscar={enableClientSearch && !pickedClientId && !buscandoBanquetero && !bloqueado?.cliente}
             onPick={pickCliente}
             onChange={(v) => {
               setNombre(v);

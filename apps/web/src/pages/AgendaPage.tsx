@@ -382,7 +382,9 @@ export function AgendaPage() {
                           key={a.apartadoId}
                           apartado={a}
                           espacio={espacio}
-                          onClick={() => navigate(`/banqueteros/${a.banqueteroId}`)}
+                          // El de banquetero vive en su cuenta; el de un cliente
+                          // directo tiene su propia ficha.
+                          onClick={() => navigate(a.banqueteroId ? `/banqueteros/${a.banqueteroId}` : `/apartados/${a.apartadoId}`)}
                         />
                       );
                     })}
@@ -409,10 +411,10 @@ export function AgendaPage() {
         cotizaciones cuyo espacio ya fue apartado por otro evento ese mismo día.
       </p>
       <p className="mt-1 text-xs text-charcoal-soft">
-        Los chips dorados con marcador son <strong>fechas apartadas</strong> por un banquetero:
-        bloquean la fecha pero todavía no tienen precio ni cotización. No se arrastran —cambiarles la
-        fecha se hace desde la cuenta del banquetero, que es donde también se cancelan o se
-        convierten— y al tocarlos se abre esa cuenta.
+        Los chips dorados con marcador son <strong>fechas apartadas</strong> por un banquetero o un
+        cliente: bloquean la fecha pero todavía no tienen cotización. No se arrastran. Al tocarlos se
+        abre la cuenta del banquetero (o la ficha del apartado, si es de un cliente), que es donde se
+        cancelan o se convierten.
       </p>
 
       {mover && (
@@ -478,7 +480,8 @@ function ChipArrastrable({ id, movible, className, title, onClick, children }: {
  * banquetero en vez de un cliente y SIN precio, porque no hay ninguno. No se
  * arrastra —la API no tiene forma de mover un apartado de fecha, y un arrastre
  * que no hace nada es peor que no poder arrastrar— y al tocarlo se abre la cuenta
- * del banquetero, donde el apartado se cancela o se convierte.
+ * del banquetero (o la ficha del apartado, si lo apartó un cliente directo), donde
+ * se cancela o se convierte.
  */
 function ChipApartado({
   apartado: a,

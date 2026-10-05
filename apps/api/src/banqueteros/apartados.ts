@@ -10,6 +10,7 @@ import {
 } from '@hsa/shared';
 import { INCLUDE_ABONOS, totalAbonado } from './abonos.js';
 import { QuoteError, createQuote, type Actor } from '../quotes/service.js';
+import { logActivity } from '../quotes/activityLog.js';
 import { getAvailability } from '../availability/service.js';
 import { registerPayment, resolverOError } from '../payments/service.js';
 import type { ComprobanteStorage } from '../payments/storage.js';
@@ -77,6 +78,8 @@ const dia = (iso: string) => new Date(`${iso}T00:00:00.000Z`);
 
 const INCLUDE = {
   banquetero: { select: { id: true, nombre: true, telefono: true } },
+  client: { select: { id: true, nombre: true, telefono: true, correo: true } },
+  eventType: { select: { id: true, nombre: true } },
   priceList: { select: { id: true, nombre: true, anio: true } },
   quote: { select: { id: true, folio: true, etiqueta: true, total: true, status: true } },
   ...INCLUDE_ABONOS,
@@ -192,6 +195,22 @@ export async function listarApartados(
   }));
 }
 
+/**
+ * Un apartado por su id, con lo mismo que trae la lista. Es la ficha de los que
+ * apartó un cliente directo, que no tienen un banquetero en cuya página vivir.
+ */
+export async function obtenerApartado(db: PrismaClient, apartadoId: string, opts: { hoy?: Date } = {}) {
+  const a = await db.apartadoFecha.findUnique({ where: { id: apartadoId }, include: INCLUDE });
+  if (!a) throw new QuoteError(404, 'Apartado no encontrado');
+  const hoy = opts.hoy ?? hoyCivilMexico();
+  return {
+    ...a,
+    abonado: totalAbonado(a.abonos),
+    vivo: apartadoVivo(a, hoy),
+    vencido: a.canceladoAt == null && a.quoteId == null && a.vence.getTime() < hoy.getTime(),
+  };
+}
+
 export const renovarApartadoSchema = z.object({ confirmar: z.boolean().default(false) });
 
 /**
@@ -240,9 +259,12 @@ export async function renovarApartado(
     );
   }
 
+  // Nunca acorta: un apartado que vino del BI vive hasta su fecha, y "renovarlo"
+  // no puede dejarlo con siete días hábiles.
+  const nuevo = vigenciaDeApartado(hoy);
   return db.apartadoFecha.update({
     where: { id: apartadoId },
-    data: { vence: vigenciaDeApartado(hoy) },
+    data: { vence: nuevo.getTime() > apartado.vence.getTime() ? nuevo : apartado.vence },
     include: INCLUDE,
   });
 }
@@ -273,6 +295,65 @@ export async function cancelarApartado(
 }
 
 /**
+ * El cliente de un apartado de BANQUETERO.
+ *
+ * Con banquetero, él es el cliente de la hacienda: firma él y se le factura a
+ * él. Es la misma regla que el cotizador aplica desde el Plan H, donde los
+ * campos del cliente quedan de solo lectura. Pedirlos aquí era pedir un dato
+ * que ya se sabía —y peor: quien lo capturaba distinto creaba un cliente
+ * paralelo para el mismo banquetero.
+ *
+ * Se reutiliza su ficha de cliente si ya la tiene, en vez de crear una nueva
+ * en cada conversión: tres apartados convertidos son tres eventos del mismo
+ * señor, no tres clientes.
+ */
+async function clienteBanquetero(db: PrismaClient, banqueteroId: string) {
+  const banquetero = await db.banquetero.findUniqueOrThrow({
+    where: { id: banqueteroId },
+    select: { nombre: true, telefono: true, correo: true },
+  });
+  const fichaExistente = await db.client.findFirst({
+    where: { nombre: { equals: banquetero.nombre, mode: 'insensitive' } },
+    orderBy: { createdAt: 'desc' },
+    select: { id: true },
+  });
+  return {
+    banqueteroId,
+    ...(fichaExistente
+      ? { clientId: fichaExistente.id }
+      : {
+          client: {
+            nombre: banquetero.nombre,
+            telefono: banquetero.telefono ?? undefined,
+            correo: correoValido(banquetero.correo) ? banquetero.correo! : undefined,
+          },
+        }),
+  };
+}
+
+/**
+ * El cliente de un apartado de CLIENTE DIRECTO: el que apartó, siempre.
+ *
+ * Quien convierte solo puede completarle el teléfono o el correo (un apartado
+ * que vino del BI llega sin ninguno, y el contrato exige uno). El nombre no se
+ * toca: cambiarlo aquí sería convertir la fecha a nombre de otra persona.
+ */
+async function clienteDirecto(
+  db: PrismaClient,
+  clientId: string,
+  capturado: { telefono?: unknown; correo?: unknown } | undefined,
+) {
+  const cliente = await db.client.findUniqueOrThrow({ where: { id: clientId }, select: { nombre: true } });
+  const telefono = typeof capturado?.telefono === 'string' ? capturado.telefono.trim() : '';
+  const correo = typeof capturado?.correo === 'string' ? capturado.correo.trim() : '';
+  const contacto = { ...(telefono ? { telefono } : {}), ...(correo ? { correo } : {}) };
+  return {
+    clientId,
+    ...(Object.keys(contacto).length > 0 ? { client: { nombre: cliente.nombre, ...contacto } } : {}),
+  };
+}
+
+/**
  * Convierte un apartado en cotización.
  *
  * El cuerpo es el de crear una cotización normal (tipo de evento, invitados,
@@ -300,35 +381,16 @@ export async function convertirApartado(
   if (apartado.quoteId) throw new QuoteError(409, 'Este apartado ya se convirtió en cotización.');
   if (apartado.canceladoAt) throw new QuoteError(409, 'El apartado está cancelado.');
 
-  const banquetero = await db.banquetero.findUniqueOrThrow({
-    where: { id: apartado.banqueteroId },
-    select: { nombre: true, telefono: true, correo: true },
-  });
-
-  /**
-   * El CLIENTE lo impone el apartado, no lo captura quien convierte.
-   *
-   * Con banquetero, él es el cliente de la hacienda: firma él y se le factura a
-   * él. Es la misma regla que el cotizador aplica desde el Plan H, donde los
-   * campos del cliente quedan de solo lectura. Pedirlos aquí era pedir un dato
-   * que ya se sabía —y peor: quien lo capturaba distinto creaba un cliente
-   * paralelo para el mismo banquetero.
-   *
-   * Se reutiliza su ficha de cliente si ya la tiene, en vez de crear una nueva
-   * en cada conversión: tres apartados convertidos son tres eventos del mismo
-   * señor, no tres clientes.
-   */
-  const fichaExistente = await db.client.findFirst({
-    where: { nombre: { equals: banquetero.nombre, mode: 'insensitive' } },
-    orderBy: { createdAt: 'desc' },
-    select: { id: true },
-  });
-
   // Se quitan del cuerpo: lo que el servidor impone no puede llegar de afuera, o
-  // un cliente tecleado le ganaría al banquetero sin que nadie lo note.
+  // un cliente tecleado le ganaría al titular del apartado sin que nadie lo note.
   const resto: Record<string, unknown> = { ...((rawInput ?? {}) as Record<string, unknown>) };
+  const contactoCapturado = resto.client as { telefono?: unknown; correo?: unknown } | undefined;
   delete resto.client;
   delete resto.clientId;
+
+  const paraQuien = apartado.banqueteroId
+    ? await clienteBanquetero(db, apartado.banqueteroId)
+    : await clienteDirecto(db, apartado.clientId!, contactoCapturado);
 
   /**
    * El catálogo: manda el GARANTIZADO del apartado; si no tiene, el que elija
@@ -349,10 +411,9 @@ export async function convertirApartado(
       ...resto,
       fecha: apartado.fechaEvento.toISOString().slice(0, 10),
       spaceIds: apartado.spaceIds,
-      banqueteroId: apartado.banqueteroId,
-      ...(fichaExistente
-        ? { clientId: fichaExistente.id }
-        : { client: { nombre: banquetero.nombre, telefono: banquetero.telefono ?? undefined, correo: correoValido(banquetero.correo) ? banquetero.correo! : undefined } }),
+      // El tipo de evento que ya se sabía al apartar, si quien convierte no eligió otro.
+      ...(resto.eventTypeId == null && apartado.eventTypeId ? { eventTypeId: apartado.eventTypeId } : {}),
+      ...paraQuien,
     },
     actor,
     {
@@ -363,6 +424,18 @@ export async function convertirApartado(
   );
 
   await db.apartadoFecha.update({ where: { id: apartadoId }, data: { quoteId: quote.id } });
+  // El precio que se pactó al apartar no se pierde: queda en la bitácora del
+  // evento, a la vista de quien lo cotiza. No se impone al desglose: el apartado
+  // no dice si cubre solo la renta o también los alimentos.
+  if (apartado.precioAcordado != null) {
+    await logActivity(db, {
+      quoteId: quote.id,
+      tipo: 'creada',
+      descripcion: `Precio acordado en el apartado: $${apartado.precioAcordado.toLocaleString('es-MX')}`,
+      meta: { apartadoId: apartado.id, precioAcordado: apartado.precioAcordado },
+      actorId: actor.id,
+    });
+  }
 
   /**
    * Cada abono vivo se vuelve un pago de la cotización, **con su propia fecha de

@@ -212,6 +212,7 @@ model EventType {
   /// global: clonar el catálogo no lo subía y editarlo represiaba lo reeditado.
   djPrices     DjHoraExtraPrice[]
   quotes       Quote[]
+  apartados    ApartadoFecha[]
 }
 
 /// Precio de la hora extra de DJ, por catálogo y por tipo de evento.
@@ -340,8 +341,22 @@ model PagoBanquetero {
 /// a ningún reporte de ingreso comprometido.
 model ApartadoFecha {
   id                String          @id @default(cuid())
-  banquetero        Banquetero      @relation(fields: [banqueteroId], references: [id])
-  banqueteroId      String
+  /// Quién apartó: un banquetero O un cliente directo, exactamente uno (CHECK en
+  /// la migración `apartado_cliente_bi`). Hasta el 5-oct-2026 solo podía ser un
+  /// banquetero; el BI trae fechas apartadas por clientes directos.
+  banquetero        Banquetero?     @relation(fields: [banqueteroId], references: [id], onDelete: Restrict)
+  banqueteroId      String?
+  client            Client?         @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  clientId          String?
+  /// El precio que ya se pactó por la fecha, en pesos enteros, si lo hay. No es
+  /// un total calculado: un apartado sigue sin pasar por el motor de precios.
+  /// Se enseña al convertir para que no se pierda.
+  precioAcordado    Int?
+  /// El tipo de evento, si ya se sabe. Solo prellena la conversión.
+  eventType         EventType?      @relation(fields: [eventTypeId], references: [id])
+  eventTypeId       String?
+  /// El `idBI` con el que llegó del BI. Llave de idempotencia de la importación.
+  importadoBI       String?         @unique
   fechaEvento       DateTime
   spaceIds          String[]
   /// Catálogo al que se le garantizó el precio, si se negoció uno. Es el tramo 1
@@ -378,6 +393,7 @@ model ApartadoFecha {
 
   @@index([fechaEvento])
   @@index([banqueteroId])
+  @@index([clientId])
 }
 
 // Personal HSA: catálogo de empleados y cuadrillas (grupos) para armar la hoja
@@ -486,6 +502,7 @@ model Client {
   csfMime           String?
   createdAt         DateTime @default(now())
   quotes            Quote[]
+  apartados         ApartadoFecha[]
 }
 
 model Quote {

@@ -19,6 +19,7 @@ import {
   cancelarApartado,
   convertirApartado,
   renovarApartado,
+  obtenerApartado,
 } from './apartados.js';
 import { anularAbono, editarNotasAbono, loadComprobanteAbono, registrarAbono } from './abonos.js';
 import { estadoCuentaBanquetero, estadoCuentaPublico } from './estadoCuenta.js';
@@ -201,6 +202,20 @@ export async function banqueteroRoutes(app: FastifyInstance): Promise<void> {
     '/banqueteros/:id/apartados',
     { preHandler: requireAuth },
     async (req) => ({ apartados: await listarApartados(app.prisma, req.params.id) }),
+  );
+
+  // Un apartado suelto: la ficha de los que apartó un cliente directo.
+  app.get<{ Params: { apartadoId: string } }>(
+    '/apartados/:apartadoId',
+    { preHandler: requireAuth },
+    async (req, reply) => {
+      try {
+        return { apartado: await obtenerApartado(app.prisma, req.params.apartadoId) };
+      } catch (e) {
+        if (e instanceof QuoteError) return reply.code(e.status).send({ error: e.message });
+        throw e;
+      }
+    },
   );
 
   app.patch<{ Params: { apartadoId: string } }>(

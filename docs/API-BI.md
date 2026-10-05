@@ -593,3 +593,46 @@ Hasta 200 por llamada. Respuesta:
 Un banquetero sin teléfono ni correo puede tener eventos, pero para **convertir uno de sus
 apartados** en evento la hacienda le tiene que capturar al menos uno de los dos (el
 contrato los exige).
+
+### `POST /api/bi/conciliar/apartados` y `POST /api/bi/importar/apartados`
+
+Un **apartado** es una fecha pagada sin todos los datos del evento (falta el precio, los
+invitados o los dos). Bloquea la fecha y el salón **como apartado**, no como vendido, y se
+convierte en evento después, en la app. Misma llave; `conciliar` **nunca escribe**.
+
+```json
+{
+  "pagosHasta": "2026-08-31",
+  "apartados": [
+    { "idBI": "15ENE28-VGONZALEZ-CUPULA", "fecha": "2028-01-15", "salones": ["Cúpula"],
+      "tipoEvento": "Graduación", "banquetero": "Victor Gonzalez", "cliente": null, "precioAcordado": null,
+      "pagos": [ { "idBI": "R-6054", "folio": 5009, "fecha": "2026-05-20", "monto": 25000, "metodo": "transferencia" } ] },
+    { "idBI": "09ENE27-CQUIROZ-CUPULA", "fecha": "2027-01-09", "salones": ["Cúpula"],
+      "tipoEvento": "XV", "banquetero": null, "cliente": { "nombre": "CAROLINA QUIROZ" }, "precioAcordado": 169000,
+      "pagos": [ { "folio": 4467, "fecha": "2025-11-25", "monto": 25000, "metodo": "transferencia" } ] }
+  ]
+}
+```
+
+| Campo | Regla |
+|---|---|
+| `idBI` | Llave de idempotencia, igual que en eventos. |
+| `fecha`, `salones` | Lo que se aparta. Mismas reglas de nombre que en eventos. |
+| `banquetero` **o** `cliente` | Exactamente uno; con los dos o con ninguno se rechaza el lote entero (400). El banquetero tiene que estar dado de alta (`/importar/banqueteros`); si no, sale `invalido`. El cliente se reutiliza solo si el teléfono coincide exacto; si no, se crea. |
+| `tipoEvento` | Opcional. Si no se reconoce, entra sin tipo y se avisa. Solo prellena la conversión. |
+| `precioAcordado` | Opcional, pesos enteros. Se guarda y se enseña al convertir (y queda en la bitácora del evento). **No se impone al desglose**: no dice si cubre solo la renta o también alimentos. |
+| `pagos` | Igual que en eventos: folio de papel obligatorio, pesos enteros, `metodo` o `formas`. Entran como abonos a la fecha con su folio. Un folio que ya tiene otro dinero aquí vuelve el apartado `invalido`. |
+
+Hasta 200 por llamada. Un apartado importado **no vence antes de su fecha** (uno capturado
+aquí vence a los siete días hábiles). Estados del reporte:
+
+| `estado` | Qué pasó |
+|---|---|
+| `nuevo` | No existe aquí; con `importar` se crea (`accion: "creado"`, `apartadoId`). |
+| `igual` | Ya existe (por `idBI`) y cuadra. |
+| `difiere` | Ya existe y algo no cuadra. `diferencias[].campo`: `fecha`, `salones`, `titular`, `precioAcordado`, `pagado` o `folios`. No se sobrescribe. |
+| `posibleDuplicado` | Ya hay un evento o un apartado vivo esa fecha en ese salón (`candidatos`). No se importa. |
+| `invalido` | Salón no reconocido, banquetero sin dar de alta, formas que no suman, folios repetidos o ya usados (`errores`). |
+
+En `/ingresos`, el abono de un apartado de cliente directo trae `de` = el nombre del cliente
+y `banqueteroId: null`.

@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { enTransaccionConActor, type PrismaClient } from '@hsa/database';
 import { QuoteError } from '../quotes/service.js';
 import { contratosQueUsan, mensajeEnUso } from '../quotes/usos.js';
+import { INCLUDE_TITULAR, titularDeApartado } from '../banqueteros/titular.js';
 
 export const clonarCatalogoSchema = z.object({
   nombre: z.string().min(1).max(60),
@@ -239,14 +240,14 @@ export async function borrarCatalogo(db: PrismaClient, id: string) {
       take: 5,
       select: {
         fechaEvento: true,
-        banquetero: { select: { nombre: true } },
+        ...INCLUDE_TITULAR,
       },
     });
     if (apartados.length > 0) {
       const lista = apartados
         .map(
           (a) =>
-            `${a.banquetero?.nombre ?? 'Banquetero'} (${a.fechaEvento.toISOString().slice(0, 10)})`,
+            `${titularDeApartado(a)} (${a.fechaEvento.toISOString().slice(0, 10)})`,
         )
         .join(', ');
       throw new QuoteError(
