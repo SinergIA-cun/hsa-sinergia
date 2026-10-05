@@ -8,6 +8,7 @@ import {
   formatFolio,
   saldoDeCargos,
   PRODUCTO_INFO,
+  ordenarEspacios,
 } from '@hsa/shared';
 import { loadEstadoCuentaBulk } from '../quotes/service.js';
 import { PRODUCTOS_DEL_CONTRATO } from '../cargos/contrato.js';
@@ -580,7 +581,7 @@ export async function biApartados(db: PrismaClient, r: RangoBI) {
  */
 export async function biCatalogos(db: PrismaClient) {
   const [espacios, tipos] = await Promise.all([
-    db.space.findMany({ select: { id: true, nombre: true }, orderBy: { nombre: 'asc' } }),
+    db.space.findMany({ select: { id: true, nombre: true } }).then(ordenarEspacios),
     db.eventType.findMany({ select: { id: true, nombre: true, slug: true }, orderBy: { nombre: 'asc' } }),
   ]);
   return {

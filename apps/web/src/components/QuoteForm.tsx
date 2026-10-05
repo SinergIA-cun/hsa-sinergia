@@ -750,7 +750,9 @@ export function QuoteForm({
               ? 'Son los espacios que se apartaron. No se cambian aquí.'
               : `Hasta ${MAX_ESPACIOS} espacios por evento. ${fecha ? 'El color indica la disponibilidad.' : 'Elige la fecha para ver disponibilidad.'}`}
           </p>
-          <div className="grid gap-2 sm:grid-cols-2">
+          {/* Tres columnas: Cúpula, Arcos y Campos arriba; Balcones y Pajaritos
+              debajo (el orden lo da la API). */}
+          <div className="grid gap-2 sm:grid-cols-3">
             {/* Con los espacios bloqueados solo se muestran los del apartado: los
                 demás no son una opción, y ofrecerlos apagados es ruido. */}
             {(bloqueado?.espacios ? espaciosVisibles.filter((s) => spaceIds.includes(s.id)) : espaciosVisibles).map((s) => {
