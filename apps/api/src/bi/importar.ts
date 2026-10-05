@@ -20,11 +20,14 @@ import { logActivity } from '../quotes/activityLog.js';
 import { calcularCodigo, eventoPorCodigo, renglonDeCodigo } from '../quotes/codigo.js';
 import { reclasificarConceptos } from '../payments/conceptos.js';
 import { apartadoVivo } from '../banqueteros/apartados.js';
+import { archivarEvento } from '../historico/archivar.js';
 
 /**
  * El BI le manda a la hacienda los eventos que ya estaban vendidos antes del
- * sistema y que todavía no se celebran (del corte en adelante), y los dos lados
- * se concilian.
+ * sistema, del corte en adelante (`FECHA_CORTE_IMPORTACION`: los que faltan por
+ * celebrarse y los cerrados de agosto y septiembre de 2026), y los dos lados se
+ * concilian. Uno que ya pasó entra igual que los demás y queda archivado en el
+ * Histórico en ese momento.
  *
  * Reglas de diseño:
  *  - **Idempotente por `idBI`.** Mandar el mismo lote dos veces no duplica nada.
@@ -519,6 +522,9 @@ async function crearImportado(db: PrismaClient, ev: EventoBI, r: ReturnType<type
       actorId: null,
     });
   }
+  // Un evento cerrado (agosto, septiembre) ya pasó: se archiva ahora y no hasta el
+  // próximo arranque del contenedor. Si todavía no se celebra, no hace nada.
+  await archivarEvento(db, quote.id);
   return quote;
 }
 

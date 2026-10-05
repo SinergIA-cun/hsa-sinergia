@@ -86,7 +86,11 @@ export function FotoEventoVista({ id }: { id: string }) {
         <Dato label="Catálogo" valor={f.evento.catalogo} />
         <Dato
           label="Descuento"
-          valor={f.evento.descuentoPct ? `${f.evento.descuentoPct}% · ${f.evento.descuentoMotivo ?? ''}` : null}
+          valor={
+            f.evento.descuentoPct
+              ? `${f.evento.esPromocion ? 'Promoción' : f.evento.esCortesia ? 'Cortesía' : ''} ${f.evento.descuentoPct}% · ${f.evento.descuentoMotivo ?? ''}`.trim()
+              : null
+          }
         />
         <Dato label="RFC" valor={f.cliente.rfc} />
         <Dato label="Razón social" valor={f.cliente.razonSocial} />
@@ -146,6 +150,48 @@ export function FotoEventoVista({ id }: { id: string }) {
           </strong>
         </p>
       </section>
+
+      {f.cargos && f.cargos.length > 0 && (
+        <section className="mb-6">
+          <h4 className="mb-2 font-display text-lg text-ink">Cuenta del evento</h4>
+          <p className="mb-2 text-xs text-charcoal-soft">Lo que se cargó aparte de la renta: horas extra, multas, invitados de más.</p>
+          <div className="overflow-x-auto rounded-lg border border-cream-300 bg-white">
+            <table className="w-full min-w-[34rem] text-left text-sm">
+              <thead>
+                <tr className="text-[0.65rem] uppercase tracking-wide text-charcoal-soft">
+                  <th className="px-3 py-2 font-medium">Fecha</th>
+                  <th className="px-3 py-2 font-medium">Concepto</th>
+                  <th className="px-3 py-2 text-right font-medium">Cantidad</th>
+                  <th className="px-3 py-2 text-right font-medium">Total</th>
+                  <th className="px-3 py-2 font-medium">Registró</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-cream-200">
+                {f.cargos.map((c, i) => (
+                  <tr key={i} className={c.anulado ? 'text-charcoal-soft line-through' : ''}>
+                    <td className="px-3 py-1.5">{formatEventDate(c.fechaISO)}</td>
+                    <td className="px-3 py-1.5">{c.descripcion}</td>
+                    <td className="px-3 py-1.5 text-right tabular-nums">
+                      {c.cantidad} × {formatMXN(c.precioUnitario)}
+                    </td>
+                    <td className="px-3 py-1.5 text-right tabular-nums">{formatMXN(c.total)}</td>
+                    <td className="px-3 py-1.5 text-xs text-charcoal-soft">{c.registradoPor ?? '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {f.cuentaCargos && (
+            <p className="mt-2 text-sm text-charcoal-soft">
+              Cargado <strong className="text-ink">{formatMXN(f.cuentaCargos.total)}</strong> · Cobrado{' '}
+              <strong className="text-ink">{formatMXN(f.cuentaCargos.pagado)}</strong> · Saldo de la cuenta{' '}
+              <strong className={f.cuentaCargos.saldo > 0 ? 'text-wine' : 'text-ink'}>
+                {formatMXN(f.cuentaCargos.saldo)}
+              </strong>
+            </p>
+          )}
+        </section>
+      )}
 
       {Object.keys(op).length > 0 && (
         <section className="mb-2">

@@ -450,9 +450,16 @@ Real, de `GET /api/bi/facturacion?desde=2031-01-01&hasta=2031-12-31`:
 ## Importar y conciliar (escritura, llave aparte)
 
 El BI tiene la historia completa: eventos de años anteriores y los pagos de este año hasta
-agosto. La hacienda solo necesita **los eventos que todavía no se celebran**: los que caen
-del **1 de octubre de 2026** en adelante, aunque se hayan contratado antes (un evento del
-1-ene-2027 contratado el 2-feb-2026 entra). Los anteriores se quedan en el BI.
+agosto. Entran los eventos que se celebran del **1 de agosto de 2026** en adelante:
+
+- **Los que todavía no se celebran**, sin importar cuándo se contrataron (un evento del
+  1-ene-2027 contratado el 2-feb-2026 entra). Entran como eventos normales: bloquean su
+  fecha y sus pagos siguen aquí.
+- **Los ya cerrados de agosto y septiembre de 2026**, como historial. Se mandan igual, con
+  sus pagos; al importarse quedan archivados en el Histórico y se les pueden cargar horas
+  extra, multas, etc. desde el evento.
+
+Los de julio de 2026 o antes se quedan en el BI (`fueraDeCorte`).
 
 Llave: encabezado `x-api-key` con `BI_IMPORT_API_KEY` (distinta de `BI_API_KEY`). Sin esa
 variable estas rutas no existen (404).
@@ -515,7 +522,7 @@ Hasta 200 eventos por llamada; para más, se manda por partes (todo es idempoten
 
 ```json
 {
-  "corte": "2026-10-01",
+  "corte": "2026-08-01",
   "resumen": { "nuevo": 1, "difiere": 1, "creados": 1 },
   "resultados": [
     { "idBI": "EV-10233", "estado": "nuevo", "accion": "creado", "folioHSA": "26FEB-0213", "codigoHSA": "13MAR27-JPEREZ-ARCOS", "quoteId": "cm…" },
@@ -537,7 +544,7 @@ Hasta 200 eventos por llamada; para más, se manda por partes (todo es idempoten
 | `igual` | Ya existe y cuadra. | Nada. |
 | `difiere` | Ya existe y algo no cuadra (`diferencias`). **No se sobrescribe**: desde la importación la operación vive en la hacienda. | Cuadrarlo a mano en el sistema que esté mal. |
 | `posibleDuplicado` | No está ligado, pero aquí ya hay algo esa fecha en ese salón (`candidatos`: un evento o un apartado). No se importa. | Si es el mismo evento, reenviarlo con `folioHSA` o `codigo` para ligarlo. Si no, es un empalme real. |
-| `fueraDeCorte` | Se celebra antes del 1-oct-2026. | Nada: se queda en el BI. |
+| `fueraDeCorte` | Se celebra antes del 1-ago-2026. | Nada: se queda en el BI. |
 | `invalido` | Un salón o tipo de evento no reconocido, formas que no suman, folios repetidos… (`errores`). | Corregir en el BI y reenviar. |
 
 `diferencias[].campo` es uno de `fechaEvento`, `salones`, `invitados`, `tipoEvento`,
