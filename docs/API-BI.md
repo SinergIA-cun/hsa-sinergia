@@ -13,7 +13,7 @@ En EasyPanel: variable de entorno `BI_API_KEY` del servicio de la API.
 Sin la variable, estas rutas no existen y responden 404.
 
 ```bash
-curl -s -H "x-api-key: $BI_API_KEY" 'https://hsapi.somossinergia.com/api/bi/eventos?desde=2026-01-01&hasta=2026-12-31'
+curl -s -H "x-api-key: $BI_API_KEY" 'https://hsaapi.somossinergia.com/api/bi/eventos?desde=2026-01-01&hasta=2026-12-31'
 ```
 
 Sin llave (o con una equivocada) la respuesta es un 401 genérico, que nunca repite la llave
@@ -97,7 +97,7 @@ venga `null`:
 CURSOR=""
 while :; do
   RESP=$(curl -s -H "x-api-key: $BI_API_KEY" \
-    "https://hsapi.somossinergia.com/api/bi/eventos?desde=2026-01-01&hasta=2026-12-31&limit=500&cursor=$CURSOR")
+    "https://hsaapi.somossinergia.com/api/bi/eventos?desde=2026-01-01&hasta=2026-12-31&limit=500&cursor=$CURSOR")
   echo "$RESP" | jq -c '.datos[]'
   CURSOR=$(echo "$RESP" | jq -r '.siguienteCursor // empty')
   [ -z "$CURSOR" ] && break
