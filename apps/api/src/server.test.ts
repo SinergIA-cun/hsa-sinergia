@@ -67,3 +67,22 @@ describe('auth', () => {
     expect(res.json().user.email).toBe(email);
   });
 });
+
+describe('errores del que llama', () => {
+  it('un JSON mal formado o vacío es 400, no 500', async () => {
+    const roto = await app.inject({
+      method: 'POST',
+      url: '/api/auth/login',
+      headers: { 'content-type': 'application/json' },
+      payload: '{"email":',
+    });
+    expect(roto.statusCode).toBe(400);
+    const vacio = await app.inject({
+      method: 'POST',
+      url: '/api/auth/login',
+      headers: { 'content-type': 'application/json' },
+    });
+    expect(vacio.statusCode).toBe(400);
+    expect(vacio.json().error).toContain('Body cannot be empty');
+  });
+});
