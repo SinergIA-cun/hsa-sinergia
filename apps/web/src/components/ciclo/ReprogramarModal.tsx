@@ -39,7 +39,7 @@ export function ReprogramarModal({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   // Liquidado o importado del BI: el precio se respeta siempre (lo exige la API).
-  const precioFijo = quote.status === 'liquidada' || quote.statusPrevio === 'liquidada' || Boolean(quote.importadoBI);
+  const precioFijo = quote.status === 'liquidada' || quote.statusPrevio === 'liquidada' || Boolean(quote.precioPactado ?? quote.importadoBI);
 
   useEffect(() => {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha)) {

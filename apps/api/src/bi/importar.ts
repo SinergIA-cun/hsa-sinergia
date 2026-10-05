@@ -546,6 +546,7 @@ async function crearImportado(db: PrismaClient, ev: EventoBI, r: ReturnType<type
         createdById: r.vendedoraId,
         priceListId: catalogo.id,
         importadoBI: ev.idBI,
+        precioPactado: true,
         contratadoEl: dia(ev.fechaContratacion),
       },
     });

@@ -161,9 +161,9 @@ export function ApartadoRow({
             Vence {formatEventDate(a.vence)}
             {a.abonado > 0 ? ` · abonado ${formatMXN(a.abonado)}` : ' · sin abonos'}
           </p>
-          {(a.eventType || a.precioAcordado != null) && (
+          {(a.eventType || a.precioAcordado != null || a.usaCapilla) && (
             <p className="mt-1 text-xs text-ink">
-              {[a.eventType?.nombre, a.precioAcordado != null ? `precio acordado ${formatMXN(a.precioAcordado)}` : null]
+              {[a.eventType?.nombre, a.precioAcordado != null ? `renta acordada ${formatMXN(a.precioAcordado)}` : null, a.usaCapilla ? 'con capilla' : null]
                 .filter(Boolean)
                 .join(' · ')}
             </p>

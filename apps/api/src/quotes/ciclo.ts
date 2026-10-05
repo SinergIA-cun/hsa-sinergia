@@ -183,7 +183,7 @@ export async function reprogramarEvento(db: PrismaClient, id: string, raw: unkno
   const fechaAntes = q.fechaEvento.toISOString().slice(0, 10);
   // El precio se respeta si se pidió, si ya está liquidado (no se recotiza lo que
   // ya se pagó completo) o si vino del BI con precio pactado.
-  const conservar = input.conservarPrecio || destino === 'liquidada' || q.importadoBI != null;
+  const conservar = input.conservarPrecio || destino === 'liquidada' || q.precioPactado;
 
   return enTransaccionConActor(
     async (txRaw) => {

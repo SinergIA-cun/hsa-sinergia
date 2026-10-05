@@ -39,6 +39,8 @@ export const apartadoBISchema = z
       })
       .nullish(),
     precioAcordado: z.number().int().positive().nullish(),
+    /** La fecha apartada lleva capilla. Marca: no cobra ni bloquea; prellena la conversión. */
+    usaCapilla: z.boolean().optional(),
     nota: z.string().max(500).nullish(),
     pagos: z.array(pagoBISchema).max(100).default([]),
   })
@@ -58,7 +60,7 @@ export type ApartadoBI = z.infer<typeof apartadoBISchema>;
 export type EstadoApartado = 'nuevo' | 'igual' | 'difiere' | 'posibleDuplicado' | 'invalido';
 
 export interface DiferenciaApartado {
-  campo: 'fecha' | 'salones' | 'titular' | 'precioAcordado' | 'pagado' | 'folios';
+  campo: 'fecha' | 'salones' | 'titular' | 'precioAcordado' | 'pagado' | 'folios' | 'usaCapilla';
   bi: unknown;
   hsa: unknown;
 }
@@ -157,6 +159,9 @@ async function conciliarUno(
     if (r.banqueteroId ? existente.banqueteroId !== r.banqueteroId : existente.clientId == null) {
       diferencias.push({ campo: 'titular', bi: titularBI, hsa: titularHSA });
     }
+    if (a.usaCapilla != null && a.usaCapilla !== existente.usaCapilla) {
+      diferencias.push({ campo: 'usaCapilla', bi: a.usaCapilla, hsa: existente.usaCapilla });
+    }
     if ((a.precioAcordado ?? null) !== existente.precioAcordado) {
       diferencias.push({ campo: 'precioAcordado', bi: a.precioAcordado ?? null, hsa: existente.precioAcordado });
     }
@@ -248,6 +253,7 @@ async function crear(db: PrismaClient, a: ApartadoBI, r: Resuelto): Promise<stri
       spaceIds: r.spaceIds,
       eventTypeId: r.eventTypeId,
       precioAcordado: a.precioAcordado ?? null,
+      usaCapilla: a.usaCapilla ?? false,
       // No vence antes de su fecha: es una fecha ya pagada, no una reserva de días.
       vence: dia(a.fecha),
       nota: a.nota ?? null,
@@ -263,6 +269,7 @@ async function crear(db: PrismaClient, a: ApartadoBI, r: Resuelto): Promise<stri
             referencia: p.referencia ?? null,
             // El folio de la hoja de papel: es el número que ya tiene el cliente.
             folio: p.folio,
+            importadoBI: p.idBI ?? null,
           };
         }),
       },

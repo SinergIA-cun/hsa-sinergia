@@ -174,6 +174,10 @@ factura en el mes en que se recibe; pasado ese mes se va a la global de público
 Incluye los pagos anulados, marcados como tales — el BI decide si los descuenta.
 
 - **Rango sobre:** `fecha` del pago (la fecha en que entró el dinero, no la del evento).
+- **`idBI`**: el `idBI` con el que el pago llegó del BI (un pago de evento importado, o el abono de
+  un apartado importado que se convirtió); `null` si **nació en el Cotizador**. Es la llave para no
+  contar dos veces lo que el BI ya tiene: el folio solo no basta (hubo folios repetidos) ni la fecha
+  (un recibo viejo capturado tarde es nuevo). `/ingresos` trae el mismo campo.
 
 Real, de `GET /api/bi/pagos?desde=2026-08-01&hasta=2026-08-31`:
 
@@ -467,7 +471,11 @@ paginación que `/eventos`; **el rango va sobre la fecha apartada**.
   se lee en `/eventos`. Cada abono se vuelve un pago de ese evento con el mismo folio
   (`paymentId`), así que **no se suman dos veces**: lo abonado de un apartado convertido ya está
   en `/pagos` del evento.
-- `importadoBI` es el `idBI` con el que llegó del BI (`null` si se apartó aquí).
+- `importadoBI` es el `idBI` con el que llegó del BI (`null` si se apartó aquí). Cada abono trae su
+  `idBI` y el apartado su `usaCapilla`.
+- **El evento que sale de convertir un apartado importado hereda su `idBI`** en `/eventos` (con
+  `origen: "bi"`); su código es el del Cotizador. Si el apartado traía `precioAcordado`, el evento
+  queda con esa renta y precio pactado.
 
 ## Importar y conciliar (escritura, llave aparte)
 
@@ -650,7 +658,9 @@ convierte en evento después, en la app. Misma llave; `conciliar` **nunca escrib
 | `fecha`, `salones` | Lo que se aparta. Mismas reglas de nombre que en eventos. |
 | `banquetero` **o** `cliente` | Exactamente uno; con los dos o con ninguno se rechaza el lote entero (400). El banquetero tiene que estar dado de alta (`/importar/banqueteros`); si no, sale `invalido`. El cliente se reutiliza solo si el teléfono coincide exacto; si no, se crea. |
 | `tipoEvento` | Opcional. Si no se reconoce, entra sin tipo y se avisa. Solo prellena la conversión. |
-| `precioAcordado` | Opcional, pesos enteros. Se guarda y se enseña al convertir (y queda en la bitácora del evento). **No se impone al desglose**: no dice si cubre solo la renta o también alimentos. |
+| `precioAcordado` | Opcional, pesos enteros. Es **la renta del salón** pactada (confirmado por el BI y el dueño). Al convertir, la renta por salón del contrato **se reemplaza por esta** (se quita el descuento de catálogo; horas extra, capilla y alimentos se quedan) y el evento queda con **precio pactado**: editarlo o moverlo no lo recotiza. |
+| `usaCapilla` | Opcional. Marca de la fecha (no cobra ni bloquea); prellena la capilla al convertir. Entra a `difiere` solo si se manda. |
+| `pagos[].idBI` | Se guarda en el abono y **pasa al pago del evento al convertir**; sale en `/pagos`, `/ingresos` y `/apartados`. |
 | `pagos` | Igual que en eventos: folio de papel obligatorio, pesos enteros, `metodo` o `formas`. Entran como abonos a la fecha con su folio. Un folio que ya tiene otro dinero aquí vuelve el apartado `invalido`. |
 
 Hasta 200 por llamada. Un apartado importado **no vence antes de su fecha** (uno capturado
@@ -660,7 +670,7 @@ aquí vence a los siete días hábiles). Estados del reporte:
 |---|---|
 | `nuevo` | No existe aquí; con `importar` se crea (`accion: "creado"`, `apartadoId`). |
 | `igual` | Ya existe (por `idBI`) y cuadra. |
-| `difiere` | Ya existe y algo no cuadra. `diferencias[].campo`: `fecha`, `salones`, `titular`, `precioAcordado`, `pagado` o `folios`. No se sobrescribe. |
+| `difiere` | Ya existe y algo no cuadra. `diferencias[].campo`: `fecha`, `salones`, `titular`, `precioAcordado`, `usaCapilla`, `pagado` o `folios`. No se sobrescribe. |
 | `posibleDuplicado` | Ya hay un evento o un apartado vivo esa fecha en ese salón (`candidatos`). No se importa. |
 | `invalido` | Salón no reconocido, banquetero sin dar de alta, formas que no suman, folios repetidos o ya usados (`errores`). |
 

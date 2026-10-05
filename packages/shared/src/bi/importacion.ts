@@ -115,6 +115,53 @@ function armarDesglose(
   };
 }
 
+/**
+ * Un desglose del motor con la RENTA ACORDADA en lugar de la del catálogo.
+ *
+ * Un apartado del BI puede traer `precioAcordado`: la renta del salón que ya se
+ * pactó ("es solo la renta", el BI y el dueño, 5-oct-2026). Al convertirlo, el
+ * contrato se arma normal —tipo, invitados, alimentos, servicios— y luego se
+ * reemplazan los renglones de renta por salón por esa renta, repartida igual que
+ * en los eventos importados. El descuento sobre la renta de catálogo se quita
+ * (la acordada ya es el precio); horas extra y capilla se quedan.
+ *
+ * Toda la renta trae IVA incluido, así que los totales se recalculan sumando.
+ */
+export function conRentaAcordada(b: QuoteBreakdown, renta: number, ivaRate: number): QuoteBreakdown {
+  const deSalon = b.lines.filter((l) => l.grupo === 'renta' && l.spaceId);
+  if (deSalon.length === 0) return b;
+  const parte = Math.floor(renta / deSalon.length);
+  const nuevas: QuoteLine[] = deSalon.map((l, i) => ({
+    ...l,
+    detalle: 'Renta acordada al apartar',
+    monto: i === deSalon.length - 1 ? renta - parte * (deSalon.length - 1) : parte,
+    ivaIncluido: true,
+  }));
+  let k = 0;
+  const lines: QuoteLine[] = [];
+  for (const l of b.lines) {
+    if (l.grupo === 'renta' && l.spaceId) lines.push(nuevas[k++]!);
+    else if (l.grupo === 'renta' && l.monto < 0) continue; // el descuento de la renta de catálogo
+    else lines.push(l);
+  }
+  const rentaTotal = r2(lines.filter((l) => l.grupo === 'renta').reduce((s, l) => s + l.monto, 0));
+  const rentaSubtotal = r2(rentaTotal / (1 + ivaRate));
+  const rentaIva = r2(rentaTotal - rentaSubtotal);
+  const otrosTotal = b.otrosTotal ?? 0;
+  const otrosSubtotal = b.otrosSubtotal ?? 0;
+  const otrosIva = b.otrosIva ?? 0;
+  return {
+    ...b,
+    lines,
+    rentaTotal,
+    rentaSubtotal,
+    rentaIva,
+    subtotal: r2(rentaSubtotal + otrosSubtotal),
+    iva: r2(rentaIva + otrosIva),
+    total: r2(rentaTotal + otrosTotal),
+  };
+}
+
 /** Lo que se compara de un evento, del lado del BI y del lado de la hacienda. */
 export interface EventoComparable {
   fechaEvento: string;

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { PrismaClient } from '@hsa/database';
+import type { PrismaClient, Prisma } from '@hsa/database';
 import {
   correoValido,
   hoyCivilMexico,
@@ -7,6 +7,8 @@ import {
   metodoCapturaSchema,
   formasPagoSchema,
   type PartePago,
+  conRentaAcordada,
+  type QuoteBreakdown,
 } from '@hsa/shared';
 import { INCLUDE_ABONOS, totalAbonado } from './abonos.js';
 import { QuoteError, createQuote, type Actor } from '../quotes/service.js';
@@ -413,6 +415,7 @@ export async function convertirApartado(
       spaceIds: apartado.spaceIds,
       // El tipo de evento que ya se sabía al apartar, si quien convierte no eligió otro.
       ...(resto.eventTypeId == null && apartado.eventTypeId ? { eventTypeId: apartado.eventTypeId } : {}),
+      ...(resto.usaCapilla == null && apartado.usaCapilla ? { usaCapilla: true } : {}),
       ...paraQuien,
     },
     actor,
@@ -424,15 +427,30 @@ export async function convertirApartado(
   );
 
   await db.apartadoFecha.update({ where: { id: apartadoId }, data: { quoteId: quote.id } });
-  // El precio que se pactó al apartar no se pierde: queda en la bitácora del
-  // evento, a la vista de quien lo cotiza. No se impone al desglose: el apartado
-  // no dice si cubre solo la renta o también los alimentos.
+  /*
+   * La renta que se pactó al apartar MANDA ("es solo la renta": el BI y el
+   * dueño, 5-oct-2026). El contrato se armó con el catálogo; aquí se le pone la
+   * renta acordada y queda con precio pactado, como un evento importado: editarlo
+   * o moverlo no la recotiza. Va ANTES de los pagos para que el plan de pagos y
+   * los conceptos se calculen contra la renta verdadera.
+   */
   if (apartado.precioAcordado != null) {
+    const lista = await db.priceList.findUniqueOrThrow({ where: { id: quote.priceListId }, select: { ivaRate: true } });
+    const desglose = conRentaAcordada(quote.breakdown as unknown as QuoteBreakdown, apartado.precioAcordado, lista.ivaRate);
+    await db.quote.update({
+      where: { id: quote.id },
+      data: {
+        breakdown: desglose as unknown as Prisma.InputJsonValue,
+        total: desglose.total,
+        rentaTotal: desglose.rentaTotal,
+        precioPactado: true,
+      },
+    });
     await logActivity(db, {
       quoteId: quote.id,
       tipo: 'creada',
-      descripcion: `Precio acordado en el apartado: $${apartado.precioAcordado.toLocaleString('es-MX')}`,
-      meta: { apartadoId: apartado.id, precioAcordado: apartado.precioAcordado },
+      descripcion: `Renta acordada en el apartado: $${apartado.precioAcordado.toLocaleString('es-MX')} (precio pactado: no se recotiza)`,
+      meta: { apartadoId: apartado.id, precioAcordado: apartado.precioAcordado, rentaCatalogo: quote.rentaTotal },
       actorId: actor.id,
     });
   }
@@ -477,6 +495,8 @@ export async function convertirApartado(
         // Y su comprobante viaja con él, en vez de quedarse huérfano en el abono.
         comprobanteKey: abono.comprobanteKey,
         comprobanteMime: abono.comprobanteMime,
+        // El idBI del pago viaja con él: es como el BI sabe que ya lo tiene.
+        importadoBI: abono.importadoBI,
       },
     );
     await db.abonoApartado.update({
@@ -498,5 +518,7 @@ export async function convertirApartado(
     where: { id: apartadoId },
     include: INCLUDE,
   });
-  return { apartado: actualizado, quote, pago };
+  // El evento como quedó (con la renta acordada y el estatus que subieron los pagos).
+  const final = await db.quote.findUniqueOrThrow({ where: { id: quote.id } });
+  return { apartado: actualizado, quote: final, pago };
 }
