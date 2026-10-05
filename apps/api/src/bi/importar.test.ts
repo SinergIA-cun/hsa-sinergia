@@ -81,6 +81,7 @@ afterAll(async () => {
   await prisma.eventoHistorico.deleteMany({ where: { quoteId: { in: ids } } });
   await prisma.quote.deleteMany({ where: { id: { in: ids } } });
   await prisma.client.deleteMany({ where: { id: { in: quotes.map((q) => q.clientId) } } });
+  await prisma.banquetero.deleteMany({ where: { nombre: { startsWith: 'Banquetero Importado ' } } });
   await app.close();
 });
 
@@ -190,6 +191,38 @@ describe('eventos ya cerrados (agosto y septiembre de 2026)', () => {
     await importarLote(prisma, { eventos: [ev] });
     const q = await prisma.quote.findUniqueOrThrow({ where: { importadoBI: ev.idBI } });
     expect(await archivarEvento(prisma, q.id)).toMatchObject({ motivo: 'sin-cambios', version: 1 });
+  });
+});
+
+describe('eventos de banquetero', () => {
+  // "El cliente que te va a mandar el BI es el banquetero como tal. No puedes
+  // anotar al banquetero como festejado." (el dueño, 5-oct-2026)
+  it('el cliente es la ficha del banquetero, una sola para todos sus eventos, y nunca va como festejado', async () => {
+    const nombre = `Banquetero Importado ${randomUUID().slice(0, 6)}`;
+    await prisma.banquetero.create({ data: { nombre, telefono: '5566778899' } });
+    const a = eventoBI({ banquetero: nombre, cliente: { nombre: nombre.toUpperCase() } });
+    const b = eventoBI({ banquetero: nombre, cliente: { nombre } });
+    const r = await importarLote(prisma, { eventos: [a, b] });
+    expect(r.resultados.map((x) => x.estado)).toEqual(['nuevo', 'nuevo']);
+    expect(r.resultados[0]!.avisos ?? []).toEqual([]);
+    const qa = await prisma.quote.findUniqueOrThrow({ where: { importadoBI: a.idBI }, include: { client: true, banquetero: true } });
+    const qb = await prisma.quote.findUniqueOrThrow({ where: { importadoBI: b.idBI } });
+    expect(qa.banquetero?.nombre).toBe(nombre);
+    expect(qa.client.nombre).toBe(nombre);
+    expect(qa.client.telefono).toBe('5566778899');
+    expect(qb.clientId).toBe(qa.clientId);
+    expect(qa.festejado).toBeNull();
+  });
+
+  it('si el BI trae otro nombre de cliente, queda a nombre del banquetero y avisa; el festejado solo si viene', async () => {
+    const nombre = `Banquetero Importado ${randomUUID().slice(0, 6)}`;
+    await prisma.banquetero.create({ data: { nombre, telefono: '5566778800' } });
+    const ev = eventoBI({ banquetero: nombre, cliente: { nombre: 'Familia Pérez' }, festejado: 'Ana Pérez' });
+    const r = await importarLote(prisma, { eventos: [ev] });
+    expect(r.resultados[0]!.avisos!.join(' ')).toContain('queda a nombre del banquetero');
+    const q = await prisma.quote.findUniqueOrThrow({ where: { importadoBI: ev.idBI }, include: { client: true } });
+    expect(q.client.nombre).toBe(nombre);
+    expect(q.festejado).toBe('Ana Pérez');
   });
 });
 

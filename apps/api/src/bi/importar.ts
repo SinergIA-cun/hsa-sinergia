@@ -190,8 +190,16 @@ function resolver(ev: EventoBI, c: Catalogos) {
   let banqueteroId: string | null = null;
   if (ev.banquetero) {
     const b = emparejarNombre(ev.banquetero, c.banqueteros);
-    if (b) banqueteroId = b.id;
-    else avisos.push(`El banquetero "${ev.banquetero}" no está dado de alta: el evento entra sin banquetero.`);
+    if (b) {
+      banqueteroId = b.id;
+      // El evento queda a nombre del banquetero. Si el BI trae otro nombre de
+      // cliente, se avisa: no se pierde en silencio ni se adivina dónde va.
+      if (normalizarNombre(ev.cliente.nombre) !== normalizarNombre(b.nombre)) {
+        avisos.push(
+          `El cliente "${ev.cliente.nombre}" no es el banquetero "${b.nombre}": el evento queda a nombre del banquetero. Si es el cliente final, mándalo en "festejado".`,
+        );
+      }
+    } else avisos.push(`El banquetero "${ev.banquetero}" no está dado de alta: el evento entra sin banquetero.`);
   }
   let vendedoraId: string | null = null;
   if (ev.vendedora) {
@@ -429,6 +437,62 @@ async function folioDeContratacion(tx: Prisma.TransactionClient, fechaContrataci
   return `${y.slice(2)}${MESES[Number(m) - 1]}-${String(Number(fila!.n)).padStart(4, '0')}`;
 }
 
+/**
+ * El cliente de un evento DIRECTO: se reutiliza solo si el teléfono coincide
+ * EXACTO. Dos "María López" no son la misma persona, y fundirlas mezclaría sus
+ * estados de cuenta (decisión del dueño: uno por evento si no hay teléfono).
+ */
+async function clienteDirecto(db: PrismaClient, cliente: EventoBI['cliente']): Promise<string> {
+  const tel = cliente.telefono?.replace(/\D/g, '') || null;
+  const existente = tel
+    ? (await db.client.findMany({ where: { telefono: { not: null } }, select: { id: true, telefono: true } })).find(
+        (cl) => cl.telefono?.replace(/\D/g, '') === tel,
+      )
+    : undefined;
+  if (existente) return existente.id;
+  const creado = await db.client.create({
+    data: { nombre: cliente.nombre, telefono: cliente.telefono ?? null, correo: cliente.correo ?? null },
+    select: { id: true },
+  });
+  return creado.id;
+}
+
+/**
+ * El cliente de un evento de BANQUETERO: el banquetero mismo.
+ *
+ * Con banquetero, él es el cliente de la hacienda: firma él y se le factura a él.
+ * En el BI el cliente de esos eventos ES el banquetero, así que va como cliente
+ * y nunca como festejado ("no puedes anotar al banquetero como festejado", el
+ * dueño, 5-oct-2026). Se reutiliza su ficha de cliente por nombre —la misma regla
+ * que al convertir un apartado—: trece eventos de Victor Gonzalez son un cliente,
+ * no trece.
+ */
+async function clienteDelBanquetero(
+  db: PrismaClient,
+  banqueteroId: string,
+  cliente: EventoBI['cliente'],
+): Promise<string> {
+  const b = await db.banquetero.findUniqueOrThrow({
+    where: { id: banqueteroId },
+    select: { nombre: true, telefono: true, correo: true },
+  });
+  const ficha = await db.client.findFirst({
+    where: { nombre: { equals: b.nombre, mode: 'insensitive' } },
+    orderBy: { createdAt: 'desc' },
+    select: { id: true },
+  });
+  if (ficha) return ficha.id;
+  const creado = await db.client.create({
+    data: {
+      nombre: b.nombre,
+      telefono: b.telefono ?? cliente.telefono ?? null,
+      correo: b.correo ?? cliente.correo ?? null,
+    },
+    select: { id: true },
+  });
+  return creado.id;
+}
+
 /** Crea UN evento importado con sus pagos, todo o nada. */
 async function crearImportado(db: PrismaClient, ev: EventoBI, r: ReturnType<typeof resolver>) {
   const catalogo = await catalogoActivo(db);
@@ -444,21 +508,9 @@ async function crearImportado(db: PrismaClient, ev: EventoBI, r: ReturnType<type
   });
 
   const quote = await enTransaccionConActor(async (tx) => {
-    const tel = ev.cliente.telefono?.replace(/\D/g, '') || null;
-    // El cliente se reutiliza solo si el teléfono coincide EXACTO: dos "María
-    // López" no son la misma persona, y fundirlas mezclaría sus estados de cuenta.
-    const existente = tel
-      ? (await tx.client.findMany({ where: { telefono: { not: null } }, select: { id: true, telefono: true } })).find(
-          (cl) => cl.telefono?.replace(/\D/g, '') === tel,
-        )
-      : undefined;
-    const clientId =
-      existente?.id ??
-      (
-        await tx.client.create({
-          data: { nombre: ev.cliente.nombre, telefono: ev.cliente.telefono ?? null, correo: ev.cliente.correo ?? null },
-        })
-      ).id;
+    const clientId = r.banqueteroId
+      ? await clienteDelBanquetero(tx as unknown as PrismaClient, r.banqueteroId, ev.cliente)
+      : await clienteDirecto(tx as unknown as PrismaClient, ev.cliente);
 
     const folio = await folioDeContratacion(tx, ev.fechaContratacion);
     const datosCodigo = { fecha: ev.fechaEvento, cliente: ev.cliente.nombre, spaceIds: r.spaceIds, sinSalon: r.sinSalon };
