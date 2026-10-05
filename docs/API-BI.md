@@ -83,10 +83,25 @@ Todos los endpoints devuelven la misma envoltura. Ejemplo real de
 | `hasta` | `YYYY-MM-DD` | 31 de diciembre del año en curso |
 | `limit` | entero positivo | 100, con tope duro de 500 |
 | `cursor` | `id` de una fila | sin cursor (primera página) |
+| `ids` | ids de **eventos** separados por coma (hasta 100) | sin `ids`: el rango manda. Con `ids`, `/eventos`, `/pagos`, `/cargos` y `/devoluciones` traen lo de esos eventos **sin importar la fecha** (es como se relee lo que `/cambios` dijo que cambió). |
 
 Un `limit` mayor a 500 se recorta a 500: un BI que pida 100000 recibe 500 filas, no un
 timeout. Un `desde`/`hasta` con formato distinto a `YYYY-MM-DD` responde 400
 (`{"error":"Parámetros inválidos"}`), no un rango silenciosamente mal interpretado.
+
+**Límite de llamadas:** 200 por minuto por IP, para toda la API. Más allá responde 429.
+
+## Leer lo incremental (cada minuto)
+
+1. `GET /api/bi/cambios?desde=<día del último cambio visto>&cursor=<último id visto>`: trae lo
+   nuevo de la bitácora en orden (`createdAt`, `id`). Guarden el último `id` como cursor.
+2. Junten los `quoteId` que aparecieron y reléanlos con `?ids=` en `/eventos`, `/pagos`,
+   `/cargos` y `/devoluciones` (hasta 100 por llamada). Así se ve el estado **actual** de cada
+   evento, aunque el cambio no haya movido ninguna fecha (un pago capturado tarde, una edición).
+3. Un cambio con `eventoEnPapelera: true` es de un evento que hoy está en la papelera: ya no sale
+   en `/eventos` ni en `/pagos`. Si el último es `eliminada`, dénlo de baja; si después llega
+   `restaurada`, volvió.
+4. Los apartados no tienen bitácora: `/apartados` se relee por ventana de fechas.
 
 ## Paginación
 
@@ -351,8 +366,12 @@ pagado en esa fecha, `cubierto` lo que ya se pagó y `restante` la diferencia.
 
 ### `GET /api/bi/cambios`
 
-La bitácora completa del evento: creación, cambios de estatus, ediciones, pagos, anulaciones,
-borrados y restauraciones. Es de donde el BI saca los cambios de salón y de tamaño de evento.
+La bitácora completa del evento. `tipo` es uno de: `creada`, `edicion` (contrato, fecha, salón,
+invitados, notas de un pago, reclasificación de conceptos), `estatus`, `pago`, `pagoAnulado`,
+`cargo`, `cargoAnulado`, `devolucion`, `devolucionAnulada`, `factura`, `fiscal`, `catalogo`,
+`standby`, `cancelada`, `reprogramada`, `eliminada` (a la papelera) y `restaurada`. Es la fuente
+para leer lo incremental (ver arriba). Incluye los de eventos que hoy están en la papelera, con
+`eventoEnPapelera: true`.
 
 - **Rango sobre:** `createdAt` del registro de bitácora (cuándo se hizo el cambio).
 
@@ -407,6 +426,14 @@ algo material cambió de verdad**: guardar sin tocar nada no ensucia la bitácor
 
 `actor: null` significa que el cambio lo hizo el sistema, no una persona (por ejemplo el
 vencimiento automático por vigencia).
+
+### `GET /api/bi/catalogos`
+
+Los valores fijos de las demás rutas, para traducir sin adivinar. Sin rango ni paginación:
+`espacios` (`id`, `nombre`), `tiposEvento` (`id`, `nombre`, `slug`), `estatusEvento`,
+`conceptosPago`, `destinosPago`, `productosCargo` (`producto`, `nombre`, `unidad`),
+`tiposIngreso`, `destinosDevolucion` y `tiposCambio`. `/eventos` además trae `salones` (los
+nombres de `espacios`, en el mismo orden).
 
 ### `GET /api/bi/facturacion`
 
