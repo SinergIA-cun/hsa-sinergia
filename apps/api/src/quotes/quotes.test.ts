@@ -706,7 +706,7 @@ describe('papelera (soft-delete)', () => {
     await prisma.payment.create({
       data: { quoteId: q.id, monto: 5000, metodo: 'efectivo', concepto: 'aCuenta', fecha: new Date('2027-01-10T00:00:00.000Z') },
     });
-    await expect(softDeleteQuote(prisma, q.id, actor)).rejects.toThrow(/pagos registrados/);
+    await expect(softDeleteQuote(prisma, q.id, actor)).rejects.toThrow(/pago vigente/);
 
     // Y una cotización en papelera no acepta cambios (solo lectura)
     await prisma.payment.deleteMany({ where: { quoteId: q.id } });

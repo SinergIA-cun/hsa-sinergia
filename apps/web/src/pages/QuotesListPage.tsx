@@ -28,7 +28,14 @@ function QuoteRow({ q, showSeller }: { q: Quote; showSeller: boolean }) {
   async function eliminar(e: React.MouseEvent) {
     e.stopPropagation();
     if (!window.confirm('¿Enviar esta cotización a la papelera? Podrás restaurarla dentro de 30 días.')) return;
-    await api.del(`/api/quotes/${q.id}`);
+    try {
+      await api.del(`/api/quotes/${q.id}`);
+    } catch (err) {
+      // Antes el rechazo se perdía: la confirmación salía, el evento se quedaba
+      // donde estaba y nadie sabía por qué (casi siempre, un pago sin anular).
+      window.alert(err instanceof Error && err.message ? err.message : 'No se pudo enviar a la papelera.');
+      return;
+    }
     await qc.invalidateQueries({ queryKey: ['quotes'] });
     // La insignia de la papelera acaba de cambiar: si no se invalida, el número
     // se queda viejo hasta la siguiente recarga completa.

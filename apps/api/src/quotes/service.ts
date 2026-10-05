@@ -1573,7 +1573,10 @@ export async function softDeleteQuote(db: PrismaClient, id: string, actor: Actor
   }
   const pagosVigentes = await db.payment.count({ where: { quoteId: id, anuladoAt: null } });
   if (pagosVigentes > 0) {
-    throw new QuoteError(409, 'No se puede eliminar: la cotización tiene pagos registrados');
+    throw new QuoteError(
+      409,
+      `No se puede eliminar: tiene ${pagosVigentes} ${pagosVigentes === 1 ? 'pago vigente' : 'pagos vigentes'}. Un admin tiene que anularlos primero, desde Pagos en el evento.`,
+    );
   }
   await db.quote.update({ where: { id }, data: { deletedAt: new Date() } });
   await logActivity(db, {
