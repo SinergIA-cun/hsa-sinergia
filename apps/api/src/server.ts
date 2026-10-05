@@ -61,13 +61,22 @@ export async function buildServer(opts: BuildOptions = {}): Promise<FastifyInsta
   setupContextoActor(app);
   setupAuth(app);
 
-  app.setErrorHandler((error, _req, reply) => {
+  app.setErrorHandler((error, req, reply) => {
     if (error instanceof ZodError) {
       return reply.code(400).send({ error: 'Datos inválidos', issues: error.issues });
     }
-    const message = error instanceof Error ? error.message : 'Error interno';
-    if (reply.statusCode < 400) reply.code(500);
-    return reply.send({ error: message });
+    // Los errores de Fastify traen su código: un cuerpo vacío o un JSON mal
+    // formado es un 400 del que llama, no un 500 nuestro. Antes todo lo que no
+    // fuera Zod salía como 500, y a quien integra (el BI) le decía "se cayó el
+    // servidor" cuando el error era suyo.
+    const status = (error as { statusCode?: number }).statusCode ?? (reply.statusCode >= 400 ? reply.statusCode : 500);
+    if (status < 500) {
+      return reply.code(status).send({ error: error instanceof Error ? error.message : 'Solicitud inválida' });
+    }
+    // Un 500 sí es nuestro: se registra completo y al cliente no se le enseña el
+    // mensaje interno (puede traer detalles de la base).
+    req.log.error(error);
+    return reply.code(status).send({ error: 'Error interno del servidor' });
   });
 
   // /health en la raíz para healthchecks de infraestructura.
