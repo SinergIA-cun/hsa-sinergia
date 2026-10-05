@@ -32,6 +32,7 @@ const incluirEvento = {
   eventType: { select: { nombre: true, slug: true } },
   createdBy: { select: { id: true, nombre: true } },
   banquetero: { select: { id: true, nombre: true } },
+  apartado: { select: { importadoBI: true } },
 };
 
 /**
@@ -98,8 +99,9 @@ export async function biEventos(db: PrismaClient, r: RangoBI) {
     // La llave interna que nunca cambia.
     folio: q.folio,
     // `bi` = se importó del BI (o se ligó a uno de allá); `hsa` = se vendió aquí.
-    origen: q.importadoBI ? 'bi' : 'hsa',
-    idBI: q.importadoBI,
+    // Un evento que salió de convertir un apartado importado hereda su `idBI`.
+    origen: q.importadoBI || q.apartado?.importadoBI ? 'bi' : 'hsa',
+    idBI: q.importadoBI ?? q.apartado?.importadoBI ?? null,
     // Cuándo se vendió: la del BI para los importados, la de alta para los demás.
     contratadoEl: (q.contratadoEl ?? q.createdAt).toISOString().slice(0, 10),
     fechaEvento: q.fechaEvento.toISOString().slice(0, 10),
@@ -156,6 +158,10 @@ export async function biPagos(db: PrismaClient, r: RangoBI) {
     );
     return {
       id: p.id,
+      // El `idBI` del pago si vino del BI (importado, o abono de un apartado
+      // importado que se convirtió); `null` si nació en el Cotizador. Es la llave
+      // del BI para no contar dos veces lo que ya tiene.
+      idBI: p.importadoBI,
       folio: p.folio,
       folioLetra: p.folioLetra,
       folioTexto: formatFolio(p.folio, p.folioLetra),
@@ -316,6 +322,7 @@ export async function biIngresos(db: PrismaClient, r: RangoBI) {
     ...pagos.map((p) => ({
       id: `pago:${p.id}`,
       tipo: 'pago' as const,
+      idBI: p.importadoBI as string | null,
       destino: p.destino as string | null,
       folio: p.folio as number | null,
       fecha: p.fecha,
@@ -335,6 +342,7 @@ export async function biIngresos(db: PrismaClient, r: RangoBI) {
     ...depositos.map((d) => ({
       id: `deposito:${d.id}`,
       tipo: 'deposito' as const,
+      idBI: null as string | null,
       destino: null,
       folio: d.folio,
       fecha: d.fecha,
@@ -354,6 +362,7 @@ export async function biIngresos(db: PrismaClient, r: RangoBI) {
     ...abonos.map((a) => ({
       id: `abono:${a.id}`,
       tipo: 'abono' as const,
+      idBI: a.importadoBI,
       destino: null,
       folio: a.folio,
       fecha: a.fecha,
@@ -500,6 +509,7 @@ export async function biApartados(db: PrismaClient, r: RangoBI) {
       banquetero: a.banquetero ? { id: a.banquetero.id, nombre: a.banquetero.nombre } : null,
       cliente: a.client ? { id: a.client.id, nombre: a.client.nombre } : null,
       precioAcordado: a.precioAcordado,
+      usaCapilla: a.usaCapilla,
       abonado: vivos.reduce((s, x) => s + x.monto, 0),
       estado: a.quoteId
         ? 'convertido'
@@ -516,6 +526,7 @@ export async function biApartados(db: PrismaClient, r: RangoBI) {
       eventoCodigo: a.quote?.etiqueta ?? null,
       abonos: a.abonos.map((x) => ({
         id: x.id,
+        idBI: x.importadoBI,
         folio: x.folio,
         folioTexto: x.folio != null ? formatFolio(x.folio, x.folioLetra) : null,
         fecha: x.fecha.toISOString().slice(0, 10),

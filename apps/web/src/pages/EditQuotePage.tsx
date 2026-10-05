@@ -219,10 +219,11 @@ export function EditQuotePage() {
   if (!catalog) return <p className="text-wine">No se pudo cargar el catálogo de la cotización.</p>;
 
   const enPapelera = Boolean(quote.deletedAt);
-  // Un evento importado del BI no abre el formulario: el formulario recalcula el
-  // precio en vivo contra el catálogo, y ese evento se vendió a un precio
-  // PACTADO que el servidor nunca recotiza. Enseñar otro total sería mentir.
-  const importado = Boolean(quote.importadoBI);
+  // Un evento con precio PACTADO (importado del BI, o un apartado convertido con
+  // renta acordada) no abre el formulario: el formulario recalcula el precio en
+  // vivo contra el catálogo, y el servidor nunca lo recotiza. Enseñar otro total
+  // sería mentir.
+  const importado = Boolean(quote.precioPactado ?? quote.importadoBI);
   const editable = EDITABLE_STATUSES.includes(quote.status) && !enPapelera && !importado;
   const contratoDisponible =
     !enPapelera && ['formalizada', 'complementada', 'liquidada'].includes(quote.status);
@@ -391,7 +392,7 @@ export function EditQuotePage() {
               {enPapelera
                 ? 'Solo lectura: evento eliminado, conservado como evidencia.'
                 : importado
-                  ? `Importado del BI${quote.contratadoEl ? `, contratado el ${formatEventDate(quote.contratadoEl)}` : ''}. Tiene precio pactado: no se recotiza. La fecha se cambia con "Mover fecha" y los datos del día, en la hoja operativa.`
+                  ? `${quote.importadoBI ? `Importado del BI${quote.contratadoEl ? `, contratado el ${formatEventDate(quote.contratadoEl)}` : ''}` : 'Renta acordada al apartar'}. Tiene precio pactado: no se recotiza. La fecha se cambia con "Mover fecha" y los datos del día, en la hoja operativa.`
                   : quote.status === 'standby'
                     ? 'Sin fecha: se edita de nuevo en cuanto se reprograme.'
                     : quote.status === 'cancelada'

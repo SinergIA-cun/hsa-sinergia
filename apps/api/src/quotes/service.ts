@@ -879,7 +879,7 @@ export async function updateQuote(db: PrismaClient, id: string, rawInput: unknow
    * describe lo que se vendió, y un salón o PAX fuera de catálogo haría fallar
    * una edición que solo quería cambiar el festejado.
    */
-  const precioPactado = existing.importadoBI != null;
+  const precioPactado = existing.precioPactado;
   const { breakdown, enriched } = precioPactado
     ? {
         breakdown: { total: existing.total, rentaTotal: existing.rentaTotal },
@@ -1146,7 +1146,7 @@ export async function simularFecha(db: PrismaClient, id: string, fecha: string, 
   const ocupados = disp.spaces.filter((sp) => sp.level === 'bloqueada').map((sp) => sp.nombre);
   let despues: number | null = null;
   let error: string | null = null;
-  if (existing.importadoBI) {
+  if (existing.precioPactado) {
     despues = existing.total; // precio pactado: no se recotiza
   } else {
     try {
@@ -1160,7 +1160,7 @@ export async function simularFecha(db: PrismaClient, id: string, fecha: string, 
       error = e instanceof Error ? e.message : 'No se pudo calcular el precio con esa fecha.';
     }
   }
-  return { antes: existing.total, despues, ocupados, error, precioPactado: existing.importadoBI != null };
+  return { antes: existing.total, despues, ocupados, error, precioPactado: existing.precioPactado };
 }
 
 export const moverCatalogoSchema = z.object({ priceListId: z.string().min(1) });
@@ -1245,8 +1245,8 @@ async function prepararMovimiento(db: PrismaClient, id: string, priceListId: str
   assertNotTrashed(existing);
   // Mover de catálogo ES recotizar, y un evento importado del BI tiene precio
   // pactado: se vendió a esos montos y ningún catálogo los mueve.
-  if (existing.importadoBI) {
-    throw new QuoteError(409, 'Este evento vino del BI con precio pactado: no se mueve de catálogo.');
+  if (existing.precioPactado) {
+    throw new QuoteError(409, 'Este evento tiene precio pactado: no se mueve de catálogo.');
   }
 
   const destino = await db.priceList.findUnique({ where: { id: priceListId } });

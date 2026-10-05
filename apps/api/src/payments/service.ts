@@ -96,6 +96,8 @@ export interface OrigenDeposito {
    */
   metodo?: MetodoPago;
   formas?: PartePago[] | null;
+  /** El `idBI` del abono del que sale (apartado importado del BI). */
+  importadoBI?: string | null;
 }
 
 /** `resolverFormasPago` con el error convertido en un 400 legible. */
@@ -173,6 +175,7 @@ export async function registerPayment(
       // Sin folio heredado, el default de la base toma el siguiente de la serie.
       ...(origen?.folio != null ? { folio: origen.folio } : folioPapel != null ? { folio: folioPapel } : {}),
       folioLetra: origen?.folioLetra ?? null,
+      importadoBI: origen?.importadoBI ?? null,
     },
   });
   if (folioPapel != null) await subirSecuenciaSobre(db, folioPapel);

@@ -357,6 +357,8 @@ model ApartadoFecha {
   eventTypeId       String?
   /// El `idBI` con el que llegó del BI. Llave de idempotencia de la importación.
   importadoBI       String?         @unique
+  /// La fecha apartada lleva capilla (marca, no cobra ni bloquea). Prellena la conversión.
+  usaCapilla        Boolean         @default(false)
   fechaEvento       DateTime
   spaceIds          String[]
   /// Catálogo al que se le garantizó el precio, si se negoció uno. Es el tramo 1
@@ -450,6 +452,9 @@ model AbonoApartado {
 
   @@index([apartadoId])
   @@index([pagoBanqueteroId])
+  /// El `idBI` del pago en el BI, si vino de allá (`R-6054`). Pasa al pago del
+  /// evento al convertir: es la llave del BI para no contar doble.
+  importadoBI      String?
 }
 
 model Empleado {
@@ -619,6 +624,10 @@ model Quote {
   /// Un evento importado tiene PRECIO PACTADO: su desglose son los montos del BI
   /// y editarlo nunca lo recotiza contra el catálogo (se vendió a ese precio).
   importadoBI         String?           @unique
+  /// Precio PACTADO: el desglose no se recotiza al editar, mover de fecha ni de
+  /// catálogo. Lo tienen los eventos importados del BI y los apartados que se
+  /// convirtieron con una renta acordada (decisión del dueño, 5-oct-2026).
+  precioPactado       Boolean           @default(false)
   /// Cuándo se contrató, si no fue aquí. Los importados se vendieron antes de que
   /// existiera el sistema, así que `createdAt` es la fecha de la importación.
   contratadoEl        DateTime?

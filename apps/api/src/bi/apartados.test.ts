@@ -116,7 +116,12 @@ describe('importar apartados del BI', () => {
     expect(await prisma.client.findUniqueOrThrow({ where: { id: creado.clientId! } })).toMatchObject({ nombre: `Carolina Quiroz ${SUF}`, telefono: '5544332211' });
     const pagos = await prisma.payment.findMany({ where: { quoteId: quote.id } });
     expect(pagos.map((p) => p.folio)).toEqual([ap.pagos[0]!.folio]);
-    const log = await prisma.activityLog.findFirst({ where: { quoteId: quote.id, descripcion: { contains: 'Precio acordado' } } });
+    // La renta acordada MANDA: reemplaza la del catálogo y deja el precio pactado.
+    expect(quote.rentaTotal).toBe(169_000);
+    expect(quote.precioPactado).toBe(true);
+    const lineas = (quote.breakdown as { lines: { grupo: string; spaceId?: string; monto: number; detalle?: string }[] }).lines;
+    expect(lineas.filter((l) => l.grupo === 'renta' && l.spaceId)).toEqual([expect.objectContaining({ monto: 169_000, detalle: 'Renta acordada al apartar' })]);
+    const log = await prisma.activityLog.findFirst({ where: { quoteId: quote.id, descripcion: { contains: 'Renta acordada' } } });
     expect(log?.descripcion).toContain('169,000');
   });
 
@@ -184,5 +189,31 @@ describe('importar apartados del BI', () => {
     const { quote } = await convertirApartado(prisma, storage, creado.id, { invitados: 150 }, admin);
     const [despues] = (await biApartados(prisma, rango)).filter((x) => x.id === creado.id);
     expect(despues).toMatchObject({ estado: 'convertido', quoteId: quote.id, eventoFolio: quote.folio });
+  });
+
+  it('el idBI de cada pago se guarda, pasa al pago del evento al convertir y sale en /pagos y /eventos (P2, §4)', async () => {
+    const idPago = `R-${randomUUID().slice(0, 6)}`;
+    const ap = apartadoBI({
+      usaCapilla: true,
+      pagos: [{ idBI: idPago, folio: folio(), fecha: '2026-05-20', monto: 25_000, metodo: 'transferencia' }],
+    });
+    await importarApartados(prisma, { apartados: [ap] });
+    const creado = await prisma.apartadoFecha.findUniqueOrThrow({ where: { importadoBI: ap.idBI }, include: { abonos: true } });
+    expect(creado.usaCapilla).toBe(true);
+    expect(creado.abonos[0]!.importadoBI).toBe(idPago);
+    const rango = { desde: new Date(`${ap.fecha}T00:00:00.000Z`), hasta: new Date(`${ap.fecha}T23:59:59.999Z`), limit: 500 };
+    expect((await biApartados(prisma, rango)).find((x) => x.id === creado.id)?.abonos[0]?.idBI).toBe(idPago);
+
+    const { quote } = await convertirApartado(prisma, storage, creado.id, { invitados: 150 }, admin);
+    expect(quote.usaCapilla).toBe(true);
+    const pago = await prisma.payment.findFirstOrThrow({ where: { quoteId: quote.id } });
+    expect(pago.importadoBI).toBe(idPago);
+    const { biPagos, biEventos } = await import('./service.js');
+    const delDia = { desde: new Date('2026-05-20T00:00:00.000Z'), hasta: new Date('2026-05-20T23:59:59.999Z'), limit: 500 };
+    expect((await biPagos(prisma, delDia)).find((p) => p.id === pago.id)?.idBI).toBe(idPago);
+    // El evento hereda el idBI del apartado, y sin renta acordada NO queda con precio pactado.
+    const ev = (await biEventos(prisma, rango)).find((e) => e.id === quote.id);
+    expect(ev).toMatchObject({ idBI: ap.idBI, origen: 'bi' });
+    expect(quote.precioPactado).toBe(false);
   });
 });

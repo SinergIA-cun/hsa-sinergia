@@ -231,6 +231,8 @@ export interface Quote {
   id: string;
   /** El id del evento en el BI si vino de allá: tiene PRECIO PACTADO, no se recotiza. */
   importadoBI?: string | null;
+  /** Precio pactado: no se recotiza (importado del BI o apartado con renta acordada). */
+  precioPactado?: boolean;
   /** Cuándo se contrató, para los importados (se vendieron antes del sistema). */
   contratadoEl?: string | null;
   clientId: string;
@@ -657,6 +659,8 @@ export interface ApartadoFecha {
   eventTypeId: string | null;
   /** El idBI si vino del BI. */
   importadoBI: string | null;
+  /** La fecha apartada lleva capilla (marca; prellena la conversión). */
+  usaCapilla?: boolean;
   fechaEvento: string;
   spaceIds: string[];
   priceListId: string | null;

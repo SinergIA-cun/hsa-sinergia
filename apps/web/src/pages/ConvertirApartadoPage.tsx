@@ -175,8 +175,10 @@ export function ConvertirApartadoPage() {
              apartado no dice si cubre solo la renta o también los alimentos): se
              enseña aquí para que la cotización lo respete, y queda en la bitácora. */
           <p className="mt-2 rounded-lg border border-wine/30 bg-wine/5 p-3 text-sm text-ink">
-            Precio acordado al apartar: <strong>{formatMXN(apartado.precioAcordado)}</strong>. Arma la
-            cotización para que respete ese precio.
+            Renta acordada al apartar: <strong>{formatMXN(apartado.precioAcordado)}</strong>. Elige abajo
+            el tipo de evento, la gente y lo que se contrate; <strong>al convertir, la renta del salón se
+            reemplaza por la acordada</strong> y el evento queda con precio pactado (no se recotiza). El
+            desglose de abajo enseña la del catálogo.
           </p>
         )}
 
@@ -213,6 +215,7 @@ export function ConvertirApartadoPage() {
           nombre: apartado.banquetero?.nombre ?? apartado.client?.nombre ?? '',
           ...(deCliente ? { telefono: apartado.client?.telefono ?? '', correo: apartado.client?.correo ?? '' } : {}),
           ...(apartado.eventTypeId ? { eventTypeId: apartado.eventTypeId } : {}),
+          ...(apartado.usaCapilla ? { usaCapilla: true } : {}),
         }}
         bloqueado={{ fecha: true, espacios: true, banquetero: !deCliente, cliente: deCliente }}
         excludeApartadoId={apartado.id}
