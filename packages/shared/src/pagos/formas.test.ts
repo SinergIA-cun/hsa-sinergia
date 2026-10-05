@@ -7,6 +7,7 @@ import {
   formatFolio,
   letraDeAplicacion,
   FormasPagoError,
+  formasSinNotas,
 } from './formas.js';
 
 describe('resolverFormasPago', () => {
@@ -51,13 +52,6 @@ describe('resolverFormasPago', () => {
 });
 
 describe('formasPagoSchema', () => {
-  it('rechaza la misma forma dos veces', () => {
-    const r = formasPagoSchema.safeParse([
-      { forma: 'tarjetaCredito', monto: 1 },
-      { forma: 'tarjetaCredito', monto: 2 },
-    ]);
-    expect(r.success).toBe(false);
-  });
 
   it('rechaza montos con decimales', () => {
     expect(formasPagoSchema.safeParse([{ forma: 'efectivo', monto: 10.5 }]).success).toBe(false);
@@ -97,5 +91,28 @@ describe('formatFolio', () => {
   });
   it('los movimientos de antes del folio dicen sin folio', () => {
     expect(formatFolio(null)).toBe('sin folio');
+  });
+});
+
+describe('notas por parte y formas repetidas', () => {
+  it('dos transferencias en el mismo pago, cada una con su banco; una nota en blanco no se guarda', () => {
+    const r = formasPagoSchema.parse([
+      { forma: 'transferencia', monto: 6_000, nota: '  BBVA ' },
+      { forma: 'transferencia', monto: 4_000, nota: '   ' },
+    ]);
+    expect(r).toEqual([
+      { forma: 'transferencia', monto: 6_000, nota: 'BBVA' },
+      { forma: 'transferencia', monto: 4_000 },
+    ]);
+  });
+
+  it('la descripción del pago trae las notas', () => {
+    const pago = { monto: 10_000, metodo: 'mixto', formas: [{ forma: 'transferencia', monto: 6_000, nota: 'BBVA' }, { forma: 'efectivo', monto: 4_000 }] };
+    expect(describirFormasPago(pago)).toBe('Transferencia $6,000 (BBVA) · Efectivo $4,000');
+  });
+
+  it('al cliente le llegan las partes sin notas', () => {
+    expect(formasSinNotas([{ forma: 'transferencia', monto: 6_000, nota: 'pagó la tía' }])).toEqual([{ forma: 'transferencia', monto: 6_000 }]);
+    expect(formasSinNotas(null)).toBeNull();
   });
 });

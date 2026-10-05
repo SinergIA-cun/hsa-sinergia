@@ -343,6 +343,11 @@ débito y crédito). `formas` trae siempre las partes, que suman `monto`: un pag
 forma trae una parte. Un pago que salió de un depósito dividido viene `mixto` con una sola
 parte `mixto`: el detalle por forma vive en el depósito (en `/ingresos`).
 
+Desde el 5-oct-2026 **la misma forma puede repetirse** (dos transferencias de bancos distintos en
+un pago) y cada parte puede traer **`nota`** (texto libre, opcional: banco, referencia, quién
+pagó): `{"forma": "transferencia", "monto": 6000, "nota": "BBVA"}`. Es interna: la página del
+cliente no la muestra.
+
 ### `GET /api/bi/pagos-esperados`
 
 Hitos de cobro **pendientes** (apartar, complemento, finiquito) del plan de pagos de los

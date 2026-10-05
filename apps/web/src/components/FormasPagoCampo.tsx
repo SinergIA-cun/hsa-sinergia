@@ -1,7 +1,7 @@
 import { Plus, X } from 'lucide-react';
-import { FORMAS_PAGO, FORMA_PAGO_LABEL, type FormaPago, type PartePago } from '@hsa/shared';
+import { FORMAS_PAGO, FORMA_PAGO_LABEL, NOTA_PARTE_MAX, type FormaPago, type PartePago } from '@hsa/shared';
 import { formatMXN } from '../lib/money.ts';
-import { Field, MoneyInput, SelectInput } from './ui.tsx';
+import { Field, MoneyInput, SelectInput, TextInput } from './ui.tsx';
 
 /**
  * La forma de pago de un cobro, con la opción de dividirlo.
@@ -20,7 +20,7 @@ export interface FormasCaptura {
   /** La forma cuando NO está dividido. */
   forma: FormaPago;
   /** Las partes cuando sí; los montos son dígitos, igual que `MoneyInput`. */
-  partes: { forma: FormaPago; monto: string }[];
+  partes: { forma: FormaPago; monto: string; nota?: string }[];
   /**
    * Mientras nadie toque el monto del PRIMER renglón, ése absorbe la diferencia:
    * se teclean $4,000 en crédito y débito queda solo en $6,000. Es como se dicta
@@ -46,9 +46,6 @@ export function errorFormas(c: FormasCaptura, monto: number): string | null {
   if (!c.dividido) return null;
   if (c.partes.length < 2) return 'Un pago dividido lleva al menos dos formas.';
   if (c.partes.some((p) => !(Number(p.monto) > 0))) return 'Cada forma necesita su monto.';
-  if (new Set(c.partes.map((p) => p.forma)).size !== c.partes.length) {
-    return 'Cada forma va una sola vez: si son dos tarjetas de crédito, súmalas.';
-  }
   const suma = sumaPartes(c);
   if (suma !== monto) {
     return suma < monto
@@ -61,7 +58,13 @@ export function errorFormas(c: FormasCaptura, monto: number): string | null {
 /** Lo que viaja al servidor: `metodo` si es una sola forma, `formas` si está dividido. */
 export function formasParaEnviar(c: FormasCaptura): { metodo?: FormaPago; formas?: PartePago[] } {
   if (!c.dividido) return { metodo: c.forma };
-  return { formas: c.partes.map((p) => ({ forma: p.forma, monto: Number(p.monto) })) };
+  return {
+    formas: c.partes.map((p) => ({
+      forma: p.forma,
+      monto: Number(p.monto),
+      ...(p.nota?.trim() ? { nota: p.nota.trim() } : {}),
+    })),
+  };
 }
 
 /** Lo mismo, dentro de un FormData (el campo `formas` va como JSON). */
@@ -127,14 +130,16 @@ export function FormasPagoCampo({
       partes: c.partes.map((p, j) => (j === 0 ? { ...p, monto: resto > 0 ? String(resto) : '' } : p)),
     };
   };
-  const setParte = (i: number, cambio: Partial<{ forma: FormaPago; monto: string }>) => {
+  const setParte = (i: number, cambio: Partial<{ forma: FormaPago; monto: string; nota: string }>) => {
     const partes = value.partes.map((p, j) => (j === i ? { ...p, ...cambio } : p));
     // Tocar el monto del primero lo vuelve manual: a partir de ahí nadie lo pisa.
     const primeraAutomatica = value.primeraAutomatica && !(i === 0 && cambio.monto !== undefined);
     onChange(conPrimeraAjustada({ ...value, partes, primeraAutomatica }));
   };
   const hayVacia = value.partes.some((p) => !(Number(p.monto) > 0));
-  const libres = FORMAS_PAGO.filter((f) => !value.partes.some((p) => p.forma === f));
+  // La misma forma se puede repetir (dos transferencias de bancos distintos): la
+  // nota de cada una dice de dónde vino.
+  const MAX_PARTES = 10;
 
   return (
     <fieldset className="sm:col-span-2 rounded-lg border border-cream-300 bg-cream-50 p-3">
@@ -143,49 +148,59 @@ export function FormasPagoCampo({
       </legend>
       <ul className="space-y-2">
         {value.partes.map((p, i) => (
-          <li key={i} className="flex items-center gap-2">
-            <SelectInput
-              aria-label={`Forma ${i + 1}`}
-              value={p.forma}
-              onChange={(e) => setParte(i, { forma: e.target.value as FormaPago })}
-              className="flex-1"
-            >
-              {FORMAS_PAGO.map((f) => (
-                <option key={f} value={f}>
-                  {FORMA_PAGO_LABEL[f]}
-                </option>
-              ))}
-            </SelectInput>
-            <MoneyInput
-              aria-label={`Monto con ${FORMA_PAGO_LABEL[p.forma]}`}
-              value={p.monto}
-              onValue={(m) => setParte(i, { monto: m })}
-              placeholder="Monto"
-              className="w-36"
+          <li key={i} className="space-y-1.5">
+            <div className="flex items-center gap-2">
+              <SelectInput
+                aria-label={`Forma ${i + 1}`}
+                value={p.forma}
+                onChange={(e) => setParte(i, { forma: e.target.value as FormaPago })}
+                className="flex-1"
+              >
+                {FORMAS_PAGO.map((f) => (
+                  <option key={f} value={f}>
+                    {FORMA_PAGO_LABEL[f]}
+                  </option>
+                ))}
+              </SelectInput>
+              <MoneyInput
+                aria-label={`Monto con ${FORMA_PAGO_LABEL[p.forma]}`}
+                value={p.monto}
+                onValue={(m) => setParte(i, { monto: m })}
+                placeholder="Monto"
+                className="w-36"
+              />
+              <button
+                type="button"
+                aria-label={`Quitar ${FORMA_PAGO_LABEL[p.forma]}`}
+                onClick={() =>
+                  onChange(conPrimeraAjustada({ ...value, partes: value.partes.filter((_, j) => j !== i) }))
+                }
+                disabled={value.partes.length <= 2}
+                className="rounded p-1.5 text-charcoal-soft hover:bg-ink/5 hover:text-wine disabled:opacity-30"
+              >
+                <X size={15} />
+              </button>
+            </div>
+            <TextInput
+              aria-label={`Nota de la forma ${i + 1}`}
+              value={p.nota ?? ''}
+              onChange={(e) => setParte(i, { nota: e.target.value })}
+              maxLength={NOTA_PARTE_MAX}
+              placeholder="Nota opcional: banco, referencia, quién pagó…"
+              className="py-1.5 text-xs"
             />
-            <button
-              type="button"
-              aria-label={`Quitar ${FORMA_PAGO_LABEL[p.forma]}`}
-              onClick={() =>
-                onChange(conPrimeraAjustada({ ...value, partes: value.partes.filter((_, j) => j !== i) }))
-              }
-              disabled={value.partes.length <= 2}
-              className="rounded p-1.5 text-charcoal-soft hover:bg-ink/5 hover:text-wine disabled:opacity-30"
-            >
-              <X size={15} />
-            </button>
           </li>
         ))}
       </ul>
       <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs">
         <div className="flex gap-3">
-          {libres.length > 0 && (
+          {value.partes.length < MAX_PARTES && (
             <button
               type="button"
               onClick={() =>
                 onChange({
                   ...value,
-                  partes: [...value.partes, { forma: libres[0]!, monto: restante > 0 ? String(restante) : '' }],
+                  partes: [...value.partes, { forma: 'transferencia', monto: restante > 0 ? String(restante) : '' }],
                 })
               }
               className="inline-flex items-center gap-1 font-medium text-gold hover:underline"
