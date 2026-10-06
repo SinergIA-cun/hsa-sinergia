@@ -84,6 +84,8 @@ export interface FotoEvento {
     /** Solo viene cuando es `true`; ver `cargos` abajo. */
     esPromocion?: boolean;
     descuentoPct: number | null;
+    /** Solo viene si el descuento fue en monto fijo. */
+    descuentoMonto?: number;
     descuentoMotivo: string | null;
     usaDjHoraExtra: boolean;
     horaInicio: string | null;
@@ -224,6 +226,7 @@ export async function armarFoto(
       esCortesia: quote.esCortesia,
       ...(quote.esPromocion ? { esPromocion: true } : {}),
       descuentoPct: quote.descuentoPct,
+      ...(quote.descuentoMonto != null ? { descuentoMonto: quote.descuentoMonto } : {}),
       descuentoMotivo: quote.descuentoMotivo,
       usaDjHoraExtra: quote.usaDjHoraExtra,
       horaInicio: quote.horaInicio,

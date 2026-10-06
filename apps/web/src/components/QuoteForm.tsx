@@ -63,6 +63,7 @@ export interface QuoteFormInitial {
   addOns: Record<string, number>;
   extras: QuoteExtraInput[];
   descuentoPct: number | null;
+  descuentoMonto: number | null;
   descuentoMotivo: string;
   requiereFactura: boolean;
   fiscales: DatosFiscales;
@@ -96,8 +97,9 @@ export interface QuotePayload {
   /** Servicios sueltos de este evento. Se manda la lista COMPLETA: el servidor
    *  reemplaza en bloque, igual que con los add-ons. */
   extras: QuoteExtraInput[];
-  /** Descuento de cortesía sobre la renta. Se omite si no hay descuento. */
+  /** Descuento sobre la renta: en % o en monto fijo (uno u otro). Se omite si no hay. */
   descuentoPct?: number;
+  descuentoMonto?: number;
   descuentoMotivo?: string;
   eventTypeId: string;
   requiereFactura: boolean;
@@ -280,9 +282,15 @@ export function QuoteForm({
   const djCotizado = initial?.usaDjHoraExtra === true;
   const [addOns, setAddOns] = useState<Record<string, number>>(initial?.addOns ?? {});
   const [extras, setExtras] = useState<QuoteExtraInput[]>(initial?.extras ?? []);
-  // El descuento se captura en por ciento; vacío = sin descuento.
-  const [descuentoPct, setDescuentoPct] = useState<string>(
-    initial?.descuentoPct != null ? String(initial.descuentoPct) : '',
+  // El descuento es en porcentaje O en monto fijo (el dueño, 5-oct-2026): primero
+  // se elige cuál, y luego el valor. Vacío = sin descuento.
+  const [descuentoTipo, setDescuentoTipo] = useState<'pct' | 'monto'>(initial?.descuentoMonto != null ? 'monto' : 'pct');
+  const [descuentoValor, setDescuentoValor] = useState<string>(
+    initial?.descuentoMonto != null
+      ? String(initial.descuentoMonto)
+      : initial?.descuentoPct != null
+        ? String(initial.descuentoPct)
+        : '',
   );
   const [descuentoMotivo, setDescuentoMotivo] = useState(initial?.descuentoMotivo ?? '');
   const [busy, setBusy] = useState(false);
@@ -339,11 +347,18 @@ export function QuoteForm({
    */
   const conDescuento = esCortesia || esPromocion;
   const pctValido = useMemo(() => {
-    if (!conDescuento || descuentoPct.trim() === '') return undefined;
-    const n = Number(descuentoPct);
+    if (!conDescuento || descuentoTipo !== 'pct' || descuentoValor.trim() === '') return undefined;
+    const n = Number(descuentoValor);
     if (!Number.isFinite(n) || n <= 0 || n > 100) return undefined;
     return n;
-  }, [conDescuento, descuentoPct]);
+  }, [conDescuento, descuentoTipo, descuentoValor]);
+  const montoValido = useMemo(() => {
+    if (!conDescuento || descuentoTipo !== 'monto' || descuentoValor.trim() === '') return undefined;
+    const n = Number(descuentoValor);
+    if (!Number.isInteger(n) || n <= 0) return undefined;
+    return n;
+  }, [conDescuento, descuentoTipo, descuentoValor]);
+  const hayDescuento = pctValido != null || montoValido != null;
   /** Los extras válidos (con nombre y monto): un renglón a medias no se cobra. */
   const extrasValidos = useMemo(
     () => extras.filter((e) => e.nombre.trim() !== '' && Number.isInteger(e.monto) && e.monto > 0),
@@ -363,10 +378,11 @@ export function QuoteForm({
       addOns: Object.entries(addOns).map(([addOnId, cantidad]) => ({ addOnId, cantidad })),
       extras: extrasValidos,
       descuentoPct: pctValido,
+      descuentoMonto: montoValido,
       descuentoMotivo: descuentoMotivo.trim() || undefined,
       esPromocion,
     }),
-    [fecha, invitados, spaceIds, horasExtra, usaCapilla, usaDjHoraExtra, eventTypeId, foodPackageId, addOns, extrasValidos, pctValido, descuentoMotivo, esPromocion],
+    [fecha, invitados, spaceIds, horasExtra, usaCapilla, usaDjHoraExtra, eventTypeId, foodPackageId, addOns, extrasValidos, pctValido, montoValido, descuentoMotivo, esPromocion],
   );
 
   const { breakdown, calcError } = useMemo(() => {
@@ -455,7 +471,7 @@ export function QuoteForm({
 
   // El motivo es obligatorio cuando hay descuento: un descuento de cientos de
   // miles sin explicación es un problema de auditoría, no un campo opcional.
-  const faltaMotivo = pctValido != null && descuentoMotivo.trim() === '';
+  const faltaMotivo = hayDescuento && descuentoMotivo.trim() === '';
   // Teléfono o correo, al menos uno (decisión del dueño). La misma regla que exige la API.
   const faltaContacto = !tieneContacto({ telefono, correo });
   const canSave = Boolean(
@@ -504,7 +520,8 @@ export function QuoteForm({
         addOns: Object.entries(addOns).map(([addOnId, cantidad]) => ({ addOnId, cantidad })),
         extras: extrasValidos,
         descuentoPct: pctValido,
-        descuentoMotivo: pctValido != null ? descuentoMotivo.trim() : undefined,
+        descuentoMonto: montoValido,
+        descuentoMotivo: hayDescuento ? descuentoMotivo.trim() : undefined,
         eventTypeId,
         requiereFactura,
         client: {
@@ -896,7 +913,7 @@ export function QuoteForm({
                 // Apagar la casilla limpia el descuento: si se quedara guardado,
                 // el precio traería un descuento que la pantalla ya no muestra.
                 else {
-                  setDescuentoPct('');
+                  setDescuentoValor('');
                   setDescuentoMotivo('');
                 }
               }}
@@ -924,7 +941,7 @@ export function QuoteForm({
                 setEsPromocion(e.target.checked);
                 if (e.target.checked) setEsCortesia(false);
                 else {
-                  setDescuentoPct('');
+                  setDescuentoValor('');
                   setDescuentoMotivo('');
                 }
               }}
@@ -933,7 +950,7 @@ export function QuoteForm({
             <span className="flex-1">
               <span className="font-medium text-ink">Descuento / promoción</span>
               <span className="block text-xs text-charcoal-soft">
-                Un porcentaje de descuento sobre la renta del local. No marca color en la agenda.
+                Un descuento sobre la renta del local, en porcentaje o monto fijo. No marca color en la agenda.
               </span>
             </span>
           </label>
@@ -952,18 +969,50 @@ export function QuoteForm({
                 horas extra y el 5% por alimentos se calculan sobre el precio ya descontado. La capilla, los alimentos
                 y los servicios se cobran completos.
               </p>
-              <div className="grid gap-3 sm:grid-cols-[8rem_1fr]">
-                <Field label="Descuento (%)">
-                  <TextInput
-                    type="number"
-                    min={0}
-                    max={100}
-                    step={1}
-                    value={descuentoPct}
-                    onChange={(e) => setDescuentoPct(e.target.value)}
-                    placeholder="0"
-                  />
-                </Field>
+              {/* Primero se elige cómo: porcentaje o monto fijo. */}
+              <div role="radiogroup" aria-label="Tipo de descuento" className="inline-flex rounded-lg border border-ink/15 bg-white/70 p-0.5 text-sm">
+                {(
+                  [
+                    ['pct', 'Porcentaje (%)'],
+                    ['monto', 'Monto fijo ($)'],
+                  ] as const
+                ).map(([tipo, etiqueta]) => (
+                  <button
+                    key={tipo}
+                    type="button"
+                    role="radio"
+                    aria-checked={descuentoTipo === tipo}
+                    onClick={() => {
+                      if (tipo === descuentoTipo) return;
+                      setDescuentoTipo(tipo);
+                      setDescuentoValor('');
+                    }}
+                    className={`rounded-md px-3 py-1.5 font-medium transition-colors ${
+                      descuentoTipo === tipo ? 'bg-ink text-cream' : 'text-ink hover:bg-ink/5'
+                    }`}
+                  >
+                    {etiqueta}
+                  </button>
+                ))}
+              </div>
+              <div className="grid gap-3 sm:grid-cols-[10rem_1fr]">
+                {descuentoTipo === 'pct' ? (
+                  <Field label="Descuento (%)">
+                    <TextInput
+                      type="number"
+                      min={0}
+                      max={100}
+                      step={1}
+                      value={descuentoValor}
+                      onChange={(e) => setDescuentoValor(e.target.value)}
+                      placeholder="0"
+                    />
+                  </Field>
+                ) : (
+                  <Field label="Descuento ($, con IVA)">
+                    <MoneyInput value={descuentoValor} onValue={setDescuentoValor} placeholder="0" />
+                  </Field>
+                )}
                 <Field label="Motivo del descuento">
                   <TextInput
                     value={descuentoMotivo}
@@ -978,9 +1027,12 @@ export function QuoteForm({
                   auditar.
                 </p>
               )}
-              {descuentoPct.trim() !== '' && pctValido == null && !faltaMotivo && (
+              {descuentoValor.trim() !== '' && !hayDescuento && !faltaMotivo && (
                 <p className="inline-flex items-center gap-1.5 text-xs font-medium text-wine">
-                  <AlertTriangle size={13} /> El descuento debe ser un porcentaje entre 1 y 100.
+                  <AlertTriangle size={13} />{' '}
+                  {descuentoTipo === 'pct'
+                    ? 'El descuento debe ser un porcentaje entre 1 y 100.'
+                    : 'El descuento debe ser un monto en pesos enteros.'}
                 </p>
               )}
             </div>

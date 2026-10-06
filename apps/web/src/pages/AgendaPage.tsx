@@ -253,6 +253,7 @@ export function AgendaPage() {
             // distinto al que el servidor va a guardar.
             extras: detalle.quote.extras ?? [],
             descuentoPct: detalle.quote.descuentoPct ?? undefined,
+            descuentoMonto: detalle.quote.descuentoMonto ?? undefined,
             descuentoMotivo: detalle.quote.descuentoMotivo ?? undefined,
           }).total,
         );

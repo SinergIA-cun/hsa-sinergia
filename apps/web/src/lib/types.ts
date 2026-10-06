@@ -274,6 +274,8 @@ export interface Quote {
   extras?: QuoteExtraInput[];
   /** Descuento de cortesía, en % sobre la renta. `null` = sin descuento. */
   descuentoPct?: number | null;
+  /** El mismo descuento en monto fijo (pesos con IVA). Uno u otro. */
+  descuentoMonto?: number | null;
   descuentoMotivo?: string | null;
   breakdown: QuoteBreakdown;
   total: number;
@@ -1121,6 +1123,7 @@ export interface FotoEvento {
     esCortesia: boolean;
     esPromocion?: boolean;
     descuentoPct: number | null;
+    descuentoMonto?: number;
     descuentoMotivo: string | null;
     usaDjHoraExtra: boolean;
     horaInicio: string | null;

@@ -173,6 +173,7 @@ fecha: `fechaEvento` es la que TENÍA) o `cancelada`. Los dos sueltan la fecha: 
 |---|---|
 | `standby` | `null`, o `{ desde, motivo, estatusPrevio }`: desde cuándo está sin fecha y a qué estatus vuelve al reprogramarse. |
 | `cancelacion` | `null`, o `{ fecha, motivo, porcentaje, pagado, devolver, retenido, devuelto, pendiente }`: lo pagado al cancelar, el porcentaje que se acordó devolver, cuánto es, lo que se retiene, lo ya devuelto desde la cancelación y lo que falta. Las devoluciones en sí salen en `/devoluciones`. |
+| `descuento` | `null`, o `{ porcentaje, monto, motivo }`: el descuento sobre la renta, en **porcentaje o en monto fijo** (pesos con IVA); uno de los dos viene en `null`. `esCortesia` / `esPromocion` dicen de qué tipo es. Ya está aplicado en `renta.total` y `total`. |
 
 > El historial empieza el 1-oct-2026 con el código que cada evento tenía ese día. Los
 > cambios de antes no se pueden reconstruir: el código depende del nombre del cliente en ese

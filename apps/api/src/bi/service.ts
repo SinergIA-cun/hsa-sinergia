@@ -134,7 +134,11 @@ export async function biEventos(db: PrismaClient, r: RangoBI) {
     esCortesia: q.esCortesia,
     // Descuento sobre la renta del local: de cortesía familiar o de promoción.
     esPromocion: q.esPromocion,
-    descuento: q.descuentoPct ? { porcentaje: q.descuentoPct, motivo: q.descuentoMotivo } : null,
+    // En porcentaje O en monto fijo (pesos con IVA): uno de los dos viene en null.
+    descuento:
+      q.descuentoPct || q.descuentoMonto
+        ? { porcentaje: q.descuentoPct || null, monto: q.descuentoMonto ?? null, motivo: q.descuentoMotivo }
+        : null,
     requiereFactura: q.requiereFactura,
     cliente: { id: q.clientId, nombre: q.client?.nombre ?? null, referencia: q.client?.numeroReferencia ?? null },
     vendedora: q.createdBy ? { id: q.createdBy.id, nombre: q.createdBy.nombre } : null,

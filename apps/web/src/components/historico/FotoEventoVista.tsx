@@ -93,8 +93,10 @@ export function FotoEventoVista({ id }: { id: string }) {
         <Dato
           label="Descuento"
           valor={
-            f.evento.descuentoPct
-              ? `${f.evento.esPromocion ? 'Promoción' : f.evento.esCortesia ? 'Cortesía' : ''} ${f.evento.descuentoPct}% · ${f.evento.descuentoMotivo ?? ''}`.trim()
+            f.evento.descuentoPct || f.evento.descuentoMonto
+              ? `${f.evento.esPromocion ? 'Promoción' : f.evento.esCortesia ? 'Cortesía' : ''} ${
+                  f.evento.descuentoMonto ? formatMXN(f.evento.descuentoMonto) : `${f.evento.descuentoPct}%`
+                } · ${f.evento.descuentoMotivo ?? ''}`.trim()
               : null
           }
         />
