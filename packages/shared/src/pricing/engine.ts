@@ -121,11 +121,23 @@ export function computeQuote(
   //    contrato se lee de arriba abajo (108,500 · −54,250 · horas extra sobre
   //    54,250) y cuadra a ojo.
   let rentaBase = rentaEspacios;
+  const tipoDescuento = sel.esPromocion ? 'Descuento / promoción' : 'Descuento de cortesía';
   if (sel.descuentoPct != null && sel.descuentoPct > 0) {
     const monto = rentaEspacios * (sel.descuentoPct / 100);
     rentaBase -= monto;
     lines.push({
-      concepto: `${sel.esPromocion ? 'Descuento / promoción' : 'Descuento de cortesía'} (${sel.descuentoPct}% renta)`,
+      concepto: `${tipoDescuento} (${sel.descuentoPct}% renta)`,
+      detalle: sel.descuentoMotivo,
+      monto: round2(-monto),
+      ivaIncluido: true,
+      grupo: 'renta',
+    });
+  } else if (sel.descuentoMonto != null && sel.descuentoMonto > 0) {
+    // En monto fijo: nunca más que la renta de los salones (la renta no queda negativa).
+    const monto = Math.min(sel.descuentoMonto, rentaEspacios);
+    rentaBase -= monto;
+    lines.push({
+      concepto: `${tipoDescuento} ($${monto.toLocaleString('es-MX')} renta)`,
       detalle: sel.descuentoMotivo,
       monto: round2(-monto),
       ivaIncluido: true,

@@ -59,6 +59,12 @@ export const quoteSelectionSchema = z.object({
    * completos. Con 100% la renta queda en cero (más la capilla si la hay).
    */
   descuentoPct: z.number().min(0).max(100).optional(),
+  /**
+   * El mismo descuento, en MONTO FIJO con IVA (pesos enteros): "$5,000 de
+   * descuento". Es uno u otro: porcentaje o monto (el dueño, 5-oct-2026). No
+   * puede pasar de la renta de los salones.
+   */
+  descuentoMonto: z.number().int().positive().optional(),
   /** Motivo del descuento. Obligatorio si hay descuento: sin él no es auditable. */
   descuentoMotivo: z.string().min(1).max(300).optional(),
   /**
@@ -78,9 +84,17 @@ export const quoteSelectionSchema = z.object({
  * tiene ese método. Los esquemas de crear/editar lo aplican al final.
  */
 export const motivoObligatorio = {
-  check: (d: { descuentoPct?: number | null; descuentoMotivo?: string | null }): boolean =>
-    !(d.descuentoPct != null && d.descuentoPct > 0) || Boolean(d.descuentoMotivo?.trim()),
+  check: (d: { descuentoPct?: number | null; descuentoMonto?: number | null; descuentoMotivo?: string | null }): boolean =>
+    !((d.descuentoPct != null && d.descuentoPct > 0) || (d.descuentoMonto != null && d.descuentoMonto > 0)) ||
+    Boolean(d.descuentoMotivo?.trim()),
   opts: { message: 'Un descuento requiere motivo', path: ['descuentoMotivo'] },
+};
+
+/** Un descuento es en porcentaje O en monto fijo, nunca los dos. */
+export const unSoloDescuento = {
+  check: (d: { descuentoPct?: number | null; descuentoMonto?: number | null }): boolean =>
+    !(d.descuentoPct != null && d.descuentoPct > 0 && d.descuentoMonto != null && d.descuentoMonto > 0),
+  opts: { message: 'El descuento es en porcentaje o en monto fijo, no los dos.', path: ['descuentoMonto'] },
 };
 
 /** Tipo derivado del esquema (salida post-parse): fuente única de verdad. */

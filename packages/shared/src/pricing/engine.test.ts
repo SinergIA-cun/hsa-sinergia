@@ -387,6 +387,26 @@ describe('computeQuote · descuento / promoción', () => {
   });
 });
 
+describe('computeQuote · descuento en monto fijo', () => {
+  // "El descuento queremos que pueda ser % o monto fijo" (el dueño, 5-oct-2026).
+  it('resta el monto de la renta, con su etiqueta; las horas extra salen del precio descontado', () => {
+    const sin = computeQuote(catalog, mk({ horasExtra: 1 }));
+    const con = computeQuote(catalog, mk({ horasExtra: 1, descuentoMonto: 10_000, descuentoMotivo: 'Cliente frecuente', esPromocion: true }));
+    const linea = con.lines.find((l) => l.monto < 0 && l.grupo === 'renta')!;
+    expect(linea.concepto).toBe('Descuento / promoción ($10,000 renta)');
+    expect(linea.monto).toBe(-10_000);
+    const extraSin = sin.lines.find((l) => l.concepto === 'Horas extra')!.monto;
+    const extraCon = con.lines.find((l) => l.concepto === 'Horas extra')!.monto;
+    expect(extraCon).toBeLessThan(extraSin);
+    expect(con.rentaTotal).toBeCloseTo(sin.rentaTotal - 10_000 - (extraSin - extraCon), 2);
+  });
+
+  it('nunca deja la renta negativa: un monto mayor a la renta la deja en cero', () => {
+    const r = computeQuote(catalog, mk({ descuentoMonto: 10_000_000, descuentoMotivo: 'Regalo' }));
+    expect(r.rentaTotal).toBe(0);
+  });
+});
+
 describe('computeQuote · descuento de cortesía', () => {
   it('100% deja rentaTotal en cero y otrosTotal intacto', () => {
     const r = computeQuote(

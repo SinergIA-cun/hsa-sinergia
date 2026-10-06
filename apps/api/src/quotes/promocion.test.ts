@@ -69,3 +69,29 @@ describe('descuento / promoción', () => {
     expect(fila).toMatchObject({ esPromocion: true, esCortesia: false, descuento: { porcentaje: 10, motivo: 'Promo' } });
   });
 });
+
+describe('descuento en monto fijo', () => {
+  // "El descuento queremos que pueda ser % o monto fijo" (el dueño, 5-oct-2026).
+  it('resta el monto de la renta, se conserva al mover y al duplicar, y el BI lo ve como monto', async () => {
+    const sin = await evento();
+    const con = await evento({ esPromocion: true, descuentoMonto: 7_500, descuentoMotivo: 'Cliente frecuente' });
+    expect(con.descuentoMonto).toBe(7_500);
+    expect(con.descuentoPct).toBeNull();
+    expect(con.rentaTotal).toBe(sin.rentaTotal - 7_500);
+
+    const movido = await moveQuoteDate(prisma, con.id, sabado(), admin);
+    expect(movido.descuentoMonto).toBe(7_500);
+    const copia = await duplicateQuote(prisma, con.id, admin);
+    quotes.push(copia.id);
+    expect(copia.descuentoMonto).toBe(7_500);
+
+    const dia = movido.fechaEvento.toISOString().slice(0, 10);
+    const ev = (await biEventos(prisma, { desde: new Date(`${dia}T00:00:00Z`), hasta: new Date(`${dia}T23:59:59Z`), limit: 500 })).find((e) => e.id === con.id);
+    expect(ev?.descuento).toEqual({ porcentaje: null, monto: 7_500, motivo: 'Cliente frecuente' });
+  });
+
+  it('porcentaje y monto a la vez se rechazan; monto sin motivo también', async () => {
+    await expect(evento({ descuentoPct: 10, descuentoMonto: 5_000, descuentoMotivo: 'Doble' })).rejects.toThrow(/porcentaje o en monto/);
+    await expect(evento({ esPromocion: true, descuentoMonto: 5_000 })).rejects.toThrow(/requiere motivo/);
+  });
+});

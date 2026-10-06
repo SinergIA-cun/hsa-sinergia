@@ -68,6 +68,7 @@ function toInitial(q: Quote): Partial<QuoteFormInitial> {
     // del evento los borraría en silencio y el total bajaría solo.
     extras: q.extras ?? [],
     descuentoPct: q.descuentoPct ?? null,
+    descuentoMonto: q.descuentoMonto ?? null,
     descuentoMotivo: q.descuentoMotivo ?? '',
     requiereFactura: q.requiereFactura ?? false,
     // El banquetero y el festejado viajan de vuelta por la misma razón que los

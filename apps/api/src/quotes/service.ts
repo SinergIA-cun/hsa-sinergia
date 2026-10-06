@@ -8,6 +8,7 @@ import {
   datosFiscalesEditables,
   hoyCivilMexico,
   motivoObligatorio,
+  unSoloDescuento,
   prorratearRenta,
   tieneContacto,
   MENSAJE_SIN_CONTACTO,
@@ -90,7 +91,8 @@ export const createQuoteSchema = quoteSelectionSchema
   })
   // El motivo del descuento es obligatorio si hay descuento. Va aquí y no en
   // `quoteSelectionSchema` porque `.refine()` devuelve un ZodEffects sin `.extend()`.
-  .refine(motivoObligatorio.check, motivoObligatorio.opts);
+  .refine(motivoObligatorio.check, motivoObligatorio.opts)
+  .refine(unSoloDescuento.check, unSoloDescuento.opts);
 
 export const updateQuoteSchema = quoteSelectionSchema
   .extend({
@@ -103,7 +105,8 @@ export const updateQuoteSchema = quoteSelectionSchema
     client: clientSchema.optional(),
     ...paraQuienSchema,
   })
-  .refine(motivoObligatorio.check, motivoObligatorio.opts);
+  .refine(motivoObligatorio.check, motivoObligatorio.opts)
+  .refine(unSoloDescuento.check, unSoloDescuento.opts);
 
 export const statusSchema = z.object({ status: z.enum(QUOTE_STATUSES) });
 
@@ -244,6 +247,7 @@ function toSelection(input: {
   addOns: { addOnId: string; cantidad: number }[];
   extras?: QuoteExtra[];
   descuentoPct?: number | null;
+  descuentoMonto?: number | null;
   descuentoMotivo?: string | null;
   esPromocion?: boolean;
 }): QuoteSelection {
@@ -259,6 +263,7 @@ function toSelection(input: {
     addOns: input.addOns,
     extras: input.extras ?? [],
     descuentoPct: input.descuentoPct ?? undefined,
+    descuentoMonto: input.descuentoMonto ?? undefined,
     descuentoMotivo: input.descuentoMotivo ?? undefined,
     esPromocion: input.esPromocion ?? false,
   };
@@ -306,6 +311,7 @@ interface SeleccionGuardadaInput {
   addOns: Prisma.JsonValue;
   extras: QuoteExtra[];
   descuentoPct: number | null;
+  descuentoMonto: number | null;
   descuentoMotivo: string | null;
   // No entran al precio, pero SÍ al guardado: `updateQuote` los reescribe, así que
   // dejarlos fuera de aquí haría que arrastrar la fecha borrara al banquetero y al
@@ -336,6 +342,7 @@ export interface SeleccionGuardada {
   // `.optional()` (no `.nullish()`), y "sin descuento" se expresa omitiéndolos.
   // Mandar `null` los hace fallar la validación.
   descuentoPct: number | undefined;
+  descuentoMonto: number | undefined;
   descuentoMotivo: string | undefined;
   banqueteroId: string | null;
   festejado: string | null;
@@ -367,6 +374,7 @@ export function seleccionGuardada(q: SeleccionGuardadaInput): SeleccionGuardada 
     addOns: (q.addOns as unknown as { addOnId: string; cantidad: number }[] | null) ?? [],
     extras: q.extras,
     descuentoPct: q.descuentoPct ?? undefined,
+    descuentoMonto: q.descuentoMonto ?? undefined,
     descuentoMotivo: q.descuentoMotivo ?? undefined,
     banqueteroId: q.banqueteroId,
     festejado: q.festejado,
@@ -720,6 +728,7 @@ export async function createQuote(
           // Los extras se copian tal cual: nombre y monto, no un id de catálogo.
           extras: { create: input.extras },
           descuentoPct: input.descuentoPct ?? null,
+          descuentoMonto: input.descuentoMonto ?? null,
           descuentoMotivo: input.descuentoMotivo ?? null,
           // Con banquetero, él es el cliente de la hacienda; el festejado es dato
           // operativo y no entra al contrato.
@@ -788,6 +797,7 @@ export async function duplicateQuote(db: PrismaClient, id: string, actor: Actor)
           esCortesia: src.esCortesia,
           esPromocion: src.esPromocion,
           descuentoPct: src.descuentoPct,
+          descuentoMonto: src.descuentoMonto,
           descuentoMotivo: src.descuentoMotivo,
           // La copia es OTRO evento del mismo comprador: el banquetero y el
           // festejado viajan con ella (justo el caso del banquetero que compra
@@ -1002,6 +1012,7 @@ export async function updateQuote(db: PrismaClient, id: string, rawInput: unknow
         // lista completa, así que borrar y recrear es lo que refleja lo capturado.
         extras: { deleteMany: {}, create: input.extras },
         descuentoPct: input.descuentoPct ?? null,
+        descuentoMonto: input.descuentoMonto ?? null,
         descuentoMotivo: input.descuentoMotivo ?? null,
         banqueteroId: input.banqueteroId ?? null,
         festejado: input.festejado ?? null,

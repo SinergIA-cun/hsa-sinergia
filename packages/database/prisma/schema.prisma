@@ -562,6 +562,8 @@ model Quote {
   /// Motivo del descuento. Es OBLIGATORIO cuando hay descuento —lo exige el
   /// esquema de crear/editar—, pero la columna es nullable porque la enorme
   /// mayoría de las cotizaciones no lleva descuento.
+  /// El descuento en MONTO FIJO (pesos con IVA), en lugar de `descuentoPct`. Uno u otro.
+  descuentoMonto      Int?
   descuentoMotivo     String?
   /// El estatus que tenía antes de ponerse en standby o cancelarse. Es al que
   /// vuelve al reprogramarse (y de ahí sube si los pagos ya dan para más).
