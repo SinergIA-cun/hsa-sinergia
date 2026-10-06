@@ -10,7 +10,7 @@ import {
   PRODUCTO_INFO,
   ordenarEspacios,
 } from '@hsa/shared';
-import { loadEstadoCuentaBulk } from '../quotes/service.js';
+import { loadEstadoCuentaBulk, rentaBasePorEspacio } from '../quotes/service.js';
 import { PRODUCTOS_DEL_CONTRATO } from '../cargos/contrato.js';
 
 /** Rango de fechas y paginación comunes a todos los endpoints del BI. */
@@ -129,8 +129,22 @@ export async function biEventos(db: PrismaClient, r: RangoBI) {
     tipoEvento: q.eventType?.nombre ?? null,
     invitados: q.invitados,
     espacios: q.spaceIds,
-    // Los mismos, por nombre y en el mismo orden (Cúpula, Arcos, Campos…).
+    // Los mismos, por nombre y en el mismo orden.
     salones: q.spaceIds.map((id) => nombreEspacio.get(id) ?? id),
+    // El principal es el PRIMERO de `espacios`: el que va en el código del evento
+    // (`…-CUPULA`). `null` en un evento sin salón (solo capilla, sesión de fotos).
+    salonPrincipal: q.spaceIds[0] ? { id: q.spaceIds[0], nombre: nombreEspacio.get(q.spaceIds[0]) ?? q.spaceIds[0] } : null,
+    // La renta repartida entre sus salones, en proporción a la renta de catálogo
+    // de cada uno (la misma regla que el plan de pagos). Suma `renta.total`, con
+    // horas extra, descuentos y cargos que suben el contrato ya repartidos.
+    rentaPorSalon: [...rentaBasePorEspacio(q.breakdown, q.spaceIds, q.rentaTotal)].map(([id, monto]) => ({
+      espacioId: id,
+      salon: nombreEspacio.get(id) ?? id,
+      monto,
+    })),
+    // La capilla es una marca del evento: no cobra ni bloquea.
+    usaCapilla: q.usaCapilla,
+    capillaHorario: q.capillaHorario,
     esCortesia: q.esCortesia,
     // Descuento sobre la renta del local: de cortesía familiar o de promoción.
     esPromocion: q.esPromocion,

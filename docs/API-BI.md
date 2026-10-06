@@ -174,6 +174,10 @@ fecha: `fechaEvento` es la que TENÍA) o `cancelada`. Los dos sueltan la fecha: 
 | `standby` | `null`, o `{ desde, motivo, estatusPrevio }`: desde cuándo está sin fecha y a qué estatus vuelve al reprogramarse. |
 | `cancelacion` | `null`, o `{ fecha, motivo, porcentaje, pagado, devolver, retenido, devuelto, pendiente }`: lo pagado al cancelar, el porcentaje que se acordó devolver, cuánto es, lo que se retiene, lo ya devuelto desde la cancelación y lo que falta. Las devoluciones en sí salen en `/devoluciones`. |
 | `descuento` | `null`, o `{ porcentaje, monto, motivo }`: el descuento sobre la renta, en **porcentaje o en monto fijo** (pesos con IVA); uno de los dos viene en `null`. `esCortesia` / `esPromocion` dicen de qué tipo es. Ya está aplicado en `renta.total` y `total`. |
+| `salones` | Los nombres de `espacios`, en el mismo orden. |
+| `salonPrincipal` | `{ id, nombre }`: el **primero** de `espacios`, que es el que va en el código del evento (`…-CUPULA`). `null` en un evento sin salón (solo capilla, sesión de fotos). |
+| `rentaPorSalon` | `[{ espacioId, salon, monto }]`: la renta repartida entre los salones del evento, en proporción a la renta de catálogo de cada uno (la misma regla que el plan de pagos). **Suma `renta.total`**, con horas extra, descuento y cargos que suben el contrato ya repartidos. Un evento importado con varios salones se reparte en partes iguales. Vacío en un evento sin salón. |
+| `usaCapilla`, `capillaHorario` | La capilla es una marca del evento (no cobra ni bloquea); el horario es texto libre o `null`. |
 
 > El historial empieza el 1-oct-2026 con el código que cada evento tenía ese día. Los
 > cambios de antes no se pueden reconstruir: el código depende del nombre del cliente en ese
@@ -335,6 +339,35 @@ para el neto, restar esto.
   (de su saldo a favor; `depositoFolio` dice de qué depósito, `null` = del saldo que le
   liberaron sus apartados).
 - `notaCreditoUuid`: la nota de crédito (CFDI de egreso), si el pago ya estaba facturado.
+
+Cada renglón (todos los campos; los de evento son `null` en una devolución de banquetero):
+
+```json
+{
+  "id": "cm…",
+  "fecha": "2026-10-20",
+  "monto": 15000,
+  "metodo": "transferencia",
+  "formas": [{ "forma": "transferencia", "monto": 15000 }],
+  "de": "evento",
+  "quoteId": "cm…",
+  "eventoFolio": "26SEP-0151",
+  "eventoCodigo": "14NOV26-JPEREZ-ARCOS",
+  "cliente": "Juan Pérez",
+  "banqueteroId": null,
+  "depositoFolio": null,
+  "motivo": "Cancelación: se devuelve el 50% de lo pagado",
+  "referencia": "SPEI 0043128",
+  "notaCreditoUuid": null,
+  "registradoPor": "Administrador",
+  "anulado": false,
+  "motivoAnulacion": null
+}
+```
+
+Una devolución de **banquetero** (de su saldo a favor, sin evento) trae `de: "banquetero"`,
+**`quoteId`, `eventoFolio` y `eventoCodigo` en `null`**, `banqueteroId` con su id, `cliente` con
+el nombre del banquetero y, si salió de un depósito, `depositoFolio`.
 
 ### Formas de pago
 

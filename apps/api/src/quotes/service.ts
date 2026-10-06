@@ -418,7 +418,7 @@ export async function assertEspaciosDisponibles(
  * en ceros y el prorrateo reparte en partes iguales, que para un solo espacio es
  * el monto completo.
  */
-function rentaBasePorEspacio(breakdown: unknown, spaceIds: string[], rentaTotal: number): Map<string, number> {
+export function rentaBasePorEspacio(breakdown: unknown, spaceIds: string[], rentaTotal: number): Map<string, number> {
   const lines = (breakdown as { lines?: { spaceId?: string; monto?: number }[] } | null)?.lines ?? [];
   const catalogo = new Map<string, number>();
   for (const id of spaceIds) catalogo.set(id, 0);
