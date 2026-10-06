@@ -107,4 +107,29 @@ describe('lectura incremental del BI', () => {
     const r = await app.inject({ method: 'GET', url: `/api/bi/eventos?ids=${muchos}`, headers: { 'x-api-key': LLAVE } });
     expect(r.statusCode).toBe(400);
   });
+
+  it('/eventos trae la capilla, el salón principal y la renta repartida por salón (suma la renta)', async () => {
+    const cupulaId = (await prisma.space.findFirstOrThrow({ where: { nombre: 'Cúpula' } })).id;
+    const q = await createQuote(
+      prisma,
+      {
+        fecha: sabado(),
+        invitados: 300,
+        spaceIds: [cupulaId, arcosId],
+        eventTypeId: bodaId,
+        usaCapilla: true,
+        capillaHorario: '17:00',
+        client: { nombre: 'Dos salones', telefono: '5512121299' },
+      },
+      admin,
+    );
+    quotes.push(q.id);
+    const [ev] = (await get(`/api/bi/eventos?ids=${q.id}`)).datos;
+    expect(ev).toMatchObject({ usaCapilla: true, capillaHorario: '17:00', salonPrincipal: { id: cupulaId, nombre: 'Cúpula' } });
+    expect(ev.rentaPorSalon.map((r: { salon: string }) => r.salon)).toEqual(['Cúpula', 'Arcos']);
+    const suma = ev.rentaPorSalon.reduce((s: number, r: { monto: number }) => s + r.monto, 0);
+    expect(suma).toBeCloseTo(ev.renta.total, 2);
+    expect(ev.rentaPorSalon.every((r: { monto: number }) => r.monto > 0)).toBe(true);
+  });
 });
+
