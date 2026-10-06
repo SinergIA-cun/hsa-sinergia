@@ -110,6 +110,10 @@ export async function clonarCatalogo(db: PrismaClient, rawInput: unknown) {
           kind: a.kind,
           price: conIncremento(a.price, pct),
           activo: a.activo,
+          // El mismo servicio del año pasado: misma clave, mismo proveedor y comisión.
+          clave: a.clave,
+          proveedorId: a.proveedorId,
+          comisionPct: a.comisionPct,
         })),
       });
     }
@@ -142,6 +146,7 @@ export async function clonarCatalogo(db: PrismaClient, rawInput: unknown) {
           nombre: p.nombre,
           ivaIncluido: p.ivaIncluido,
           incluye: p.incluye,
+          clave: p.clave,
           brackets: {
             create: p.brackets.map((b) => ({
               min: b.min,

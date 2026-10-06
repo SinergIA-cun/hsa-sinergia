@@ -77,6 +77,37 @@ export interface QuoteLine {
   /** Si el renglón es un cargo del punto de venta que sube el contrato (horas
    *  extra, PAX extra): el id del cargo. Se quita y se vuelve a poner con él. */
   cargoId?: string;
+  /** Qué es el renglón, en datos y no en texto: lo lee el BI (`desglose[]`). Los
+   *  desgloses guardados antes del 6-oct-2026 pueden no traerlo. */
+  ref?: LineaRef;
+}
+
+/** Qué se vendió en un renglón del desglose. */
+export type TipoRenglon =
+  | 'rentaSalon'
+  | 'descuento'
+  | 'horasExtra'
+  | 'capilla'
+  | 'descuentoAlimentos'
+  | 'cargoContrato'
+  | 'alimentos'
+  | 'servicioCatalogo'
+  | 'djHoraExtra'
+  | 'servicioEvento'
+  | 'pactado';
+
+export type UnidadRenglon = 'evento' | 'personas' | 'horas' | 'unidades';
+
+export interface LineaRef {
+  tipo: TipoRenglon;
+  /** spaceId (rentaSalon), foodPackageId (alimentos), addOnId (servicioCatalogo),
+   *  producto del punto de venta (cargoContrato), posición del extra
+   *  (servicioEvento). Sin `id` en los demás. */
+  id?: string;
+  cantidad: number;
+  unidad: UnidadRenglon;
+  /** En la misma base que `monto`: con IVA si `ivaIncluido`, sin IVA si no. */
+  precioUnitario: number;
 }
 
 export interface QuoteBreakdown {

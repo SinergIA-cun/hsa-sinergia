@@ -116,6 +116,13 @@ export function lineaDeCargo(c: { id: string; producto: ProductoCargo; descripci
     ivaIncluido: true,
     grupo: 'renta',
     cargoId: c.id,
+    ref: {
+      tipo: 'cargoContrato',
+      id: c.producto,
+      cantidad: c.cantidad,
+      unidad: PRODUCTO_INFO[c.producto].unidad === 'horas' ? 'horas' : 'personas',
+      precioUnitario: c.precioUnitario,
+    },
   };
 };
 

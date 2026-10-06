@@ -39,6 +39,9 @@ function round2(n: number): number {
  * - Cada línea lleva `grupo`: `renta` (espacios, horas extra, capilla, descuentos)
  *   u `otros` (alimentos y servicios). `rentaTotal + otrosTotal == total`.
  */
+/** Cómo se cuenta un servicio según su tipo de cobro. */
+const UNIDAD_DE = { fijo: 'evento', porPersona: 'personas', porUnidad: 'unidades' } as const;
+
 export function computeQuote(
   catalog: Catalog,
   sel: QuoteSelection,
@@ -110,6 +113,7 @@ export function computeQuote(
       ivaIncluido: true,
       grupo: 'renta',
       spaceId,
+      ref: { tipo: 'rentaSalon', id: spaceId, cantidad: 1, unidad: 'evento', precioUnitario: round2(monto) },
     });
   }
 
@@ -131,6 +135,7 @@ export function computeQuote(
       monto: round2(-monto),
       ivaIncluido: true,
       grupo: 'renta',
+      ref: { tipo: 'descuento', cantidad: 1, unidad: 'evento', precioUnitario: round2(-monto) },
     });
   } else if (sel.descuentoMonto != null && sel.descuentoMonto > 0) {
     // En monto fijo: nunca más que la renta de los salones (la renta no queda negativa).
@@ -142,6 +147,7 @@ export function computeQuote(
       monto: round2(-monto),
       ivaIncluido: true,
       grupo: 'renta',
+      ref: { tipo: 'descuento', cantidad: 1, unidad: 'evento', precioUnitario: round2(-monto) },
     });
   }
 
@@ -157,6 +163,7 @@ export function computeQuote(
       monto: round2(monto),
       ivaIncluido: true,
       grupo: 'renta',
+      ref: { tipo: 'horasExtra', cantidad: sel.horasExtra, unidad: 'horas', precioUnitario: round2(monto / sel.horasExtra) },
     });
   }
 
@@ -172,6 +179,7 @@ export function computeQuote(
       monto: round2(monto),
       ivaIncluido: true,
       grupo: 'renta',
+      ref: { tipo: 'capilla', cantidad: 1, unidad: 'evento', precioUnitario: round2(monto) },
     });
   }
 
@@ -202,6 +210,7 @@ export function computeQuote(
       monto: round2(monto),
       ivaIncluido: pkg.ivaIncluded,
       grupo: 'otros',
+      ref: { tipo: 'alimentos', id: pkg.id, cantidad: sel.invitados, unidad: 'personas', precioUnitario: row.pricePerPerson },
     });
 
     // El descuento del 5% aplica SOLO a la renta => va en el grupo de renta, y se
@@ -213,6 +222,7 @@ export function computeQuote(
       monto: round2(-descuento),
       ivaIncluido: true,
       grupo: 'renta',
+      ref: { tipo: 'descuentoAlimentos', cantidad: 1, unidad: 'evento', precioUnitario: round2(-descuento) },
     });
   }
 
@@ -227,6 +237,7 @@ export function computeQuote(
     else if (addon.kind === 'porPersona') monto = addon.price * sel.invitados;
     else monto = addon.price * a.cantidad;
     addonsBaseSinIva += monto;
+    const cantidadAddOn = addon.kind === 'fijo' ? 1 : addon.kind === 'porPersona' ? sel.invitados : a.cantidad;
     lines.push({
       concepto: addon.name,
       detalle:
@@ -236,6 +247,7 @@ export function computeQuote(
       monto: round2(monto),
       ivaIncluido: false,
       grupo: 'otros',
+      ref: { tipo: 'servicioCatalogo', id: addon.id, cantidad: cantidadAddOn, unidad: UNIDAD_DE[addon.kind], precioUnitario: addon.price },
     });
   }
 
@@ -253,6 +265,7 @@ export function computeQuote(
         monto: round2(monto),
         ivaIncluido: false,
         grupo: 'otros',
+        ref: { tipo: 'djHoraExtra', cantidad: sel.horasExtra, unidad: 'horas', precioUnitario: precioDj },
       });
     }
   }
@@ -264,7 +277,7 @@ export function computeQuote(
   //     Van al grupo `otros`, no a `renta`: con eso quedan fuera de la base del
   //     complemento y de la de los descuentos. Si entraran a la renta cambiarían
   //     el plan de pagos de todo evento que use un extra.
-  for (const e of sel.extras) {
+  for (const [i, e] of sel.extras.entries()) {
     let monto: number;
     if (e.kind === 'fijo') monto = e.monto;
     else if (e.kind === 'porPersona') monto = e.monto * sel.invitados;
@@ -276,6 +289,13 @@ export function computeQuote(
       monto: round2(monto),
       ivaIncluido: true,
       grupo: 'otros',
+      ref: {
+        tipo: 'servicioEvento',
+        id: String(i + 1),
+        cantidad: e.kind === 'fijo' ? 1 : e.kind === 'porPersona' ? sel.invitados : e.cantidad,
+        unidad: UNIDAD_DE[e.kind],
+        precioUnitario: e.monto,
+      },
     });
   }
 

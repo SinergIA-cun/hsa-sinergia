@@ -9,6 +9,8 @@ import {
   saldoDeCargos,
   PRODUCTO_INFO,
   ordenarEspacios,
+  desgloseParaBI,
+  type QuoteLine,
 } from '@hsa/shared';
 import { loadEstadoCuentaBulk, rentaBasePorEspacio } from '../quotes/service.js';
 import { PRODUCTOS_DEL_CONTRATO } from '../cargos/contrato.js';
@@ -41,7 +43,67 @@ const incluirEvento = {
   createdBy: { select: { id: true, nombre: true } },
   banquetero: { select: { id: true, nombre: true } },
   apartado: { select: { importadoBI: true } },
+  priceList: { select: { ivaRate: true } },
 };
+
+/** Cómo se cuenta un servicio del catálogo según su tipo de cobro. */
+const UNIDAD_DE_KIND = { fijo: 'evento', porPersona: 'personas', porUnidad: 'unidades' } as const;
+
+type Breakdownish = { lines?: QuoteLine[] } | null;
+const lineasDe = (b: unknown): QuoteLine[] => (b as Breakdownish)?.lines ?? [];
+
+/**
+ * Lo que el desglose de los eventos nombra por id (servicios y paquetes de SU
+ * catálogo), traducido a su clave fija, su categoría y su proveedor. En bloque.
+ */
+async function referenciasDelDesglose(db: PrismaClient, lineas: QuoteLine[]) {
+  const ids = (tipo: string) => [...new Set(lineas.filter((l) => l.ref?.tipo === tipo && l.ref.id).map((l) => l.ref!.id!))];
+  const [servicios, paquetes] = await Promise.all([
+    db.addOn.findMany({
+      where: { id: { in: ids('servicioCatalogo') } },
+      select: { id: true, clave: true, categoria: true, comisionPct: true, proveedor: { select: { id: true, nombre: true } } },
+    }),
+    db.foodPackage.findMany({ where: { id: { in: ids('alimentos') } }, select: { id: true, clave: true } }),
+  ]);
+  return {
+    servicio: new Map(servicios.map((a) => [a.id, a])),
+    paquete: new Map(paquetes.map((p) => [p.id, p.clave])),
+  };
+}
+
+/**
+ * `desglose[]` de un evento: cada renglón con la clave fija de lo que se vendió.
+ *
+ * La comisión es la del servicio en el catálogo DEL EVENTO (cada evento se queda
+ * con su catálogo), sobre el precio sin IVA del renglón.
+ */
+function desgloseDelEvento(
+  q: { id: string; breakdown: unknown; rentaTotal: number; total: number; priceList: { ivaRate: number } | null },
+  refs: Awaited<ReturnType<typeof referenciasDelDesglose>>,
+) {
+  const renglones = desgloseParaBI(lineasDe(q.breakdown), {
+    quoteId: q.id,
+    ivaRate: q.priceList?.ivaRate ?? 0.16,
+    rentaTotal: q.rentaTotal,
+    otrosTotal: q.total - q.rentaTotal,
+  });
+  return renglones.map(({ refId, ...r }) => {
+    const servicio = r.tipo === 'servicioCatalogo' && refId ? refs.servicio.get(refId) : undefined;
+    const clave =
+      r.tipo === 'servicioCatalogo' ? servicio?.clave ?? null
+      : r.tipo === 'alimentos' ? (refId ? refs.paquete.get(refId) ?? null : null)
+      : r.tipo === 'rentaSalon' || r.tipo === 'cargoContrato' ? refId
+      : null;
+    const pct = servicio?.proveedor ? servicio.comisionPct : null;
+    return {
+      ...r,
+      clave,
+      categoria: servicio?.categoria ?? null,
+      proveedor: servicio?.proveedor ? { clave: servicio.proveedor.id, nombre: servicio.proveedor.nombre } : null,
+      comision: pct != null ? { porcentaje: pct, monto: Math.round(r.subtotal * pct) / 100 } : null,
+    };
+  });
+}
 
 /**
  * El desglose se guarda como JSON. Los eventos creados antes de que el motor
@@ -97,6 +159,7 @@ export async function biEventos(db: PrismaClient, r: RangoBI) {
         fechaEvento: c.fechaEvento.toISOString().slice(0, 10),
         desde: c.createdAt.toISOString(),
       }));
+  const refs = await referenciasDelDesglose(db, quotes.flatMap((q) => lineasDe(q.breakdown)));
   const cuentaDe = (id: string) =>
     saldoDeCargos(
       cargos.filter((c) => c.quoteId === id),
@@ -161,6 +224,8 @@ export async function biEventos(db: PrismaClient, r: RangoBI) {
     renta: { subtotal: rentaSubtotalDe(q.breakdown), total: q.rentaTotal },
     otros: { total: q.total - q.rentaTotal },
     total: q.total,
+    // Renglón por renglón, con la clave fija de lo vendido. Suma `renta.total` + `otros.total`.
+    desglose: desgloseDelEvento(q, refs),
     // La cuenta APARTE del punto de venta (multas, daños, DJ, alimentos, PAX
     // banquete): NO está en `total`. Las horas extra de salón y los PAX extra sí
     // están en `total` y en `renta` (suben el contrato). Ver /cargos.
@@ -598,13 +663,54 @@ export async function biApartados(db: PrismaClient, r: RangoBI) {
  * BI traduzca sin adivinar. No pagina ni lleva rango.
  */
 export async function biCatalogos(db: PrismaClient) {
-  const [espacios, tipos] = await Promise.all([
+  const [espacios, tipos, listas, servicios, paquetes, proveedores] = await Promise.all([
     db.space.findMany({ select: { id: true, nombre: true } }).then(ordenarEspacios),
     db.eventType.findMany({ select: { id: true, nombre: true, slug: true }, orderBy: { nombre: 'asc' } }),
+    db.priceList.findMany({ orderBy: { anio: 'asc' } }),
+    db.addOn.findMany({ orderBy: [{ priceListId: 'asc' }, { nombre: 'asc' }] }),
+    db.foodPackage.findMany({
+      include: { brackets: { orderBy: { min: 'asc' } }, eventType: { select: { id: true, nombre: true } } },
+      orderBy: [{ priceListId: 'asc' }, { nombre: 'asc' }],
+    }),
+    db.proveedor.findMany({ orderBy: { nombre: 'asc' } }),
   ]);
+  const nombreProveedor = new Map(proveedores.map((p) => [p.id, p.nombre]));
   return {
     espacios,
     tiposEvento: tipos,
+    // Los catálogos de precios (uno por año). Cada evento se queda con el suyo.
+    catalogos: listas.map((l) => ({ id: l.id, nombre: l.nombre, anio: l.anio, activo: l.activa, capillaSabado: l.capillaSabado, ivaRate: l.ivaRate })),
+    // Servicios adicionales de TODOS los catálogos, tal como los tiene la hacienda.
+    // `clave` es el mismo servicio de un año a otro; `id` cambia con el catálogo.
+    servicios: servicios.map((a) => ({
+      id: a.id,
+      clave: a.clave,
+      catalogoId: a.priceListId,
+      nombre: a.nombre,
+      categoria: a.categoria,
+      tipoCobro: a.kind,
+      unidad: UNIDAD_DE_KIND[a.kind],
+      // Sin IVA: al evento se le agrega.
+      precio: a.price,
+      activo: a.activo,
+      proveedor: a.proveedorId ? { clave: a.proveedorId, nombre: nombreProveedor.get(a.proveedorId) ?? null } : null,
+      comisionPct: a.comisionPct,
+    })),
+    paquetesAlimentos: paquetes.map((p) => ({
+      id: p.id,
+      clave: p.clave,
+      catalogoId: p.priceListId,
+      tipoEvento: p.eventType,
+      nombre: p.nombre,
+      ivaIncluido: p.ivaIncluido,
+      incluye: p.incluye,
+      precios: p.brackets.map((b) => ({ min: b.min, max: b.max, precioPorPersona: b.pricePerPerson })),
+    })),
+    proveedores: proveedores.map((p) => ({ clave: p.id, nombre: p.nombre, activo: p.activo })),
+    tiposRenglon: [
+      'rentaSalon', 'descuento', 'horasExtra', 'capilla', 'descuentoAlimentos', 'cargoContrato',
+      'alimentos', 'servicioCatalogo', 'djHoraExtra', 'servicioEvento', 'pactado', 'otro',
+    ],
     estatusEvento: ['borrador', 'formalizada', 'complementada', 'liquidada', 'standby', 'cancelada'],
     // Las etiquetas del BI. `complemento` ya no se usa (5-oct-2026).
     conceptosPago: ['anticipo', 'aCuenta', 'finiquito'],

@@ -21,6 +21,7 @@ import { getAvailability } from '../availability/service.js';
 import { cuentaDelEvento, productosDelEvento } from '../cargos/cuenta.js';
 import { sincronizarContrato } from '../cargos/contrato.js';
 import { logActivity } from './activityLog.js';
+import { cambiosDeServicios, conNombres, type ServiciosDeCotizacion } from './serviciosDiff.js';
 import { calcularCodigo, motivosDelCambio, renglonDeCodigo, historialDeCodigos } from './codigo.js';
 import { resumenCancelacion } from './ciclo.js';
 import { archivarEvento, yaPaso } from '../historico/archivar.js';
@@ -235,7 +236,7 @@ async function computeAndEnrich(db: PrismaClient, selection: QuoteSelection, pri
   return { breakdown, enriched };
 }
 
-function toSelection(input: {
+export function toSelection(input: {
   fecha: string;
   invitados: number;
   spaceIds: string[];
@@ -869,7 +870,7 @@ export function assertNotTrashed(quote: { deletedAt: Date | null }): void {
 }
 
 export async function updateQuote(db: PrismaClient, id: string, rawInput: unknown, actor: Actor) {
-  const existing = await db.quote.findFirst({ where: { id, ...ownershipWhere(actor) } });
+  const existing = await db.quote.findFirst({ where: { id, ...ownershipWhere(actor) }, include: SELECCION_INCLUDE });
   if (!existing) throw new QuoteError(404, 'Cotización no encontrada');
   assertNotTrashed(existing);
   assertConFecha(existing.status);
@@ -1076,12 +1077,19 @@ export async function updateQuote(db: PrismaClient, id: string, rawInput: unknow
     total: updated.total,
     rentaTotal: updated.rentaTotal,
   };
-  if (JSON.stringify(antes) !== JSON.stringify(despues)) {
+  const serviciosDe = (q: { foodPackageId: string | null; addOns: Prisma.JsonValue; extras: ServiciosDeCotizacion['extras'] }) => ({
+    foodPackageId: q.foodPackageId,
+    addOns: (q.addOns as unknown as ServiciosDeCotizacion['addOns'] | null) ?? [],
+    extras: q.extras,
+  });
+  const cambioServicios = cambiosDeServicios(serviciosDe(existing), serviciosDe({ ...updated, extras: input.extras ?? [] }));
+  if (JSON.stringify(antes) !== JSON.stringify(despues) || cambioServicios) {
     await logActivity(db, {
       quoteId: id,
       tipo: 'edicion',
       descripcion: `Edición en ${existing.status}: total ${existing.total} → ${updated.total}`,
       meta: {
+        ...(cambioServicios ? { servicios: (await conNombres(db, cambioServicios)) as unknown as Prisma.InputJsonValue } : {}),
         invitadosAntes: antes.invitados, invitadosDespues: despues.invitados,
         espaciosAntes: existing.spaceIds, espaciosDespues: updated.spaceIds,
         fechaAntes: antes.fecha, fechaDespues: despues.fecha,
