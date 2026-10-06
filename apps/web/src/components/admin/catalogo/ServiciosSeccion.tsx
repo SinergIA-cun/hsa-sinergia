@@ -2,8 +2,9 @@ import { useState, type FormEvent } from 'react';
 import { Plus, Save, Check, X, Pencil } from 'lucide-react';
 import { formatMXN } from '../../../lib/money.ts';
 import { Button, Field, MoneyInput, SelectInput, TextInput } from '../../ui.tsx';
-import type { AddOn } from '../../../lib/types.ts';
+import type { AddOn, Proveedor } from '../../../lib/types.ts';
 import { ConfirmDelete } from '../shared.tsx';
+import { useProveedores } from '../ProveedoresSection.tsx';
 import { useGuardar } from './guardado.tsx';
 
 const KIND_LABEL: Record<AddOn['kind'], string> = {
@@ -12,8 +13,67 @@ const KIND_LABEL: Record<AddOn['kind'], string> = {
   porUnidad: 'Por unidad',
 };
 
-export type ServicioPatch = Partial<Pick<AddOn, 'nombre' | 'categoria' | 'kind' | 'price' | 'activo'>>;
-export type ServicioNuevo = Pick<AddOn, 'nombre' | 'categoria' | 'kind' | 'price'>;
+export type ServicioPatch = Partial<Pick<AddOn, 'nombre' | 'categoria' | 'kind' | 'price' | 'activo' | 'proveedorId' | 'comisionPct'>>;
+export type ServicioNuevo = Pick<AddOn, 'nombre' | 'categoria' | 'kind' | 'price' | 'proveedorId' | 'comisionPct'>;
+
+/** "" = sin comisión; si no, un porcentaje de 0 a 100 (acepta decimales). */
+function leerComision(v: string): number | null | undefined {
+  if (v.trim() === '') return null;
+  const n = Number(v);
+  return Number.isFinite(n) && n >= 0 && n <= 100 ? n : undefined;
+}
+
+/**
+ * Proveedor y comisión del servicio. La comisión es el % del precio sin IVA que
+ * gana la hacienda; sin proveedor no hay comisión.
+ */
+function ProveedorCampos({
+  proveedores,
+  proveedorId,
+  comision,
+  onProveedor,
+  onComision,
+}: {
+  proveedores: Proveedor[];
+  proveedorId: string;
+  comision: string;
+  onProveedor: (id: string) => void;
+  onComision: (v: string) => void;
+}) {
+  // Los activos, más el que ya tiene aunque se haya desactivado.
+  const opciones = proveedores.filter((p) => p.activo || p.id === proveedorId);
+  return (
+    <div className="grid grid-cols-[1.6fr_1fr] gap-2">
+      <SelectInput
+        aria-label="Proveedor"
+        value={proveedorId}
+        onChange={(e) => {
+          onProveedor(e.target.value);
+          if (!e.target.value) onComision('');
+        }}
+      >
+        <option value="">Sin proveedor</option>
+        {opciones.map((p) => (
+          <option key={p.id} value={p.id}>
+            {p.nombre}
+          </option>
+        ))}
+      </SelectInput>
+      <div className="relative">
+        <TextInput
+          aria-label="Comisión (%)"
+          inputMode="decimal"
+          placeholder="Comisión"
+          disabled={!proveedorId}
+          value={comision}
+          onChange={(e) => onComision(e.target.value)}
+          className="pr-7"
+        />
+        <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm text-charcoal-soft">%</span>
+      </div>
+    </div>
+  );
+}
 
 /** Los servicios sin categoría van al final, bajo este nombre (igual que al cotizar). */
 const SIN_CATEGORIA = 'Otros servicios';
@@ -73,6 +133,7 @@ export function ServiciosSeccion({
   onEditar: (id: string, datos: ServicioPatch) => Promise<unknown>;
   onBorrar: (id: string) => Promise<unknown>;
 }) {
+  const { data: proveedores = [] } = useProveedores();
   const categorias = [...new Set(servicios.map((s) => s.categoria?.trim()).filter((c): c is string => !!c))].sort(
     (a, b) => a.localeCompare(b, 'es'),
   );
@@ -105,6 +166,7 @@ export function ServiciosSeccion({
                   <ServicioRow
                     key={s.id}
                     servicio={s}
+                    proveedores={proveedores}
                     onEditar={(datos) => onEditar(s.id, datos)}
                     onBorrar={() => onBorrar(s.id)}
                   />
@@ -114,17 +176,19 @@ export function ServiciosSeccion({
           ))
         )}
       </div>
-      <NuevoServicio onCrear={onCrear} />
+      <NuevoServicio onCrear={onCrear} proveedores={proveedores} />
     </div>
   );
 }
 
 function ServicioRow({
   servicio,
+  proveedores,
   onEditar,
   onBorrar,
 }: {
   servicio: AddOn;
+  proveedores: Proveedor[];
   onEditar: (datos: ServicioPatch) => Promise<unknown>;
   onBorrar: () => Promise<unknown>;
 }) {
@@ -133,7 +197,11 @@ function ServicioRow({
   const [categoria, setCategoria] = useState(servicio.categoria ?? '');
   const [kind, setKind] = useState<AddOn['kind']>(servicio.kind);
   const [price, setPrice] = useState(String(servicio.price));
+  const [proveedorId, setProveedorId] = useState(servicio.proveedorId ?? '');
+  const [comision, setComision] = useState(servicio.comisionPct == null ? '' : String(servicio.comisionPct));
+  const [invalido, setInvalido] = useState('');
   const { correr, pendiente, error } = useGuardar('No se pudo guardar el servicio.');
+  const proveedor = proveedores.find((p) => p.id === servicio.proveedorId);
 
   function descartar() {
     setEditando(false);
@@ -141,13 +209,30 @@ function ServicioRow({
     setCategoria(servicio.categoria ?? '');
     setKind(servicio.kind);
     setPrice(String(servicio.price));
+    setProveedorId(servicio.proveedorId ?? '');
+    setComision(servicio.comisionPct == null ? '' : String(servicio.comisionPct));
+    setInvalido('');
   }
 
   async function guardar() {
     const n = Number(price);
     if (!nombre.trim() || !Number.isInteger(n) || n < 0) return;
+    const pct = leerComision(comision);
+    if (pct === undefined) {
+      setInvalido('La comisión es un porcentaje de 0 a 100.');
+      return;
+    }
+    setInvalido('');
     const bien = await correr(
-      () => onEditar({ nombre: nombre.trim(), categoria: categoria.trim() || null, kind, price: n }),
+      () =>
+        onEditar({
+          nombre: nombre.trim(),
+          categoria: categoria.trim() || null,
+          kind,
+          price: n,
+          proveedorId: proveedorId || null,
+          comisionPct: proveedorId ? pct : null,
+        }),
       'Guardado.',
     );
     if (bien) setEditando(false);
@@ -166,9 +251,16 @@ function ServicioRow({
           <KindSelect value={kind} onChange={setKind} />
           <MoneyInput aria-label="Precio del servicio" value={price} onValue={setPrice} />
         </div>
-        {error && (
+        <ProveedorCampos
+          proveedores={proveedores}
+          proveedorId={proveedorId}
+          comision={comision}
+          onProveedor={setProveedorId}
+          onComision={setComision}
+        />
+        {(invalido || error) && (
           <p role="alert" className="text-xs text-wine">
-            {error}
+            {invalido || error}
           </p>
         )}
         <div className="flex items-center gap-2">
@@ -201,6 +293,8 @@ function ServicioRow({
         </p>
         <p className="text-xs text-charcoal-soft">
           {KIND_LABEL[servicio.kind]} · {formatMXN(servicio.price)}
+          {proveedor && ` · ${proveedor.nombre}`}
+          {proveedor && servicio.comisionPct != null && ` · ${servicio.comisionPct}% comisión`}
           {!servicio.activo && ' · no se ofrece, pero el catálogo lo sigue resolviendo'}
         </p>
       </div>
@@ -236,11 +330,19 @@ function ServicioRow({
   );
 }
 
-function NuevoServicio({ onCrear }: { onCrear: (datos: ServicioNuevo) => Promise<unknown> }) {
+function NuevoServicio({
+  onCrear,
+  proveedores,
+}: {
+  onCrear: (datos: ServicioNuevo) => Promise<unknown>;
+  proveedores: Proveedor[];
+}) {
   const [nombre, setNombre] = useState('');
   const [categoria, setCategoria] = useState('');
   const [kind, setKind] = useState<AddOn['kind']>('fijo');
   const [price, setPrice] = useState('');
+  const [proveedorId, setProveedorId] = useState('');
+  const [comision, setComision] = useState('');
   const [invalido, setInvalido] = useState('');
   const { correr, pendiente, error, ok } = useGuardar('No se pudo crear el servicio.');
 
@@ -251,9 +353,22 @@ function NuevoServicio({ onCrear }: { onCrear: (datos: ServicioNuevo) => Promise
       setInvalido('Pon un nombre y un precio en pesos enteros (≥ 0).');
       return;
     }
+    const pct = leerComision(comision);
+    if (pct === undefined) {
+      setInvalido('La comisión es un porcentaje de 0 a 100.');
+      return;
+    }
     setInvalido('');
     const bien = await correr(
-      () => onCrear({ nombre: nombre.trim(), categoria: categoria.trim() || null, kind, price: n }),
+      () =>
+        onCrear({
+          nombre: nombre.trim(),
+          categoria: categoria.trim() || null,
+          kind,
+          price: n,
+          proveedorId: proveedorId || null,
+          comisionPct: proveedorId ? pct : null,
+        }),
       `“${nombre.trim()}” agregado.`,
     );
     if (bien) {
@@ -283,6 +398,15 @@ function NuevoServicio({ onCrear }: { onCrear: (datos: ServicioNuevo) => Promise
       </Field>
       <Field label="Precio (MXN)" hint="Pesos enteros, sin centavos.">
         <MoneyInput value={price} onValue={setPrice} placeholder="0" />
+      </Field>
+      <Field label="Proveedor y comisión" hint="Opcional. La comisión es el % del precio sin IVA que gana la hacienda.">
+        <ProveedorCampos
+          proveedores={proveedores}
+          proveedorId={proveedorId}
+          comision={comision}
+          onProveedor={setProveedorId}
+          onComision={setComision}
+        />
       </Field>
       {(invalido || error) && (
         <p role="alert" className="text-xs text-wine">

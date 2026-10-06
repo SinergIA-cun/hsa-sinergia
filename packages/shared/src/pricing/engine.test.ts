@@ -582,9 +582,19 @@ describe('computeQuote · descuento de cortesía', () => {
 // sobrevivido los tres cambios sin moverse una línea. NO se tocan: si se ponen
 // rojos, algo movió dinero.
 // ---------------------------------------------------------------------------
+/** `ref` (6-oct-2026) es una etiqueta para el BI, no dinero: se compara aparte. */
+const sinRef = (b: ReturnType<typeof computeQuote>) => ({
+  ...b,
+  lines: b.lines.map((l) => {
+    const copia = { ...l };
+    delete copia.ref;
+    return copia;
+  }),
+});
+
 describe('computeQuote · no-regresión: sin extras y sin descuento nada se movió', () => {
   it('renta sola: desglose idéntico al de antes del plan G', () => {
-    expect(computeQuote(catalog, mk())).toEqual({
+    expect(sinRef(computeQuote(catalog, mk()))).toEqual({
       lines: [{ concepto: 'Renta arcos', monto: 108500, ivaIncluido: true, grupo: 'renta', spaceId: 'arcos' }],
       subtotal: 93534.48,
       iva: 14965.52,
@@ -610,7 +620,7 @@ describe('computeQuote · no-regresión: sin extras y sin descuento nada se movi
         addOns: [{ addOnId: 'dj', cantidad: 1 }],
       }),
     );
-    expect(r).toEqual({
+    expect(sinRef(r)).toEqual({
       lines: [
         { concepto: 'Renta arcos', monto: 108500, ivaIncluido: true, grupo: 'renta', spaceId: 'arcos' },
         { concepto: 'Horas extra', detalle: '2 × 5% renta', monto: 10850, ivaIncluido: true, grupo: 'renta' },
@@ -630,5 +640,37 @@ describe('computeQuote · no-regresión: sin extras y sin descuento nada se movi
       otrosIva: 33376,
       otrosTotal: 241976,
     });
+  });
+});
+
+describe('computeQuote · ref: qué es cada renglón, en datos', () => {
+  it('cada renglón dice su tipo, cantidad y precio unitario en la base de su monto', () => {
+    const r = computeQuote(
+      catalog,
+      mk({
+        horasExtra: 2,
+        usaCapilla: true,
+        eventTypeId: 'boda',
+        usaDjHoraExtra: true,
+        foodPackageId: 'boda-supreme',
+        addOns: [{ addOnId: 'dj', cantidad: 1 }],
+        extras: [{ nombre: 'Tornaboda', kind: 'porPersona', monto: 40, cantidad: 1 }],
+        descuentoPct: 10,
+        descuentoMotivo: 'familia',
+      }),
+    );
+    expect(r.lines.map((l) => l.ref)).toEqual([
+      { tipo: 'rentaSalon', id: 'arcos', cantidad: 1, unidad: 'evento', precioUnitario: 108500 },
+      { tipo: 'descuento', cantidad: 1, unidad: 'evento', precioUnitario: -10850 },
+      { tipo: 'horasExtra', cantidad: 2, unidad: 'horas', precioUnitario: 4882.5 },
+      { tipo: 'capilla', cantidad: 1, unidad: 'evento', precioUnitario: 5000 },
+      { tipo: 'alimentos', id: 'boda-supreme', cantidad: 250, unidad: 'personas', precioUnitario: 799 },
+      { tipo: 'descuentoAlimentos', cantidad: 1, unidad: 'evento', precioUnitario: -4882.5 },
+      { tipo: 'servicioCatalogo', id: 'dj', cantidad: 1, unidad: 'evento', precioUnitario: 2950 },
+      { tipo: 'djHoraExtra', cantidad: 2, unidad: 'horas', precioUnitario: 2950 },
+      { tipo: 'servicioEvento', id: '1', cantidad: 250, unidad: 'personas', precioUnitario: 40 },
+    ]);
+    // cantidad × precioUnitario = monto en cada renglón.
+    for (const l of r.lines) expect(l.ref!.cantidad * l.ref!.precioUnitario).toBeCloseTo(l.monto, 1);
   });
 });

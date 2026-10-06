@@ -142,12 +142,18 @@ const categoria = z
   .transform((v) => (v === '' ? null : v))
   .nullish();
 
+/** `null` = sin proveedor / sin comisión. */
+const proveedorId = z.string().min(1).nullish();
+const comisionPct = z.number().min(0).max(100).nullish();
+
 export const servicioCreateSchema = z.object({
   nombre: z.string().min(1).max(80),
   categoria,
   kind: z.enum(KINDS),
   price: precio,
   activo: z.boolean().default(true),
+  proveedorId,
+  comisionPct,
 });
 
 export const servicioUpdateSchema = z
@@ -157,6 +163,8 @@ export const servicioUpdateSchema = z
     kind: z.enum(KINDS).optional(),
     price: precio.optional(),
     activo: z.boolean().optional(),
+    proveedorId,
+    comisionPct,
   })
   .refine((o) => Object.values(o).some((v) => v !== undefined), {
     message: 'No hay nada que cambiar',
@@ -178,6 +186,24 @@ async function servicioDelCatalogo(
   return addOn;
 }
 
+/** El proveedor existe, o 400: un id inventado truena por FK con un 500. */
+async function assertProveedor(tx: Prisma.TransactionClient, id: string | null | undefined): Promise<void> {
+  if (!id) return;
+  const existe = await tx.proveedor.findUnique({ where: { id }, select: { id: true } });
+  if (!existe) throw new QuoteError(400, 'El proveedor no existe');
+}
+
+/** Lo que se registra en la bitácora del catálogo de un servicio. */
+const fotoServicio = (a: { nombre: string; categoria: string | null; kind: string; price: number; activo: boolean; proveedorId: string | null; comisionPct: number | null }) => ({
+  nombre: a.nombre,
+  categoria: a.categoria,
+  kind: a.kind,
+  price: a.price,
+  activo: a.activo,
+  proveedorId: a.proveedorId,
+  comisionPct: a.comisionPct,
+});
+
 export async function crearServicio(
   db: PrismaClient,
   priceListId: string,
@@ -187,6 +213,7 @@ export async function crearServicio(
   const input = servicioCreateSchema.parse(rawInput);
   return db.$transaction(async (tx) => {
     await assertCatalogo(tx, priceListId);
+    await assertProveedor(tx, input.proveedorId);
     const addOn = await tx.addOn.create({
       data: { ...input, price: aPesos(input.price), priceListId },
     });
@@ -196,7 +223,7 @@ export async function crearServicio(
         priceListId,
         tipo: 'servicio',
         descripcion: `Servicio "${addOn.nombre}" agregado (${addOn.price} · ${addOn.kind})`,
-        meta: { accion: 'alta', addOnId: addOn.id, despues: { nombre: addOn.nombre, categoria: addOn.categoria, kind: addOn.kind, price: addOn.price, activo: addOn.activo } },
+        meta: { accion: 'alta', addOnId: addOn.id, despues: fotoServicio(addOn) },
       },
       actor,
     );
@@ -223,6 +250,7 @@ export async function editarServicio(
   return db.$transaction(async (tx) => {
     await assertCatalogo(tx, priceListId);
     const antes = await servicioDelCatalogo(tx, priceListId, addOnId);
+    await assertProveedor(tx, input.proveedorId);
     const addOn = await tx.addOn.update({
       where: { id: addOnId },
       data: { ...input, ...(input.price === undefined ? {} : { price: aPesos(input.price) }) },
@@ -236,8 +264,8 @@ export async function editarServicio(
         meta: {
           accion: 'edicion',
           addOnId,
-          antes: { nombre: antes.nombre, categoria: antes.categoria, kind: antes.kind, price: antes.price, activo: antes.activo },
-          despues: { nombre: addOn.nombre, categoria: addOn.categoria, kind: addOn.kind, price: addOn.price, activo: addOn.activo },
+          antes: fotoServicio(antes),
+          despues: fotoServicio(addOn),
         },
       },
       actor,

@@ -687,7 +687,10 @@ model FoodPackage {
   priceList   PriceList          @relation(fields: [priceListId], references: [id])
   priceListId String
   brackets    FoodPackagePrice[]
+  /// El mismo paquete en todos los catálogos (ver `AddOn.clave`).
+  clave       String             @default(cuid())
 
+  @@unique([priceListId, clave])
   @@index([priceListId])
 }
 
@@ -712,8 +715,29 @@ model AddOn {
   activo      Boolean   @default(true)
   priceList   PriceList @relation(fields: [priceListId], references: [id])
   priceListId String
+  /// Identifica al MISMO servicio en todos los catálogos: al clonar 2027 → 2028
+  /// el servicio recibe un `id` nuevo pero conserva su `clave`. Es lo que lee el
+  /// BI para seguir un servicio de un año a otro aunque cambie de nombre.
+  clave       String    @default(cuid())
+  /// Quién da el servicio y cuánto gana la hacienda por él (porcentaje del precio
+  /// sin IVA). Se capturan una vez en el catálogo, no por evento.
+  proveedor   Proveedor? @relation(fields: [proveedorId], references: [id])
+  proveedorId String?
+  comisionPct Float?
 
+  @@unique([priceListId, clave])
   @@index([priceListId])
+}
+
+/// Proveedor de servicios (mesa de dulces, grupo, cabina…). Global, no por
+/// catálogo: su `id` es la clave fija que ve el BI.
+model Proveedor {
+  id        String   @id @default(cuid())
+  nombre    String   @unique
+  telefono  String?
+  activo    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  servicios AddOn[]
 }
 
 model SpacePaymentRule {

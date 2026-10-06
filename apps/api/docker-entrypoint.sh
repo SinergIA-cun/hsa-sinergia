@@ -92,4 +92,6 @@ done
 pnpm --filter @hsa/api exec tsx src/scripts/reconcile-statuses.ts
 # Las etiquetas de los pagos con la regla vigente (idempotente; ver el script).
 pnpm --filter @hsa/api exec tsx src/scripts/reclasificar-conceptos.ts
+# Qué es cada renglón de los desgloses viejos, para el BI (idempotente; no toca montos).
+pnpm --filter @hsa/api exec tsx src/scripts/etiquetar-desgloses.ts
 exec pnpm --filter @hsa/api exec tsx src/index.ts

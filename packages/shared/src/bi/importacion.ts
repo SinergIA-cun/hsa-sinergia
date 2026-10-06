@@ -69,19 +69,32 @@ export function desgloseImportado(args: {
   const { salones, rentaTotal, otrosTotal, ivaRate } = args;
   if (salones.length === 0) {
     return armarDesglose(
-      [{ concepto: `Renta ${args.sinSalon ?? 'del evento'}`, detalle: 'Precio pactado (importado del BI)', monto: rentaTotal, ivaIncluido: true, grupo: 'renta' }],
+      [
+        {
+          concepto: `Renta ${args.sinSalon ?? 'del evento'}`,
+          detalle: 'Precio pactado (importado del BI)',
+          monto: rentaTotal,
+          ivaIncluido: true,
+          grupo: 'renta',
+          ref: { tipo: 'rentaSalon', cantidad: 1, unidad: 'evento', precioUnitario: rentaTotal },
+        },
+      ],
       { rentaTotal, otrosTotal, ivaRate },
     );
   }
   const parte = Math.floor(rentaTotal / salones.length);
-  const lines: QuoteLine[] = salones.map((s, i) => ({
-    concepto: `Renta ${s.nombre}`,
-    detalle: 'Precio pactado (importado del BI)',
-    monto: i === salones.length - 1 ? rentaTotal - parte * (salones.length - 1) : parte,
-    ivaIncluido: true,
-    grupo: 'renta',
-    spaceId: s.spaceId,
-  }));
+  const lines: QuoteLine[] = salones.map((s, i) => {
+    const monto = i === salones.length - 1 ? rentaTotal - parte * (salones.length - 1) : parte;
+    return {
+      concepto: `Renta ${s.nombre}`,
+      detalle: 'Precio pactado (importado del BI)',
+      monto,
+      ivaIncluido: true,
+      grupo: 'renta',
+      spaceId: s.spaceId,
+      ref: { tipo: 'rentaSalon', id: s.spaceId, cantidad: 1, unidad: 'evento', precioUnitario: monto },
+    };
+  });
   return armarDesglose(lines, { rentaTotal, otrosTotal, ivaRate });
 }
 
@@ -97,6 +110,7 @@ function armarDesglose(
       monto: otrosTotal,
       ivaIncluido: true,
       grupo: 'otros',
+      ref: { tipo: 'pactado', cantidad: 1, unidad: 'evento', precioUnitario: otrosTotal },
     });
   }
   const rentaSubtotal = r2(rentaTotal / (1 + ivaRate));
@@ -131,12 +145,16 @@ export function conRentaAcordada(b: QuoteBreakdown, renta: number, ivaRate: numb
   const deSalon = b.lines.filter((l) => l.grupo === 'renta' && l.spaceId);
   if (deSalon.length === 0) return b;
   const parte = Math.floor(renta / deSalon.length);
-  const nuevas: QuoteLine[] = deSalon.map((l, i) => ({
-    ...l,
-    detalle: 'Renta acordada al apartar',
-    monto: i === deSalon.length - 1 ? renta - parte * (deSalon.length - 1) : parte,
-    ivaIncluido: true,
-  }));
+  const nuevas: QuoteLine[] = deSalon.map((l, i) => {
+    const monto = i === deSalon.length - 1 ? renta - parte * (deSalon.length - 1) : parte;
+    return {
+      ...l,
+      detalle: 'Renta acordada al apartar',
+      monto,
+      ivaIncluido: true,
+      ref: { tipo: 'rentaSalon', id: l.spaceId, cantidad: 1, unidad: 'evento', precioUnitario: monto },
+    };
+  });
   let k = 0;
   const lines: QuoteLine[] = [];
   for (const l of b.lines) {

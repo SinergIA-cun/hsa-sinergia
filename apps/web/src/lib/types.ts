@@ -55,6 +55,18 @@ export interface AddOn {
   activo: boolean;
   /** Cuántas cotizaciones de su catálogo lo llevan (para ofrecer primero los más usados). */
   usos?: number;
+  /** Quién da el servicio y qué % del precio sin IVA gana la hacienda. Solo en Admin. */
+  proveedorId?: string | null;
+  comisionPct?: number | null;
+}
+
+/** Proveedor de servicios del catálogo (global, no por catálogo). */
+export interface Proveedor {
+  id: string;
+  nombre: string;
+  telefono: string | null;
+  activo: boolean;
+  _count?: { servicios: number };
 }
 
 export interface Catalog {

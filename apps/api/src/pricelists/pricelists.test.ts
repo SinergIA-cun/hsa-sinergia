@@ -96,6 +96,13 @@ describe('catálogos', () => {
       await prisma.foodPackage.count({ where: { priceListId: base.id } }),
     );
 
+    // El mismo servicio y el mismo paquete conservan su clave (la que sigue el BI).
+    const claves = async (priceListId: string) => ({
+      servicios: (await prisma.addOn.findMany({ where: { priceListId }, select: { clave: true } })).map((a) => a.clave).sort(),
+      paquetes: (await prisma.foodPackage.findMany({ where: { priceListId }, select: { clave: true } })).map((p) => p.clave).sort(),
+    });
+    expect(await claves(clon.id)).toEqual(await claves(base.id));
+
     expect(clon.ivaRate).toBe(base.ivaRate);
     expect(clon.extraHourRate).toBe(base.extraHourRate);
     expect(clon.foodDiscountRate).toBe(base.foodDiscountRate);

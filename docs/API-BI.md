@@ -178,6 +178,48 @@ fecha: `fechaEvento` es la que TENÍA) o `cancelada`. Los dos sueltan la fecha: 
 | `salonPrincipal` | `{ id, nombre }`: el **primero** de `espacios`, que es el que va en el código del evento (`…-CUPULA`). `null` en un evento sin salón (solo capilla, sesión de fotos). |
 | `rentaPorSalon` | `[{ espacioId, salon, monto }]`: la renta repartida entre los salones del evento, en proporción a la renta de catálogo de cada uno (la misma regla que el plan de pagos). **Suma `renta.total`**, con horas extra, descuento y cargos que suben el contrato ya repartidos. Un evento importado con varios salones se reparte en partes iguales. Vacío en un evento sin salón. |
 | `usaCapilla`, `capillaHorario` | La capilla es una marca del evento (no cobra ni bloquea); el horario es texto libre o `null`. |
+| `desglose` | Lo vendido, renglón por renglón (ver abajo). Los de `bloque: "renta"` suman `renta.total` y los de `bloque: "otros"` suman `otros.total`, exacto. |
+
+#### `desglose[]`
+
+Cada renglón del desglose guardado con el evento, en datos y no en texto:
+
+| Campo | Qué es |
+|---|---|
+| `id` | Fijo mientras el renglón exista: `{quoteId}:{tipo}[:{id}]`. Un cargo del punto de venta es `{quoteId}:cargo:{cargoId}`. |
+| `bloque` | `renta` (lo cobra la hacienda) u `otros` (alimentos y servicios). |
+| `tipo` | `rentaSalon`, `descuento`, `horasExtra`, `capilla`, `descuentoAlimentos`, `cargoContrato` (bloque renta); `alimentos`, `servicioCatalogo`, `djHoraExtra`, `servicioEvento`, `pactado` (bloque otros). `pactado` es el renglón único de "alimentos y servicios" de un evento importado. `otro` = un renglón de un evento viejo que no se pudo identificar. |
+| `clave` | La clave **fija** de lo vendido: el `espacioId` (`rentaSalon`), la `clave` del paquete (`alimentos`) o del servicio (`servicioCatalogo`) de `/catalogos`, el `producto` del punto de venta (`cargoContrato`). `null` en los demás, y en un `servicioEvento` (tecleado en el evento, sin catálogo). |
+| `nombre`, `detalle` | Como se ven en el contrato. |
+| `categoria` | La del servicio en el catálogo (puede ser `null`). Solo en `servicioCatalogo`. |
+| `cantidad`, `unidad` | `unidad`: `evento`, `personas`, `horas` o `unidades`. |
+| `precioUnitario` | Con IVA. Es el precio del catálogo **del evento** (cada evento se queda con su catálogo); no hay descuento por renglón. |
+| `subtotal`, `total` | Sin IVA y con IVA. El último renglón de cada bloque absorbe los centavos de redondeo. |
+| `origen` | `contrato`, o `puntoDeVenta` para un cargo que sube el contrato (`cargoId` trae el id del cargo de `/cargos`). |
+| `proveedor`, `comision` | Solo en `servicioCatalogo` con proveedor: `{ clave, nombre }` y `{ porcentaje, monto }`. La comisión es el % del servicio en el catálogo del evento, sobre el **subtotal sin IVA** del renglón. `null` si no tiene. |
+
+```json
+"desglose": [
+  { "id": "cm…q:rentaSalon:cm…arcos", "bloque": "renta", "tipo": "rentaSalon", "clave": "cm…arcos", "nombre": "Renta Arcos", "detalle": null,
+    "categoria": null, "cantidad": 1, "unidad": "evento", "precioUnitario": 108500, "subtotal": 93534.48, "total": 108500,
+    "origen": "contrato", "cargoId": null, "proveedor": null, "comision": null },
+  { "id": "cm…q:descuentoAlimentos", "bloque": "renta", "tipo": "descuentoAlimentos", "clave": null, "nombre": "Descuento por alimentos (5% renta)",
+    "cantidad": 1, "unidad": "evento", "precioUnitario": -5425, "subtotal": -4676.72, "total": -5425, "origen": "contrato", "…": "…" },
+  { "id": "cm…q:alimentos:cm…pkg", "bloque": "otros", "tipo": "alimentos", "clave": "cm…supreme", "nombre": "Alimentos SUPREME", "detalle": "200 × 999",
+    "cantidad": 200, "unidad": "personas", "precioUnitario": 999, "subtotal": 172241.38, "total": 199800, "origen": "contrato", "…": "…" },
+  { "id": "cm…q:servicioCatalogo:cm…a1", "bloque": "otros", "tipo": "servicioCatalogo", "clave": "cm…dulces", "nombre": "Mesa de dulces (por persona)",
+    "detalle": "× 200", "categoria": "Dulces", "cantidad": 200, "unidad": "personas", "precioUnitario": 127.6, "subtotal": 22000, "total": 25520,
+    "origen": "contrato", "cargoId": null, "proveedor": { "clave": "cm…prov", "nombre": "Dulces Lupita" }, "comision": { "porcentaje": 10, "monto": 2200 } },
+  { "id": "cm…q:servicioEvento:1", "bloque": "otros", "tipo": "servicioEvento", "clave": null, "nombre": "Tornaboda", "detalle": null,
+    "cantidad": 1, "unidad": "evento", "precioUnitario": 8000, "subtotal": 6896.55, "total": 8000, "origen": "contrato", "…": "…" }
+]
+```
+
+- **Un servicio tecleado en el evento sigue siendo `servicioEvento`** aunque después se dé de alta
+  en el catálogo: el renglón no se liga solo. Para ligarlo, se edita el evento y se cambia por el
+  del catálogo (queda como `servicioCatalogo` con su `clave`, al precio del catálogo).
+- No hay fecha ni autor por renglón. Lo agregado después de contratar sale de `/cambios`
+  (`detalle.servicios` de cada `edicion`) y de `/cargos` (punto de venta).
 
 > El historial empieza el 1-oct-2026 con el código que cada evento tenía ese día. Los
 > cambios de antes no se pueden reconstruir: el código depende del nombre del cliente en ese
@@ -476,6 +518,20 @@ Real, de `GET /api/bi/cambios?desde=2026-08-07&hasta=2026-08-07&limit=2&cursor=c
 antes/después de invitados, espacios, fecha, total y renta. **Solo se escribe un `edicion` si
 algo material cambió de verdad**: guardar sin tocar nada no ensucia la bitácora.
 
+Si la edición agregó, quitó o cambió alimentos o servicios, `detalle.servicios` lo dice
+(desde el 6-oct-2026):
+
+```json
+"servicios": {
+  "agregados": [{ "tipo": "servicioEvento", "id": null, "clave": null, "nombre": "Barra libre", "detalle": { "tipoCobro": "fijo", "monto": 15000, "cantidad": 1 } }],
+  "quitados":  [{ "tipo": "servicioCatalogo", "id": "cm…a1", "clave": "cm…dulces", "nombre": "Mesa de dulces (por persona)", "detalle": { "cantidad": 1 } }],
+  "cambiados": [{ "tipo": "servicioEvento", "id": null, "clave": null, "nombre": "Tornaboda", "detalle": { "tipoCobro": "fijo", "monto": 9000, "cantidad": 1 }, "antes": { "tipoCobro": "fijo", "monto": 8000, "cantidad": 1 } }]
+}
+```
+
+`tipo` es `alimentos`, `servicioCatalogo` o `servicioEvento`. Los servicios tecleados no tienen id:
+se emparejan por nombre.
+
 `actor: null` significa que el cambio lo hizo el sistema, no una persona (por ejemplo el
 vencimiento automático por vigencia).
 
@@ -486,6 +542,21 @@ Los valores fijos de las demás rutas, para traducir sin adivinar. Sin rango ni 
 `conceptosPago`, `destinosPago`, `productosCargo` (`producto`, `nombre`, `unidad`, `afectaContrato`),
 `tiposIngreso`, `destinosDevolucion` y `tiposCambio`. `/eventos` además trae `salones` (los
 nombres de `espacios`, en el mismo orden).
+
+Y el catálogo de lo que se vende, **tal como lo tiene la hacienda** (todos los años):
+
+- `catalogos`: `[{ id, nombre, anio, activo, capillaSabado, ivaRate }]`. Cada evento se queda con
+  el suyo.
+- `servicios`: `[{ id, clave, catalogoId, nombre, categoria, tipoCobro, unidad, precio, activo,
+  proveedor, comisionPct }]`. `precio` es **sin IVA**. `id` cambia de un catálogo a otro; **`clave`
+  es el mismo servicio en todos los años** (al clonar el catálogo se conserva). `tipoCobro`:
+  `fijo`, `porPersona`, `porUnidad`. `proveedor`: `{ clave, nombre }` o `null`.
+- `paquetesAlimentos`: `[{ id, clave, catalogoId, tipoEvento: { id, nombre }, nombre, ivaIncluido,
+  incluye, precios: [{ min, max, precioPorPersona }] }]`. `clave` igual que en `servicios`.
+- `proveedores`: `[{ clave, nombre, activo }]`.
+- `tiposRenglon`: los `tipo` de `desglose[]`.
+
+Un cambio al catálogo no sale en `/cambios`: el BI relee `/catalogos` en cada vuelta.
 
 ### `GET /api/bi/facturacion`
 
