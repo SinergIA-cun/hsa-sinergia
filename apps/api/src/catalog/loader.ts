@@ -102,6 +102,9 @@ export async function loadCatalog(
       kind: a.kind,
       price: a.price,
       activo: a.activo,
+      proveedorId: a.proveedorId,
+      comisionPct: a.comisionPct,
+      cobra: a.cobra,
     })),
     spaceNames: Object.fromEntries(spaces.map((s) => [s.id, s.nombre])),
   } satisfies Catalog;

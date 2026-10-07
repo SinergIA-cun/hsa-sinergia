@@ -618,6 +618,7 @@ model Quote {
   payments            Payment[]
   activityLog         ActivityLog[]
   extras              QuoteExtra[]
+  serviciosBanquetero ServicioBanquetero[]
   /// La cuenta del punto de venta: lo que se agregó después de contratar.
   cargos              CargoEvento[]
   /// El dinero que se le devolvió al cliente de este evento.
@@ -724,9 +725,33 @@ model AddOn {
   proveedor   Proveedor? @relation(fields: [proveedorId], references: [id])
   proveedorId String?
   comisionPct Float?
+  /// Quién le cobra el servicio al cliente: el proveedor directo (le debe la
+  /// comisión a la hacienda) o la hacienda (ella le paga al proveedor). Es un
+  /// dato para el BI: no cambia cómo se cobra ni el plan de pagos.
+  cobra       CobraServicio @default(proveedor)
 
   @@unique([priceListId, clave])
   @@index([priceListId])
+}
+
+enum CobraServicio {
+  proveedor
+  hacienda
+}
+
+/// Lo que pone el banquetero en un evento suyo (alimentos, mesa de dulces…). Es
+/// informativo para el BI: NO entra al desglose ni al total del evento, que es
+/// lo que el evento le debe a la hacienda.
+model ServicioBanquetero {
+  id       String @id @default(cuid())
+  quote    Quote  @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  quoteId  String
+  nombre   String
+  cantidad Int    @default(1)
+  /// Lo que cobra el banquetero por eso (pesos, total). Opcional.
+  monto    Int?
+
+  @@index([quoteId])
 }
 
 /// Proveedor de servicios (mesa de dulces, grupo, cabina…). Global, no por

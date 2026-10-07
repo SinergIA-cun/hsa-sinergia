@@ -13,7 +13,11 @@ import { SELECCION_INCLUDE, seleccionGuardada, toSelection } from '../quotes/ser
  * unitario sale del monto GUARDADO (el catálogo pudo cambiar desde entonces). Si
  * algún renglón no se empareja, el evento se deja como está.
  *
- * Idempotente: solo toca desgloses con renglones sin `ref`.
+ * También congela proveedor, comisión y quién cobra en los renglones de servicios
+ * del catálogo guardados antes de que el motor lo hiciera, con lo que el
+ * servicio tiene hoy en el catálogo del evento.
+ *
+ * Idempotente: solo toca desgloses con renglones sin `ref` o servicios sin congelar.
  */
 export async function etiquetarDesgloses(db: PrismaClient): Promise<{ etiquetados: number; sinEmparejar: string[] }> {
   // Son cientos, no miles: se leen todos y se salta lo que ya tiene `ref`.
@@ -23,26 +27,43 @@ export async function etiquetarDesgloses(db: PrismaClient): Promise<{ etiquetado
     if (!catalogos.has(id)) catalogos.set(id, await loadCatalog(db, { priceListId: id }));
     return catalogos.get(id)!;
   };
+  const servicios = new Map(
+    (await db.addOn.findMany({ select: { id: true, proveedorId: true, comisionPct: true, cobra: true } })).map((a) => [a.id, a]),
+  );
   let etiquetados = 0;
   const sinEmparejar: string[] = [];
   for (const q of quotes) {
     const lines = ((q.breakdown as { lines?: QuoteLine[] } | null)?.lines ?? []) as QuoteLine[];
-    if (lines.length === 0 || lines.every((l) => l.ref)) continue;
-    const refs = await refsPara(db, q, lines, catalogo);
-    if (!refs) {
-      sinEmparejar.push(q.etiqueta ?? q.id);
-      continue;
+    if (lines.length === 0 || lines.every((l) => l.ref && !sinCongelar(l.ref))) continue;
+    let refs: (LineaRef | undefined)[] = lines.map(() => undefined);
+    if (lines.some((l) => !l.ref)) {
+      const encontrados = await refsPara(db, q, lines, catalogo);
+      if (!encontrados) {
+        sinEmparejar.push(q.etiqueta ?? q.id);
+        continue;
+      }
+      refs = encontrados;
     }
+    const nuevas = lines.map((l, i) => {
+      const ref = l.ref ?? refs[i];
+      if (!ref || !sinCongelar(ref)) return { ...l, ref };
+      const a = ref.id ? servicios.get(ref.id) : undefined;
+      return {
+        ...l,
+        ref: { ...ref, proveedorId: a?.proveedorId ?? null, comisionPct: a?.proveedorId ? a.comisionPct : null, cobra: a?.cobra ?? 'proveedor' },
+      };
+    });
     await db.quote.update({
       where: { id: q.id },
-      data: {
-        breakdown: { ...(q.breakdown as object), lines: lines.map((l, i) => ({ ...l, ref: l.ref ?? refs[i] })) } as unknown as Prisma.InputJsonValue,
-      },
+      data: { breakdown: { ...(q.breakdown as object), lines: nuevas } as unknown as Prisma.InputJsonValue },
     });
     etiquetados++;
   }
   return { etiquetados, sinEmparejar };
 }
+
+/** Un servicio del catálogo guardado antes de que el motor congelara proveedor y comisión. */
+const sinCongelar = (ref: LineaRef) => ref.tipo === 'servicioCatalogo' && ref.cobra === undefined;
 
 type QuoteConSeleccion = Prisma.QuoteGetPayload<{ include: typeof SELECCION_INCLUDE }>;
 

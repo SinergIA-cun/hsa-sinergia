@@ -4,6 +4,8 @@ import type { PrismaClient, Prisma } from '@hsa/database';
 import {
   computeQuote,
   quoteSelectionSchema,
+  servicioBanqueteroSchema,
+  type ServicioBanqueteroInput,
   estadoFacturaPago,
   datosFiscalesEditables,
   hoyCivilMexico,
@@ -75,6 +77,9 @@ const paraQuienSchema = {
   festejadoTelefono: z.string().max(40).nullish(),
 };
 
+/** Un servicio del banquetero como se guarda (sin monto = `null`). */
+const aServicioBanquetero = (s: ServicioBanqueteroInput) => ({ nombre: s.nombre, cantidad: s.cantidad, monto: s.monto ?? null });
+
 export const createQuoteSchema = quoteSelectionSchema
   .extend({
     eventTypeId: z.string(),
@@ -86,6 +91,7 @@ export const createQuoteSchema = quoteSelectionSchema
     clientId: z.string().optional(),
     client: clientSchema.optional(),
     ...paraQuienSchema,
+    serviciosBanquetero: z.array(servicioBanqueteroSchema).max(50).default([]),
   })
   .refine((d) => Boolean(d.clientId ?? d.client), {
     message: 'Se requiere clientId o datos de client',
@@ -105,6 +111,9 @@ export const updateQuoteSchema = quoteSelectionSchema
     capillaHorario: z.string().max(20).nullable().optional(),
     client: clientSchema.optional(),
     ...paraQuienSchema,
+    // Sin la llave, se quedan como están: los caminos que recalculan sin el
+    // formulario (mover fecha, mover catálogo) no los conocen y no los borran.
+    serviciosBanquetero: z.array(servicioBanqueteroSchema).max(50).optional(),
   })
   .refine(motivoObligatorio.check, motivoObligatorio.opts)
   .refine(unSoloDescuento.check, unSoloDescuento.opts);
@@ -128,6 +137,8 @@ export const includeRels = {
   // Los servicios sueltos del evento: no viven en el catálogo, así que la única
   // forma de recuperarlos para reeditar (y para recalcular) es leerlos de aquí.
   extras: { select: { nombre: true, kind: true, monto: true, cantidad: true } },
+  // Lo que pone el banquetero: informativo, no entra al precio.
+  serviciosBanquetero: { select: { nombre: true, cantidad: true, monto: true }, orderBy: { id: 'asc' as const } },
 };
 
 // Se permite editar el desglose incluso con compromiso de pago (formalizada/complementada);
@@ -728,6 +739,10 @@ export async function createQuote(
           addOns: input.addOns as unknown as Prisma.InputJsonValue,
           // Los extras se copian tal cual: nombre y monto, no un id de catálogo.
           extras: { create: input.extras },
+          // Solo con banquetero: sin él no hay quién los ponga.
+          ...(input.banqueteroId && input.serviciosBanquetero.length > 0
+            ? { serviciosBanquetero: { create: input.serviciosBanquetero.map(aServicioBanquetero) } }
+            : {}),
           descuentoPct: input.descuentoPct ?? null,
           descuentoMonto: input.descuentoMonto ?? null,
           descuentoMotivo: input.descuentoMotivo ?? null,
@@ -870,7 +885,10 @@ export function assertNotTrashed(quote: { deletedAt: Date | null }): void {
 }
 
 export async function updateQuote(db: PrismaClient, id: string, rawInput: unknown, actor: Actor) {
-  const existing = await db.quote.findFirst({ where: { id, ...ownershipWhere(actor) }, include: SELECCION_INCLUDE });
+  const existing = await db.quote.findFirst({
+    where: { id, ...ownershipWhere(actor) },
+    include: { ...SELECCION_INCLUDE, serviciosBanquetero: { select: { nombre: true, cantidad: true, monto: true } } },
+  });
   if (!existing) throw new QuoteError(404, 'Cotización no encontrada');
   assertNotTrashed(existing);
   assertConFecha(existing.status);
@@ -1012,6 +1030,13 @@ export async function updateQuote(db: PrismaClient, id: string, rawInput: unknow
         // Se reemplazan en bloque, igual que los add-ons: el formulario manda la
         // lista completa, así que borrar y recrear es lo que refleja lo capturado.
         extras: { deleteMany: {}, create: input.extras },
+        // Se reemplazan si el formulario los manda; si el evento ya no tiene
+        // banquetero, se van.
+        ...(!input.banqueteroId
+          ? { serviciosBanquetero: { deleteMany: {} } }
+          : input.serviciosBanquetero
+            ? { serviciosBanquetero: { deleteMany: {}, create: input.serviciosBanquetero.map(aServicioBanquetero) } }
+            : {}),
         descuentoPct: input.descuentoPct ?? null,
         descuentoMonto: input.descuentoMonto ?? null,
         descuentoMotivo: input.descuentoMotivo ?? null,
@@ -1077,10 +1102,16 @@ export async function updateQuote(db: PrismaClient, id: string, rawInput: unknow
     total: updated.total,
     rentaTotal: updated.rentaTotal,
   };
-  const serviciosDe = (q: { foodPackageId: string | null; addOns: Prisma.JsonValue; extras: ServiciosDeCotizacion['extras'] }) => ({
+  const serviciosDe = (q: {
+    foodPackageId: string | null;
+    addOns: Prisma.JsonValue;
+    extras: ServiciosDeCotizacion['extras'];
+    serviciosBanquetero: NonNullable<ServiciosDeCotizacion['serviciosBanquetero']>;
+  }) => ({
     foodPackageId: q.foodPackageId,
     addOns: (q.addOns as unknown as ServiciosDeCotizacion['addOns'] | null) ?? [],
     extras: q.extras,
+    serviciosBanquetero: q.serviciosBanquetero,
   });
   const cambioServicios = cambiosDeServicios(serviciosDe(existing), serviciosDe({ ...updated, extras: input.extras ?? [] }));
   if (JSON.stringify(antes) !== JSON.stringify(despues) || cambioServicios) {

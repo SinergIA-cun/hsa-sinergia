@@ -176,9 +176,9 @@ fecha: `fechaEvento` es la que TENÍA) o `cancelada`. Los dos sueltan la fecha: 
 | `descuento` | `null`, o `{ porcentaje, monto, motivo }`: el descuento sobre la renta, en **porcentaje o en monto fijo** (pesos con IVA); uno de los dos viene en `null`. `esCortesia` / `esPromocion` dicen de qué tipo es. Ya está aplicado en `renta.total` y `total`. |
 | `salones` | Los nombres de `espacios`, en el mismo orden. |
 | `salonPrincipal` | `{ id, nombre }`: el **primero** de `espacios`, que es el que va en el código del evento (`…-CUPULA`). `null` en un evento sin salón (solo capilla, sesión de fotos). |
-| `rentaPorSalon` | `[{ espacioId, salon, monto }]`: la renta repartida entre los salones del evento, en proporción a la renta de catálogo de cada uno (la misma regla que el plan de pagos). **Suma `renta.total`**, con horas extra, descuento y cargos que suben el contrato ya repartidos. Un evento importado con varios salones se reparte en partes iguales. Vacío en un evento sin salón. |
+| `rentaPorSalon` | `[{ espacioId, salon, monto }]`: la renta repartida entre los salones del evento, en proporción a la renta de catálogo de cada uno (la misma regla que el plan de pagos). **Suma `renta.total`**, con horas extra, descuento y cargos que suben el contrato ya repartidos. Un evento importado con varios salones se reparte en partes iguales. Vacío en un evento sin salón (solo capilla, sesión de fotos): ahí la suma **no** cuadra con `renta.total`, porque no hay salón al cual cargarla. |
 | `usaCapilla`, `capillaHorario` | La capilla es una marca del evento (no cobra ni bloquea); el horario es texto libre o `null`. |
-| `desglose` | Lo vendido, renglón por renglón (ver abajo). Los de `bloque: "renta"` suman `renta.total` y los de `bloque: "otros"` suman `otros.total`, exacto. |
+| `desglose` | Lo vendido, renglón por renglón (ver abajo). Los de `bloque: "renta"` suman `renta.total` y los de `bloque: "otros"` suman `otros.total`, exacto. Los de `bloque: "banquetero"` **no suman a nada**. |
 
 #### `desglose[]`
 
@@ -187,8 +187,8 @@ Cada renglón del desglose guardado con el evento, en datos y no en texto:
 | Campo | Qué es |
 |---|---|
 | `id` | Fijo mientras el renglón exista: `{quoteId}:{tipo}[:{id}]`. Un cargo del punto de venta es `{quoteId}:cargo:{cargoId}`. |
-| `bloque` | `renta` (lo cobra la hacienda) u `otros` (alimentos y servicios). |
-| `tipo` | `rentaSalon`, `descuento`, `horasExtra`, `capilla`, `descuentoAlimentos`, `cargoContrato` (bloque renta); `alimentos`, `servicioCatalogo`, `djHoraExtra`, `servicioEvento`, `pactado` (bloque otros). `pactado` es el renglón único de "alimentos y servicios" de un evento importado. `otro` = un renglón de un evento viejo que no se pudo identificar. |
+| `bloque` | `renta` (lo cobra la hacienda), `otros` (alimentos y servicios) o `banquetero` (lo que pone el banquetero; informativo, fuera de los totales). |
+| `tipo` | `rentaSalon`, `descuento`, `horasExtra`, `capilla`, `descuentoAlimentos`, `cargoContrato` (bloque renta); `alimentos`, `servicioCatalogo`, `djHoraExtra`, `servicioEvento`, `pactado` (bloque otros); `servicioBanquetero` (bloque banquetero). `pactado` es el renglón único de "alimentos y servicios" de un evento importado. `otro` = un renglón de un evento viejo que no se pudo identificar. |
 | `clave` | La clave **fija** de lo vendido: el `espacioId` (`rentaSalon`), la `clave` del paquete (`alimentos`) o del servicio (`servicioCatalogo`) de `/catalogos`, el `producto` del punto de venta (`cargoContrato`). `null` en los demás, y en un `servicioEvento` (tecleado en el evento, sin catálogo). |
 | `nombre`, `detalle` | Como se ven en el contrato. |
 | `categoria` | La del servicio en el catálogo (puede ser `null`). Solo en `servicioCatalogo`. |
@@ -196,7 +196,24 @@ Cada renglón del desglose guardado con el evento, en datos y no en texto:
 | `precioUnitario` | Con IVA. Es el precio del catálogo **del evento** (cada evento se queda con su catálogo); no hay descuento por renglón. |
 | `subtotal`, `total` | Sin IVA y con IVA. El último renglón de cada bloque absorbe los centavos de redondeo. |
 | `origen` | `contrato`, o `puntoDeVenta` para un cargo que sube el contrato (`cargoId` trae el id del cargo de `/cargos`). |
-| `proveedor`, `comision` | Solo en `servicioCatalogo` con proveedor: `{ clave, nombre }` y `{ porcentaje, monto }`. La comisión es el % del servicio en el catálogo del evento, sobre el **subtotal sin IVA** del renglón. `null` si no tiene. |
+| `proveedor`, `comision` | Solo en `servicioCatalogo` con proveedor: `{ clave, nombre }` y `{ porcentaje, monto }`. La comisión es un % sobre el **subtotal sin IVA** del renglón. `null` si no tiene. |
+| `cobra` | Solo en `servicioCatalogo`: `proveedor` (el cliente le paga directo al proveedor, que le debe la comisión a la hacienda) o `hacienda` (la hacienda lo cobra y le paga al proveedor). `null` en los demás. |
+| `banquetero` | Solo en `bloque: "banquetero"`: `{ id, nombre }`. `null` en los demás. |
+
+**Proveedor, comisión y `cobra` se congelan con el evento**, igual que el precio: son los que tenía
+el servicio cuando se guardó el evento. Si después la hacienda cambia el catálogo, los eventos ya
+guardados no se mueven; al **reeditar** un evento, se recalcula con su catálogo (como el precio).
+Los eventos guardados antes del 6-oct-2026 se congelaron al arrancar con lo que tenía el catálogo
+ese día.
+
+**`cobra: "hacienda"` es un dato, no cambia los cobros:** `/pagos` no cambia (ni destino ni
+concepto), el plan de pagos sigue siendo solo de la renta, y el pago al proveedor no se registra
+en el Cotizador.
+
+**Lo que pone el banquetero** (`servicioBanquetero`): se captura en el evento, solo si tiene
+banquetero. `nombre`, `cantidad` y `total` (lo que cobra el banquetero; puede ser `null`).
+`precioUnitario` = `total / cantidad`, o `null`. `subtotal` siempre `null`. No hay IVA ni clave.
+`id` = `{quoteId}:servicioBanquetero:{n}`, por posición.
 
 ```json
 "desglose": [
@@ -529,8 +546,8 @@ Si la edición agregó, quitó o cambió alimentos o servicios, `detalle.servici
 }
 ```
 
-`tipo` es `alimentos`, `servicioCatalogo` o `servicioEvento`. Los servicios tecleados no tienen id:
-se emparejan por nombre.
+`tipo` es `alimentos`, `servicioCatalogo`, `servicioEvento` o `servicioBanquetero` (su `detalle`:
+`{ cantidad, monto }`). Los tecleados y los del banquetero no tienen id: se emparejan por nombre.
 
 `actor: null` significa que el cambio lo hizo el sistema, no una persona (por ejemplo el
 vencimiento automático por vigencia).
@@ -547,8 +564,8 @@ Y el catálogo de lo que se vende, **tal como lo tiene la hacienda** (todos los 
 
 - `catalogos`: `[{ id, nombre, anio, activo, capillaSabado, ivaRate }]`. Cada evento se queda con
   el suyo.
-- `servicios`: `[{ id, clave, catalogoId, nombre, categoria, tipoCobro, unidad, precio, activo,
-  proveedor, comisionPct }]`. `precio` es **sin IVA**. `id` cambia de un catálogo a otro; **`clave`
+- `servicios`: `[{ id, clave, catalogoId, nombre, categoria, tipoCobro, unidad, cobra, precio,
+  activo, proveedor, comisionPct }]`. `cobra`: `proveedor` o `hacienda` (ver `desglose[]`). `precio` es **sin IVA**. `id` cambia de un catálogo a otro; **`clave`
   es el mismo servicio en todos los años** (al clonar el catálogo se conserva). `tipoCobro`:
   `fijo`, `porPersona`, `porUnidad`. `proveedor`: `{ clave, nombre }` o `null`.
 - `paquetesAlimentos`: `[{ id, clave, catalogoId, tipoEvento: { id, nombre }, nombre, ivaIncluido,
@@ -610,7 +627,7 @@ paginación que `/eventos`; **el rango va sobre la fecha apartada**.
 { "id": "cm…", "importadoBI": "09ENE27-CQUIROZ-CUPULA", "fecha": "2027-01-09", "salones": ["Cúpula"],
   "tipoEvento": "XV", "banquetero": null, "cliente": { "id": "cm…", "nombre": "…" }, "precioAcordado": 169000,
   "abonado": 25000, "estado": "vivo", "vence": "2027-01-09", "canceladoAt": null, "motivoCancelacion": null,
-  "quoteId": null, "eventoFolio": null, "eventoCodigo": null,
+  "quoteId": null, "eventoFolio": null, "eventoCodigo": null, "eventoEnPapelera": false,
   "abonos": [ { "id": "cm…", "folio": 4467, "folioTexto": "I 4467", "fecha": "2025-11-25", "monto": 25000,
                 "metodo": "transferencia", "formas": [], "referencia": null, "notas": null, "anulado": false, "paymentId": null } ],
   "createdAt": "2026-10-05T…" }
@@ -618,7 +635,8 @@ paginación que `/eventos`; **el rango va sobre la fecha apartada**.
 
 - `estado`: `vivo` (bloquea su fecha), `vencido`, `cancelado` o `convertido`.
 - Al **convertirse en evento**, `quoteId`, `eventoFolio` y `eventoCodigo` dicen a cuál; el evento ya
-  se lee en `/eventos`. Cada abono se vuelve un pago de ese evento con el mismo folio
+  se lee en `/eventos`. Si ese evento se mandó a la papelera, `eventoEnPapelera: true` (y no sale
+  en `/eventos`). Cada abono se vuelve un pago de ese evento con el mismo folio
   (`paymentId`), así que **no se suman dos veces**: lo abonado de un apartado convertido ya está
   en `/pagos` del evento.
 - `importadoBI` es el `idBI` con el que llegó del BI (`null` si se apartó aquí). Cada abono trae su

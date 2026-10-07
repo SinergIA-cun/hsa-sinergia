@@ -666,11 +666,31 @@ describe('computeQuote · ref: qué es cada renglón, en datos', () => {
       { tipo: 'capilla', cantidad: 1, unidad: 'evento', precioUnitario: 5000 },
       { tipo: 'alimentos', id: 'boda-supreme', cantidad: 250, unidad: 'personas', precioUnitario: 799 },
       { tipo: 'descuentoAlimentos', cantidad: 1, unidad: 'evento', precioUnitario: -4882.5 },
-      { tipo: 'servicioCatalogo', id: 'dj', cantidad: 1, unidad: 'evento', precioUnitario: 2950 },
+      { tipo: 'servicioCatalogo', id: 'dj', cantidad: 1, unidad: 'evento', precioUnitario: 2950, proveedorId: null, comisionPct: null, cobra: 'proveedor' },
       { tipo: 'djHoraExtra', cantidad: 2, unidad: 'horas', precioUnitario: 2950 },
       { tipo: 'servicioEvento', id: '1', cantidad: 250, unidad: 'personas', precioUnitario: 40 },
     ]);
     // cantidad × precioUnitario = monto en cada renglón.
     for (const l of r.lines) expect(l.ref!.cantidad * l.ref!.precioUnitario).toBeCloseTo(l.monto, 1);
+  });
+});
+
+describe('computeQuote · el renglón congela proveedor, comisión y quién cobra', () => {
+  it('copia lo del servicio del catálogo al renglón', () => {
+    const conProveedor: Catalog = {
+      ...catalog,
+      addOns: catalog.addOns.map((a) => (a.id === 'dj' ? { ...a, proveedorId: 'p1', comisionPct: 12.5, cobra: 'hacienda' as const } : a)),
+    };
+    const r = computeQuote(conProveedor, mk({ addOns: [{ addOnId: 'dj', cantidad: 1 }] }));
+    expect(r.lines.find((l) => l.ref?.tipo === 'servicioCatalogo')!.ref).toMatchObject({ proveedorId: 'p1', comisionPct: 12.5, cobra: 'hacienda' });
+  });
+
+  it('sin proveedor no hay comisión aunque el servicio tenga un %', () => {
+    const sinProveedor: Catalog = {
+      ...catalog,
+      addOns: catalog.addOns.map((a) => (a.id === 'dj' ? { ...a, proveedorId: null, comisionPct: 10 } : a)),
+    };
+    const r = computeQuote(sinProveedor, mk({ addOns: [{ addOnId: 'dj', cantidad: 1 }] }));
+    expect(r.lines.find((l) => l.ref?.tipo === 'servicioCatalogo')!.ref).toMatchObject({ proveedorId: null, comisionPct: null });
   });
 });
