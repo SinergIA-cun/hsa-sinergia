@@ -1,4 +1,4 @@
-import type { QuoteLine, TipoRenglon, UnidadRenglon } from '../types.js';
+import type { CobraServicio, QuoteLine, TipoRenglon, UnidadRenglon } from '../types.js';
 
 /**
  * Un renglón del desglose de un evento, como lo lee el BI (`desglose[]` en
@@ -25,6 +25,9 @@ export interface RenglonBI {
   total: number;
   origen: 'contrato' | 'puntoDeVenta';
   cargoId: string | null;
+  /** Solo `servicioCatalogo` guardado desde el 6-oct-2026: proveedor, comisión y
+   *  quién cobra, congelados con el evento. Sin esto, el lector los toma del catálogo. */
+  servicio?: { proveedorId: string | null; comisionPct: number | null; cobra: CobraServicio };
 }
 
 const r2 = (n: number): number => Math.round(n * 100) / 100;
@@ -79,6 +82,9 @@ export function desgloseParaBI(
       total,
       origen: l.cargoId ? 'puntoDeVenta' : 'contrato',
       cargoId: l.cargoId ?? null,
+      ...(tipo === 'servicioCatalogo' && l.ref?.cobra
+        ? { servicio: { proveedorId: l.ref.proveedorId ?? null, comisionPct: l.ref.comisionPct ?? null, cobra: l.ref.cobra } }
+        : {}),
     };
   });
 

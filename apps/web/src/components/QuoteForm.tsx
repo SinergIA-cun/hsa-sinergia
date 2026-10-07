@@ -17,7 +17,8 @@ import { ClienteCombobox, type ClienteLite } from './ClienteSearch.tsx';
 import { BanqueteroPicker, type ModoVenta } from './banqueteros/BanqueteroPicker.tsx';
 import { FacturacionSection } from './FacturacionSection.tsx';
 import { BreakdownGrouped } from './BreakdownGrouped.tsx';
-import type { Catalog, Availability, SpaceAvailability, QuoteExtraInput } from '../lib/types.ts';
+import type { Catalog, Availability, SpaceAvailability, QuoteExtraInput, ServicioBanqueteroInput } from '../lib/types.ts';
+import { ServiciosBanqueteroCampo } from './ServiciosBanqueteroCampo.tsx';
 import { ServiciosSelector } from './ServiciosSelector.tsx';
 
 const MAX_ESPACIOS = 3; // Hay graduaciones que juntan salones; el tope es 3.
@@ -62,6 +63,8 @@ export interface QuoteFormInitial {
   usaDjHoraExtra: boolean;
   addOns: Record<string, number>;
   extras: QuoteExtraInput[];
+  /** Lo que pone el banquetero (solo en eventos de banquetero). */
+  serviciosBanquetero?: ServicioBanqueteroInput[];
   descuentoPct: number | null;
   descuentoMonto: number | null;
   descuentoMotivo: string;
@@ -97,6 +100,8 @@ export interface QuotePayload {
   /** Servicios sueltos de este evento. Se manda la lista COMPLETA: el servidor
    *  reemplaza en bloque, igual que con los add-ons. */
   extras: QuoteExtraInput[];
+  /** Lo que pone el banquetero. Lista COMPLETA; vacía sin banquetero. */
+  serviciosBanquetero: ServicioBanqueteroInput[];
   /** Descuento sobre la renta: en % o en monto fijo (uno u otro). Se omite si no hay. */
   descuentoPct?: number;
   descuentoMonto?: number;
@@ -282,6 +287,7 @@ export function QuoteForm({
   const djCotizado = initial?.usaDjHoraExtra === true;
   const [addOns, setAddOns] = useState<Record<string, number>>(initial?.addOns ?? {});
   const [extras, setExtras] = useState<QuoteExtraInput[]>(initial?.extras ?? []);
+  const [serviciosBanquetero, setServiciosBanquetero] = useState<ServicioBanqueteroInput[]>(initial?.serviciosBanquetero ?? []);
   // El descuento es en porcentaje O en monto fijo (el dueño, 5-oct-2026): primero
   // se elige cuál, y luego el valor. Vacío = sin descuento.
   const [descuentoTipo, setDescuentoTipo] = useState<'pct' | 'monto'>(initial?.descuentoMonto != null ? 'monto' : 'pct');
@@ -519,6 +525,10 @@ export function QuoteForm({
         foodPackageId: foodPackageId || undefined,
         addOns: Object.entries(addOns).map(([addOnId, cantidad]) => ({ addOnId, cantidad })),
         extras: extrasValidos,
+        // Un renglón sin nombre no dice nada: no se guarda.
+        serviciosBanquetero: esDeBanquetero
+          ? serviciosBanquetero.filter((s) => s.nombre.trim() !== '').map((s) => ({ ...s, nombre: s.nombre.trim() }))
+          : [],
         descuentoPct: pctValido,
         descuentoMonto: montoValido,
         descuentoMotivo: hayDescuento ? descuentoMotivo.trim() : undefined,
@@ -1163,6 +1173,10 @@ export function QuoteForm({
               <Plus size={15} /> Agregar servicio de este evento
             </button>
           </div>
+
+          {esDeBanquetero && (
+            <ServiciosBanqueteroCampo servicios={serviciosBanquetero} onChange={setServiciosBanquetero} />
+          )}
         </Card>
 
         <FacturacionSection

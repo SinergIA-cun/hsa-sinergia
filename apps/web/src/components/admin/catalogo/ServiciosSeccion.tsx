@@ -13,8 +13,14 @@ const KIND_LABEL: Record<AddOn['kind'], string> = {
   porUnidad: 'Por unidad',
 };
 
-export type ServicioPatch = Partial<Pick<AddOn, 'nombre' | 'categoria' | 'kind' | 'price' | 'activo' | 'proveedorId' | 'comisionPct'>>;
-export type ServicioNuevo = Pick<AddOn, 'nombre' | 'categoria' | 'kind' | 'price' | 'proveedorId' | 'comisionPct'>;
+export type ServicioPatch = Partial<Pick<AddOn, 'nombre' | 'categoria' | 'kind' | 'price' | 'activo' | 'proveedorId' | 'comisionPct' | 'cobra'>>;
+export type ServicioNuevo = Pick<AddOn, 'nombre' | 'categoria' | 'kind' | 'price' | 'proveedorId' | 'comisionPct' | 'cobra'>;
+
+type Cobra = NonNullable<AddOn['cobra']>;
+const COBRA_LABEL: Record<Cobra, string> = {
+  proveedor: 'Lo cobra el proveedor',
+  hacienda: 'Lo cobra la hacienda',
+};
 
 /** "" = sin comisión; si no, un porcentaje de 0 a 100 (acepta decimales). */
 function leerComision(v: string): number | null | undefined {
@@ -24,21 +30,26 @@ function leerComision(v: string): number | null | undefined {
 }
 
 /**
- * Proveedor y comisión del servicio. La comisión es el % del precio sin IVA que
- * gana la hacienda; sin proveedor no hay comisión.
+ * Proveedor, comisión y quién le cobra el servicio al cliente. La comisión es el
+ * % del precio sin IVA que gana la hacienda; sin proveedor no hay comisión.
+ * "Quién lo cobra" es un dato para el BI: no cambia los cobros del evento.
  */
 function ProveedorCampos({
   proveedores,
   proveedorId,
   comision,
+  cobra,
   onProveedor,
   onComision,
+  onCobra,
 }: {
   proveedores: Proveedor[];
   proveedorId: string;
   comision: string;
+  cobra: Cobra;
   onProveedor: (id: string) => void;
   onComision: (v: string) => void;
+  onCobra: (c: Cobra) => void;
 }) {
   // Los activos, más el que ya tiene aunque se haya desactivado.
   const opciones = proveedores.filter((p) => p.activo || p.id === proveedorId);
@@ -71,6 +82,18 @@ function ProveedorCampos({
         />
         <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm text-charcoal-soft">%</span>
       </div>
+      <SelectInput
+        aria-label="Quién lo cobra"
+        className="col-span-2"
+        value={cobra}
+        onChange={(e) => onCobra(e.target.value as Cobra)}
+      >
+        {(Object.keys(COBRA_LABEL) as Cobra[]).map((c) => (
+          <option key={c} value={c}>
+            {COBRA_LABEL[c]}
+          </option>
+        ))}
+      </SelectInput>
     </div>
   );
 }
@@ -199,6 +222,7 @@ function ServicioRow({
   const [price, setPrice] = useState(String(servicio.price));
   const [proveedorId, setProveedorId] = useState(servicio.proveedorId ?? '');
   const [comision, setComision] = useState(servicio.comisionPct == null ? '' : String(servicio.comisionPct));
+  const [cobra, setCobra] = useState<Cobra>(servicio.cobra ?? 'proveedor');
   const [invalido, setInvalido] = useState('');
   const { correr, pendiente, error } = useGuardar('No se pudo guardar el servicio.');
   const proveedor = proveedores.find((p) => p.id === servicio.proveedorId);
@@ -211,6 +235,7 @@ function ServicioRow({
     setPrice(String(servicio.price));
     setProveedorId(servicio.proveedorId ?? '');
     setComision(servicio.comisionPct == null ? '' : String(servicio.comisionPct));
+    setCobra(servicio.cobra ?? 'proveedor');
     setInvalido('');
   }
 
@@ -232,6 +257,7 @@ function ServicioRow({
           price: n,
           proveedorId: proveedorId || null,
           comisionPct: proveedorId ? pct : null,
+          cobra,
         }),
       'Guardado.',
     );
@@ -255,8 +281,10 @@ function ServicioRow({
           proveedores={proveedores}
           proveedorId={proveedorId}
           comision={comision}
+          cobra={cobra}
           onProveedor={setProveedorId}
           onComision={setComision}
+          onCobra={setCobra}
         />
         {(invalido || error) && (
           <p role="alert" className="text-xs text-wine">
@@ -295,6 +323,7 @@ function ServicioRow({
           {KIND_LABEL[servicio.kind]} · {formatMXN(servicio.price)}
           {proveedor && ` · ${proveedor.nombre}`}
           {proveedor && servicio.comisionPct != null && ` · ${servicio.comisionPct}% comisión`}
+          {servicio.cobra === 'hacienda' && ' · lo cobra la hacienda'}
           {!servicio.activo && ' · no se ofrece, pero el catálogo lo sigue resolviendo'}
         </p>
       </div>
@@ -343,6 +372,7 @@ function NuevoServicio({
   const [price, setPrice] = useState('');
   const [proveedorId, setProveedorId] = useState('');
   const [comision, setComision] = useState('');
+  const [cobra, setCobra] = useState<Cobra>('proveedor');
   const [invalido, setInvalido] = useState('');
   const { correr, pendiente, error, ok } = useGuardar('No se pudo crear el servicio.');
 
@@ -368,6 +398,7 @@ function NuevoServicio({
           price: n,
           proveedorId: proveedorId || null,
           comisionPct: proveedorId ? pct : null,
+          cobra,
         }),
       `“${nombre.trim()}” agregado.`,
     );
@@ -399,13 +430,18 @@ function NuevoServicio({
       <Field label="Precio (MXN)" hint="Pesos enteros, sin centavos.">
         <MoneyInput value={price} onValue={setPrice} placeholder="0" />
       </Field>
-      <Field label="Proveedor y comisión" hint="Opcional. La comisión es el % del precio sin IVA que gana la hacienda.">
+      <Field
+        label="Proveedor, comisión y quién lo cobra"
+        hint="Opcional. La comisión es el % del precio sin IVA que gana la hacienda."
+      >
         <ProveedorCampos
           proveedores={proveedores}
           proveedorId={proveedorId}
           comision={comision}
+          cobra={cobra}
           onProveedor={setProveedorId}
           onComision={setComision}
+          onCobra={setCobra}
         />
       </Field>
       {(invalido || error) && (

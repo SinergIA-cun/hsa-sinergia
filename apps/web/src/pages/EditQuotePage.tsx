@@ -67,6 +67,7 @@ function toInitial(q: Quote): Partial<QuoteFormInitial> {
     // la lista COMPLETA: si no viajaran de vuelta, reeditar cualquier otra cosa
     // del evento los borraría en silencio y el total bajaría solo.
     extras: q.extras ?? [],
+    serviciosBanquetero: q.serviciosBanquetero ?? [],
     descuentoPct: q.descuentoPct ?? null,
     descuentoMonto: q.descuentoMonto ?? null,
     descuentoMotivo: q.descuentoMotivo ?? '',

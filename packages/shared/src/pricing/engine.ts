@@ -247,7 +247,17 @@ export function computeQuote(
       monto: round2(monto),
       ivaIncluido: false,
       grupo: 'otros',
-      ref: { tipo: 'servicioCatalogo', id: addon.id, cantidad: cantidadAddOn, unidad: UNIDAD_DE[addon.kind], precioUnitario: addon.price },
+      ref: {
+        tipo: 'servicioCatalogo',
+        id: addon.id,
+        cantidad: cantidadAddOn,
+        unidad: UNIDAD_DE[addon.kind],
+        precioUnitario: addon.price,
+        // Se congelan con el evento, igual que el precio (Eduardo, 6-oct-2026).
+        proveedorId: addon.proveedorId ?? null,
+        comisionPct: addon.proveedorId ? addon.comisionPct ?? null : null,
+        cobra: addon.cobra ?? 'proveedor',
+      },
     });
   }
 

@@ -44,6 +44,7 @@ const incluirEvento = {
   banquetero: { select: { id: true, nombre: true } },
   apartado: { select: { importadoBI: true } },
   priceList: { select: { ivaRate: true } },
+  serviciosBanquetero: { select: { nombre: true, cantidad: true, monto: true }, orderBy: { id: 'asc' as const } },
 };
 
 /** Cómo se cuenta un servicio del catálogo según su tipo de cobro. */
@@ -58,27 +59,41 @@ const lineasDe = (b: unknown): QuoteLine[] => (b as Breakdownish)?.lines ?? [];
  */
 async function referenciasDelDesglose(db: PrismaClient, lineas: QuoteLine[]) {
   const ids = (tipo: string) => [...new Set(lineas.filter((l) => l.ref?.tipo === tipo && l.ref.id).map((l) => l.ref!.id!))];
-  const [servicios, paquetes] = await Promise.all([
+  const [servicios, paquetes, proveedores] = await Promise.all([
     db.addOn.findMany({
       where: { id: { in: ids('servicioCatalogo') } },
-      select: { id: true, clave: true, categoria: true, comisionPct: true, proveedor: { select: { id: true, nombre: true } } },
+      select: { id: true, clave: true, categoria: true, comisionPct: true, proveedorId: true, cobra: true },
     }),
     db.foodPackage.findMany({ where: { id: { in: ids('alimentos') } }, select: { id: true, clave: true } }),
+    db.proveedor.findMany({ select: { id: true, nombre: true } }),
   ]);
   return {
     servicio: new Map(servicios.map((a) => [a.id, a])),
     paquete: new Map(paquetes.map((p) => [p.id, p.clave])),
+    proveedor: new Map(proveedores.map((p) => [p.id, p.nombre])),
   };
 }
 
 /**
  * `desglose[]` de un evento: cada renglón con la clave fija de lo que se vendió.
  *
- * La comisión es la del servicio en el catálogo DEL EVENTO (cada evento se queda
- * con su catálogo), sobre el precio sin IVA del renglón.
+ * Proveedor, comisión y quién cobra son los que se congelaron en el renglón al
+ * guardar el evento (como el precio). Un evento guardado antes de eso los toma
+ * del servicio en el catálogo DEL EVENTO. La comisión es sobre el subtotal sin IVA.
+ *
+ * Al final van los servicios que pone el banquetero (`bloque: banquetero`): NO
+ * suman a `renta` ni a `otros`.
  */
 function desgloseDelEvento(
-  q: { id: string; breakdown: unknown; rentaTotal: number; total: number; priceList: { ivaRate: number } | null },
+  q: {
+    id: string;
+    breakdown: unknown;
+    rentaTotal: number;
+    total: number;
+    priceList: { ivaRate: number } | null;
+    banquetero: { id: string; nombre: string } | null;
+    serviciosBanquetero: { nombre: string; cantidad: number; monto: number | null }[];
+  },
   refs: Awaited<ReturnType<typeof referenciasDelDesglose>>,
 ) {
   const renglones = desgloseParaBI(lineasDe(q.breakdown), {
@@ -87,22 +102,48 @@ function desgloseDelEvento(
     rentaTotal: q.rentaTotal,
     otrosTotal: q.total - q.rentaTotal,
   });
-  return renglones.map(({ refId, ...r }) => {
+  const vendidos = renglones.map(({ refId, servicio: congelado, ...r }) => {
     const servicio = r.tipo === 'servicioCatalogo' && refId ? refs.servicio.get(refId) : undefined;
     const clave =
       r.tipo === 'servicioCatalogo' ? servicio?.clave ?? null
       : r.tipo === 'alimentos' ? (refId ? refs.paquete.get(refId) ?? null : null)
       : r.tipo === 'rentaSalon' || r.tipo === 'cargoContrato' ? refId
       : null;
-    const pct = servicio?.proveedor ? servicio.comisionPct : null;
+    const datos = congelado ?? (servicio ? { proveedorId: servicio.proveedorId, comisionPct: servicio.comisionPct, cobra: servicio.cobra } : null);
+    const pct = datos?.proveedorId ? datos.comisionPct : null;
     return {
       ...r,
       clave,
       categoria: servicio?.categoria ?? null,
-      proveedor: servicio?.proveedor ? { clave: servicio.proveedor.id, nombre: servicio.proveedor.nombre } : null,
+      cobra: datos?.cobra ?? null,
+      proveedor: datos?.proveedorId ? { clave: datos.proveedorId, nombre: refs.proveedor.get(datos.proveedorId) ?? null } : null,
       comision: pct != null ? { porcentaje: pct, monto: Math.round(r.subtotal * pct) / 100 } : null,
+      banquetero: null as { id: string; nombre: string } | null,
     };
   });
+  const delBanquetero = q.banquetero
+    ? q.serviciosBanquetero.map((s, i) => ({
+        id: `${q.id}:servicioBanquetero:${i + 1}`,
+        bloque: 'banquetero' as const,
+        tipo: 'servicioBanquetero' as const,
+        nombre: s.nombre,
+        detalle: null,
+        cantidad: s.cantidad,
+        unidad: 'unidades' as const,
+        precioUnitario: s.monto != null ? Math.round((s.monto / s.cantidad) * 100) / 100 : null,
+        subtotal: null,
+        total: s.monto,
+        origen: 'contrato' as const,
+        cargoId: null,
+        clave: null,
+        categoria: null,
+        cobra: null,
+        proveedor: null,
+        comision: null,
+        banquetero: { id: q.banquetero!.id, nombre: q.banquetero!.nombre },
+      }))
+    : [];
+  return [...vendidos, ...delBanquetero];
 }
 
 /**
@@ -602,7 +643,7 @@ export async function biApartados(db: PrismaClient, r: RangoBI) {
       banquetero: { select: { id: true, nombre: true } },
       client: { select: { id: true, nombre: true } },
       eventType: { select: { nombre: true } },
-      quote: { select: { id: true, folio: true, etiqueta: true } },
+      quote: { select: { id: true, folio: true, etiqueta: true, deletedAt: true } },
       abonos: { orderBy: [{ fecha: 'asc' }, { id: 'asc' }] },
     },
     orderBy: [{ fechaEvento: 'asc' }, DESEMPATE],
@@ -638,6 +679,8 @@ export async function biApartados(db: PrismaClient, r: RangoBI) {
       quoteId: a.quote?.id ?? null,
       eventoFolio: a.quote?.folio ?? null,
       eventoCodigo: a.quote?.etiqueta ?? null,
+      // El evento en que se convirtió está en la papelera (no sale en /eventos).
+      eventoEnPapelera: a.quote?.deletedAt != null,
       abonos: a.abonos.map((x) => ({
         id: x.id,
         idBI: x.importadoBI,
@@ -690,6 +733,9 @@ export async function biCatalogos(db: PrismaClient) {
       categoria: a.categoria,
       tipoCobro: a.kind,
       unidad: UNIDAD_DE_KIND[a.kind],
+      // Quién se lo cobra al cliente: `proveedor` (directo; le debe la comisión a la
+      // hacienda) o `hacienda` (ella le paga al proveedor).
+      cobra: a.cobra,
       // Sin IVA: al evento se le agrega.
       precio: a.price,
       activo: a.activo,
@@ -709,7 +755,7 @@ export async function biCatalogos(db: PrismaClient) {
     proveedores: proveedores.map((p) => ({ clave: p.id, nombre: p.nombre, activo: p.activo })),
     tiposRenglon: [
       'rentaSalon', 'descuento', 'horasExtra', 'capilla', 'descuentoAlimentos', 'cargoContrato',
-      'alimentos', 'servicioCatalogo', 'djHoraExtra', 'servicioEvento', 'pactado', 'otro',
+      'alimentos', 'servicioCatalogo', 'djHoraExtra', 'servicioEvento', 'pactado', 'otro', 'servicioBanquetero',
     ],
     estatusEvento: ['borrador', 'formalizada', 'complementada', 'liquidada', 'standby', 'cancelada'],
     // Las etiquetas del BI. `complemento` ya no se usa (5-oct-2026).

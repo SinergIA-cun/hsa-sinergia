@@ -145,6 +145,8 @@ const categoria = z
 /** `null` = sin proveedor / sin comisión. */
 const proveedorId = z.string().min(1).nullish();
 const comisionPct = z.number().min(0).max(100).nullish();
+/** Quién le cobra el servicio al cliente (dato para el BI; no cambia los cobros). */
+const cobra = z.enum(['proveedor', 'hacienda']);
 
 export const servicioCreateSchema = z.object({
   nombre: z.string().min(1).max(80),
@@ -154,6 +156,7 @@ export const servicioCreateSchema = z.object({
   activo: z.boolean().default(true),
   proveedorId,
   comisionPct,
+  cobra: cobra.default('proveedor'),
 });
 
 export const servicioUpdateSchema = z
@@ -165,6 +168,7 @@ export const servicioUpdateSchema = z
     activo: z.boolean().optional(),
     proveedorId,
     comisionPct,
+    cobra: cobra.optional(),
   })
   .refine((o) => Object.values(o).some((v) => v !== undefined), {
     message: 'No hay nada que cambiar',
@@ -194,7 +198,7 @@ async function assertProveedor(tx: Prisma.TransactionClient, id: string | null |
 }
 
 /** Lo que se registra en la bitácora del catálogo de un servicio. */
-const fotoServicio = (a: { nombre: string; categoria: string | null; kind: string; price: number; activo: boolean; proveedorId: string | null; comisionPct: number | null }) => ({
+const fotoServicio = (a: { nombre: string; categoria: string | null; kind: string; price: number; activo: boolean; proveedorId: string | null; comisionPct: number | null; cobra: string }) => ({
   nombre: a.nombre,
   categoria: a.categoria,
   kind: a.kind,
@@ -202,6 +206,7 @@ const fotoServicio = (a: { nombre: string; categoria: string | null; kind: strin
   activo: a.activo,
   proveedorId: a.proveedorId,
   comisionPct: a.comisionPct,
+  cobra: a.cobra,
 });
 
 export async function crearServicio(

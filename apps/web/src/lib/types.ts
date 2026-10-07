@@ -58,6 +58,8 @@ export interface AddOn {
   /** Quién da el servicio y qué % del precio sin IVA gana la hacienda. Solo en Admin. */
   proveedorId?: string | null;
   comisionPct?: number | null;
+  /** Quién se lo cobra al cliente: el proveedor directo o la hacienda. */
+  cobra?: 'proveedor' | 'hacienda';
 }
 
 /** Proveedor de servicios del catálogo (global, no por catálogo). */
@@ -239,6 +241,14 @@ export interface QuoteExtraInput {
   cantidad: number;
 }
 
+/** Lo que pone el banquetero en un evento suyo. No entra al precio ni al total. */
+export interface ServicioBanqueteroInput {
+  nombre: string;
+  cantidad: number;
+  /** Lo que cobra el banquetero por eso (pesos, total). `null` = no se sabe. */
+  monto: number | null;
+}
+
 export interface Quote {
   id: string;
   /** El id del evento en el BI si vino de allá: tiene PRECIO PACTADO, no se recotiza. */
@@ -284,6 +294,8 @@ export interface Quote {
   addOns?: { addOnId: string; cantidad: number }[];
   /** Servicios sueltos de ESTE evento, fuera del catálogo (monto con IVA incluido). */
   extras?: QuoteExtraInput[];
+  /** Lo que pone el banquetero (informativo; no entra al total). */
+  serviciosBanquetero?: ServicioBanqueteroInput[];
   /** Descuento de cortesía, en % sobre la renta. `null` = sin descuento. */
   descuentoPct?: number | null;
   /** El mismo descuento en monto fijo (pesos con IVA). Uno u otro. */

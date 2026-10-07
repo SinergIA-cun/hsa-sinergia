@@ -114,6 +114,7 @@ export async function clonarCatalogo(db: PrismaClient, rawInput: unknown) {
           clave: a.clave,
           proveedorId: a.proveedorId,
           comisionPct: a.comisionPct,
+          cobra: a.cobra,
         })),
       });
     }

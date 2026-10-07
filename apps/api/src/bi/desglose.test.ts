@@ -54,6 +54,8 @@ beforeAll(async () => {
 
 afterAll(async () => {
   const qs = await prisma.quote.findMany({ where: { id: { in: quotes } }, select: { clientId: true } });
+  await prisma.quote.updateMany({ where: { id: { in: quotes } }, data: { banqueteroId: null } });
+  await prisma.banquetero.deleteMany({ where: { nombre: { contains: SUF } } });
   await prisma.activityLog.deleteMany({ where: { quoteId: { in: quotes } } });
   await prisma.eventoHistorico.deleteMany({ where: { quoteId: { in: quotes } } });
   await prisma.quote.deleteMany({ where: { id: { in: quotes } } });
@@ -67,7 +69,7 @@ afterAll(async () => {
 let semana = 0;
 const sabado = () => new Date(Date.UTC(2055, 0, 2 + 7 * semana++)).toISOString().slice(0, 10);
 
-async function evento() {
+async function evento(extra: Record<string, unknown> = {}) {
   const q = await createQuote(
     prisma,
     {
@@ -79,6 +81,7 @@ async function evento() {
       addOns: [{ addOnId: servicio.id, cantidad: 1 }],
       extras: [{ nombre: 'Tornaboda', kind: 'fijo', monto: 8000, cantidad: 1 }],
       client: { nombre: 'Desglose BI', telefono: '5513131313' },
+      ...extra,
     },
     admin,
   );
@@ -126,6 +129,8 @@ describe('desglose del BI', () => {
       origen: 'contrato',
       proveedor: { clave: proveedorId, nombre: `Dulces Lupita ${SUF}` },
       comision: { porcentaje: 10, monto: 2200 },
+      cobra: 'proveedor',
+      banquetero: null,
     });
     expect(porTipo('servicioEvento')).toEqual([
       expect.objectContaining({ nombre: 'Tornaboda', clave: null, total: 8000, proveedor: null, comision: null }),
@@ -165,7 +170,7 @@ describe('desglose del BI', () => {
 
   it('un desglose guardado sin etiquetas se etiqueta al arrancar, sin mover montos', async () => {
     const q = await evento();
-    const original = (await prisma.quote.findUniqueOrThrow({ where: { id: q.id } })).breakdown as { lines: QuoteLine[] };
+    const original = (await prisma.quote.findUniqueOrThrow({ where: { id: q.id } })).breakdown as unknown as { lines: QuoteLine[] };
     const sinRef = original.lines.map((l) => {
       const copia = { ...l };
       delete copia.ref;
@@ -176,7 +181,80 @@ describe('desglose del BI', () => {
     const r = await etiquetarDesgloses(prisma);
     expect(r.etiquetados).toBeGreaterThanOrEqual(1);
     expect(r.sinEmparejar).not.toContain(q.etiqueta);
-    const despues = (await prisma.quote.findUniqueOrThrow({ where: { id: q.id } })).breakdown as { lines: QuoteLine[] };
+    const despues = (await prisma.quote.findUniqueOrThrow({ where: { id: q.id } })).breakdown as unknown as { lines: QuoteLine[] };
     expect(despues.lines).toEqual(original.lines);
+  });
+});
+
+describe('comisión congelada, quién cobra y servicios del banquetero', () => {
+  const desgloseDe = async (id: string) => (await get(`/api/bi/eventos?ids=${id}`)).datos[0];
+  const dulcesDe = (ev: { desglose: { tipo: string }[] }) => ev.desglose.find((r) => r.tipo === 'servicioCatalogo')!;
+
+  it('el evento se queda con el % y quién cobra con que se vendió, aunque cambie el catálogo', async () => {
+    const q = await evento();
+    await editarServicio(prisma, catalogoId, servicio.id, { comisionPct: 20, cobra: 'hacienda' }, admin);
+    try {
+      expect(dulcesDe(await desgloseDe(q.id))).toMatchObject({ cobra: 'proveedor', comision: { porcentaje: 10, monto: 2200 } });
+      // Uno nuevo se vende con lo de hoy.
+      const nuevo = await evento();
+      expect(dulcesDe(await desgloseDe(nuevo.id))).toMatchObject({ cobra: 'hacienda', comision: { porcentaje: 20, monto: 4400 } });
+      const c = await get('/api/bi/catalogos');
+      expect(c.servicios.find((x: { id: string }) => x.id === servicio.id)).toMatchObject({ cobra: 'hacienda', comisionPct: 20 });
+    } finally {
+      await editarServicio(prisma, catalogoId, servicio.id, { comisionPct: 10, cobra: 'proveedor' }, admin);
+    }
+  });
+
+  it('un evento guardado sin congelar toma lo del catálogo al arrancar', async () => {
+    const q = await evento();
+    const b = (await prisma.quote.findUniqueOrThrow({ where: { id: q.id } })).breakdown as unknown as { lines: QuoteLine[] };
+    const viejas = b.lines.map((l) => {
+      if (l.ref?.tipo !== 'servicioCatalogo') return l;
+      const ref = { ...l.ref };
+      delete ref.proveedorId;
+      delete ref.comisionPct;
+      delete ref.cobra;
+      return { ...l, ref };
+    });
+    await prisma.quote.update({ where: { id: q.id }, data: { breakdown: { ...b, lines: viejas } as never } });
+    await etiquetarDesgloses(prisma);
+    const despues = (await prisma.quote.findUniqueOrThrow({ where: { id: q.id } })).breakdown as unknown as { lines: QuoteLine[] };
+    expect(despues.lines).toEqual(b.lines);
+  });
+
+  it('lo que pone el banquetero va en su propio bloque y no mueve los totales', async () => {
+    const ban = await prisma.banquetero.create({ data: { nombre: `Banquetes ${SUF}`, telefono: '5514141414' } });
+    const q = await evento({
+      banqueteroId: ban.id,
+      serviciosBanquetero: [
+        { nombre: 'Banquete 3 tiempos', cantidad: 200, monto: 160000 },
+        { nombre: 'Mesa de quesos', cantidad: 1 },
+      ],
+    });
+    const ev = await desgloseDe(q.id);
+    const suyos = ev.desglose.filter((r: { bloque: string }) => r.bloque === 'banquetero');
+    expect(suyos).toEqual([
+      expect.objectContaining({ id: `${q.id}:servicioBanquetero:1`, tipo: 'servicioBanquetero', nombre: 'Banquete 3 tiempos', cantidad: 200, precioUnitario: 800, total: 160000, banquetero: { id: ban.id, nombre: `Banquetes ${SUF}` } }),
+      expect.objectContaining({ nombre: 'Mesa de quesos', cantidad: 1, precioUnitario: null, total: null }),
+    ]);
+    const suma = (bl: string) =>
+      Math.round(ev.desglose.filter((r: { bloque: string }) => r.bloque === bl).reduce((s: number, r: { total: number }) => s + r.total, 0) * 100) / 100;
+    expect(suma('renta')).toBe(ev.renta.total);
+    expect(suma('otros')).toBe(ev.otros.total);
+    expect(ev.total).toBe(ev.renta.total + ev.otros.total);
+
+    // Editar sin mandarlos los deja; mandarlos los reemplaza y queda en la bitácora.
+    const guardada = await prisma.quote.findUniqueOrThrow({ where: { id: q.id }, include: SELECCION_INCLUDE });
+    await updateQuote(prisma, q.id, { ...seleccionGuardada(guardada), invitados: 210 }, admin);
+    expect(await prisma.servicioBanquetero.count({ where: { quoteId: q.id } })).toBe(2);
+    await updateQuote(prisma, q.id, { ...seleccionGuardada(guardada), serviciosBanquetero: [{ nombre: 'Banquete 3 tiempos', cantidad: 200, monto: 170000 }] }, admin);
+    const log = await prisma.activityLog.findFirstOrThrow({ where: { quoteId: q.id, tipo: 'edicion' }, orderBy: { createdAt: 'desc' } });
+    const servicios = (log.meta as { servicios: Record<string, unknown[]> }).servicios;
+    expect(servicios.quitados).toEqual([expect.objectContaining({ tipo: 'servicioBanquetero', nombre: 'Mesa de quesos' })]);
+    expect(servicios.cambiados).toEqual([expect.objectContaining({ tipo: 'servicioBanquetero', detalle: { cantidad: 200, monto: 170000 }, antes: { cantidad: 200, monto: 160000 } })]);
+
+    // Sin banquetero, se van.
+    await updateQuote(prisma, q.id, { ...seleccionGuardada(guardada), banqueteroId: null }, admin);
+    expect(await prisma.servicioBanquetero.count({ where: { quoteId: q.id } })).toBe(0);
   });
 });

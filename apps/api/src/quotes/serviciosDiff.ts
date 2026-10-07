@@ -5,10 +5,12 @@ export interface ServiciosDeCotizacion {
   foodPackageId: string | null;
   addOns: { addOnId: string; cantidad: number }[];
   extras: { nombre: string; kind: string; monto: number; cantidad: number }[];
+  /** Lo que pone el banquetero (no entra al precio). */
+  serviciosBanquetero?: { nombre: string; cantidad: number; monto: number | null }[];
 }
 
 interface Renglon {
-  tipo: 'alimentos' | 'servicioCatalogo' | 'servicioEvento';
+  tipo: 'alimentos' | 'servicioCatalogo' | 'servicioEvento' | 'servicioBanquetero';
   id: string | null;
   nombre: string | null;
   detalle: Record<string, unknown>;
@@ -34,6 +36,14 @@ function renglones(s: ServiciosDeCotizacion): Map<string, Renglon> {
       id: null,
       nombre: e.nombre,
       detalle: { tipoCobro: e.kind, monto: e.monto, cantidad: e.cantidad },
+    });
+  }
+  for (const b of s.serviciosBanquetero ?? []) {
+    m.set(`banquetero:${b.nombre.trim().toLowerCase()}`, {
+      tipo: 'servicioBanquetero',
+      id: null,
+      nombre: b.nombre,
+      detalle: { cantidad: b.cantidad, monto: b.monto },
     });
   }
   return m;

@@ -21,6 +21,19 @@ export const quoteExtraSchema = z.object({
 
 export type QuoteExtra = z.infer<typeof quoteExtraSchema>;
 
+/**
+ * Lo que pone el banquetero en un evento suyo. Informativo para el BI: no entra
+ * al desglose ni al total (lo que el evento le debe a la hacienda).
+ */
+export const servicioBanqueteroSchema = z.object({
+  nombre: z.string().trim().min(1).max(120),
+  cantidad: z.number().int().positive().default(1),
+  /** Lo que cobra el banquetero por eso (pesos, total). Opcional. */
+  monto: z.number().int().nonnegative().nullish(),
+});
+
+export type ServicioBanqueteroInput = z.infer<typeof servicioBanqueteroSchema>;
+
 export const quoteSelectionSchema = z.object({
   fecha: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   invitados: z.number().int().positive(),

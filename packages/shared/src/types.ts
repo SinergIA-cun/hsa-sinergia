@@ -37,7 +37,15 @@ export interface AddOn {
    *  cotizaciones ya emitidas que los referencian por id. El motor no
    *  distingue —cobra igual— y la interfaz es la que deja de ofrecerlos. */
   activo: boolean;
+  /** Proveedor, comisión y quién lo cobra: el motor los congela en el renglón
+   *  (`LineaRef`) al guardar el evento, igual que el precio. */
+  proveedorId?: string | null;
+  comisionPct?: number | null;
+  cobra?: CobraServicio;
 }
+
+/** Quién le cobra un servicio al cliente: el proveedor directo o la hacienda. */
+export type CobraServicio = 'proveedor' | 'hacienda';
 
 export interface Catalog {
   ivaRate: number;              // 0.16
@@ -108,6 +116,10 @@ export interface LineaRef {
   unidad: UnidadRenglon;
   /** En la misma base que `monto`: con IVA si `ivaIncluido`, sin IVA si no. */
   precioUnitario: number;
+  /** Solo `servicioCatalogo`: lo que tenía el servicio cuando se guardó el evento. */
+  proveedorId?: string | null;
+  comisionPct?: number | null;
+  cobra?: CobraServicio;
 }
 
 export interface QuoteBreakdown {
