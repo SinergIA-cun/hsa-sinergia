@@ -343,6 +343,8 @@ export interface Payment {
   folio: number;
   /** Su letra dentro del depósito repartido (`I 5340-B`); `null` = pago directo. */
   folioLetra?: string | null;
+  /** El depósito del banquetero del que salió (se corrige desde su cuenta). */
+  pagoBanqueteroId?: string | null;
   monto: number;
   metodo: PaymentMethod;
   /** Las partes si vino dividido; `null` en los pagos de antes de la división. */

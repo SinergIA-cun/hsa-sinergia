@@ -4,8 +4,7 @@ import { PRODUCTOS_CARGO, PRODUCTO_INFO, afectaContrato, formatFolio, type Produ
 import { cuentaDelEvento } from './cuenta.js';
 import { sincronizarContrato } from './contrato.js';
 import { QuoteError, ownershipWhere, assertNotTrashed, loadEstadoCuenta, type Actor } from '../quotes/service.js';
-import { esUpgrade } from '../quotes/estadoCuenta.js';
-import { reclasificarConceptos } from '../payments/conceptos.js';
+import { ponerAlDia } from '../payments/estatus.js';
 import { logActivity } from '../quotes/activityLog.js';
 import { archivarEvento } from '../historico/archivar.js';
 
@@ -68,23 +67,7 @@ async function alContrato(db: PrismaClient, quoteId: string, actorId: string, qu
     meta: { totalAntes: antes, totalDespues: despues, origen: 'puntoDeVenta' },
     actorId,
   });
-  const quote = await db.quote.findUniqueOrThrow({ where: { id: quoteId } });
-  await reclasificarConceptos(db, quote, { actorId });
-  const { estadoCuenta } = await loadEstadoCuenta(db, quote);
-  const sugerido = estadoCuenta.sugerido;
-  let nuevo: string | null = null;
-  if (quote.status === 'liquidada' && sugerido && sugerido !== 'liquidada') nuevo = sugerido;
-  else if (esUpgrade(quote.status, sugerido)) nuevo = sugerido;
-  if (nuevo && nuevo !== quote.status) {
-    await db.quote.update({ where: { id: quoteId }, data: { status: nuevo as typeof quote.status } });
-    await logActivity(db, {
-      quoteId,
-      tipo: 'estatus',
-      descripcion: `Estatus: ${quote.status} → ${nuevo} (automático: cambió el valor del contrato)`,
-      meta: { de: quote.status, a: nuevo, auto: true },
-      actorId,
-    });
-  }
+  await ponerAlDia(db, quoteId, actorId, 'cambió el valor del contrato');
 }
 
 export async function registrarCargo(db: PrismaClient, quoteId: string, rawInput: unknown, actor: Actor) {

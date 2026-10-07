@@ -548,6 +548,18 @@ Si la edición agregó, quitó o cambió alimentos o servicios, `detalle.servici
 }
 ```
 
+**Recibos corregidos o movidos (desde el 6-oct-2026).** Un admin puede corregir un recibo ya
+registrado (monto, fecha, forma de pago, referencia o folio de papel) o moverlo al evento correcto,
+siempre con motivo:
+- **Corregido:** un `edicion` en su evento con `detalle: { paymentId, correccion: true, motivo,
+  antes, despues }` (`antes`/`despues`: `monto`, `fecha`, `formas`, `referencia`, `folio`). El pago
+  conserva su `id` e `idBI`.
+- **Movido:** el MISMO pago (mismo `id`, folio, monto e `idBI`) cambia de evento. En el de origen sale
+  un `edicion` con `detalle: { paymentId, movidoA, codigoDestino, monto, motivo }`; en el de destino,
+  un `pago` con `detalle: { paymentId, movidoDe, codigoOrigen, monto, motivo }`. Relean los dos
+  eventos con `?ids=`: en `/pagos` el pago ya sale con el evento nuevo.
+- No se corrigen ni se mueven pagos anulados, facturados o que salieron de un depósito de banquetero.
+
 `tipo` es `alimentos`, `servicioCatalogo`, `servicioEvento` o `servicioBanquetero` (su `detalle`:
 `{ cantidad, monto }`). Los tecleados y los del banquetero no tienen id: se emparejan por nombre.
 

@@ -15,6 +15,7 @@ import {
 } from './service.js';
 import { ServerStorage } from './storage.js';
 import { estadoFolios, fijarSiguienteFolio } from './folios.js';
+import { buscarRecibos, corregirPago, eventoPorCodigo, moverPago } from './correcciones.js';
 
 /**
  * Las partes de un pago dividido llegan en multipart como UN campo con JSON
@@ -91,6 +92,43 @@ export async function paymentRoutes(app: FastifyInstance): Promise<void> {
       }
     },
   );
+
+  /** Un `QuoteError` con su código; lo demás (Zod → 400) al manejador global. */
+  const conErrores = async <T>(reply: import('fastify').FastifyReply, fn: () => Promise<T>) => {
+    try {
+      return await fn();
+    } catch (e) {
+      if (e instanceof QuoteError) return reply.code(e.status).send({ error: e.message });
+      throw e;
+    }
+  };
+
+  // Corregir un recibo ya registrado (monto, fecha, forma de pago, referencia o
+  // folio de papel). Admin, con motivo.
+  app.patch<{ Params: { id: string; paymentId: string } }>(
+    '/quotes/:id/payments/:paymentId/corregir',
+    { preHandler: requireAuth },
+    async (req, reply) => conErrores(reply, () => corregirPago(app.prisma, req.params.id, req.params.paymentId, req.body, req.user as Actor)),
+  );
+
+  // Mover un recibo al evento correcto. Admin, con motivo.
+  app.post<{ Params: { id: string; paymentId: string } }>(
+    '/quotes/:id/payments/:paymentId/mover',
+    { preHandler: requireAuth },
+    async (req, reply) => conErrores(reply, () => moverPago(app.prisma, req.params.id, req.params.paymentId, req.body, req.user as Actor)),
+  );
+
+  // Buscar un recibo por su folio: `GET /recibos?folio=I 4201`.
+  app.get<{ Querystring: { folio?: string } }>('/recibos', { preHandler: requireAuth }, async (req, reply) =>
+    conErrores(reply, () => buscarRecibos(app.prisma, req.query.folio ?? '', req.user as Actor)),
+  );
+
+  // Un evento por su código, para confirmar a dónde se mueve un pago.
+  app.get<{ Querystring: { codigo?: string } }>('/eventos/por-codigo', { preHandler: requireAuth }, async (req, reply) => {
+    const ev = await eventoPorCodigo(app.prisma, req.query.codigo ?? '', req.user as Actor);
+    if (!ev) return reply.code(404).send({ error: 'No hay un evento con ese código.' });
+    return { evento: { id: ev.id, codigo: ev.etiqueta, fecha: ev.fechaEvento.toISOString().slice(0, 10), estatus: ev.status, cliente: ev.client?.nombre ?? null } };
+  });
 
   // Corregir a mano el concepto de un pago. Lo puede hacer VENTAS sobre lo suyo:
   // es un error de captura, no un movimiento de dinero. La regla del finiquito se
