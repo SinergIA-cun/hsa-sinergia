@@ -79,6 +79,8 @@ export function PagosPanel({
 
   async function refresh() {
     await qc.invalidateQueries({ queryKey: ['quote', quoteId] });
+    // Un pago encola su recibo por correo.
+    await qc.invalidateQueries({ queryKey: ['correos', quoteId] });
     await qc.invalidateQueries({ queryKey: ['quotes'] });
   }
 

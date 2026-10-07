@@ -88,6 +88,22 @@ BI_IMPORT_API_KEY=<OTRA llave, distinta: solo para que el BI mande eventos>
 Sin esa variable, el módulo `/api/bi` **no se registra** y sus rutas responden 404. No hay
 modo "abierto por descuido": la ausencia de la llave cierra el API, no lo abre.
 
+**Correos al cliente** (confirmación al formalizar, recibo en PDF por cada pago y agradecimiento
+a los 2 días hábiles del evento). Con la cuenta de Google Workspace de la hacienda:
+
+```
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=465
+SMTP_USER=eventos@haciendasanandres.com.mx
+SMTP_PASS=<contraseña de aplicación de esa cuenta, NO la contraseña normal>
+MAIL_FROM=Hacienda San Andrés <eventos@haciendasanandres.com.mx>
+MAIL_BCC=<opcional: una copia oculta de cada correo>
+```
+La contraseña de aplicación se crea en la cuenta de Google (Seguridad → Verificación en dos
+pasos → Contraseñas de aplicaciones); se pega solo aquí, nunca en un chat. Sin `SMTP_HOST` la app
+funciona igual y no manda nada; lo pendiente de más de 3 días ya no se manda (para no soltar
+una avalancha vieja al configurarlo). En los logs: `Correos al cliente: activos.`
+
 > ### ⚠️ Volumen persistente
 >
 > `COMPROBANTES_DIR` guarda las fotos de comprobante de pago **y**, desde el Plan B, las

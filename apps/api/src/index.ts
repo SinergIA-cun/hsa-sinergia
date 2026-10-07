@@ -3,6 +3,9 @@ import { buildServer } from './server.js';
 import { loadConfig } from './config.js';
 import { mantenimientoAuditoria } from './auditoria/mantenimiento.js';
 import { barridoHistorico } from './historico/archivar.js';
+import { crearMailer } from './correos/mailer.js';
+import { iniciarCorreos } from './correos/cola.js';
+import { marcaDe } from './correos/marca.js';
 
 async function main(): Promise<void> {
   const config = loadConfig();
@@ -44,6 +47,12 @@ async function main(): Promise<void> {
   const app = await buildServer({ config });
   await app.listen({ port: config.PORT, host: config.HOST });
   console.log(`API HSA escuchando en http://${config.HOST}:${config.PORT}`);
+
+  // Los correos al cliente (bienvenida, recibos, cierre). Sin SMTP configurado no
+  // manda nada; los pendientes se marcan omitidos a los 3 días.
+  const mailer = crearMailer(config);
+  console.log(mailer ? 'Correos al cliente: activos.' : 'Correos al cliente: sin SMTP configurado, no se mandan.');
+  iniciarCorreos(prisma, mailer, marcaDe(config));
 }
 
 main().catch((err) => {

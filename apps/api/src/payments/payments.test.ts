@@ -293,6 +293,8 @@ describe('validación HTTP de pagos', () => {
 describe('pagos HTTP', () => {
   it('POST pago => 201; GET quote refleja pagado; PATCH anular => vuelve a 0', async () => {
     const q = await nuevaQuote();
+    // Formalizar pide el correo del cliente (le llegan su confirmación y recibos).
+    await prisma.client.update({ where: { id: q.clientId }, data: { correo: 'cliente.http@example.com' } });
 
     const login = await app.inject({
       method: 'POST',

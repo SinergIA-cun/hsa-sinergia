@@ -619,6 +619,7 @@ model Quote {
   activityLog         ActivityLog[]
   extras              QuoteExtra[]
   serviciosBanquetero ServicioBanquetero[]
+  correos             CorreoCliente[]
   /// La cuenta del punto de venta: lo que se agregó después de contratar.
   cargos              CargoEvento[]
   /// El dinero que se le devolvió al cliente de este evento.
@@ -1101,4 +1102,46 @@ model Devolucion {
   @@index([banqueteroId])
   @@index([pagoBanqueteroId])
   @@index([fecha])
+}
+
+/// Qué correo le llega al cliente (decisión del dueño, 6-oct-2026): uno al
+/// formalizar, uno por cada pago con su recibo en PDF y uno a los 2 días hábiles
+/// de terminado el evento.
+enum TipoCorreo {
+  bienvenida
+  recibo
+  cierre
+}
+
+enum EstadoCorreo {
+  pendiente
+  enviado
+  error
+  /// No se manda: el cliente no tiene correo, o se quedó sin enviar demasiado tiempo.
+  omitido
+}
+
+/// La cola de correos al cliente. Cada correo es un renglón: se encola en el
+/// momento (formalizar, registrar un pago, cierre) y un proceso del servidor lo
+/// manda. Si el envío falla se reintenta; lo que pasó queda aquí y se ve en el evento.
+model CorreoCliente {
+  id         String       @id @default(cuid())
+  quote      Quote        @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  quoteId    String
+  tipo       TipoCorreo
+  /// El pago del recibo (`recibo`) o el que formalizó el evento (`bienvenida`).
+  paymentId  String?
+  /// Un correo por cosa: `bienvenida:<quoteId>`, `recibo:<paymentId>`, `cierre:<quoteId>`.
+  clave      String       @unique
+  /// A quién se mandó (el correo del cliente en ese momento).
+  para       String?
+  estado     EstadoCorreo @default(pendiente)
+  intentos   Int          @default(0)
+  error      String?
+  enviadoAt  DateTime?
+  createdAt  DateTime     @default(now())
+  updatedAt  DateTime     @updatedAt
+
+  @@index([estado])
+  @@index([quoteId])
 }

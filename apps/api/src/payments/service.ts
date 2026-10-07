@@ -22,6 +22,7 @@ import { reclasificarConceptos } from './conceptos.js';
 import { folioPapelSchema, subirSecuenciaSobre, validarFolioDePapel } from './folios.js';
 import type { ComprobanteStorage } from './storage.js';
 import { validarCobroDeCargos, descripcionPagoCargos } from '../cargos/service.js';
+import { encolarCorreo } from '../correos/cola.js';
 
 export const registerPaymentSchema = z.object({
   monto: z.number().int().positive(),
@@ -190,6 +191,9 @@ export async function registerPayment(
       actorId: actor.id,
     });
     await archivarEvento(db, quoteId);
+    // Su recibo por correo. Lo que sale de un depósito o un abono no es dinero
+    // nuevo del cliente: su recibo fue el de esa entrada.
+    if (!origen) await encolarCorreo(db, quoteId, 'recibo', payment.id);
     const { estadoCuenta } = await loadEstadoCuenta(db, quote);
     return { payment, estadoCuenta, nuevoEstatus: null };
   }
@@ -230,6 +234,15 @@ export async function registerPayment(
     });
     // Recalcular con el nuevo estatus para que 'desfase' quede coherente.
     ({ estadoCuenta } = await loadEstadoCuenta(db, { ...quote, status: nuevoEstatus }));
+  }
+
+  // Los correos al cliente: al formalizarse, la bienvenida (con el recibo de este
+  // pago adjunto); si no, el recibo solo. Un pago que sale de un depósito o de un
+  // abono no lleva recibo propio (ver arriba), pero sí formaliza.
+  if (quote.status === 'borrador' && nuevoEstatus) {
+    await encolarCorreo(db, quoteId, 'bienvenida', origen ? null : payment.id);
+  } else if (!origen) {
+    await encolarCorreo(db, quoteId, 'recibo', payment.id);
   }
 
   // Si el evento ya pasó, su foto del histórico se pone al día con este pago.

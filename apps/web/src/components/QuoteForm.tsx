@@ -652,7 +652,7 @@ export function QuoteForm({
                 placeholder="55 1234 5678"
               />
             </Field>
-            <Field label="Correo">
+            <Field label="Correo" hint="Obligatorio para formalizar: ahí le llegan su confirmación y sus recibos.">
               <TextInput
                 type="email"
                 value={correo}

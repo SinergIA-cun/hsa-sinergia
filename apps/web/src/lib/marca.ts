@@ -1,3 +1,4 @@
+import { MARCA_POR_OMISION } from '@hsa/shared';
 import { config } from './config.ts';
 
 /**
@@ -20,24 +21,24 @@ import { config } from './config.ts';
  */
 export const MARCA = {
   /** El nombre que se lee en el encabezado, el recibo y el contrato. */
-  nombre: config('marcaNombre', import.meta.env.VITE_MARCA_NOMBRE) || 'Hacienda San Andrés',
+  nombre: config('marcaNombre', import.meta.env.VITE_MARCA_NOMBRE) || MARCA_POR_OMISION.nombre,
   /** El año bajo el logo. Vacío lo esconde. */
-  anio: config('marcaAnio', import.meta.env.VITE_MARCA_ANIO) ?? '1894',
+  anio: config('marcaAnio', import.meta.env.VITE_MARCA_ANIO) ?? MARCA_POR_OMISION.anio,
   /** Con quién se firma el contrato: la razón social completa. */
   razonSocial: config('marcaRazonSocial', import.meta.env.VITE_MARCA_RAZON_SOCIAL) ||
-    'Hacienda San Andrés Atoto, S.A.',
+    MARCA_POR_OMISION.razonSocial,
   /** Domicilio completo: recibo, contrato y las vistas públicas. */
   direccion:
     config('marcaDireccion', import.meta.env.VITE_MARCA_DIRECCION) ||
-    'Atlacomulco No. 1, Col. San Esteban, Naucalpan de Juárez, Estado de México',
+    MARCA_POR_OMISION.direccion,
   /** El mismo, recortado para el pie del login. */
   direccionCorta:
     config('marcaDireccionCorta', import.meta.env.VITE_MARCA_DIRECCION_CORTA) ||
     'Atlacomulco No. 1, Naucalpan, Estado de México',
-  telefono: config('marcaTelefono', import.meta.env.VITE_MARCA_TELEFONO) || '5357 1986',
+  telefono: config('marcaTelefono', import.meta.env.VITE_MARCA_TELEFONO) || MARCA_POR_OMISION.telefono,
   /** Un segundo teléfono, opcional. Vacío lo esconde del pie del contrato. */
   telefono2: config('marcaTelefono2', import.meta.env.VITE_MARCA_TELEFONO_2) ?? '5357 2833',
-  sitio: config('marcaSitio', import.meta.env.VITE_MARCA_SITIO) || 'www.haciendasanandres.com.mx',
+  sitio: config('marcaSitio', import.meta.env.VITE_MARCA_SITIO) || MARCA_POR_OMISION.sitio,
   /** Solo para los ejemplos de los campos de correo. */
   dominioCorreo: config('marcaDominioCorreo', import.meta.env.VITE_MARCA_DOMINIO_CORREO) ||
     'haciendasanandres.com.mx',

@@ -16,6 +16,7 @@ import {
 import { ServerStorage } from './storage.js';
 import { estadoFolios, fijarSiguienteFolio } from './folios.js';
 import { buscarRecibos, corregirPago, eventoPorCodigo, moverPago } from './correcciones.js';
+import { exigirCorreoParaFormalizar } from '../correos/cola.js';
 
 /**
  * Las partes de un pago dividido llegan en multipart como UN campo con JSON
@@ -69,6 +70,12 @@ export async function paymentRoutes(app: FastifyInstance): Promise<void> {
     }
 
     try {
+      // El pago que formaliza el evento pide el correo del cliente: ahí le llegan
+      // su confirmación y sus recibos. Va aquí, en la puerta de la pantalla, y no
+      // en el servicio: convertir un apartado o repartir un depósito no se detiene.
+      if (rawInput.destino !== 'cargos' && typeof rawInput.monto === 'number') {
+        await exigirCorreoParaFormalizar(app.prisma, req.params.id, rawInput.monto);
+      }
       const result = await registerPayment(app.prisma, storage, req.params.id, rawInput, req.user as Actor, file);
       return reply.code(201).send(result);
     } catch (e) {

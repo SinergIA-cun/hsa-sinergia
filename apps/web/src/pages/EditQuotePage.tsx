@@ -14,7 +14,9 @@ import {
 import { api } from '../lib/api.ts';
 import { formatMXN } from '../lib/money.ts';
 import { BreakdownGrouped } from '../components/BreakdownGrouped.tsx';
-import { whatsappUrl, mensajeCotizacion } from '../lib/share.ts';
+import { whatsappUrl, mensajeSaludo } from '../lib/share.ts';
+import { CorreosCliente } from '../components/CorreosCliente.tsx';
+import { apiErrorMessage } from '../components/admin/shared.tsx';
 import { Button, Card, SelectInput, ArrowDivider } from '../components/ui.tsx';
 import { QuoteForm, type QuotePayload, type QuoteFormInitial } from '../components/QuoteForm.tsx';
 import { PagosPanel } from '../components/PagosPanel.tsx';
@@ -107,6 +109,7 @@ export function EditQuotePage() {
   const [empalme, setEmpalme] = useState<{ status: QuoteStatus; ocupados: EspacioOcupado[] } | null>(null);
   const [empalmeBusy, setEmpalmeBusy] = useState(false);
   const [empalmeError, setEmpalmeError] = useState('');
+  const [errorEstatus, setErrorEstatus] = useState('');
   // Al recién crearlo llegamos con ?creado=1 para confirmar sin sacar del contrato.
   const recienCreado = sp.get('creado') === '1';
 
@@ -136,7 +139,15 @@ export function EditQuotePage() {
 
   async function aplicarStatus(status: QuoteStatus) {
     if (!quote) return;
-    await api.patch(`/api/quotes/${quote.id}/status`, { status });
+    setErrorEstatus('');
+    try {
+      await api.patch(`/api/quotes/${quote.id}/status`, { status });
+    } catch (e) {
+      // P. ej. formalizar sin el correo del cliente.
+      setErrorEstatus(apiErrorMessage(e, 'No se pudo cambiar el estatus.'));
+      return;
+    }
+    await qc.invalidateQueries({ queryKey: ['correos', quote.id] });
     await qc.invalidateQueries({ queryKey: ['quote', id] });
     await qc.invalidateQueries({ queryKey: ['quotes'] });
     // Apartar (o soltar) una fecha cambia quién queda desplazado.
@@ -230,12 +241,12 @@ export function EditQuotePage() {
   const contratoDisponible =
     !enPapelera && ['formalizada', 'complementada', 'liquidada'].includes(quote.status);
   const publicUrl = `${window.location.origin}/c/${quote.publicToken}`;
+  // El botón de WhatsApp solo abre la conversación: el enlace al portal ya no se
+  // le manda al cliente (el dueño, 6-oct-2026). Sus recibos le llegan por correo;
+  // el enlace sigue en "QR / enlace cliente" por si alguna vez hace falta.
   const waUrl =
     !enPapelera
-      ? whatsappUrl(
-          quote.client?.telefono,
-          mensajeCotizacion(quote.client?.nombre ?? 'cliente', quote.eventType?.nombre ?? 'evento', publicUrl),
-        )
+      ? whatsappUrl(quote.client?.telefono, mensajeSaludo(quote.client?.nombre ?? 'cliente', quote.eventType?.nombre ?? 'evento'))
       : null;
 
   return (
@@ -305,6 +316,11 @@ export function EditQuotePage() {
               ))}
             </SelectInput>
           </label>
+          )}
+          {errorEstatus && (
+            <p role="alert" className="w-full text-sm text-wine">
+              {errorEstatus}
+            </p>
           )}
           {!enPapelera && (
             <a href={publicUrl} target="_blank" rel="noreferrer">
@@ -426,6 +442,9 @@ export function EditQuotePage() {
           sinPagosNuevos={quote.status === 'cancelada'}
         />
       )}
+
+      {/* Lo que se le mandó al cliente por correo (confirmación, recibos, cierre). */}
+      {!enPapelera && <CorreosCliente quoteId={quote.id} isAdmin={isAdmin} />}
 
       {/* El punto de venta solo existe para un evento contratado: un borrador
           todavía es una cotización y no tiene cuenta que cargarle. */}

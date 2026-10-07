@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { requireAdmin, requireAuth } from '../auth/plugin.js';
+import { encolarCorreo, exigirCorreoParaFormalizar } from '../correos/cola.js';
 import { cotizacionesDesplazadas } from './empalmes.js';
 import {
   createQuote,
@@ -147,12 +148,18 @@ export async function quoteRoutes(app: FastifyInstance): Promise<void> {
       const parsed = statusSchema.safeParse(req.body);
       if (!parsed.success) return reply.code(400).send({ error: 'Estatus inválido' });
       try {
+        // Formalizar a mano también pide el correo y manda la bienvenida.
+        const COMPROMETIDO = ['formalizada', 'complementada', 'liquidada'];
+        const antes = await app.prisma.quote.findUnique({ where: { id: req.params.id }, select: { status: true } });
+        const formaliza = antes?.status === 'borrador' && COMPROMETIDO.includes(parsed.data.status);
+        if (formaliza) await exigirCorreoParaFormalizar(app.prisma, req.params.id);
         const quote = await updateStatus(
           app.prisma,
           req.params.id,
           parsed.data.status,
           req.user as Actor,
         );
+        if (formaliza) await encolarCorreo(app.prisma, req.params.id, 'bienvenida');
         return { quote };
       } catch (e) {
         if (e instanceof QuoteError) return reply.code(e.status).send({ error: e.message });
