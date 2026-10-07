@@ -21,3 +21,4 @@ export * from './clientes/contacto.js';
 export * from './eventos/ciclo.js';
 export * from './espacios/orden.js';
 export * from './pricing/precioDelDia.js';
+export * from './marca.js';

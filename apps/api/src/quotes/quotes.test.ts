@@ -616,7 +616,7 @@ describe('quotes HTTP', () => {
       prisma,
       // Fecha propia: este caso llega a liquidada, así que deja el espacio
       // comprometido y el servidor ya rechaza cualquier otra cotización ahí.
-      { fecha: '2030-01-19', invitados: 250, spaceIds: [arcosId], eventTypeId, client: { telefono: '5555550000', nombre: 'Ciclo Test' } },
+      { fecha: '2030-01-19', invitados: 250, spaceIds: [arcosId], eventTypeId, client: { telefono: '5555550000', correo: 'ciclo.test@example.com', nombre: 'Ciclo Test' } },
       actor,
     );
     createdQuoteIds.push(q.id);

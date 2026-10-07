@@ -10,6 +10,11 @@ export function whatsappUrl(telefono: string | null | undefined, mensaje: string
   return `https://wa.me/${conLada}?text=${encodeURIComponent(mensaje)}`;
 }
 
+/** Para abrir la conversación con el cliente, sin enlace: sus recibos le llegan por correo. */
+export function mensajeSaludo(cliente: string, evento: string): string {
+  return `Hola ${cliente}, le escribimos de ${MARCA.nombre} sobre su ${evento.toLowerCase()}.`;
+}
+
 /** Mensaje estándar para enviar una cotización/estado de cuenta al cliente. */
 export function mensajeCotizacion(cliente: string, evento: string, url: string): string {
   return `Hola ${cliente}, le comparto su cotización de ${evento} en ${MARCA.nombre}: ${url}`;

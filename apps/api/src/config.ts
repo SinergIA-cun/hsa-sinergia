@@ -1,5 +1,11 @@
 import { z } from 'zod';
 
+/** Una variable opcional: la cadena vacía (`X=` en el .env) cuenta como ausente. */
+const opcional = z
+  .string()
+  .optional()
+  .transform((v) => (v == null || v.trim() === '' ? undefined : v.trim()));
+
 const envSchema = z.object({
   DATABASE_URL: z.string().min(1),
   JWT_SECRET: z.string().min(16, 'JWT_SECRET debe tener al menos 16 caracteres'),
@@ -42,6 +48,26 @@ const envSchema = z.object({
     .transform((v) => (v === '' ? undefined : v))
     .pipe(z.string().min(32, 'BI_IMPORT_API_KEY debe tener al menos 32 caracteres').optional())
     .optional(),
+  // Correos al cliente (bienvenida, recibo por pago, cierre). Sin SMTP_HOST no se
+  // manda nada: los correos se quedan en la cola y, si pasan 3 días sin poder
+  // mandarse, se marcan omitidos (para no soltar una avalancha vieja al configurarlo).
+  // Google Workspace: smtp.gmail.com, 465, el correo y una contraseña de aplicación.
+  SMTP_HOST: opcional,
+  SMTP_PORT: z.coerce.number().int().positive().default(465),
+  SMTP_USER: opcional,
+  SMTP_PASS: opcional,
+  /** Remitente: `Hacienda San Andrés <eventos@haciendasanandres.com.mx>`. Por omisión, SMTP_USER. */
+  MAIL_FROM: opcional,
+  /** Copia oculta de cada correo (p. ej. para que la vendedora vea lo que se mandó). */
+  MAIL_BCC: opcional,
+  /** A dónde contesta el cliente, si no es el remitente. */
+  MAIL_REPLY_TO: opcional,
+  // La identidad que firma los correos. Por omisión, Hacienda San Andrés.
+  MARCA_NOMBRE: opcional,
+  MARCA_RAZON_SOCIAL: opcional,
+  MARCA_DIRECCION: opcional,
+  MARCA_TELEFONO: opcional,
+  MARCA_SITIO: opcional,
 });
 
 export type AppConfig = z.infer<typeof envSchema>;
