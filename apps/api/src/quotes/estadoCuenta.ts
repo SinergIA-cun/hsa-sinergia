@@ -155,7 +155,9 @@ export function computeEstadoCuenta(args: {
 
   const plan: Milestone[] = [
     hito('apartar', 'Apartar fecha', objApartar, null, desgloseApartar),
-    hito('complemento', 'Complemento', objComplemento, complementoVence?.toISOString() ?? null, desglose),
+    // La llave sigue siendo `complemento` (la lee el BI); la etiqueta dice "A
+    // cuenta": el dueño quitó "complemento" de todos lados menos del contrato (6-oct-2026).
+    hito('complemento', 'A cuenta', objComplemento, complementoVence?.toISOString() ?? null, desglose),
     hito('finiquito', 'Finiquito', objFiniquito, finiquitoVence.toISOString()),
   ];
 

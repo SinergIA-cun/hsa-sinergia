@@ -45,7 +45,7 @@ describe('computeEstadoCuenta', () => {
   it('el hito del complemento no menciona formalizar', () => {
     const ec = computeEstadoCuenta({ ...base, rules: soloArcos, payments: [] });
     const comp = ec.plan!.find((m) => m.key === 'complemento')!;
-    expect(comp.label).toBe('Complemento');
+    expect(comp.label).toBe('A cuenta');
     expect(ec.plan!.find((m) => m.key === 'apartar')!.label).toBe('Apartar fecha');
   });
 

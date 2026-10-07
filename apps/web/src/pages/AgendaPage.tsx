@@ -52,7 +52,7 @@ function agendaChipStyle(e: AgendaEvent): string {
 const LEYENDA: { label: string; dot: string }[] = [
   { label: 'Tentativa', dot: 'bg-wine' },
   { label: 'Formalizada', dot: 'bg-blue-600' },
-  { label: 'Complemento cubierto', dot: 'bg-white ring-1 ring-ink' },
+  { label: 'Pago a cuenta cubierto', dot: 'bg-white ring-1 ring-ink' },
   { label: 'Cortesía familiar', dot: 'bg-emerald-600' },
   { label: 'Fecha apartada (sin precio)', dot: 'bg-gold' },
 ];

@@ -16,7 +16,7 @@ const SECTIONS: { title: string; statuses: QuoteStatus[]; defaultOpen: boolean }
   { title: 'Sin fecha · en standby', statuses: ['standby'], defaultOpen: true },
   { title: 'Cotizaciones', statuses: ['borrador'], defaultOpen: true },
   { title: 'Eventos Formalizados', statuses: ['formalizada'], defaultOpen: true },
-  { title: 'Complemento cubierto', statuses: ['complementada'], defaultOpen: false },
+  { title: 'Pago a cuenta cubierto', statuses: ['complementada'], defaultOpen: false },
   { title: 'Eventos Liquidados', statuses: ['liquidada'], defaultOpen: false },
   { title: 'Cancelados', statuses: ['cancelada'], defaultOpen: false },
 ];

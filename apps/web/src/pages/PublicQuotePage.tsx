@@ -25,13 +25,13 @@ function terminosPago(plan: Milestone[]): string[] {
     const vence = m.venceISO ? ` a más tardar el ${formatEventDate(m.venceISO, 'long')}` : '';
     if (m.key === 'apartar') return `Apartado: ${formatMXN(m.objetivo)} para reservar la fecha.`;
     if (m.key === 'complemento') {
-      // El complemento es lo que se suma al apartado, no el acumulado. Se imprime
+      // El pago a cuenta es lo que se suma al apartado, no el acumulado. Se imprime
       // la multiplicación de cada salón para que el cliente la pueda verificar.
       const desglose = m.desglose ?? [];
       const suma = desglose.reduce((s, d) => s + d.monto, 0);
       const cuentas = desglose.map((d) => `${formatPctFraccion(d.pct)} de ${formatMXN(d.rentaBase)}`).join(' + ');
       const detalle = cuentas ? ` (${cuentas})` : '';
-      return `Complemento: ${formatMXN(suma)}${detalle}, adicional al apartado${vence}. Con el apartado, lo pagado acumulado suma ${formatMXN(m.objetivo)}.`;
+      return `A cuenta: ${formatMXN(suma)}${detalle}, adicional al apartado${vence}. Con el apartado, lo pagado acumulado suma ${formatMXN(m.objetivo)}.`;
     }
     return `Liquidación: el total (${formatMXN(m.objetivo)}) debe quedar cubierto${vence} (30 días antes del evento).`;
   });

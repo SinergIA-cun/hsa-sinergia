@@ -25,7 +25,8 @@ const CONCEPTOS: { value: PaymentConcept; label: string }[] = [
 
 const CONCEPTO_LABEL: Record<PaymentConcept, string> = {
   anticipo: 'Anticipo',
-  complemento: 'Complemento',
+  // Pagos viejos que todavía digan `complemento`: se leen como a cuenta.
+  complemento: 'A cuenta',
   aCuenta: 'A cuenta',
   finiquito: 'Finiquito',
 };
@@ -212,7 +213,7 @@ export function PagosPanel({
           <Field label="Fecha"><TextInput type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} required /></Field>
           <FormasPagoCampo value={formas} onChange={setFormas} monto={Number(monto) || 0} />
           {/* El concepto se DEDUCE del saldo: comparando el pagado acumulado con
-              los hitos del plan sale solo si es anticipo, complemento, a cuenta o
+              los hitos del plan sale solo si es anticipo, a cuenta o
               finiquito. Lo que se elige aquí solo se usa en los eventos SIN plan
               de pagos (los espacios cuyos montos no están definidos). Si hace
               falta discrepar, el concepto se corrige en el renglón del pago. */}

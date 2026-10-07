@@ -1218,7 +1218,7 @@ export function QuoteForm({
                         <span className="tabular-nums">{formatMXN(plan.apartar)}</span>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-charcoal-soft">Complemento</span>
+                        <span className="text-charcoal-soft">A cuenta</span>
                         <span className="tabular-nums">{formatMXN(plan.formalizar)}</span>
                       </div>
                       <div className="flex justify-between">

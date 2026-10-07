@@ -31,7 +31,7 @@ interface PublicResponse {
 
 const CONCEPTO_LABEL: Record<string, string> = {
   anticipo: 'Anticipo',
-  complemento: 'Complemento',
+  complemento: 'Abono a cuenta',
   aCuenta: 'Abono a cuenta',
   finiquito: 'Finiquito',
 };
