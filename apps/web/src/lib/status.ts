@@ -3,7 +3,7 @@ import type { QuoteStatus } from './types.ts';
 export const STATUS_LABEL: Record<QuoteStatus, string> = {
   borrador: 'Borrador',
   formalizada: 'Formalizada',
-  complementada: 'Complemento cubierto',
+  complementada: 'Pago a cuenta cubierto',
   liquidada: 'Liquidada',
   standby: 'Standby · sin fecha',
   cancelada: 'Cancelada',

@@ -462,7 +462,7 @@ Real, de `GET /api/bi/pagos-esperados?desde=2026-10-01&hasta=2026-12-31`:
             "quoteId": "cmsj6g0l70007cbraofce8yu1",
             "cliente": "Ejemplo Docs BI",
             "hito": "complemento",
-            "etiqueta": "Complemento",
+            "etiqueta": "A cuenta",
             "objetivo": 68500,
             "cubierto": 50000,
             "restante": 18500,
@@ -472,7 +472,9 @@ Real, de `GET /api/bi/pagos-esperados?desde=2026-10-01&hasta=2026-12-31`:
 }
 ```
 
-`hito` es `apartar`, `complemento` o `finiquito`. `objetivo` es el acumulado que debe estar
+`hito` es `apartar`, `complemento` o `finiquito`. La **llave** `complemento` se queda por
+compatibilidad; su `etiqueta` dice "A cuenta" desde el 6-oct-2026 (el dueño quitó "complemento" de
+todo menos del contrato). `objetivo` es el acumulado que debe estar
 pagado en esa fecha, `cubierto` lo que ya se pagó y `restante` la diferencia.
 
 ### `GET /api/bi/cambios`

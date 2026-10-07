@@ -78,7 +78,7 @@ export function AvisoImpacto({
             <p>
               <strong>{impacto.comprometidas}</strong>{' '}
               {impacto.comprometidas === 1 ? 'está comprometida' : 'están comprometidas'}{' '}
-              (formalizada, con complemento o liquidada)
+              (formalizada, con pago a cuenta o liquidada)
               {sueltas > 0 && `; las otras ${sueltas} todavía no`}.
             </p>
           ) : (
