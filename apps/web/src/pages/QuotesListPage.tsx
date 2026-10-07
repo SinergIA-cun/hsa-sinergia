@@ -10,6 +10,7 @@ import { STATUS_LABEL, STATUS_STYLE } from '../lib/status.ts';
 import { formatEventDate, formatTimestamp } from '../lib/date.ts';
 import { useAuth } from '../auth/auth.tsx';
 import type { Quote, QuoteStatus, Catalog } from '../lib/types.ts';
+import { RecibosPorFolio, pareceFolio } from '../components/RecibosPorFolio.tsx';
 
 const SECTIONS: { title: string; statuses: QuoteStatus[]; defaultOpen: boolean }[] = [
   // Los que no tienen fecha van primero: son pendientes de alguien.
@@ -300,11 +301,15 @@ export function QuotesListPage() {
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Buscar código, cliente, teléfono, espacio, referencia…"
+            placeholder="Buscar código, cliente, teléfono, espacio, folio de recibo…"
             className="w-full rounded-lg border border-ink/15 bg-white/70 py-2.5 pl-9 pr-3 text-sm text-charcoal placeholder:text-charcoal-soft/60 focus:border-gold focus:outline-none focus:ring-2 focus:ring-gold/30"
           />
         </div>
       )}
+
+      {/* Un folio de recibo ("I 4201") se busca en todos los eventos, también los
+          que ya pasaron. */}
+      {!isLoading && pareceFolio(query) && <RecibosPorFolio folio={query} />}
 
       {isLoading && <p className="text-charcoal-soft">Cargando…</p>}
 
@@ -320,7 +325,7 @@ export function QuotesListPage() {
         </Card>
       )}
 
-      {!isLoading && allQuotes.length > 0 && needle && quotes.length === 0 && (
+      {!isLoading && allQuotes.length > 0 && needle && quotes.length === 0 && !pareceFolio(query) && (
         <p className="text-sm text-charcoal-soft">Sin resultados para “{query}”.</p>
       )}
 

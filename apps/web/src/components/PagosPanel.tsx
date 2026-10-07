@@ -10,6 +10,7 @@ import { FormasPagoCampo, errorFormas, formasEnFormData, formasIniciales } from 
 import { STATUS_LABEL } from '../lib/status.ts';
 import { FolioPapelCampo, folioPapelParaEnviar } from './FolioPapelCampo.tsx';
 import { NotasCampo, NotasEditables } from './NotasPago.tsx';
+import { CorregirPagoForm, MoverPagoForm } from './CorregirPago.tsx';
 import type { EstadoCuenta, Payment, PaymentConcept, ActivityEntry, QuoteStatus } from '../lib/types.ts';
 
 /**
@@ -69,6 +70,8 @@ export function PagosPanel({
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
   const [pagoAFacturar, setPagoAFacturar] = useState<Payment | null>(null);
+  /** El pago que se está corrigiendo o moviendo (uno a la vez). */
+  const [accion, setAccion] = useState<{ id: string; tipo: 'corregir' | 'mover' } | null>(null);
   const [uuidFactura, setUuidFactura] = useState('');
   const [errFactura, setErrFactura] = useState('');
 
@@ -329,8 +332,45 @@ export function PagosPanel({
                       Marcar facturado
                     </button>
                   )}
+                  {/* Corregir y mover: el mismo recibo, capturado mal. No en un pago
+                      facturado (primero se cancela el CFDI) ni en uno que salió de
+                      un depósito del banquetero (se corrige desde su cuenta). */}
+                  {isAdmin && !readOnly && !p.anuladoAt && !p.facturadoAt && !p.pagoBanqueteroId && (
+                    <>
+                      <button type="button" onClick={() => setAccion({ id: p.id, tipo: 'corregir' })} className="text-xs text-ink hover:underline">
+                        Corregir
+                      </button>
+                      <button type="button" onClick={() => setAccion({ id: p.id, tipo: 'mover' })} className="text-xs text-ink hover:underline">
+                        Mover
+                      </button>
+                    </>
+                  )}
                   {isAdmin && !readOnly && !p.anuladoAt && <button onClick={() => anular(p.id)} className="text-xs text-wine hover:underline">Anular</button>}
                 </span>
+                {accion?.id === p.id && accion.tipo === 'corregir' && (
+                  <CorregirPagoForm
+                    quoteId={quoteId}
+                    pago={p}
+                    onCancelar={() => setAccion(null)}
+                    onListo={async () => {
+                      setAccion(null);
+                      setInfo(`Pago ${formatFolio(p.folio, p.folioLetra)} corregido.`);
+                      await refresh();
+                    }}
+                  />
+                )}
+                {accion?.id === p.id && accion.tipo === 'mover' && (
+                  <MoverPagoForm
+                    quoteId={quoteId}
+                    pago={p}
+                    onCancelar={() => setAccion(null)}
+                    onListo={async (destino) => {
+                      setAccion(null);
+                      setInfo(`Pago ${formatFolio(p.folio, p.folioLetra)} movido al evento ${destino.codigo}.`);
+                      await refresh();
+                    }}
+                  />
+                )}
                 {/* Si el deducido difiere del capturado, se muestra el deducido
                     (arriba, en el selector) y se dice por qué. Es el caso que el
                     dueño pidió: "debe moverse a finiquito solo, si ya fue el pago
