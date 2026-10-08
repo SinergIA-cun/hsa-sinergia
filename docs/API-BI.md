@@ -189,7 +189,7 @@ Cada renglón del desglose guardado con el evento, en datos y no en texto:
 | `id` | Fijo mientras el renglón exista: `{quoteId}:{tipo}[:{id}]`. Un cargo del punto de venta es `{quoteId}:cargo:{cargoId}`. |
 | `bloque` | `renta` (lo cobra la hacienda), `otros` (alimentos y servicios) o `banquetero` (lo que pone el banquetero; informativo, fuera de los totales). |
 | `tipo` | `rentaSalon`, `descuento`, `horasExtra`, `capilla`, `descuentoAlimentos`, `cargoContrato` (bloque renta); `alimentos`, `servicioCatalogo`, `djHoraExtra`, `servicioEvento`, `pactado` (bloque otros); `servicioBanquetero` (bloque banquetero). `pactado` es el renglón único de "alimentos y servicios" de un evento importado. `otro` = un renglón de un evento viejo que no se pudo identificar. |
-| `clave` | La clave **fija** de lo vendido: el `espacioId` (`rentaSalon`), la `clave` del paquete (`alimentos`) o del servicio (`servicioCatalogo`) de `/catalogos`, el `producto` del punto de venta (`cargoContrato`). `null` en los demás, y en un `servicioEvento` (tecleado en el evento, sin catálogo). |
+| `clave` | La clave **fija** de lo vendido: el `espacioId` (`rentaSalon`; `null` en un evento sin salón, como solo capilla o sesión de fotos, cuya renta va en un solo renglón "Renta Capilla" / "Renta Sesión de fotos"), la `clave` del paquete (`alimentos`) o del servicio (`servicioCatalogo`) de `/catalogos`, el `producto` del punto de venta (`cargoContrato`). `null` en los demás, y en un `servicioEvento` (tecleado en el evento, sin catálogo). |
 | `nombre`, `detalle` | Como se ven en el contrato. |
 | `categoria` | La del servicio en el catálogo (puede ser `null`). Solo en `servicioCatalogo`. |
 | `cantidad`, `unidad` | `unidad`: `evento`, `personas`, `horas` o `unidades`. |
