@@ -55,6 +55,24 @@ export interface ResultadoComprobante {
   errores: { codigo: string; mensaje: string }[] | null;
 }
 
+export interface SerieFacturador {
+  id: number;
+  nombre: string;
+  folioActual: number | null;
+  tipoComprobanteId: number;
+  /** "Factura", "Nota de Crédito", "Complemento de pago"… */
+  tipoComprobante: string;
+}
+
+/**
+ * La serie para las facturas: la que se pidió por nombre o, si no, la primera de
+ * tipo Factura (tipoComprobanteId 1).
+ */
+export function serieParaFacturas(series: SerieFacturador[], nombre?: string): SerieFacturador | null {
+  if (nombre) return series.find((x) => x.nombre === nombre) ?? null;
+  return series.find((x) => x.tipoComprobanteId === 1) ?? series.find((x) => /factura/i.test(x.tipoComprobante)) ?? null;
+}
+
 export class FacturadorError extends Error {
   constructor(
     message: string,
@@ -129,6 +147,12 @@ export class Facturador {
     const j = (await r.json()) as { emisorid?: number | string; rfc?: string };
     if (j.emisorid == null) throw new FacturadorError('Facturador no devolvió el emisorId', undefined, j);
     return { emisorId: Number(j.emisorid), rfc: j.rfc ?? this.config.usuario };
+  }
+
+  /** Las series de la cuenta. Facturador exige que el CFDI lleve una que exista (nombre e id). */
+  async series(emisorId: number): Promise<SerieFacturador[]> {
+    const r = await this.pedir(`/emisores/${emisorId}/series`);
+    return (await r.json()) as SerieFacturador[];
   }
 
   /** Registra y timbra un comprobante. Si el SAT o Facturador lo rechazan, `esValido` viene en false con sus errores. */

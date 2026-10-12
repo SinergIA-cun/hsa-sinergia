@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { Facturador, FacturadorError, facturadorDesdeEnv, FACTURADOR_PRUEBAS, type FacturadorConfig } from './facturador.js';
+import { Facturador, FacturadorError, facturadorDesdeEnv, serieParaFacturas, FACTURADOR_PRUEBAS, type FacturadorConfig } from './facturador.js';
 
 const config: FacturadorConfig = {
   authUrl: 'https://auth.test',
@@ -67,5 +67,18 @@ describe('cliente de Facturador', () => {
     expect(facturadorDesdeEnv({})).toBeNull();
     const c = facturadorDesdeEnv({ FACTURADOR_USUARIO: 'X', FACTURADOR_PASSWORD_MD5: 'Y', FACTURADOR_CLIENT_ID: 'Z', FACTURADOR_CLIENT_SECRET: 'W' });
     expect(c).toMatchObject({ authUrl: FACTURADOR_PRUEBAS.authUrl, apiUrl: FACTURADOR_PRUEBAS.apiUrl });
+  });
+});
+
+describe('serie para facturas', () => {
+  const series = [
+    { id: 1302, nombre: '1', folioActual: 86, tipoComprobanteId: 3, tipoComprobante: 'Nota de Crédito' },
+    { id: 1395, nombre: '001', folioActual: 3738, tipoComprobanteId: 1, tipoComprobante: 'Factura' },
+  ];
+  it('elige la de facturas, o la que se pida por nombre', () => {
+    expect(serieParaFacturas(series)?.id).toBe(1395);
+    expect(serieParaFacturas(series, '1')?.id).toBe(1302);
+    expect(serieParaFacturas(series, 'X')).toBeNull();
+    expect(serieParaFacturas([])).toBeNull();
   });
 });

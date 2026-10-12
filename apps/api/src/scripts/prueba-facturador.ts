@@ -2,7 +2,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { cfdiDePago } from '@hsa/shared';
-import { Facturador, FacturadorError, FACTURADOR_PRUEBAS, facturadorDesdeEnv } from '../facturacion/facturador.js';
+import { Facturador, FacturadorError, FACTURADOR_PRUEBAS, facturadorDesdeEnv, serieParaFacturas } from '../facturacion/facturador.js';
 
 /**
  * Prueba de compatibilidad con Facturador.com, en su AMBIENTE DE PRUEBAS.
@@ -73,6 +73,12 @@ async function main(): Promise<void> {
   if (!emisor.nombre || !emisor.regimenFiscal || !emisor.codigoPostal) {
     throw new Error('Faltan FACTURADOR_EMISOR_NOMBRE, FACTURADOR_EMISOR_REGIMEN y FACTURADOR_EMISOR_CP en el .env.');
   }
+  // Facturador exige una serie que exista en la cuenta, con su id.
+  const series = await f.series(emisorId);
+  ok(`Series de la cuenta: ${series.map((x) => `${x.nombre} (${x.tipoComprobante}, id ${x.id})`).join(' · ') || 'ninguna'}`);
+  const serie = serieParaFacturas(series, process.env.FACTURADOR_SERIE);
+  if (!serie) throw new Error(process.env.FACTURADOR_SERIE ? `La serie ${process.env.FACTURADOR_SERIE} no existe en la cuenta.` : 'La cuenta no tiene una serie de facturas.');
+
   // Un anticipo de $1,000 pagado con transferencia y efectivo, como lo registra
   // el punto de venta. Menos de $1,000 se cancela sin pedirle permiso al receptor.
   const cfdi = cfdiDePago({
@@ -90,9 +96,8 @@ async function main(): Promise<void> {
     ],
     fecha: ahoraMexico(),
     ivaRate: 0.16,
-    // Facturador exige serie. La cuenta de pruebas trabaja con "Sin Serie".
-    serie: process.env.FACTURADOR_SERIE ?? 'Sin Serie',
-    ...(process.env.FACTURADOR_SERIE_ID ? { serieId: Number(process.env.FACTURADOR_SERIE_ID) } : {}),
+    serie: serie.nombre,
+    serieId: serie.id,
   });
   writeFileSync(join(salida, 'cfdi-enviado.json'), JSON.stringify(cfdi, null, 2));
   const r = await f.emitir(emisorId, cfdi);
