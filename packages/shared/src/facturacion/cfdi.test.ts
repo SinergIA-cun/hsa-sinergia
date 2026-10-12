@@ -23,7 +23,7 @@ describe('CFDI de un pago', () => {
   });
 
   it('arma el JSON de Facturador: ingreso PUE con IVA trasladado y totales que cuadran', () => {
-    const c = cfdiDePago({ emisor, receptor, concepto, montoConIva: 1_000, partes: [{ forma: 'efectivo', monto: 1_000 }], fecha: '2026-10-12T10:30:00', ivaRate: 0.16 });
+    const c = cfdiDePago({ emisor, receptor, concepto, montoConIva: 1_000, partes: [{ forma: 'efectivo', monto: 1_000 }], fecha: '2026-10-12T10:30:00', ivaRate: 0.16, serie: 'Sin Serie' });
     expect(c).toMatchObject({
       version: '4.0',
       tipoDeComprobante: 'I',
@@ -38,6 +38,7 @@ describe('CFDI de un pago', () => {
     });
     expect(c.conceptos[0]).toMatchObject({ cantidad: 1, valorUnitario: 862.07, importe: 862.07, objetoImp: '02' });
     expect(c.conceptos[0]!.impuestos.traslados[0]).toEqual({ base: 862.07, impuesto: '002', tipoFactor: 'Tasa', tasaOCuota: 0.16, importe: 137.93 });
-    expect(c).not.toHaveProperty('serie');
+    expect(c.serie).toBe('Sin Serie');
+    expect(c).not.toHaveProperty('serieId');
   });
 });
