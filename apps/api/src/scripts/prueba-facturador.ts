@@ -75,9 +75,9 @@ async function main(): Promise<void> {
   }
   // Facturador exige una serie que exista en la cuenta, con su id.
   const series = await f.series(emisorId);
-  ok(`Series de la cuenta: ${series.map((x) => `${x.nombre} (${x.tipoComprobante}, id ${x.id})`).join(' · ') || 'ninguna'}`);
   const serie = serieParaFacturas(series, process.env.FACTURADOR_SERIE);
   if (!serie) throw new Error(process.env.FACTURADOR_SERIE ? `La serie ${process.env.FACTURADOR_SERIE} no existe en la cuenta.` : 'La cuenta no tiene una serie de facturas.');
+  ok(`Serie ${serie.nombre} (${serie.tipoComprobante}, id ${serie.id}) de ${series.length} en la cuenta`);
 
   // Un anticipo de $1,000 pagado con transferencia y efectivo, como lo registra
   // el punto de venta. Menos de $1,000 se cancela sin pedirle permiso al receptor.
@@ -110,7 +110,8 @@ async function main(): Promise<void> {
 
   const xml = await f.xml(emisorId, r.uuid);
   writeFileSync(join(salida, `${r.uuid}.xml`), xml);
-  const cuadra = xml.includes('Total="1000') && xml.includes('TotalImpuestosTrasladados="137.93"');
+  // Con espacio antes: que no lo confunda con SubTotal.
+  const cuadra = / Total="1000(\.0+)?"/.test(xml) && xml.includes('TotalImpuestosTrasladados="137.93"');
   (cuadra ? ok : falla)(`XML descargado${cuadra ? ' (total $1,000 e IVA $137.93 correctos)' : ' (revisa los montos)'}`);
 
   const pdf = await f.pdfUrl(emisorId, r.uuid);
