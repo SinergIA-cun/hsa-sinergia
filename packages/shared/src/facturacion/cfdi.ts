@@ -73,14 +73,18 @@ export function cfdiDePago(args: {
   partes: { forma: string; monto: number }[];
   fecha: string;
   ivaRate: number;
-  serie?: string;
+  /** Facturador la exige. La cuenta de pruebas usa "Sin Serie". */
+  serie: string;
+  /** El id de la serie en Facturador, si la cuenta tiene varias del mismo nombre. */
+  serieId?: number;
   folio?: string;
 }) {
   const { base, iva } = desglosarIva(args.montoConIva, args.ivaRate);
   const traslado = { base, impuesto: '002', tipoFactor: 'Tasa', tasaOCuota: args.ivaRate, importe: iva };
   return {
     version: '4.0',
-    ...(args.serie ? { serie: args.serie } : {}),
+    serie: args.serie,
+    ...(args.serieId != null ? { serieId: args.serieId } : {}),
     ...(args.folio ? { folio: args.folio } : {}),
     fecha: args.fecha,
     tipoDeComprobante: 'I',

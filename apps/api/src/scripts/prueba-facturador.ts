@@ -90,6 +90,9 @@ async function main(): Promise<void> {
     ],
     fecha: ahoraMexico(),
     ivaRate: 0.16,
+    // Facturador exige serie. La cuenta de pruebas trabaja con "Sin Serie".
+    serie: process.env.FACTURADOR_SERIE ?? 'Sin Serie',
+    ...(process.env.FACTURADOR_SERIE_ID ? { serieId: Number(process.env.FACTURADOR_SERIE_ID) } : {}),
   });
   writeFileSync(join(salida, 'cfdi-enviado.json'), JSON.stringify(cfdi, null, 2));
   const r = await f.emitir(emisorId, cfdi);
