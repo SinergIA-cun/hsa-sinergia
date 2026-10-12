@@ -53,6 +53,6 @@ El JSON enviado, el XML y el enlace al PDF quedan en la carpeta temporal del sis
   - el esquema (factura por cada pago, o factura PPD + complemento de pagos por abono);
   - la clave de producto o servicio del SAT (`FACTURADOR_CLAVE_PROD_SERV`; la prueba usa
     `01010101`);
-  - la serie (`FACTURADOR_SERIE` y, si la cuenta tiene varias, `FACTURADOR_SERIE_ID`; Facturador
-    la exige, y la prueba usa la de su cuenta de pruebas, `Sin Serie`).
+  - la serie. Facturador exige una que exista en la cuenta (nombre e id). La prueba consulta las
+    series de la cuenta y usa la primera de facturas, o la que diga `FACTURADOR_SERIE`.
 - **Variables de producción:** en EasyPanel, nunca en git (este repositorio es público).
