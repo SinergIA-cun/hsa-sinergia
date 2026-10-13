@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { Facturador, FacturadorError, facturadorDesdeEnv, serieParaFacturas, FACTURADOR_PRUEBAS, FACTURADOR_PRODUCCION, type FacturadorConfig } from './facturador.js';
+import { Facturador, FacturadorError, facturadorDesdeEnv, serieParaFacturas, revisarFacturador, FACTURADOR_PRUEBAS, FACTURADOR_PRODUCCION, type FacturadorConfig } from './facturador.js';
 
 const config: FacturadorConfig = {
   authUrl: 'https://auth.test',
@@ -97,5 +97,28 @@ describe('serie para facturas', () => {
     expect(serieParaFacturas(series, '1')?.id).toBe(1302);
     expect(serieParaFacturas(series, 'X')).toBeNull();
     expect(serieParaFacturas([])).toBeNull();
+  });
+});
+
+describe('revisión al arrancar', () => {
+  it('dice el ambiente, el emisor y las series, sin imprimir llaves', async () => {
+    const s = servidor({
+      '/connect/token': token,
+      '/connect/userinfo': () => json({ emisorid: '208', rfc: 'RFC_PRUEBA' }),
+      '/emisores/208/series': () => json([{ id: 7, nombre: 'A', folioActual: 1, tipoComprobanteId: 1, tipoComprobante: 'Factura' }]),
+    });
+    const prod = { ...config, ...FACTURADOR_PRODUCCION };
+    const linea = await revisarFacturador(prod, s.http);
+    expect(linea).toBe('Facturador: conectado a producción como RFC_PRUEBA (emisor 208); series: A (Factura).');
+    expect(s.pedidas.some((p) => p.init.method && p.init.method !== 'GET' && !p.url.endsWith('/connect/token'))).toBe(false);
+  });
+
+  it('sin llaves o con llaves malas lo dice, sin tronar', async () => {
+    expect(await revisarFacturador(null)).toBe('Facturador: sin llaves, no se factura.');
+    const s = servidor({ '/connect/token': () => json({ error: 'invalid_client' }, 400) });
+    const linea = await revisarFacturador({ ...config, ...FACTURADOR_PRUEBAS }, s.http);
+    expect(linea).toBe('Facturador: las llaves de pruebas NO sirven: Facturador no dio token (400: invalid_client)');
+    expect(linea).not.toContain('secreto');
+    expect(linea).not.toContain('md5-de-prueba');
   });
 });

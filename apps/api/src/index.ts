@@ -6,6 +6,7 @@ import { barridoHistorico } from './historico/archivar.js';
 import { crearMailer } from './correos/mailer.js';
 import { iniciarCorreos } from './correos/cola.js';
 import { marcaDe } from './correos/marca.js';
+import { facturadorDesdeEnv, revisarFacturador } from './facturacion/facturador.js';
 
 async function main(): Promise<void> {
   const config = loadConfig();
@@ -53,6 +54,9 @@ async function main(): Promise<void> {
   const mailer = crearMailer(config);
   console.log(mailer ? 'Correos al cliente: activos.' : 'Correos al cliente: sin SMTP configurado, no se mandan.');
   iniciarCorreos(prisma, mailer, marcaDe(config));
+
+  // Si las llaves de Facturador sirven (solo lee; no factura). No detiene el arranque.
+  void revisarFacturador(facturadorDesdeEnv()).then((linea) => console.log(linea));
 }
 
 main().catch((err) => {
