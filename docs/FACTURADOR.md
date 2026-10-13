@@ -44,6 +44,44 @@ El JSON enviado, el XML y el enlace al PDF quedan en la carpeta temporal del sis
    pnpm --filter @hsa/api exec dotenv -e ../../.env -- tsx src/scripts/prueba-facturador.ts --cancelar <UUID>
    ```
 
+## Resultado de la prueba (12-oct-2026)
+
+Timbró bien en el ambiente de pruebas: UUID `33743926-4632-493A-B0F1-3E4E843CB361`, serie 001,
+total $1,000 (subtotal $862.07 + IVA $137.93), forma de pago 03, PUE. Lo que aprendimos:
+- Facturador exige una **serie que exista** en la cuenta, con su `serieId`. Con la serie vacía
+  responde FAC100; con una que no existe, FAC112. Se consultan con `GET /emisores/{id}/series`.
+- En el `.env`, `CLIENT_ID` es el valor corto y `CLIENT_SECRET` el largo con guiones. Invertidos
+  dan `invalid_client`.
+
+## Direcciones de producción (las mandó Facturador el 13-oct-2026)
+
+| | Pruebas | Producción |
+|---|---|---|
+| Token y emisor | `https://authcli.stagefacturador.com` | `https://auth.facturador.com` |
+| API | `https://pruebas.stagefacturador.com/BusinessEmision/api/v1` | `https://emision-api.facturador.com/api/v1` |
+
+En producción la API **no lleva** `/BusinessEmision`. Las rutas son las mismas:
+- `/connect/token` y `/connect/userinfo`;
+- `/emisores/{id}/comprobantes?emitir=true` (emitir);
+- `/comprobantes/{uuid}` (consultar con GET, cancelar con DELETE);
+- `/descargacomprobantes/{uuid}?tipoContenido=xml`;
+- `/pdfs/{uuid}` y `/comprobantes/{uuid}/pdf`;
+- `/enviocorreo`.
+
+Para producción, en EasyPanel y nunca en git:
+
+```
+FACTURADOR_AUTH_URL=https://auth.facturador.com
+FACTURADOR_API_URL=https://emision-api.facturador.com/api/v1
+FACTURADOR_USUARIO=<RFC de la hacienda>
+FACTURADOR_PASSWORD_MD5=<contraseña de la cuenta, en MD5>
+FACTURADOR_CLIENT_ID=<del menú Desarrolladores de la cuenta de la hacienda>
+FACTURADOR_CLIENT_SECRET=<ídem>
+```
+
+La prueba de compatibilidad se niega a correr con estas direcciones: en producción cada factura
+es real.
+
 ## Lo que falta para producción (no es parte de la prueba)
 
 - **Facturador:** activar la API en la cuenta de la hacienda. Un admin genera el `client_id` y el
