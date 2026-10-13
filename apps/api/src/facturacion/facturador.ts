@@ -4,10 +4,20 @@ import { z } from 'zod';
 // OAuth2 (password grant) contra `authcli`, y REST/JSON contra `businessEmision`.
 // Los valores van en variables de entorno, nunca en el código: este repositorio es público.
 
-/** Ambiente de pruebas de Facturador (los productivos los da su agente de ventas). */
+/** Ambiente de pruebas de Facturador. */
 export const FACTURADOR_PRUEBAS = {
   authUrl: 'https://authcli.stagefacturador.com',
   apiUrl: 'https://pruebas.stagefacturador.com/BusinessEmision/api/v1',
+};
+
+/**
+ * Producción (las mandó Facturador el 13-oct-2026). Ojo: aquí la ruta NO lleva
+ * `/BusinessEmision`, que en pruebas sí. Se activan con FACTURADOR_AUTH_URL y
+ * FACTURADOR_API_URL.
+ */
+export const FACTURADOR_PRODUCCION = {
+  authUrl: 'https://auth.facturador.com',
+  apiUrl: 'https://emision-api.facturador.com/api/v1',
 };
 
 const opcional = z.string().optional().transform((v) => (v?.trim() ? v.trim() : undefined));
@@ -163,6 +173,12 @@ export class Facturador {
       body: JSON.stringify(comprobante),
     });
     return (await r.json()) as ResultadoComprobante;
+  }
+
+  /** Un comprobante emitido, por su UUID (estatus incluido). */
+  async consultar(emisorId: number, uuid: string): Promise<Record<string, unknown>> {
+    const r = await this.pedir(`/emisores/${emisorId}/comprobantes/${uuid}`);
+    return (await r.json()) as Record<string, unknown>;
   }
 
   /** El XML timbrado. */
