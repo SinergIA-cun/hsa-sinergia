@@ -207,3 +207,21 @@ export class Facturador {
     return (await r.json()) as ResultadoComprobante;
   }
 }
+
+/**
+ * La línea del log al arrancar: con qué ambiente quedó Facturador y si las llaves
+ * sirven. Solo lee (token, emisor y series); no emite nada. Nunca imprime llaves.
+ */
+export async function revisarFacturador(config: FacturadorConfig | null, http: Fetch = fetch): Promise<string> {
+  if (!config) return 'Facturador: sin llaves, no se factura.';
+  const ambiente = config.apiUrl === FACTURADOR_PRODUCCION.apiUrl && config.authUrl === FACTURADOR_PRODUCCION.authUrl ? 'producción' : config.apiUrl === FACTURADOR_PRUEBAS.apiUrl ? 'pruebas' : `otra dirección (${config.apiUrl})`;
+  try {
+    const f = new Facturador(config, http);
+    const { emisorId, rfc } = await f.emisor();
+    const series = await f.series(emisorId);
+    const nombres = series.map((s) => `${s.nombre} (${s.tipoComprobante})`).join(', ') || 'ninguna';
+    return `Facturador: conectado a ${ambiente} como ${rfc} (emisor ${emisorId}); series: ${nombres}.`;
+  } catch (e) {
+    return `Facturador: las llaves de ${ambiente} NO sirven: ${e instanceof Error ? e.message : String(e)}`;
+  }
+}
