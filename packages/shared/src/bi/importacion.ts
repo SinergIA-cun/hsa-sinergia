@@ -180,6 +180,83 @@ export function conRentaAcordada(b: QuoteBreakdown, renta: number, ivaRate: numb
   };
 }
 
+/**
+ * Ajuste de admin al precio pactado de un evento (importado del BI o apartado con
+ * renta acordada): el contrato subió o bajó después de venderlo.
+ *
+ * - `renta`: lo nuevo de la renta del salón, repartido entre sus renglones.
+ * - `otros`: lo nuevo de "Alimentos y servicios" pactados (solo eventos del BI;
+ *   uno con alimentos del catálogo no se ajusta así). Sin `otros`, no se toca.
+ *
+ * Los cargos del punto de venta y los demás renglones se quedan como están.
+ */
+export function conPrecioPactado(b: QuoteBreakdown, nuevo: { renta: number; otros?: number }, ivaRate: number): QuoteBreakdown {
+  const esRentaSalon = (l: QuoteLine) => l.grupo === 'renta' && !l.cargoId && (Boolean(l.spaceId) || l.ref?.tipo === 'rentaSalon');
+  const esOtrosPactado = (l: QuoteLine) => l.grupo === 'otros' && !l.cargoId && l.ref?.tipo === 'pactado';
+  const deSalon = b.lines.filter(esRentaSalon);
+  if (deSalon.length === 0) throw new Error('El evento no tiene renta de salón en su desglose.');
+  if (nuevo.otros !== undefined && b.lines.some((l) => l.grupo === 'otros' && !l.cargoId && !esOtrosPactado(l))) {
+    throw new Error('Los alimentos de este evento vienen del catálogo: aquí solo se ajusta la renta.');
+  }
+
+  const parte = Math.floor(nuevo.renta / deSalon.length);
+  const rentas = deSalon.map((l, i): QuoteLine => {
+    const monto = i === deSalon.length - 1 ? nuevo.renta - parte * (deSalon.length - 1) : parte;
+    return {
+      ...l,
+      detalle: 'Precio pactado (ajustado)',
+      monto,
+      ivaIncluido: true,
+      ref: { tipo: 'rentaSalon', ...(l.spaceId ? { id: l.spaceId } : {}), cantidad: 1, unidad: 'evento', precioUnitario: monto },
+    };
+  });
+  const otros: QuoteLine[] =
+    nuevo.otros === undefined || nuevo.otros <= 0
+      ? []
+      : [
+          {
+            concepto: 'Alimentos y servicios',
+            detalle: 'Precio pactado (ajustado)',
+            monto: nuevo.otros,
+            ivaIncluido: true,
+            grupo: 'otros',
+            ref: { tipo: 'pactado', cantidad: 1, unidad: 'evento', precioUnitario: nuevo.otros },
+          },
+        ];
+
+  let k = 0;
+  let otrosPuestos = false;
+  const lines: QuoteLine[] = [];
+  for (const l of b.lines) {
+    if (esRentaSalon(l)) lines.push(rentas[k++]!);
+    else if (nuevo.otros !== undefined && esOtrosPactado(l)) {
+      if (!otrosPuestos) lines.push(...otros);
+      otrosPuestos = true;
+    } else lines.push(l);
+  }
+  if (nuevo.otros !== undefined && !otrosPuestos) lines.push(...otros);
+
+  const rentaTotal = r2(lines.filter((l) => l.grupo === 'renta').reduce((s, l) => s + l.monto, 0));
+  const rentaSubtotal = r2(rentaTotal / (1 + ivaRate));
+  const rentaIva = r2(rentaTotal - rentaSubtotal);
+  const otrosTotal = nuevo.otros === undefined ? (b.otrosTotal ?? 0) : r2(lines.filter((l) => l.grupo === 'otros').reduce((s, l) => s + l.monto, 0));
+  const otrosSubtotal = nuevo.otros === undefined ? (b.otrosSubtotal ?? 0) : r2(otrosTotal / (1 + ivaRate));
+  const otrosIva = nuevo.otros === undefined ? (b.otrosIva ?? 0) : r2(otrosTotal - otrosSubtotal);
+  return {
+    ...b,
+    lines,
+    rentaTotal,
+    rentaSubtotal,
+    rentaIva,
+    otrosTotal,
+    otrosSubtotal,
+    otrosIva,
+    subtotal: r2(rentaSubtotal + otrosSubtotal),
+    iva: r2(rentaIva + otrosIva),
+    total: r2(rentaTotal + otrosTotal),
+  };
+}
+
 /** Lo que se compara de un evento, del lado del BI y del lado de la hacienda. */
 export interface EventoComparable {
   fechaEvento: string;

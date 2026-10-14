@@ -25,6 +25,7 @@ import { DevolucionesEvento } from '../components/DevolucionesPanel.tsx';
 import { CompartirClienteModal } from '../components/CompartirClienteModal.tsx';
 import { ConfirmarEmpalmeModal, type EspacioOcupado } from '../components/ConfirmarEmpalmeModal.tsx';
 import { MoverCatalogoModal } from '../components/MoverCatalogoModal.tsx';
+import { AjustarPrecioForm } from '../components/AjustarPrecio.tsx';
 import { OperativaSection } from '../components/OperativaSection.tsx';
 import { CodigoEvento } from '../components/CodigoEvento.tsx';
 import { CicloEvento } from '../components/ciclo/CicloEvento.tsx';
@@ -106,6 +107,7 @@ export function EditQuotePage() {
   const [error, setError] = useState('');
   const [compartir, setCompartir] = useState(false);
   const [moverCatalogo, setMoverCatalogo] = useState(false);
+  const [ajustarPrecio, setAjustarPrecio] = useState(false);
   const [empalme, setEmpalme] = useState<{ status: QuoteStatus; ocupados: EspacioOcupado[] } | null>(null);
   const [empalmeBusy, setEmpalmeBusy] = useState(false);
   const [empalmeError, setEmpalmeError] = useState('');
@@ -416,8 +418,36 @@ export function EditQuotePage() {
                     : quote.status === 'cancelada'
                       ? 'Cancelado: solo lectura. Un admin lo puede reactivar.'
                       : 'Ya no es editable (está liquidado). Puedes cambiar el estatus o imprimir.'}
+              {isAdmin && importado && !enPapelera && quote.status !== 'cancelada' && !ajustarPrecio && (
+                <>
+                  {' '}
+                  <button
+                    type="button"
+                    className="rounded font-medium text-gold underline underline-offset-2 hover:text-gold-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold/60"
+                    onClick={() => setAjustarPrecio(true)}
+                  >
+                    Ajustar precio
+                  </button>
+                </>
+              )}
             </p>
           </div>
+          {ajustarPrecio && (
+            <AjustarPrecioForm
+              quoteId={quote.id}
+              breakdown={quote.breakdown}
+              total={quote.total}
+              pagado={estadoCuenta.pagado}
+              onCancelar={() => setAjustarPrecio(false)}
+              onListo={async () => {
+                setAjustarPrecio(false);
+                await Promise.all([
+                  qc.invalidateQueries({ queryKey: ['quote', id] }),
+                  qc.invalidateQueries({ queryKey: ['quotes'] }),
+                ]);
+              }}
+            />
+          )}
           <BreakdownGrouped breakdown={quote.breakdown} />
           {!enPapelera && (
             <a href={publicUrl} target="_blank" rel="noreferrer" className="mt-6 inline-block">
