@@ -80,7 +80,13 @@ async function ventasCookie() {
 
 describe('catálogos', () => {
   it('clonar copia renta, servicios, paquetes y parámetros', async () => {
-    const { base, clon } = await clonDelActivo('CLON', 2098);
+    // Un paquete con comisión de agencia: el clon se la lleva.
+    const conComision = await prisma.foodPackage.findFirstOrThrow({ where: { priceList: { activa: true } } });
+    await prisma.foodPackage.update({ where: { id: conComision.id }, data: { comisionPct: 7 } });
+    const { base, clon } = await clonDelActivo('CLON', 2098).finally(() =>
+      prisma.foodPackage.update({ where: { id: conComision.id }, data: { comisionPct: null } }),
+    );
+    expect(await prisma.foodPackage.findFirstOrThrow({ where: { priceListId: clon.id, clave: conComision.clave } })).toMatchObject({ comisionPct: 7 });
 
     const [rBase, rClon] = await Promise.all([
       prisma.rentalPrice.count({ where: { priceListId: base.id } }),

@@ -23,6 +23,9 @@ export interface FoodPackage {
   name: string;
   ivaIncluded: boolean; // en la tabla; si false, se agrega IVA
   brackets: FoodPackageRow[];
+  /** Lo que la agencia (el banquetero del evento) le paga a la hacienda por el
+   *  paquete, en % del subtotal sin IVA. Se congela en el renglón al guardar. */
+  comisionPct?: number | null;
 }
 
 export type AddOnKind = 'fijo' | 'porPersona' | 'porUnidad';
@@ -118,6 +121,8 @@ export interface LineaRef {
   precioUnitario: number;
   /** Solo `servicioCatalogo`: lo que tenía el servicio cuando se guardó el evento. */
   proveedorId?: string | null;
+  /** `servicioCatalogo` y `alimentos` (comisión de la agencia por el paquete),
+   *  congelada al guardar. Ausente = evento guardado antes de congelarla. */
   comisionPct?: number | null;
   cobra?: CobraServicio;
 }

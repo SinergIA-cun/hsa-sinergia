@@ -347,6 +347,8 @@ export const paqueteCreateSchema = z.object({
   eventTypeId: z.string().min(1),
   ivaIncluido: z.boolean().default(false),
   incluye: z.string().max(2000).nullable().optional(),
+  /** Comisión de la agencia por el paquete (% del subtotal sin IVA). */
+  comisionPct: z.number().min(0).max(100).nullish(),
   brackets: z.array(bracketSchema).min(1, 'Un paquete necesita al menos un rango con precio'),
 });
 
@@ -356,6 +358,7 @@ export const paqueteUpdateSchema = z
     eventTypeId: z.string().min(1).optional(),
     ivaIncluido: z.boolean().optional(),
     incluye: z.string().max(2000).nullable().optional(),
+    comisionPct: z.number().min(0).max(100).nullish(),
     /** Si viene, es el juego COMPLETO de rangos y reemplaza al anterior. */
     brackets: z.array(bracketSchema).min(1).optional(),
   })
@@ -423,6 +426,7 @@ export async function crearPaquete(
         nombre: input.nombre,
         ivaIncluido: input.ivaIncluido,
         incluye: input.incluye ?? null,
+        comisionPct: input.comisionPct ?? null,
         brackets: { create: conPesos(input.brackets) },
       },
       include: { brackets: true },
@@ -482,6 +486,7 @@ export async function editarPaquete(
         eventTypeId: input.eventTypeId,
         ivaIncluido: input.ivaIncluido,
         ...(input.incluye === undefined ? {} : { incluye: input.incluye }),
+        ...(input.comisionPct === undefined ? {} : { comisionPct: input.comisionPct }),
       },
       include: { brackets: true },
     });
@@ -499,12 +504,14 @@ export async function editarPaquete(
             nombre: antes.nombre,
             eventTypeId: antes.eventTypeId,
             ivaIncluido: antes.ivaIncluido,
+            comisionPct: antes.comisionPct,
             brackets: antes.brackets.map((b) => ({ min: b.min, max: b.max, pricePerPerson: b.pricePerPerson })),
           },
           despues: {
             nombre: paquete.nombre,
             eventTypeId: paquete.eventTypeId,
             ivaIncluido: paquete.ivaIncluido,
+            comisionPct: paquete.comisionPct,
             brackets: paquete.brackets.map((b) => ({ min: b.min, max: b.max, pricePerPerson: b.pricePerPerson })),
           },
         },

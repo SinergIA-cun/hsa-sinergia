@@ -64,12 +64,12 @@ async function referenciasDelDesglose(db: PrismaClient, lineas: QuoteLine[]) {
       where: { id: { in: ids('servicioCatalogo') } },
       select: { id: true, clave: true, categoria: true, comisionPct: true, proveedorId: true, cobra: true },
     }),
-    db.foodPackage.findMany({ where: { id: { in: ids('alimentos') } }, select: { id: true, clave: true } }),
+    db.foodPackage.findMany({ where: { id: { in: ids('alimentos') } }, select: { id: true, clave: true, comisionPct: true } }),
     db.proveedor.findMany({ select: { id: true, nombre: true } }),
   ]);
   return {
     servicio: new Map(servicios.map((a) => [a.id, a])),
-    paquete: new Map(paquetes.map((p) => [p.id, p.clave])),
+    paquete: new Map(paquetes.map((p) => [p.id, p])),
     proveedor: new Map(proveedores.map((p) => [p.id, p.nombre])),
   };
 }
@@ -80,6 +80,9 @@ async function referenciasDelDesglose(db: PrismaClient, lineas: QuoteLine[]) {
  * Proveedor, comisión y quién cobra son los que se congelaron en el renglón al
  * guardar el evento (como el precio). Un evento guardado antes de eso los toma
  * del servicio en el catálogo DEL EVENTO. La comisión es sobre el subtotal sin IVA.
+ *
+ * El paquete de alimentos lleva la comisión que la agencia —el banquetero del
+ * evento— le paga a la hacienda (BI #4, 14-oct-2026), y la agencia en `agencia`.
  *
  * Al final van los servicios que pone el banquetero (`bloque: banquetero`): NO
  * suman a `renta` ni a `otros`.
@@ -102,15 +105,19 @@ function desgloseDelEvento(
     rentaTotal: q.rentaTotal,
     otrosTotal: q.total - q.rentaTotal,
   });
-  const vendidos = renglones.map(({ refId, servicio: congelado, ...r }) => {
+  const vendidos = renglones.map(({ refId, servicio: congelado, paquete: paqueteCongelado, ...r }) => {
     const servicio = r.tipo === 'servicioCatalogo' && refId ? refs.servicio.get(refId) : undefined;
+    const paquete = r.tipo === 'alimentos' && refId ? refs.paquete.get(refId) : undefined;
     const clave =
       r.tipo === 'servicioCatalogo' ? servicio?.clave ?? null
-      : r.tipo === 'alimentos' ? (refId ? refs.paquete.get(refId) ?? null : null)
+      : r.tipo === 'alimentos' ? paquete?.clave ?? null
       : r.tipo === 'rentaSalon' || r.tipo === 'cargoContrato' ? refId
       : null;
     const datos = congelado ?? (servicio ? { proveedorId: servicio.proveedorId, comisionPct: servicio.comisionPct, cobra: servicio.cobra } : null);
-    const pct = datos?.proveedorId ? datos.comisionPct : null;
+    const pct =
+      r.tipo === 'alimentos'
+        ? (paqueteCongelado ? paqueteCongelado.comisionPct : paquete?.comisionPct ?? null)
+        : datos?.proveedorId ? datos.comisionPct : null;
     return {
       ...r,
       clave,
@@ -118,6 +125,8 @@ function desgloseDelEvento(
       cobra: datos?.cobra ?? null,
       proveedor: datos?.proveedorId ? { clave: datos.proveedorId, nombre: refs.proveedor.get(datos.proveedorId) ?? null } : null,
       comision: pct != null ? { porcentaje: pct, monto: Math.round(r.subtotal * pct) / 100 } : null,
+      /** Solo `alimentos`: la agencia que paga la comisión del paquete (el banquetero del evento). */
+      agencia: r.tipo === 'alimentos' && q.banquetero ? { clave: q.banquetero.id, nombre: q.banquetero.nombre } : null,
       banquetero: null as { id: string; nombre: string } | null,
     };
   });
@@ -140,6 +149,7 @@ function desgloseDelEvento(
         cobra: null,
         proveedor: null,
         comision: null,
+        agencia: null,
         banquetero: { id: q.banquetero!.id, nombre: q.banquetero!.nombre },
       }))
     : [];
@@ -750,6 +760,7 @@ export async function biCatalogos(db: PrismaClient) {
       nombre: p.nombre,
       ivaIncluido: p.ivaIncluido,
       incluye: p.incluye,
+      comisionPct: p.comisionPct,
       precios: p.brackets.map((b) => ({ min: b.min, max: b.max, precioPorPersona: b.pricePerPerson })),
     })),
     proveedores: proveedores.map((p) => ({ clave: p.id, nombre: p.nombre, activo: p.activo })),

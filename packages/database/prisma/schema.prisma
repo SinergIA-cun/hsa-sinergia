@@ -691,6 +691,9 @@ model FoodPackage {
   brackets    FoodPackagePrice[]
   /// El mismo paquete en todos los catálogos (ver `AddOn.clave`).
   clave       String             @default(cuid())
+  /// Lo que la agencia (el banquetero del evento) le paga a la hacienda por el
+  /// paquete, en % del subtotal sin IVA. El motor lo congela en el renglón.
+  comisionPct Float?
 
   @@unique([priceListId, clave])
   @@index([priceListId])

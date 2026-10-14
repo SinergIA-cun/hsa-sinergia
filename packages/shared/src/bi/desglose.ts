@@ -28,6 +28,9 @@ export interface RenglonBI {
   /** Solo `servicioCatalogo` guardado desde el 6-oct-2026: proveedor, comisión y
    *  quién cobra, congelados con el evento. Sin esto, el lector los toma del catálogo. */
   servicio?: { proveedorId: string | null; comisionPct: number | null; cobra: CobraServicio };
+  /** Solo `alimentos` guardado desde el 14-oct-2026: la comisión de la agencia,
+   *  congelada con el evento. Sin esto, el lector la toma del catálogo. */
+  paquete?: { comisionPct: number | null };
 }
 
 const r2 = (n: number): number => Math.round(n * 100) / 100;
@@ -85,6 +88,7 @@ export function desgloseParaBI(
       ...(tipo === 'servicioCatalogo' && l.ref?.cobra
         ? { servicio: { proveedorId: l.ref.proveedorId ?? null, comisionPct: l.ref.comisionPct ?? null, cobra: l.ref.cobra } }
         : {}),
+      ...(tipo === 'alimentos' && l.ref && l.ref.comisionPct !== undefined ? { paquete: { comisionPct: l.ref.comisionPct } } : {}),
     };
   });
 
