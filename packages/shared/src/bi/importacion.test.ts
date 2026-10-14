@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { normalizarNombre, emparejarNombre, desgloseImportado, compararEvento, conRentaAcordada } from './importacion.js';
+import { normalizarNombre, emparejarNombre, desgloseImportado, compararEvento, conRentaAcordada, conPrecioPactado } from './importacion.js';
 import type { QuoteBreakdown } from '../types.js';
 
 describe('normalizarNombre y emparejarNombre', () => {
@@ -103,5 +103,58 @@ describe('conRentaAcordada', () => {
   it('sin renglones de salón no cambia nada', () => {
     const sin = { ...base, lines: base.lines.filter((l) => !l.spaceId) };
     expect(conRentaAcordada(sin, 1_000, 0.16)).toBe(sin);
+  });
+});
+
+describe('conPrecioPactado', () => {
+  const importado = desgloseImportado({
+    salones: [{ spaceId: 'a', nombre: 'Arcos' }, { spaceId: 'b', nombre: 'Cúpula' }],
+    rentaTotal: 40_000,
+    otrosTotal: 10_000,
+    ivaRate: 0.16,
+  });
+  const conCargo: QuoteBreakdown = {
+    ...importado,
+    lines: [...importado.lines, { concepto: 'Hora extra de salón', monto: 2_000, ivaIncluido: true, grupo: 'renta', cargoId: 'c1' }],
+    rentaTotal: 42_000,
+    total: 52_000,
+  };
+
+  it('reparte la renta nueva entre los salones y conserva los cargos del punto de venta', () => {
+    const r = conPrecioPactado(conCargo, { renta: 45_001 }, 0.16);
+    expect(r.lines.map((l) => [l.concepto, l.monto])).toEqual([
+      ['Renta Arcos', 22_500],
+      ['Renta Cúpula', 22_501],
+      ['Alimentos y servicios', 10_000],
+      ['Hora extra de salón', 2_000],
+    ]);
+    expect(r.rentaTotal).toBe(47_001);
+    expect(r.otrosTotal).toBe(10_000);
+    expect(r.total).toBe(57_001);
+    expect(r.lines[1]!.ref).toEqual({ tipo: 'rentaSalon', id: 'b', cantidad: 1, unidad: 'evento', precioUnitario: 22_501 });
+  });
+
+  it('ajusta los alimentos pactados, los agrega si no había y los quita en cero', () => {
+    const r = conPrecioPactado(importado, { renta: 40_000, otros: 17_913 }, 0.16);
+    expect(r.total).toBe(57_913);
+    expect(r.otrosSubtotal).toBe(15_442.24);
+    expect(r.subtotal + r.iva).toBeCloseTo(57_913, 2);
+    const sinOtros = desgloseImportado({ salones: [{ spaceId: 'a', nombre: 'Arcos' }], rentaTotal: 40_000, otrosTotal: 0, ivaRate: 0.16 });
+    expect(conPrecioPactado(sinOtros, { renta: 40_000, otros: 5_000 }, 0.16).lines.at(-1)).toMatchObject({ grupo: 'otros', monto: 5_000 });
+    expect(conPrecioPactado(importado, { renta: 40_000, otros: 0 }, 0.16).lines.some((l) => l.grupo === 'otros')).toBe(false);
+  });
+
+  it('un evento sin salón ajusta su único renglón de renta', () => {
+    const capilla = desgloseImportado({ salones: [], rentaTotal: 8_000, otrosTotal: 0, ivaRate: 0.16, sinSalon: 'de capilla' });
+    expect(conPrecioPactado(capilla, { renta: 9_500 }, 0.16).rentaTotal).toBe(9_500);
+  });
+
+  it('no toca alimentos que vienen del catálogo', () => {
+    const catalogo: QuoteBreakdown = {
+      ...importado,
+      lines: [importado.lines[0]!, { concepto: 'Menú', monto: 80_000, ivaIncluido: true, grupo: 'otros' }],
+    };
+    expect(() => conPrecioPactado(catalogo, { renta: 1, otros: 2 }, 0.16)).toThrow(/catálogo/);
+    expect(conPrecioPactado(catalogo, { renta: 30_000 }, 0.16).lines.at(-1)).toMatchObject({ concepto: 'Menú', monto: 80_000 });
   });
 });

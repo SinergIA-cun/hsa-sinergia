@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { requireAdmin, requireAuth } from '../auth/plugin.js';
 import { encolarCorreo, exigirCorreoParaFormalizar } from '../correos/cola.js';
 import { cotizacionesDesplazadas } from './empalmes.js';
+import { ajustarPrecioPactado } from './precioPactado.js';
 import {
   createQuote,
   duplicateQuote,
@@ -205,6 +206,17 @@ export async function quoteRoutes(app: FastifyInstance): Promise<void> {
     if (!parsed.success) return reply.code(400).send({ error: 'Catálogo inválido' });
     try {
       return await moverCatalogo(app.prisma, req.params.id, parsed.data.priceListId, req.user as Actor);
+    } catch (e) {
+      if (e instanceof QuoteError) return reply.code(e.status).send({ error: e.message });
+      throw e;
+    }
+  });
+
+  // Ajustar el precio de un evento con precio pactado (importado del BI o apartado
+  // con renta acordada). Admin, con motivo. Ver `ajustarPrecioPactado`.
+  app.patch<{ Params: { id: string } }>('/quotes/:id/precio-pactado', { preHandler: requireAdmin }, async (req, reply) => {
+    try {
+      return await ajustarPrecioPactado(app.prisma, req.params.id, req.body, req.user as Actor);
     } catch (e) {
       if (e instanceof QuoteError) return reply.code(e.status).send({ error: e.message });
       throw e;
