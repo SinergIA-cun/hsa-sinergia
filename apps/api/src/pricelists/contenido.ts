@@ -81,6 +81,7 @@ export async function contenidoDeCatalogo(db: PrismaClient, priceListId: string)
       eventTypeId: p.eventTypeId,
       ivaIncluido: p.ivaIncluido,
       incluye: p.incluye,
+      comisionPct: p.comisionPct,
       brackets: p.brackets.map((b) => ({
         min: b.min,
         max: b.max,

@@ -6,7 +6,7 @@ import type { QuoteLine } from '@hsa/shared';
 import { buildServer } from '../server.js';
 import { loadConfig } from '../config.js';
 import { createQuote, updateQuote, seleccionGuardada, SELECCION_INCLUDE, type Actor } from '../quotes/service.js';
-import { editarServicio } from '../pricelists/editar.js';
+import { editarPaquete, editarServicio } from '../pricelists/editar.js';
 import { etiquetarDesgloses } from './etiquetarDesglose.js';
 
 /**
@@ -27,6 +27,7 @@ let paquete: { id: string; clave: string };
 let servicio: { id: string; clave: string };
 let proveedorId: string;
 const quotes: string[] = [];
+const inicio = new Date();
 
 const get = async (url: string) => {
   const r = await app.inject({ method: 'GET', url, headers: { 'x-api-key': LLAVE } });
@@ -62,6 +63,7 @@ afterAll(async () => {
   await prisma.client.deleteMany({ where: { id: { in: qs.map((q) => q.clientId) } } });
   await prisma.addOn.delete({ where: { id: servicio.id } });
   await prisma.priceListAudit.deleteMany({ where: { priceListId: catalogoId, descripcion: { contains: SUF } } });
+  await prisma.priceListAudit.deleteMany({ where: { priceListId: catalogoId, tipo: 'paquete', createdAt: { gte: inicio } } });
   await prisma.proveedor.deleteMany({ where: { nombre: { contains: SUF } } });
   await app.close();
 });
@@ -220,6 +222,36 @@ describe('comisión congelada, quién cobra y servicios del banquetero', () => {
     await etiquetarDesgloses(prisma);
     const despues = (await prisma.quote.findUniqueOrThrow({ where: { id: q.id } })).breakdown as unknown as { lines: QuoteLine[] };
     expect(despues.lines).toEqual(b.lines);
+  });
+
+  it('el paquete lleva la comisión de la agencia (el banquetero del evento), congelada al venderlo', async () => {
+    const ban = await prisma.banquetero.create({ data: { nombre: `Agencia ${SUF}`, telefono: '5514141415' } });
+    const alimentosDe = (ev: { desglose: { tipo: string }[] }) => ev.desglose.find((r) => r.tipo === 'alimentos')!;
+    // Sin comisión en el catálogo: nada que reportar.
+    const sinComision = await evento({ banqueteroId: ban.id });
+    expect(alimentosDe(await desgloseDe(sinComision.id))).toMatchObject({ comision: null, agencia: { clave: ban.id, nombre: `Agencia ${SUF}` } });
+
+    await editarPaquete(prisma, catalogoId, paquete.id, { comisionPct: 12 }, admin);
+    try {
+      const q = await evento({ banqueteroId: ban.id });
+      const r = alimentosDe(await desgloseDe(q.id)) as unknown as { subtotal: number; comision: { porcentaje: number; monto: number } };
+      expect(r.comision.porcentaje).toBe(12);
+      expect(r.comision.monto).toBe(Math.round(r.subtotal * 12) / 100);
+      const c = await get('/api/bi/catalogos');
+      expect(c.paquetesAlimentos.find((x: { id: string }) => x.id === paquete.id)).toMatchObject({ clave: paquete.clave, comisionPct: 12 });
+
+      // El catálogo cambia después: el evento se queda con el 12 %, y el que ya
+      // estaba sin comisión sigue sin ella.
+      await editarPaquete(prisma, catalogoId, paquete.id, { comisionPct: 15 }, admin);
+      expect(alimentosDe(await desgloseDe(q.id))).toMatchObject({ comision: { porcentaje: 12 } });
+      expect(alimentosDe(await desgloseDe(sinComision.id))).toMatchObject({ comision: null });
+
+      // Sin banquetero no hay agencia, pero la comisión del paquete sí se reporta.
+      const sinAgencia = await evento();
+      expect(alimentosDe(await desgloseDe(sinAgencia.id))).toMatchObject({ agencia: null, comision: { porcentaje: 15 } });
+    } finally {
+      await editarPaquete(prisma, catalogoId, paquete.id, { comisionPct: null }, admin);
+    }
   });
 
   it('lo que pone el banquetero va en su propio bloque y no mueve los totales', async () => {

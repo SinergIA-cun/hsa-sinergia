@@ -196,7 +196,8 @@ Cada renglón del desglose guardado con el evento, en datos y no en texto:
 | `precioUnitario` | Con IVA. Es el precio del catálogo **del evento** (cada evento se queda con su catálogo); no hay descuento por renglón. |
 | `subtotal`, `total` | Sin IVA y con IVA. El último renglón de cada bloque absorbe los centavos de redondeo. |
 | `origen` | `contrato`, o `puntoDeVenta` para un cargo que sube el contrato (`cargoId` trae el id del cargo de `/cargos`). |
-| `proveedor`, `comision` | Solo en `servicioCatalogo` con proveedor: `{ clave, nombre }` y `{ porcentaje, monto }`. La comisión es un % sobre el **subtotal sin IVA** del renglón. `null` si no tiene. |
+| `proveedor`, `comision` | En `servicioCatalogo` con proveedor: `{ clave, nombre }` y `{ porcentaje, monto }`. En `alimentos`: `comision` es lo que la agencia le paga a la hacienda por el paquete (`proveedor` va `null`; la agencia va en `agencia`). La comisión es un % sobre el **subtotal sin IVA** del renglón, congelado al guardar el evento. `null` si no tiene. |
+| `agencia` | Solo en `alimentos`: `{ clave, nombre }` del banquetero del evento, que es la agencia que paga la comisión del paquete. `clave` es el mismo `id` que el `banquetero.id` del evento y el `banqueteroId` de `/pagos`. `null` si el evento no tiene banquetero, y en los demás renglones. |
 | `cobra` | Solo en `servicioCatalogo`: `proveedor` (el cliente le paga directo al proveedor, que le debe la comisión a la hacienda) o `hacienda` (la hacienda lo cobra y le paga al proveedor). `null` en los demás. |
 | `banquetero` | Solo en `bloque: "banquetero"`: `{ id, nombre }`. `null` en los demás. |
 
@@ -223,7 +224,8 @@ banquetero. `nombre`, `cantidad` y `total` (lo que cobra el banquetero; puede se
   { "id": "cm…q:descuentoAlimentos", "bloque": "renta", "tipo": "descuentoAlimentos", "clave": null, "nombre": "Descuento por alimentos (5% renta)",
     "cantidad": 1, "unidad": "evento", "precioUnitario": -5425, "subtotal": -4676.72, "total": -5425, "origen": "contrato", "…": "…" },
   { "id": "cm…q:alimentos:cm…pkg", "bloque": "otros", "tipo": "alimentos", "clave": "cm…supreme", "nombre": "Alimentos SUPREME", "detalle": "200 × 999",
-    "cantidad": 200, "unidad": "personas", "precioUnitario": 999, "subtotal": 172241.38, "total": 199800, "origen": "contrato", "…": "…" },
+    "cantidad": 200, "unidad": "personas", "precioUnitario": 999, "subtotal": 172241.38, "total": 199800, "origen": "contrato",
+    "comision": { "porcentaje": 10, "monto": 17224.14 }, "agencia": { "clave": "cm…ban", "nombre": "Banquetes AT" }, "…": "…" },
   { "id": "cm…q:servicioCatalogo:cm…a1", "bloque": "otros", "tipo": "servicioCatalogo", "clave": "cm…dulces", "nombre": "Mesa de dulces (por persona)",
     "detalle": "× 200", "categoria": "Dulces", "cantidad": 200, "unidad": "personas", "precioUnitario": 127.6, "subtotal": 22000, "total": 25520,
     "origen": "contrato", "cargoId": null, "proveedor": { "clave": "cm…prov", "nombre": "Dulces Lupita" }, "comision": { "porcentaje": 10, "monto": 2200 } },
@@ -583,7 +585,10 @@ Y el catálogo de lo que se vende, **tal como lo tiene la hacienda** (todos los 
   es el mismo servicio en todos los años** (al clonar el catálogo se conserva). `tipoCobro`:
   `fijo`, `porPersona`, `porUnidad`. `proveedor`: `{ clave, nombre }` o `null`.
 - `paquetesAlimentos`: `[{ id, clave, catalogoId, tipoEvento: { id, nombre }, nombre, ivaIncluido,
-  incluye, precios: [{ min, max, precioPorPersona }] }]`. `clave` igual que en `servicios`.
+  incluye, comisionPct, precios: [{ min, max, precioPorPersona }] }]`. `clave` igual que en `servicios`.
+  `comisionPct`: lo que la agencia le paga a la hacienda por el paquete, % del subtotal sin IVA
+  (`null` = sin comisión). El mismo paquete con otra captura en otro catálogo ("Taquiza" /
+  "TAQUIZA") comparte `clave` desde el 14-oct-2026.
 - `proveedores`: `[{ clave, nombre, activo }]`.
 - `tiposRenglon`: los `tipo` de `desglose[]`.
 

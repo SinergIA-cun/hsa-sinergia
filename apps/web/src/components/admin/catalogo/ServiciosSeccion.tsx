@@ -23,7 +23,7 @@ const COBRA_LABEL: Record<Cobra, string> = {
 };
 
 /** "" = sin comisión; si no, un porcentaje de 0 a 100 (acepta decimales). */
-function leerComision(v: string): number | null | undefined {
+export function leerComision(v: string): number | null | undefined {
   if (v.trim() === '') return null;
   const n = Number(v);
   return Number.isFinite(n) && n >= 0 && n <= 100 ? n : undefined;

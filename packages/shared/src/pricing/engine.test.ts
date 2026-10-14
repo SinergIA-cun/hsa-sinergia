@@ -664,7 +664,7 @@ describe('computeQuote · ref: qué es cada renglón, en datos', () => {
       { tipo: 'descuento', cantidad: 1, unidad: 'evento', precioUnitario: -10850 },
       { tipo: 'horasExtra', cantidad: 2, unidad: 'horas', precioUnitario: 4882.5 },
       { tipo: 'capilla', cantidad: 1, unidad: 'evento', precioUnitario: 5000 },
-      { tipo: 'alimentos', id: 'boda-supreme', cantidad: 250, unidad: 'personas', precioUnitario: 799 },
+      { tipo: 'alimentos', id: 'boda-supreme', cantidad: 250, unidad: 'personas', precioUnitario: 799, comisionPct: null },
       { tipo: 'descuentoAlimentos', cantidad: 1, unidad: 'evento', precioUnitario: -4882.5 },
       { tipo: 'servicioCatalogo', id: 'dj', cantidad: 1, unidad: 'evento', precioUnitario: 2950, proveedorId: null, comisionPct: null, cobra: 'proveedor' },
       { tipo: 'djHoraExtra', cantidad: 2, unidad: 'horas', precioUnitario: 2950 },

@@ -89,6 +89,7 @@ export async function loadCatalog(
       eventTypeId: p.eventTypeId,
       name: p.nombre,
       ivaIncluded: p.ivaIncluido,
+      comisionPct: p.comisionPct,
       brackets: p.brackets.map((b) => ({
         packageId: b.packageId,
         min: b.min,

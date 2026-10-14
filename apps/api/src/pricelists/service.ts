@@ -148,6 +148,7 @@ export async function clonarCatalogo(db: PrismaClient, rawInput: unknown) {
           ivaIncluido: p.ivaIncluido,
           incluye: p.incluye,
           clave: p.clave,
+          comisionPct: p.comisionPct,
           brackets: {
             create: p.brackets.map((b) => ({
               min: b.min,

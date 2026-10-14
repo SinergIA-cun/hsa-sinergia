@@ -210,7 +210,14 @@ export function computeQuote(
       monto: round2(monto),
       ivaIncluido: pkg.ivaIncluded,
       grupo: 'otros',
-      ref: { tipo: 'alimentos', id: pkg.id, cantidad: sel.invitados, unidad: 'personas', precioUnitario: row.pricePerPerson },
+      ref: {
+        tipo: 'alimentos',
+        id: pkg.id,
+        cantidad: sel.invitados,
+        unidad: 'personas',
+        precioUnitario: row.pricePerPerson,
+        comisionPct: pkg.comisionPct ?? null,
+      },
     });
 
     // El descuento del 5% aplica SOLO a la renta => va en el grupo de renta, y se

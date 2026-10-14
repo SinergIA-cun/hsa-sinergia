@@ -150,6 +150,8 @@ export interface PaqueteCatalogo {
   eventTypeId: string;
   ivaIncluido: boolean;
   incluye: string | null;
+  /** Comisión de la agencia por el paquete, % del subtotal sin IVA. */
+  comisionPct?: number | null;
   brackets: FoodPackageBracket[];
 }
 

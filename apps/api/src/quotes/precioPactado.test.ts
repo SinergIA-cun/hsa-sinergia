@@ -64,7 +64,7 @@ async function importado(renta: number, otros: number, pactado = true) {
   return q;
 }
 
-const ajustar = (id: string, payload: unknown) => app.inject({ method: 'PATCH', url: `/api/quotes/${id}/precio-pactado`, cookies: cookie, payload });
+const ajustar = (id: string, payload: Record<string, unknown>) => app.inject({ method: 'PATCH', url: `/api/quotes/${id}/precio-pactado`, cookies: cookie, payload });
 
 describe('ajustar el precio pactado', () => {
   it('sube la renta y los alimentos, deja bitácora y un evento liquidado vuelve a tener saldo', async () => {

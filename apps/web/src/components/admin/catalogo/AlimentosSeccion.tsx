@@ -4,6 +4,7 @@ import { Button, Field, MoneyInput, SelectInput, TextInput } from '../../ui.tsx'
 import type { FoodPackageBracket, PaqueteCatalogo } from '../../../lib/types.ts';
 import { ConfirmDelete } from '../shared.tsx';
 import { BarraGuardar, useGuardar } from './guardado.tsx';
+import { leerComision } from './ServiciosSeccion.tsx';
 
 /** Un rango en captura: cadenas, porque un campo vacío no es 0 ni es "sin tope". */
 type BracketBorrador = { min: string; max: string; pricePerPerson: string };
@@ -12,6 +13,7 @@ export interface PaquetePatch {
   nombre?: string;
   eventTypeId?: string;
   ivaIncluido?: boolean;
+  comisionPct?: number | null;
   brackets?: FoodPackageBracket[];
 }
 
@@ -19,8 +21,27 @@ export interface PaqueteNuevo {
   nombre: string;
   eventTypeId: string;
   ivaIncluido: boolean;
+  comisionPct: number | null;
   brackets: FoodPackageBracket[];
 }
+
+/**
+ * Lo que la agencia (el banquetero del evento) le paga a la hacienda por el
+ * paquete, en % del subtotal sin IVA. Vacío = sin comisión. Se congela en cada
+ * evento al guardarlo, igual que el precio.
+ */
+function ComisionCampo({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  return (
+    <Field label="Comisión de la agencia" hint="% del subtotal sin IVA que el banquetero le paga a la hacienda. Vacío: sin comisión.">
+      <div className="relative max-w-40">
+        <TextInput inputMode="decimal" placeholder="0" value={value} onChange={(e) => onChange(e.target.value)} className="pr-7" />
+        <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm text-charcoal-soft">%</span>
+      </div>
+    </Field>
+  );
+}
+
+const textoComision = (pct: number | null | undefined) => (pct == null ? '' : String(pct));
 
 const aBorrador = (b: FoodPackageBracket): BracketBorrador => ({
   min: String(b.min),
@@ -120,9 +141,11 @@ function PaqueteEditor({
   const [nombre, setNombre] = useState(paquete.nombre);
   const [eventTypeId, setEventTypeId] = useState(paquete.eventTypeId);
   const [ivaIncluido, setIvaIncluido] = useState(paquete.ivaIncluido);
+  const [comision, setComision] = useState(textoComision(paquete.comisionPct));
   const [brackets, setBrackets] = useState<BracketBorrador[]>(paquete.brackets.map(aBorrador));
   const [invalido, setInvalido] = useState('');
   const { correr, pendiente, error, ok, limpiar } = useGuardar('No se pudo guardar el paquete.');
+  const pct = leerComision(comision);
 
   const numeros = aBrackets(brackets);
   /**
@@ -137,15 +160,17 @@ function PaqueteEditor({
   if (nombre.trim() !== paquete.nombre) patch.nombre = nombre.trim();
   if (eventTypeId !== paquete.eventTypeId) patch.eventTypeId = eventTypeId;
   if (ivaIncluido !== paquete.ivaIncluido) patch.ivaIncluido = ivaIncluido;
+  if (pct !== undefined && pct !== (paquete.comisionPct ?? null)) patch.comisionPct = pct;
   if (numeros && JSON.stringify(numeros) !== JSON.stringify(paquete.brackets)) {
     patch.brackets = numeros;
   }
-  const cambiado = Object.keys(patch).length > 0 || (!numeros && brackets.length > 0);
+  const cambiado = Object.keys(patch).length > 0 || (!numeros && brackets.length > 0) || pct === undefined;
 
   function descartar() {
     setNombre(paquete.nombre);
     setEventTypeId(paquete.eventTypeId);
     setIvaIncluido(paquete.ivaIncluido);
+    setComision(textoComision(paquete.comisionPct));
     setBrackets(paquete.brackets.map(aBorrador));
     setInvalido('');
     limpiar();
@@ -160,6 +185,10 @@ function PaqueteEditor({
       setInvalido(
         'Revisa los rangos: mínimo desde 1, tope vacío solo en el último, y precio en pesos enteros.',
       );
+      return;
+    }
+    if (pct === undefined) {
+      setInvalido('La comisión es un porcentaje de 0 a 100.');
       return;
     }
     setInvalido('');
@@ -195,6 +224,8 @@ function PaqueteEditor({
         />
         El precio por persona ya trae IVA
       </label>
+
+      <ComisionCampo value={comision} onChange={setComision} />
 
       <BracketsTabla brackets={brackets} onChange={setBrackets} />
 
@@ -316,6 +347,7 @@ function NuevoPaquete({
   const [nombre, setNombre] = useState('');
   const [eventTypeId, setEventTypeId] = useState(eventTypes[0]?.id ?? '');
   const [ivaIncluido, setIvaIncluido] = useState(false);
+  const [comision, setComision] = useState('');
   const [brackets, setBrackets] = useState<BracketBorrador[]>([
     { min: '1', max: '', pricePerPerson: '' },
   ]);
@@ -346,13 +378,19 @@ function NuevoPaquete({
       setInvalido('Un paquete sin rango con precio no se puede cotizar: captura al menos uno.');
       return;
     }
+    const comisionPct = leerComision(comision);
+    if (comisionPct === undefined) {
+      setInvalido('La comisión es un porcentaje de 0 a 100.');
+      return;
+    }
     setInvalido('');
     const bien = await correr(
-      () => onCrear({ nombre: nombre.trim(), eventTypeId, ivaIncluido, brackets: numeros }),
+      () => onCrear({ nombre: nombre.trim(), eventTypeId, ivaIncluido, comisionPct, brackets: numeros }),
       `“${nombre.trim()}” agregado.`,
     );
     if (bien) {
       setNombre('');
+      setComision('');
       setBrackets([{ min: '1', max: '', pricePerPerson: '' }]);
       setAbierto(false);
     }
@@ -388,6 +426,7 @@ function NuevoPaquete({
         />
         El precio por persona ya trae IVA
       </label>
+      <ComisionCampo value={comision} onChange={setComision} />
       <BracketsTabla brackets={brackets} onChange={setBrackets} />
       {(invalido || error) && (
         <p role="alert" className="text-xs text-wine">
