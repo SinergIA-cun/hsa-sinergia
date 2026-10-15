@@ -14,7 +14,7 @@ import { StandbyModal } from './StandbyModal.tsx';
 type Abierto = 'mover' | 'standby' | 'cancelar' | null;
 
 /**
- * Lo que se puede hacer con el evento fuera del camino normal: moverlo de fecha,
+ * Lo que se puede hacer con el evento fuera del camino normal: moverlo de fecha o de lugar,
  * dejarlo sin fecha (standby) o cancelarlo. Si ya está en standby o cancelado,
  * lo dice arriba de todo y ofrece cómo salir.
  */
@@ -104,7 +104,7 @@ export function CicloEvento({
         {!enStandby && !cancelado && (
           <>
             <Button variant="outline" onClick={() => setAbierto('mover')}>
-              <CalendarClock size={15} /> Mover fecha
+              <CalendarClock size={15} /> Mover evento
             </Button>
             <Button variant="outline" onClick={() => setAbierto('standby')}>
               <CalendarOff size={15} /> Poner en standby
@@ -121,7 +121,7 @@ export function CicloEvento({
       {abierto === 'mover' && (
         <ReprogramarModal
           quote={quote}
-          titulo={enStandby ? 'Reprogramar' : cancelado ? 'Reactivar el evento' : 'Mover fecha'}
+          titulo={enStandby ? 'Reprogramar' : cancelado ? 'Reactivar el evento' : 'Mover evento'}
           onClose={() => setAbierto(null)}
           onDone={alTerminar}
         />

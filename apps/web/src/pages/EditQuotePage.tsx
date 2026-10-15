@@ -356,7 +356,7 @@ export function EditQuotePage() {
         </div>
       </div>
 
-      {/* Mover fecha, standby y cancelar; y si ya está sin fecha o cancelado, cómo salir. */}
+      {/* Mover evento (fecha y/o lugar), standby y cancelar; y si ya está sin fecha o cancelado, cómo salir. */}
       {!enPapelera && (
         <CicloEvento
           quote={quote}
@@ -413,7 +413,7 @@ export function EditQuotePage() {
               {enPapelera
                 ? 'Solo lectura: evento eliminado, conservado como evidencia.'
                 : importado
-                  ? `${quote.importadoBI ? `Importado del BI${quote.contratadoEl ? `, contratado el ${formatEventDate(quote.contratadoEl)}` : ''}` : 'Renta acordada al apartar'}. Tiene precio pactado: no se recotiza. La fecha se cambia con "Mover fecha" y los datos del día, en la hoja operativa.`
+                  ? `${quote.importadoBI ? `Importado del BI${quote.contratadoEl ? `, contratado el ${formatEventDate(quote.contratadoEl)}` : ''}` : 'Renta acordada al apartar'}. Tiene precio pactado: no se recotiza. La fecha y el lugar se cambian con "Mover evento" y los datos del día, en la hoja operativa.`
                   : quote.status === 'standby'
                     ? 'Sin fecha: se edita de nuevo en cuanto se reprograme.'
                     : quote.status === 'cancelada'
