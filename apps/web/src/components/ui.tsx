@@ -82,45 +82,68 @@ function soloDigitos(v: unknown): string {
 }
 
 /**
+ * Lo que se tecleó, limpio: dígitos y, con centavos, un punto con a lo más dos
+ * decimales ("7,850.505" → "7850.50"). Las comas son de millar: se quitan.
+ */
+export function limpiarMonto(v: unknown, conCentavos = true): string {
+  if (!conCentavos) return soloDigitos(v);
+  const texto = String(v ?? '').replace(/[^\d.]/g, '');
+  const punto = texto.indexOf('.');
+  if (punto === -1) return soloDigitos(texto);
+  const entero = soloDigitos(texto.slice(0, punto)) || '0';
+  const decimales = texto.slice(punto + 1).replace(/\./g, '').slice(0, 2);
+  return `${entero}.${decimales}`;
+}
+
+/**
  * Campo de dinero con signo de pesos y comas de millar.
  *
  * `125300` y `125,300` se leen distinto, y el segundo es el que evita teclear un
- * cero de más sin notarlo. El estado sigue guardando dígitos pelones —los mismos
- * que antes— así que quien lo usa no cambia: lo único que cambia es lo que se ve.
+ * cero de más sin notarlo. El estado guarda la cifra pelona ("7850.50"): quien lo
+ * usa la convierte con `Number()`.
+ *
+ * Acepta centavos (Jorge, 15-oct-2026) salvo con `enteros`, que es para lo que va
+ * en pesos enteros por regla: los precios del catálogo y los folios.
  *
  * No es `type="number"`: ese no admite comas y además trae la ruedita del ratón,
  * que sobre un campo de dinero cambia el monto por accidente con solo pasar el
- * cursor. `inputMode="numeric"` conserva el teclado numérico en tablet, que es
- * donde se captura la mayoría de los pagos.
+ * cursor. `inputMode="decimal"` conserva el teclado numérico (con punto) en
+ * tablet, que es donde se captura la mayoría de los pagos.
  *
- * El cursor se queda donde estaba: se cuenta cuántos DÍGITOS quedaban a su
- * izquierda y se recoloca después de esos mismos. Sin eso, corregir una cifra a
- * la mitad manda el cursor al final en cada tecla.
+ * El cursor se queda donde estaba: se cuenta cuántos caracteres SIGNIFICATIVOS
+ * (dígitos y el punto) quedaban a su izquierda y se recoloca después de esos
+ * mismos. Sin eso, corregir una cifra a la mitad manda el cursor al final en
+ * cada tecla.
  */
 export const MoneyInput = forwardRef<
   HTMLInputElement,
   Omit<InputHTMLAttributes<HTMLInputElement>, 'value' | 'onChange' | 'type'> & {
     value: string | number;
-    onValue: (digitos: string) => void;
+    onValue: (cifra: string) => void;
+    /** Solo pesos enteros (catálogo, folios). */
+    enteros?: boolean;
   }
->(function MoneyInput({ className, value, onValue, ...props }, ref) {
+>(function MoneyInput({ className, value, onValue, enteros = false, ...props }, ref) {
   const propio = useRef<HTMLInputElement | null>(null);
   const caret = useRef<number | null>(null);
 
-  const digitos = soloDigitos(value);
-  const visible = digitos === '' ? '' : Number(digitos).toLocaleString('es-MX');
+  const cifra = limpiarMonto(value, !enteros);
+  const [entero, decimales] = cifra.split('.');
+  const visible =
+    cifra === '' ? '' : `${Number(entero).toLocaleString('es-MX')}${decimales !== undefined ? `.${decimales}` : ''}`;
 
   useEffect(() => {
     const el = propio.current;
     const pendientes = caret.current;
     if (!el || pendientes == null) return;
     caret.current = null;
-    // Después de N dígitos contando desde la izquierda, ¿en qué posición del
-    // texto con comas queda el cursor?
+    const significativo = enteros ? /\d/ : /[\d.]/;
+    // Después de N caracteres significativos contando desde la izquierda, ¿en
+    // qué posición del texto con comas queda el cursor?
     let vistos = 0;
     let pos = el.value.length;
     for (let i = 0; i < el.value.length; i++) {
-      if (/\d/.test(el.value[i] ?? '')) vistos++;
+      if (significativo.test(el.value[i] ?? '')) vistos++;
       if (vistos === pendientes) {
         pos = i + 1;
         break;
@@ -128,7 +151,7 @@ export const MoneyInput = forwardRef<
     }
     if (pendientes === 0) pos = 0;
     el.setSelectionRange(pos, pos);
-  }, [visible]);
+  }, [visible, enteros]);
 
   // El "$" va fuera del valor: es un adorno, así que copiar el monto o leerlo
   // con lector de pantalla sigue dando solo la cifra. El `pl-7` va al final para
@@ -148,13 +171,14 @@ export const MoneyInput = forwardRef<
           else if (ref) ref.current = el;
         }}
         type="text"
-        inputMode="numeric"
+        inputMode={enteros ? 'numeric' : 'decimal'}
         autoComplete="off"
         value={visible}
         onChange={(e) => {
           const hastaElCursor = e.target.value.slice(0, e.target.selectionStart ?? 0);
-          caret.current = hastaElCursor.replace(/\D/g, '').length;
-          onValue(soloDigitos(e.target.value));
+          const significativo = enteros ? /\d/ : /[\d.]/;
+          caret.current = hastaElCursor.split('').filter((c) => significativo.test(c)).length;
+          onValue(limpiarMonto(e.target.value, !enteros));
         }}
         className={cn(inputBase, 'tabular-nums', className, 'pl-6')}
         {...props}

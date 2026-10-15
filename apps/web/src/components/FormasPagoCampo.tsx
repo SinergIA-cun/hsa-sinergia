@@ -1,5 +1,5 @@
 import { Plus, X } from 'lucide-react';
-import { FORMAS_PAGO, FORMA_PAGO_LABEL, NOTA_PARTE_MAX, type FormaPago, type PartePago } from '@hsa/shared';
+import { FORMAS_PAGO, FORMA_PAGO_LABEL, NOTA_PARTE_MAX, type FormaPago, type PartePago, sumarDinero, restarDinero } from '@hsa/shared';
 import { formatMXN } from '../lib/money.ts';
 import { Field, MoneyInput, SelectInput, TextInput } from './ui.tsx';
 
@@ -35,7 +35,7 @@ export function formasIniciales(forma: FormaPago = 'transferencia'): FormasCaptu
 
 /** Cuánto suman las partes capturadas. */
 function sumaPartes(c: FormasCaptura): number {
-  return c.partes.reduce((s, p) => s + (Number(p.monto) || 0), 0);
+  return c.partes.reduce((s, p) => sumarDinero(s, Number(p.monto) || 0), 0);
 }
 
 /**
@@ -49,8 +49,8 @@ export function errorFormas(c: FormasCaptura, monto: number): string | null {
   const suma = sumaPartes(c);
   if (suma !== monto) {
     return suma < monto
-      ? `Faltan ${formatMXN(monto - suma)} por repartir entre las formas.`
-      : `Las formas se pasan del pago por ${formatMXN(suma - monto)}.`;
+      ? `Faltan ${formatMXN(restarDinero(monto, suma))} por repartir entre las formas.`
+      : `Las formas se pasan del pago por ${formatMXN(restarDinero(suma, monto))}.`;
   }
   return null;
 }
@@ -120,11 +120,11 @@ export function FormasPagoCampo({
   }
 
   const suma = sumaPartes(value);
-  const restante = monto - suma;
+  const restante = restarDinero(monto, suma);
   const conPrimeraAjustada = (c: FormasCaptura): FormasCaptura => {
     if (!c.primeraAutomatica || c.partes.length === 0) return c;
-    const otras = c.partes.slice(1).reduce((s, p) => s + (Number(p.monto) || 0), 0);
-    const resto = monto - otras;
+    const otras = c.partes.slice(1).reduce((s, p) => sumarDinero(s, Number(p.monto) || 0), 0);
+    const resto = restarDinero(monto, otras);
     return {
       ...c,
       partes: c.partes.map((p, j) => (j === 0 ? { ...p, monto: resto > 0 ? String(resto) : '' } : p)),

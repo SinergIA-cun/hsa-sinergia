@@ -2,6 +2,9 @@ import { z } from 'zod';
 import { notasSchema, notaONull, editarNotasSchema } from '../payments/notas.js';
 import { enTransaccionConActor, type PrismaClient } from '@hsa/database';
 import {
+  restarDinero,
+  sumarDinero,
+  montoSchema,
   hoyCivilMexico,
   metodoCapturaSchema,
   formasPagoSchema,
@@ -36,7 +39,7 @@ import { folioPapelSchema, subirSecuenciaSobre, validarFolioDePapel } from '../p
  * una columna `Int` (55000.9 → 55000) sin avisar, así que un `z.number()` a secas
  * perdería dinero en silencio.
  */
-const montoCapturado = z.number().int().positive();
+const montoCapturado = montoSchema;
 
 export const depositoSchema = z.object({
   monto: montoCapturado,
@@ -122,7 +125,7 @@ export function saldoSinAsignar(
   hoy: Date = hoyCivilMexico(),
 ): number {
   if (deposito.anuladoAt) return 0;
-  const asignado = asignaciones.filter((a) => a.anuladoAt == null).reduce((s, a) => s + a.monto, 0);
+  const asignado = asignaciones.filter((a) => a.anuladoAt == null).reduce((s, a) => sumarDinero(s, a.monto), 0);
   const abonado = abonosApartado
     .filter(
       (a) =>
@@ -132,8 +135,8 @@ export function saldoSinAsignar(
         // más se corrige mirando; soltar dinero que no se debía soltar, no.
         (a.apartado == null || apartadoVivo(a.apartado, hoy)),
     )
-    .reduce((s, a) => s + a.monto, 0);
-  return deposito.monto - asignado - abonado;
+    .reduce((s, a) => sumarDinero(s, a.monto), 0);
+  return restarDinero(restarDinero(deposito.monto, asignado), abonado);
 }
 
 /**
@@ -164,7 +167,7 @@ export function saldoLiberadoPorApartados(
     .filter((a) => !apartadoVivo(a, hoy) && a.quoteId == null)
     .flatMap((a) => a.abonos)
     .filter((ab) => ab.anuladoAt == null && ab.paymentId == null && ab.pagoBanqueteroId == null)
-    .reduce((s, ab) => s + ab.monto, 0);
+    .reduce((s, ab) => sumarDinero(s, ab.monto), 0);
 }
 
 const CON_ASIGNACIONES = {
@@ -327,8 +330,8 @@ export async function asignarDeposito(
   if (deposito.anuladoAt) throw new QuoteError(409, 'El depósito está anulado: ya no se puede repartir.');
 
   const pedido =
-    input.asignaciones.reduce((s, a) => s + a.monto, 0) +
-    input.apartados.reduce((s, a) => s + a.monto, 0);
+    input.asignaciones.reduce((s, a) => sumarDinero(s, a.monto), 0) +
+    input.apartados.reduce((s, a) => sumarDinero(s, a.monto), 0);
   // Aviso temprano (sin bloquear nada): el tope que manda es el de adentro de la
   // transacción, con la fila del depósito bloqueada.
   const disponibleAntes = saldoDeDeposito(deposito);

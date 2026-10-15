@@ -1,6 +1,8 @@
 import { z } from 'zod';
 import { enTransaccionConActor, type Prisma, type PrismaClient, type QuoteStatus } from '@hsa/database';
 import {
+  restarDinero,
+  sumarDinero,
   calcularCancelacion,
   pendientePorDevolver,
   metodoCapturaSchema,
@@ -333,7 +335,7 @@ export async function resumenCancelacion(
     where: { quoteId: q.id, destino: 'evento', anuladoAt: null, createdAt: { gte: q.canceladaAt } },
     select: { monto: true },
   });
-  const devuelto = devueltas.reduce((s, d) => s + d.monto, 0);
+  const devuelto = devueltas.reduce((s, d) => sumarDinero(s, d.monto), 0);
   const devolver = q.cancelacionDevolver ?? 0;
   const pagado = q.cancelacionPagado ?? 0;
   return {
@@ -342,7 +344,7 @@ export async function resumenCancelacion(
     porcentaje: q.cancelacionPct ?? 0,
     pagado,
     devolver,
-    retenido: pagado - devolver,
+    retenido: restarDinero(pagado, devolver),
     devuelto,
     pendiente: pendientePorDevolver(devolver, devuelto),
   };

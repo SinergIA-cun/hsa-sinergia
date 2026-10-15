@@ -11,9 +11,21 @@ const mxnCents = new Intl.NumberFormat('es-MX', {
   maximumFractionDigits: 2,
 });
 
-/** Formatea pesos sin centavos (para totales redondeados). */
+/**
+ * Formatea pesos: sin decimales si el monto es entero ("$7,850") y con sus dos
+ * decimales si trae centavos ("$7,850.50"). Así nada de lo que ya se veía cambia.
+ */
 export function formatMXN(n: number): string {
-  return mxn.format(n);
+  const r = Math.round(n * 100) / 100;
+  return Number.isInteger(r) ? mxn.format(r) : mxnCents.format(r);
+}
+
+/** ¿Lo tecleado es un monto válido? Pesos con a lo más dos decimales y mayor a cero. */
+export function esMontoValido(texto: string, { permitirCero = false } = {}): boolean {
+  const t = texto.trim();
+  if (!/^\d+(\.\d{1,2})?$/.test(t)) return false;
+  const n = Number(t);
+  return permitirCero ? n >= 0 : n > 0;
 }
 
 /** Formatea pesos con centavos (para líneas de desglose). */

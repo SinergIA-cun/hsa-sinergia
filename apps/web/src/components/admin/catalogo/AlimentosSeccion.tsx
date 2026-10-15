@@ -299,6 +299,7 @@ function BracketsTabla({
               </td>
               <td className="py-1 pr-2">
                 <MoneyInput
+                enteros
                   aria-label={`Rango ${i + 1} precio por persona`}
                   className="w-28 px-2 py-1 text-sm"
                   value={b.pricePerPerson}

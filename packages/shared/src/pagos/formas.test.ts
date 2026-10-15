@@ -53,8 +53,9 @@ describe('resolverFormasPago', () => {
 
 describe('formasPagoSchema', () => {
 
-  it('rechaza montos con decimales', () => {
-    expect(formasPagoSchema.safeParse([{ forma: 'efectivo', monto: 10.5 }]).success).toBe(false);
+  it('acepta centavos y rechaza más de dos decimales', () => {
+    expect(formasPagoSchema.safeParse([{ forma: 'efectivo', monto: 10.5 }]).success).toBe(true);
+    expect(formasPagoSchema.safeParse([{ forma: 'efectivo', monto: 10.555 }]).success).toBe(false);
   });
 });
 

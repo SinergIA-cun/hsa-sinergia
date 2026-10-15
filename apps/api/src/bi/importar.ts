@@ -2,6 +2,9 @@ import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { enTransaccionConActor, type PrismaClient, type Prisma } from '@hsa/database';
 import {
+  sumarDinero,
+  montoSchema,
+  montoNoNegativoSchema,
   compararEvento,
   desgloseImportado,
   emparejarNombre,
@@ -47,7 +50,7 @@ import { INCLUDE_TITULAR, titularDeApartado } from '../banqueteros/titular.js';
  */
 
 const fechaISO = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Fecha en formato AAAA-MM-DD');
-const pesos = z.number().int().nonnegative();
+const pesos = montoNoNegativoSchema;
 
 export const pagoBISchema = z.object({
   idBI: z.string().min(1).max(100).optional(),
@@ -55,7 +58,7 @@ export const pagoBISchema = z.object({
    *  gastaría uno nuevo de la serie, y ese número ya es de otro recibo. */
   folio: z.number().int().positive(),
   fecha: fechaISO,
-  monto: z.number().int().positive(),
+  monto: montoSchema,
   metodo: metodoCapturaSchema.optional(),
   formas: formasPagoSchema.optional(),
   referencia: z.string().max(120).optional(),
@@ -247,7 +250,7 @@ async function comparableHSA(
     eventTypeId: quote.eventTypeId,
     rentaTotal: quote.rentaTotal,
     usaCapilla: quote.usaCapilla,
-    pagado: pagos.reduce((s, p) => s + p.monto, 0),
+    pagado: pagos.reduce((s, p) => sumarDinero(s, p.monto), 0),
     folios: pagos.map((p) => p.folio),
   };
 }
@@ -312,7 +315,7 @@ async function conciliarUno(
     invitados: ev.invitados,
     eventTypeId: r.eventTypeId,
     rentaTotal: ev.renta.total,
-    pagado: ev.pagos.reduce((s, p) => s + p.monto, 0),
+    pagado: ev.pagos.reduce((s, p) => sumarDinero(s, p.monto), 0),
     folios: ev.pagos.map((p) => p.folio),
     usaCapilla: ev.usaCapilla,
   };

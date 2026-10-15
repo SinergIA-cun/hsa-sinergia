@@ -1,5 +1,5 @@
 import type { PrismaClient } from '@hsa/database';
-import { hoyCivilMexico } from '@hsa/shared';
+import { hoyCivilMexico, sumarDinero } from '@hsa/shared';
 import { saldoDeDeposito } from './cuenta.js';
 import { apartadoVivo } from './apartados.js';
 import { totalAbonado } from './abonos.js';
@@ -127,8 +127,8 @@ export async function resumenBanqueteros(
       activo: b.activo,
       publicToken: b.publicToken,
       eventos: eventosPorBanquetero.get(b.id) ?? 0,
-      depositado: suyos.filter((d) => d.anuladoAt == null).reduce((s, d) => s + d.monto, 0),
-      saldoSinAsignar: suyos.reduce((s, d) => s + saldoDeDeposito(d), 0),
+      depositado: suyos.filter((d) => d.anuladoAt == null).reduce((s, d) => sumarDinero(s, d.monto), 0),
+      saldoSinAsignar: suyos.reduce((s, d) => sumarDinero(s, saldoDeDeposito(d)), 0),
       apartadosVivos: misApartados.length,
       apartadosPorVencer: misApartados.filter((a) => a.vence.getTime() <= limite.getTime()).length,
       // `vivos` ya viene ordenado por `vence` asc desde la consulta.
@@ -139,6 +139,6 @@ export async function resumenBanqueteros(
   return {
     banqueteros: resumen,
     apartados: pendientes,
-    totalSinAsignar: resumen.reduce((s, r) => s + r.saldoSinAsignar, 0),
+    totalSinAsignar: resumen.reduce((s, r) => sumarDinero(s, r.saldoSinAsignar), 0),
   };
 }

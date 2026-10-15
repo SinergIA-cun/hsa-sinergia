@@ -342,6 +342,7 @@ function Renglon({
             ) : (
               <>
                 <MoneyInput
+                enteros
                   aria-label={etiqueta}
                   className={`w-28 px-2 py-1 text-sm ${malo ? 'border-wine' : ''}`}
                   value={valores[campo]}

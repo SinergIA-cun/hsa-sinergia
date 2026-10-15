@@ -222,6 +222,39 @@ describe('cobrar la cuenta del evento', () => {
   });
 });
 
+describe('centavos (Jorge, 15-oct-2026: "en las horas extras necesitaba meter centavos")', () => {
+  it('una hora extra con centavos sube el contrato al centavo y los pagos con centavos lo liquidan exacto', async () => {
+    const q = await nuevoEvento(); // renta $108,500, ya pagó $20,000
+    const { cargo } = await registrarCargo(
+      prisma,
+      q.id,
+      { producto: 'horaExtra', cantidad: 2, precioUnitario: 7_850.5, fecha: '2026-10-01' },
+      admin,
+    );
+    expect(cargo.precioUnitario).toBe(7_850.5);
+    expect(cargo.total).toBe(15_701);
+
+    const conCargo = await prisma.quote.findUniqueOrThrow({ where: { id: q.id } });
+    expect(conCargo.rentaTotal).toBe(124_201); // 108,500 + 2 × 7,850.50
+
+    // Se paga lo que falta en dos partes con centavos: 104,201 = 50,100.25 + 54,100.75
+    await registerPayment(prisma, storage, q.id, { monto: 50_100.25, metodo: 'transferencia', fecha: '2026-10-02' }, admin);
+    await registerPayment(prisma, storage, q.id, { monto: 54_100.75, metodo: 'efectivo', fecha: '2026-10-03' }, admin);
+    const final = await prisma.quote.findUniqueOrThrow({ where: { id: q.id } });
+    const { estadoCuenta } = await loadEstadoCuenta(prisma, final);
+    expect(estadoCuenta.pagado).toBe(124_201);
+    expect(estadoCuenta.saldo).toBe(0);
+    expect(final.status).toBe('liquidada');
+  });
+
+  it('un precio con más de dos decimales se rechaza', async () => {
+    const q = await nuevoEvento();
+    await expect(
+      registrarCargo(prisma, q.id, { producto: 'multa', cantidad: 1, precioUnitario: 100.555, fecha: '2026-10-01' }, admin),
+    ).rejects.toThrow();
+  });
+});
+
 describe('anular un cargo', () => {
   it('solo admin', async () => {
     const q = await nuevoEvento();

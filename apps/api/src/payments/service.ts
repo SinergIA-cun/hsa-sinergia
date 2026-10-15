@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { notasSchema, notaONull, editarNotasSchema } from './notas.js';
 import type { PrismaClient } from '@hsa/database';
 import {
+  montoSchema,
   estadoFacturaPago,
   hoyCivilMexico,
   paymentConceptSchema,
@@ -25,7 +26,7 @@ import { validarCobroDeCargos, descripcionPagoCargos } from '../cargos/service.j
 import { encolarCorreo } from '../correos/cola.js';
 
 export const registerPaymentSchema = z.object({
-  monto: z.number().int().positive(),
+  monto: montoSchema,
   /**
    * Una sola forma de pago. Sigue existiendo para los procesos que capturan un
    * solo método (y para una pantalla vieja en caché). Si viene `formas`, manda

@@ -2,7 +2,7 @@ import { useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { AlertTriangle, BookmarkPlus, CalendarClock } from 'lucide-react';
 import { api, ApiError } from '../../lib/api.ts';
-import { formatMXN } from '../../lib/money.ts';
+import { formatMXN, esMontoValido } from '../../lib/money.ts';
 import { formatEventDate } from '../../lib/date.ts';
 import { Button, Card, Field, MoneyInput, SelectInput, TextInput } from '../ui.tsx';
 import { apiErrorMessage } from '../admin/shared.tsx';
@@ -314,7 +314,7 @@ function CrearApartado({
   const venceCalculado = vigenciaDeApartado(hoyCivilMexico()).toISOString().slice(0, 10);
 
   const depositoNum = deposito.trim() === '' ? 0 : Number(deposito);
-  const depositoValido = deposito.trim() === '' || /^\d+$/.test(deposito.trim());
+  const depositoValido = deposito.trim() === '' || esMontoValido(deposito, { permitirCero: true });
   const listo = fechaEvento !== '' && spaceIds.length > 0 && depositoValido;
 
   function toggle(id: string) {

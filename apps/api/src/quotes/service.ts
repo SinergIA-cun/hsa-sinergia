@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import type { PrismaClient, Prisma } from '@hsa/database';
 import {
+  centavos,
   computeQuote,
   quoteSelectionSchema,
   servicioBanqueteroSchema,
@@ -752,8 +753,8 @@ export async function createQuote(
           festejado: input.festejado ?? null,
           festejadoTelefono: input.festejadoTelefono ?? null,
           breakdown: enriched as unknown as Prisma.InputJsonValue,
-          total: Math.round(breakdown.total),
-          rentaTotal: Math.round(breakdown.rentaTotal),
+          total: centavos(breakdown.total),
+          rentaTotal: centavos(breakdown.rentaTotal),
           publicToken: randomUUID().replace(/-/g, ''),
           vigenciaHasta: vigenciaDesde(new Date()),
           createdById: actor.id,
@@ -1044,8 +1045,8 @@ export async function updateQuote(db: PrismaClient, id: string, rawInput: unknow
         festejado: input.festejado ?? null,
         festejadoTelefono: input.festejadoTelefono ?? null,
         breakdown: (congelaPrecio ? existing.breakdown : enriched) as unknown as Prisma.InputJsonValue,
-        total: congelaPrecio ? existing.total : Math.round(breakdown.total),
-        rentaTotal: congelaPrecio ? existing.rentaTotal : Math.round(breakdown.rentaTotal),
+        total: congelaPrecio ? existing.total : centavos(breakdown.total),
+        rentaTotal: congelaPrecio ? existing.rentaTotal : centavos(breakdown.rentaTotal),
       },
       include: includeRels,
     });
@@ -1068,17 +1069,17 @@ export async function updateQuote(db: PrismaClient, id: string, rawInput: unknow
   // Que el precio se haya quedado quieto NO puede ser silencioso. Quien editó un
   // evento pasado esperando ver otro total tiene que encontrar la explicación en
   // la bitácora, y no concluir que la aplicación perdió su cambio.
-  if (congelaPrecio && Math.round(breakdown.total) !== existing.total) {
+  if (congelaPrecio && centavos(breakdown.total) !== existing.total) {
     await logActivity(db, {
       quoteId: id,
       tipo: 'edicion',
       descripcion:
         `Edición de un evento ya pasado: el precio NO se recalculó. ` +
-        `Se mantiene en ${existing.total} (el recálculo habría dado ${Math.round(breakdown.total)}).`,
+        `Se mantiene en ${existing.total} (el recálculo habría dado ${centavos(breakdown.total)}).`,
       meta: {
         precioCongelado: true,
         totalVigente: existing.total,
-        totalQueHabriaDado: Math.round(breakdown.total),
+        totalQueHabriaDado: centavos(breakdown.total),
       },
       actorId: actor.id,
     });
@@ -1266,7 +1267,7 @@ export async function simularMovimiento(db: PrismaClient, id: string, destino: D
         toSelection({ ...seleccionGuardada(existing), fecha, spaceIds }),
         existing.priceListId,
       );
-      despues = Math.round(breakdown.total);
+      despues = centavos(breakdown.total);
     } catch (e) {
       error = e instanceof Error ? e.message : 'No se pudo calcular el precio con ese cambio.';
     }
@@ -1393,7 +1394,7 @@ async function prepararMovimiento(db: PrismaClient, id: string, priceListId: str
     breakdown,
     enriched,
     antes: existing.total,
-    despues: Math.round(breakdown.total),
+    despues: centavos(breakdown.total),
   };
 }
 
@@ -1433,7 +1434,7 @@ export async function moverCatalogo(db: PrismaClient, id: string, priceListId: s
       addOns: seleccion.addOns as unknown as Prisma.InputJsonValue,
       breakdown: enriched as unknown as Prisma.InputJsonValue,
       total: despues,
-      rentaTotal: Math.round(breakdown.rentaTotal),
+      rentaTotal: centavos(breakdown.rentaTotal),
     },
     include: includeRels,
   });
@@ -1615,7 +1616,7 @@ export async function getOperativaDelDia(db: PrismaClient, fechaISO: string) {
       status: q.status,
       total: q.total,
       rentaTotal: q.rentaTotal,
-      costoHoraExtra: Math.round(q.rentaTotal * 0.05),
+      costoHoraExtra: centavos(q.rentaTotal * 0.05),
       horaInicio: q.horaInicio,
       horaTermino: q.horaTermino,
       horarioCivil: q.horarioCivil,

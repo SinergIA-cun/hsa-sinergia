@@ -1,3 +1,4 @@
+import { montoSchema, montoNoNegativoSchema } from './dinero.js';
 import { z } from 'zod';
 
 /**
@@ -14,7 +15,7 @@ export const quoteExtraSchema = z.object({
   nombre: z.string().min(1).max(120),
   kind: z.enum(['fijo', 'porPersona', 'porUnidad']),
   /** Entero: Prisma trunca los flotantes en columnas `Int` sin avisar (5.5 → 5). */
-  monto: z.number().int().nonnegative(),
+  monto: montoNoNegativoSchema,
   /** Solo se usa en `porUnidad`; `fijo` y `porPersona` la ignoran. */
   cantidad: z.number().int().positive().default(1),
 });
@@ -29,7 +30,7 @@ export const servicioBanqueteroSchema = z.object({
   nombre: z.string().trim().min(1).max(120),
   cantidad: z.number().int().positive().default(1),
   /** Lo que cobra el banquetero por eso (pesos, total). Opcional. */
-  monto: z.number().int().nonnegative().nullish(),
+  monto: montoNoNegativoSchema.nullish(),
 });
 
 export type ServicioBanqueteroInput = z.infer<typeof servicioBanqueteroSchema>;
@@ -77,7 +78,7 @@ export const quoteSelectionSchema = z.object({
    * descuento". Es uno u otro: porcentaje o monto (el dueño, 5-oct-2026). No
    * puede pasar de la renta de los salones.
    */
-  descuentoMonto: z.number().int().positive().optional(),
+  descuentoMonto: montoSchema.optional(),
   /** Motivo del descuento. Obligatorio si hay descuento: sin él no es auditable. */
   descuentoMotivo: z.string().min(1).max(300).optional(),
   /**

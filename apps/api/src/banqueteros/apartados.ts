@@ -1,6 +1,8 @@
 import { z } from 'zod';
 import type { PrismaClient, Prisma } from '@hsa/database';
 import {
+  montoNoNegativoSchema,
+  centavos,
   correoValido,
   hoyCivilMexico,
   vigenciaDeApartado,
@@ -44,7 +46,7 @@ export const apartadoSchema = z
     priceListId: z.string().min(1).nullish(),
     // `int`: el depósito se captura. Prisma trunca los flotantes al escribir en
     // una columna `Int` sin avisar, así que un decimal se rechaza, no se redondea.
-    deposito: z.number().int().nonnegative().default(0),
+    deposito: montoNoNegativoSchema.default(0),
     depositoMetodo: metodoCapturaSchema.nullish(),
     /** El depósito dividido en varias formas. Ver `registerPaymentSchema`. */
     depositoFormas: formasPagoSchema.nullish(),
@@ -442,8 +444,8 @@ export async function convertirApartado(
       data: {
         breakdown: desglose as unknown as Prisma.InputJsonValue,
         // Columnas enteras: las horas extra pueden traer centavos.
-        total: Math.round(desglose.total),
-        rentaTotal: Math.round(desglose.rentaTotal),
+        total: centavos(desglose.total),
+        rentaTotal: centavos(desglose.rentaTotal),
         precioPactado: true,
       },
     });

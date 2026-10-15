@@ -32,9 +32,9 @@ describe('rentaBaseDeDesglose', () => {
 });
 
 describe('precioHoraExtra', () => {
-  it('5% de la renta, redondeado a pesos', () => {
+  it('5% de la renta, con centavos', () => {
     expect(precioHoraExtra(108_500, 0.05)).toBe(5_425);
-    expect(precioHoraExtra(97_650, 0.05)).toBe(4_883);
+    expect(precioHoraExtra(97_650, 0.05)).toBe(4_882.5);
   });
 });
 

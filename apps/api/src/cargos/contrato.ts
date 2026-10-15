@@ -1,5 +1,6 @@
 import type { PrismaClient, Prisma } from '@hsa/database';
 import {
+  centavos,
   PRODUCTOS_CARGO,
   afectaContrato,
   conCargosDelContrato,
@@ -39,13 +40,13 @@ export async function sincronizarContrato(db: PrismaClient, quoteId: string): Pr
   const yaEstaba =
     JSON.stringify(b.lines.filter((l) => l.cargoId)) === JSON.stringify(nuevo.lines.filter((l) => l.cargoId));
   if (yaEstaba) return { antes: q.total, despues: q.total };
-  const total = Math.round(nuevo.total);
+  const total = centavos(nuevo.total);
   await db.quote.update({
     where: { id: quoteId },
     data: {
       breakdown: nuevo as unknown as Prisma.InputJsonValue,
       total,
-      rentaTotal: Math.round(nuevo.rentaTotal),
+      rentaTotal: centavos(nuevo.rentaTotal),
     },
   });
   return { antes: q.total, despues: total };

@@ -1,5 +1,5 @@
 import type { PrismaClient, Payment } from '@hsa/database';
-import { afectaContrato, formatFolio, partesDePago, FORMA_PAGO_LABEL, hoyCivilMexico, type Marca, type MetodoPago } from '@hsa/shared';
+import { afectaContrato, formatFolio, partesDePago, FORMA_PAGO_LABEL, hoyCivilMexico, type Marca, type MetodoPago, sumarDinero, restarDinero } from '@hsa/shared';
 import { loadEstadoCuenta, QuoteError } from '../quotes/service.js';
 import type { Mailer } from './mailer.js';
 import { correoBienvenida, correoCierre, correoRecibo, type EventoCorreo, type PagoCorreo } from './plantillas.js';
@@ -126,9 +126,9 @@ export async function armarCorreo(
   // Cierre: el contrato como se firmó y, aparte, todo lo que se agregó en el punto
   // de venta (los que suben el contrato también, sin contarlos dos veces).
   const cargos = await db.cargoEvento.findMany({ where: { quoteId: c.quoteId, anuladoAt: null }, orderBy: { fecha: 'asc' } });
-  const delContrato = cargos.filter((x) => afectaContrato(x.producto)).reduce((s, x) => s + x.total, 0);
+  const delContrato = cargos.filter((x) => afectaContrato(x.producto)).reduce((s, x) => sumarDinero(s, x.total), 0);
   const m = correoCierre(marca, evento, {
-    contrato: q.total - delContrato,
+    contrato: restarDinero(q.total, delContrato),
     extras: cargos.map((x) => ({ nombre: x.descripcion, cantidad: x.cantidad, total: x.total })),
   });
   return { para: q.client.correo, q, mensaje: { ...m, attachments: [] } };

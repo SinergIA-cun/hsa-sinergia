@@ -1,5 +1,5 @@
 import type { PrismaClient } from '@hsa/database';
-import { hoyCivilMexico } from '@hsa/shared';
+import { hoyCivilMexico, sumarDinero, restarDinero } from '@hsa/shared';
 import { QuoteError, loadEstadoCuentaBulk } from '../quotes/service.js';
 import { listarDepositos, saldoLiberadoPorApartados } from './cuenta.js';
 import { listarApartados } from './apartados.js';
@@ -87,8 +87,8 @@ export async function estadoCuentaBanquetero(
    * porque cada uno ya resolvió sus propias anulaciones (las del depósito y las
    * de sus asignaciones).
    */
-  const saldoSinAsignar = depositos.reduce((s, d) => s + d.saldoSinAsignar, 0);
-  const depositado = depositos.filter((d) => d.anuladoAt == null).reduce((s, d) => s + d.monto, 0);
+  const saldoSinAsignar = depositos.reduce((s, d) => sumarDinero(s, d.saldoSinAsignar), 0);
+  const depositado = depositos.filter((d) => d.anuladoAt == null).reduce((s, d) => sumarDinero(s, d.monto), 0);
 
   /*
    * El dinero de las fechas que se soltaron.
@@ -113,8 +113,8 @@ export async function estadoCuentaBanquetero(
   });
   const devueltoDelLiberado = devoluciones
     .filter((d) => d.pagoBanqueteroId == null && d.anuladoAt == null)
-    .reduce((s, d) => s + d.monto, 0);
-  const saldoLiberado = saldoLiberadoPorApartados(apartados, hoy) - devueltoDelLiberado;
+    .reduce((s, d) => sumarDinero(s, d.monto), 0);
+  const saldoLiberado = restarDinero(saldoLiberadoPorApartados(apartados, hoy), devueltoDelLiberado);
 
   const vivos = apartados.filter((a) => a.vivo);
   const limite = new Date(hoy);
@@ -134,16 +134,16 @@ export async function estadoCuentaBanquetero(
       eventos: eventos.length,
       // Solo de las cotizaciones: un apartado no tiene total y no es una venta
       // cerrada, así que no entra a ningún número de ingreso comprometido.
-      rentaTotal: eventos.reduce((s, e) => s + e.rentaTotal, 0),
-      pagado: eventos.reduce((s, e) => s + e.pagado, 0),
-      saldo: eventos.reduce((s, e) => s + e.saldo, 0),
+      rentaTotal: eventos.reduce((s, e) => sumarDinero(s, e.rentaTotal), 0),
+      pagado: eventos.reduce((s, e) => sumarDinero(s, e.pagado), 0),
+      saldo: eventos.reduce((s, e) => sumarDinero(s, e.saldo), 0),
       depositado,
       saldoSinAsignar,
       /** Lo que el banquetero trae a favor: sin repartir más lo que soltaron sus fechas. */
       saldoAFavor: saldoSinAsignar + saldoLiberado,
       saldoLiberado,
       /** Lo que se le ha devuelto de su saldo a favor (sin anuladas). */
-      devuelto: devoluciones.filter((d) => d.anuladoAt == null).reduce((s, d) => s + d.monto, 0),
+      devuelto: devoluciones.filter((d) => d.anuladoAt == null).reduce((s, d) => sumarDinero(s, d.monto), 0),
       apartadosVivos: vivos.length,
       apartadosPorVencer: porVencer.length,
     },

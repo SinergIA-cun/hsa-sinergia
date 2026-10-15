@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { Coins, Plus, X } from 'lucide-react';
 import { api } from '../../lib/api.ts';
-import { formatMXN } from '../../lib/money.ts';
+import { formatMXN, esMontoValido } from '../../lib/money.ts';
 import { formatEventDate } from '../../lib/date.ts';
 import { useAuth } from '../../auth/auth.tsx';
 import { describirFormasPago, formatFolio } from '@hsa/shared';
@@ -194,7 +194,7 @@ function FormaAbono({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
-  const valido = /^\d+$/.test(monto.trim()) && Number(monto) > 0 && fecha !== '';
+  const valido = esMontoValido(monto) && fecha !== '';
 
   async function guardar(e: FormEvent) {
     e.preventDefault();

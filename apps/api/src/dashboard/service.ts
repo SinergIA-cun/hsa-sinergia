@@ -1,5 +1,5 @@
 import type { PrismaClient } from '@hsa/database';
-import { hoyCivilMexico } from '@hsa/shared';
+import { hoyCivilMexico, centavos } from '@hsa/shared';
 import { ownershipWhere, loadEstadoCuentaBulk, type Actor } from '../quotes/service.js';
 import {
   resumenBanqueteros,
@@ -335,7 +335,7 @@ export async function getDashboard(
         horasEvento: q.horasEvento,
         usaCapilla: q.usaCapilla,
         capillaHorario: q.capillaHorario,
-        costoHoraExtra: Math.round(q.rentaTotal * 0.05),
+        costoHoraExtra: centavos(q.rentaTotal * 0.05),
         horaInicio: q.horaInicio,
         horaTermino: q.horaTermino,
         horarioCivil: q.horarioCivil,

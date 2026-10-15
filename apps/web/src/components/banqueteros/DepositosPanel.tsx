@@ -2,7 +2,7 @@ import { useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { Ban, FileImage, Paperclip, Split, Undo2 } from 'lucide-react';
 import { api, API_BASE } from '../../lib/api.ts';
-import { formatMXN } from '../../lib/money.ts';
+import { formatMXN, esMontoValido } from '../../lib/money.ts';
 import { formatEventDate } from '../../lib/date.ts';
 import { describirFormasPago, formatFolio } from '@hsa/shared';
 import { Button, Card, Field, MoneyInput, TextInput } from '../ui.tsx';
@@ -309,7 +309,7 @@ function RegistrarDeposito({
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
-  const montoValido = /^\d+$/.test(monto.trim()) && Number(monto) > 0;
+  const montoValido = esMontoValido(monto);
 
   async function registrar(e: FormEvent) {
     e.preventDefault();

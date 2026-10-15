@@ -29,6 +29,18 @@ rutas responden 404, y hay una prueba automatizada que se pone en rojo si alguie
 La **única** escritura es la importación de eventos (ver la sección *Importar y conciliar* al
 final), y va con **otra llave**, `BI_IMPORT_API_KEY`. La de lectura no la abre (401).
 
+## Montos: pesos con centavos (desde el 15-oct-2026)
+
+Todo el dinero que se mueve —pagos, cargos del punto de venta, depósitos y abonos de
+banqueteros, devoluciones, y los totales del evento (`total`, `renta.total`,
+`otros.total`, `pagado`, `saldo`)— viaja en **pesos con a lo más dos decimales**
+(`7850.5` = $7,850.50). Antes eran siempre enteros. El catálogo (rentas, paquetes,
+servicios, DJ) sigue en pesos enteros.
+
+Al **importar** también se aceptan centavos; con más de dos decimales el renglón se
+rechaza. Para comparar montos, hacerlo al centavo (redondear a 2 decimales), no con
+igualdad de flotantes.
+
 ## Envoltura de respuesta
 
 Todos los endpoints devuelven la misma envoltura. Ejemplo real de
@@ -845,10 +857,10 @@ convierte en evento después, en la app. Misma llave; `conciliar` **nunca escrib
 | `fecha`, `salones` | Lo que se aparta. Mismas reglas de nombre que en eventos. |
 | `banquetero` **o** `cliente` | Exactamente uno; con los dos o con ninguno se rechaza el lote entero (400). El banquetero tiene que estar dado de alta (`/importar/banqueteros`); si no, sale `invalido`. El cliente se reutiliza solo si el teléfono coincide exacto; si no, se crea. |
 | `tipoEvento` | Opcional. Si no se reconoce, entra sin tipo y se avisa. Solo prellena la conversión. |
-| `precioAcordado` | Opcional, pesos enteros. Es **la renta del salón** pactada (confirmado por el BI y el dueño). Al convertir, la renta por salón del contrato **se reemplaza por esta** (se quita el descuento de catálogo; horas extra, capilla y alimentos se quedan) y el evento queda con **precio pactado**: editarlo o moverlo no lo recotiza. |
+| `precioAcordado` | Opcional, pesos (hasta dos decimales). Es **la renta del salón** pactada (confirmado por el BI y el dueño). Al convertir, la renta por salón del contrato **se reemplaza por esta** (se quita el descuento de catálogo; horas extra, capilla y alimentos se quedan) y el evento queda con **precio pactado**: editarlo o moverlo no lo recotiza. |
 | `usaCapilla` | Opcional. Marca de la fecha (no cobra ni bloquea); prellena la capilla al convertir. Entra a `difiere` solo si se manda. |
 | `pagos[].idBI` | Se guarda en el abono y **pasa al pago del evento al convertir**; sale en `/pagos`, `/ingresos` y `/apartados`. |
-| `pagos` | Igual que en eventos: folio de papel obligatorio, pesos enteros, `metodo` o `formas`. Entran como abonos a la fecha con su folio. Un folio que ya tiene otro dinero aquí vuelve el apartado `invalido`. |
+| `pagos` | Igual que en eventos: folio de papel obligatorio, pesos (hasta dos decimales), `metodo` o `formas`. Entran como abonos a la fecha con su folio. Un folio que ya tiene otro dinero aquí vuelve el apartado `invalido`. |
 
 Hasta 200 por llamada. Un apartado importado **no vence antes de su fecha** (uno capturado
 aquí vence a los siete días hábiles). Estados del reporte:

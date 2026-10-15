@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { notasSchema, notaONull, editarNotasSchema } from '../payments/notas.js';
 import type { PrismaClient, Prisma, PaymentMethod } from '@hsa/database';
-import { metodoCapturaSchema, formasPagoSchema } from '@hsa/shared';
+import { metodoCapturaSchema, formasPagoSchema, montoSchema, sumarDinero } from '@hsa/shared';
 import { QuoteError, type Actor } from '../quotes/service.js';
 import type { ComprobanteStorage } from '../payments/storage.js';
 import { resolverOError } from '../payments/service.js';
@@ -25,7 +25,7 @@ import { folioPapelSchema, subirSecuenciaSobre, validarFolioDePapel } from '../p
  * Los montos se capturan, no se calculan: `int` rechaza los decimales en vez de
  * redondearlos. Prisma TRUNCA los flotantes al escribir en una columna `Int`.
  */
-const montoCapturado = z.number().int().positive();
+const montoCapturado = montoSchema;
 
 export const abonoSchema = z.object({
   monto: montoCapturado,
@@ -50,7 +50,7 @@ export interface AbonoLite {
 
 /** Lo que lleva juntado esta fecha. Los anulados no cuentan. */
 export function totalAbonado(abonos: readonly AbonoLite[]): number {
-  return abonos.filter((a) => a.anuladoAt == null).reduce((s, a) => s + a.monto, 0);
+  return abonos.filter((a) => a.anuladoAt == null).reduce((s, a) => sumarDinero(s, a.monto), 0);
 }
 
 export const INCLUDE_ABONOS = {

@@ -1,3 +1,4 @@
+import { montoSchema, sumarDinero, pesosTexto } from '../dinero.js';
 import { z } from 'zod';
 
 /**
@@ -61,7 +62,7 @@ export const formasPagoSchema = z
   .array(
     z.object({
       forma: formaPagoSchema,
-      monto: z.number().int().positive(),
+      monto: montoSchema,
       // En blanco no es nota: no se guarda.
       nota: z
         .string()
@@ -94,10 +95,10 @@ export function resolverFormasPago(args: {
 }): { metodo: MetodoPago; formas: PartePago[] | null } {
   const { monto, metodo, formas } = args;
   if (formas && formas.length > 0) {
-    const suma = formas.reduce((s, p) => s + p.monto, 0);
+    const suma = formas.reduce((s, p) => sumarDinero(s, p.monto), 0);
     if (suma !== monto) {
       throw new FormasPagoError(
-        `Las formas de pago suman $${suma.toLocaleString('es-MX')} y el pago es de $${monto.toLocaleString('es-MX')}.`,
+        `Las formas de pago suman ${pesosTexto(suma)} y el pago es de ${pesosTexto(monto)}.`,
       );
     }
     return { metodo: formas.length === 1 ? formas[0]!.forma : 'mixto', formas };
@@ -130,7 +131,7 @@ export function describirFormasPago(pago: { monto: number; metodo: string; forma
   const nota = (p: { nota?: string }) => (p.nota ? ` (${p.nota})` : '');
   if (partes.length === 1) return `${FORMA_PAGO_LABEL[partes[0]!.forma] ?? partes[0]!.forma}${nota(partes[0]!)}`;
   return partes
-    .map((p) => `${FORMA_PAGO_LABEL[p.forma] ?? p.forma} $${p.monto.toLocaleString('es-MX')}${nota(p)}`)
+    .map((p) => `${FORMA_PAGO_LABEL[p.forma] ?? p.forma} ${pesosTexto(p.monto)}${nota(p)}`)
     .join(' · ');
 }
 
