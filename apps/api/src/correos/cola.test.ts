@@ -175,7 +175,7 @@ describe('el correo es obligatorio al formalizar (desde la pantalla)', () => {
   });
 });
 
-describe('volver a su estatus no es formalizar (Karina Medina, 15-oct-2026)', () => {
+describe('volver a su estatus no es formalizar (15-oct-2026)', () => {
   const estatus = (id: string, status: string) =>
     app.inject({ method: 'PATCH', url: `/api/quotes/${id}/status`, cookies: cookie, payload: { status } });
 
@@ -192,7 +192,7 @@ describe('volver a su estatus no es formalizar (Karina Medina, 15-oct-2026)', ()
 
   it('uno importado del BI vuelve sin correo y sin bienvenida', async () => {
     const q = await evento(null);
-    await prisma.quote.update({ where: { id: q.id }, data: { importadoBI: `test-karina-${randomUUID()}` } });
+    await prisma.quote.update({ where: { id: q.id }, data: { importadoBI: `test-regreso-${randomUUID()}` } });
     expect((await estatus(q.id, 'liquidada')).statusCode).toBe(200);
     expect(await correosDe(q.id)).toEqual([]);
   });

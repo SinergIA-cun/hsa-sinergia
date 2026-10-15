@@ -42,7 +42,7 @@ const COMPROMETIDOS = new Set(['formalizada', 'complementada', 'liquidada']);
 /**
  * ¿El evento ya estuvo formalizado antes? Pasa con uno importado del BI (se
  * vendió antes del sistema) y con uno que alguien regresó a borrador y ahora
- * vuelve a su estatus (el de Karina Medina, 15-oct-2026: se quedó atorado en
+ * vuelve a su estatus (un importado del BI, 15-oct-2026: se quedó atorado en
  * borrador porque volver a liquidado se trataba como una formalización nueva y
  * exigía el correo). Volver no es formalizar: no pide correo ni manda bienvenida.
  *

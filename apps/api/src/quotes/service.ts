@@ -148,7 +148,7 @@ export const includeRels = {
 /**
  * Todo lo que tiene fecha se edita, liquidado incluido: "TODO editable, sin
  * tener que regresarlo a borrador" (Jorge, 15-oct-2026). Regresarlo a borrador
- * para corregir un nombre es justo como se quedó atorado el de Karina Medina.
+ * para corregir un nombre es justo como se quedó atorado un importado del BI.
  */
 const EDITABLE_STATUSES = new Set(['borrador', 'formalizada', 'complementada', 'liquidada']);
 
