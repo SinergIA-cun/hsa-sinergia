@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { enTransaccionConActor, type PrismaClient, type QuoteStatus } from '@hsa/database';
+import { enTransaccionConActor, type Prisma, type PrismaClient, type QuoteStatus } from '@hsa/database';
 import {
   restarDinero,
   sumarDinero,
@@ -8,6 +8,8 @@ import {
   metodoCapturaSchema,
   formasPagoSchema,
   sueltaLaFecha,
+  conSalones,
+  type QuoteBreakdown,
 } from '@hsa/shared';
 import {
   QuoteError,
@@ -15,7 +17,8 @@ import {
   assertEspaciosDisponibles,
   includeRels,
   loadEstadoCuenta,
-  moveQuoteDate,
+  moverEvento,
+  nombresDeSalones,
   ownershipWhere,
   type Actor,
 } from './service.js';
@@ -59,14 +62,21 @@ export const cancelarSchema = z.object({
 
 export const standbySchema = z.object({ motivo });
 
-export const reprogramarSchema = z.object({
-  fecha: fechaISO,
+export const reprogramarSchema = z
+  .object({
+  /** Fecha nueva; sin ella se queda la que tiene. */
+  fecha: fechaISO.optional(),
+  /** Salones nuevos; sin ellos se queda en los que tiene. */
+  spaceIds: z.array(z.string().min(1)).min(1, 'Elige al menos un salón.').max(10).optional(),
   /**
    * Respetar el precio pactado en vez de recotizar por el tipo de día. Un evento
    * liquidado o importado del BI siempre lo respeta.
    */
   conservarPrecio: z.boolean().default(false),
-});
+  })
+  .refine((d) => d.fecha !== undefined || d.spaceIds !== undefined, {
+    message: 'Indica la fecha nueva, el lugar nuevo o los dos.',
+  });
 
 /** Los cuatro estatus "con fecha", que son a los que se puede volver. */
 const CON_FECHA = new Set<QuoteStatus>(['borrador', 'formalizada', 'complementada', 'liquidada']);
@@ -183,6 +193,20 @@ export async function reprogramarEvento(db: PrismaClient, id: string, raw: unkno
   const regresa = sueltaLaFecha(q.status);
   const destino: QuoteStatus = regresa ? (q.statusPrevio && CON_FECHA.has(q.statusPrevio) ? q.statusPrevio : 'borrador') : q.status;
   const fechaAntes = q.fechaEvento.toISOString().slice(0, 10);
+  const fechaNueva = input.fecha ?? fechaAntes;
+  const espaciosNuevos = input.spaceIds ? [...new Set(input.spaceIds)] : q.spaceIds;
+  const mismosSalones = [...espaciosNuevos].sort().join() === [...q.spaceIds].sort().join();
+  // Un evento con fecha que no cambia ni de día ni de salón no tiene nada que
+  // mover; uno en standby o cancelado sí (recupera su fecha).
+  if (!regresa && fechaNueva === fechaAntes && mismosSalones) {
+    throw new QuoteError(400, 'El evento ya está en esa fecha y en ese lugar.');
+  }
+  const [salonesAntes, salonesDespues] = await Promise.all([
+    nombresDeSalones(db, q.spaceIds),
+    nombresDeSalones(db, espaciosNuevos),
+  ]);
+  const lugarAntes = salonesAntes.map((s) => s.nombre).join(' + ');
+  const lugarDespues = salonesDespues.map((s) => s.nombre).join(' + ');
   // El precio se respeta si se pidió, si ya está liquidado (no se recotiza lo que
   // ya se pagó completo) o si vino del BI con precio pactado.
   const conservar = input.conservarPrecio || destino === 'liquidada' || q.precioPactado;
@@ -191,14 +215,22 @@ export async function reprogramarEvento(db: PrismaClient, id: string, raw: unkno
     async (txRaw) => {
       const tx = txRaw as unknown as PrismaClient;
       if (conservar) {
-        await assertEspaciosDisponibles(tx, input.fecha, q.spaceIds, id);
-        const datos = { fecha: input.fecha, cliente: q.client?.nombre ?? '', spaceIds: q.spaceIds };
+        await assertEspaciosDisponibles(tx, fechaNueva, espaciosNuevos, id);
+        const datos = { fecha: fechaNueva, cliente: q.client?.nombre ?? '', spaceIds: espaciosNuevos };
         const codigo = await calcularCodigo(tx, datos, { id, etiqueta: q.etiqueta });
         await tx.quote.update({
           where: { id },
           data: {
-            fechaEvento: new Date(`${input.fecha}T00:00:00.000Z`),
+            fechaEvento: new Date(`${fechaNueva}T00:00:00.000Z`),
             status: destino,
+            // Con precio pactado, cambiar de salón no recotiza: la renta que ya
+            // tenía pasa a los salones nuevos y el total no se mueve.
+            ...(mismosSalones
+              ? {}
+              : {
+                  spaceIds: espaciosNuevos,
+                  breakdown: conSalones(q.breakdown as unknown as QuoteBreakdown, salonesDespues) as unknown as Prisma.InputJsonValue,
+                }),
             etiqueta: codigo,
             ...(codigo !== q.etiqueta
               ? {
@@ -206,7 +238,7 @@ export async function reprogramarEvento(db: PrismaClient, id: string, raw: unkno
                     create: renglonDeCodigo(
                       codigo,
                       datos,
-                      motivosDelCambio({ ...datos, fecha: fechaAntes }, datos),
+                      motivosDelCambio({ ...datos, fecha: fechaAntes, spaceIds: q.spaceIds }, datos),
                       actor.id,
                     ),
                   },
@@ -219,7 +251,7 @@ export async function reprogramarEvento(db: PrismaClient, id: string, raw: unkno
         // mover (recalcula, revisa disponibilidad, mueve el código) lo acepte.
         // Si la fecha no está libre, la transacción revierte también esto.
         if (regresa) await tx.quote.update({ where: { id }, data: { status: destino } });
-        await moveQuoteDate(tx, id, input.fecha, actor);
+        await moverEvento(tx, id, { fecha: fechaNueva, spaceIds: espaciosNuevos }, actor);
       }
 
       await tx.quote.update({
@@ -244,8 +276,21 @@ export async function reprogramarEvento(db: PrismaClient, id: string, raw: unkno
             : q.status === 'cancelada'
               ? 'Se reactiva el evento cancelado'
               : 'Se reprograma') +
-          `: ${fechaAntes} → ${input.fecha}${conservar ? ' (respetando el precio pactado)' : ''}.`,
-        meta: { de: q.status, a: destino, fechaAntes, fechaDespues: input.fecha, conservarPrecio: conservar },
+          `: ${[
+            fechaNueva !== fechaAntes || regresa ? `${fechaAntes} → ${fechaNueva}` : null,
+            mismosSalones ? null : `${lugarAntes} → ${lugarDespues}`,
+          ]
+            .filter(Boolean)
+            .join(' · ')}${conservar ? ' (respetando el precio pactado)' : ''}.`,
+        meta: {
+          de: q.status,
+          a: destino,
+          fechaAntes,
+          fechaDespues: fechaNueva,
+          espaciosAntes: q.spaceIds,
+          espaciosDespues: espaciosNuevos,
+          conservarPrecio: conservar,
+        },
         actorId: actor.id,
       });
 

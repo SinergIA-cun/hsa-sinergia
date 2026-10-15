@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { normalizarNombre, emparejarNombre, desgloseImportado, compararEvento, conRentaAcordada, conPrecioPactado } from './importacion.js';
+import { normalizarNombre, emparejarNombre, desgloseImportado, compararEvento, conRentaAcordada, conPrecioPactado, conSalones } from './importacion.js';
 import type { QuoteBreakdown } from '../types.js';
 
 describe('normalizarNombre y emparejarNombre', () => {
@@ -156,5 +156,43 @@ describe('conPrecioPactado', () => {
     };
     expect(() => conPrecioPactado(catalogo, { renta: 1, otros: 2 }, 0.16)).toThrow(/catálogo/);
     expect(conPrecioPactado(catalogo, { renta: 30_000 }, 0.16).lines.at(-1)).toMatchObject({ concepto: 'Menú', monto: 80_000 });
+  });
+});
+
+describe('conSalones', () => {
+  const importado = desgloseImportado({
+    salones: [{ spaceId: 'a', nombre: 'Arcos' }, { spaceId: 'b', nombre: 'Cúpula' }],
+    rentaTotal: 40_001,
+    otrosTotal: 10_000,
+    ivaRate: 0.16,
+  });
+  const conCargo: QuoteBreakdown = {
+    ...importado,
+    lines: [...importado.lines, { concepto: 'Hora extra de salón', monto: 2_000, ivaIncluido: true, grupo: 'renta', cargoId: 'c1' }],
+    rentaTotal: 42_001,
+    total: 52_001,
+  };
+
+  it('pasa toda la renta de salón al salón nuevo sin tocar totales ni cargos', () => {
+    const r = conSalones(conCargo, [{ id: 'c', nombre: 'Los Campos' }]);
+    expect(r.lines.map((l) => [l.concepto, l.monto, l.spaceId])).toEqual([
+      ['Renta Los Campos', 40_001, 'c'],
+      ['Alimentos y servicios', 10_000, undefined],
+      ['Hora extra de salón', 2_000, undefined],
+    ]);
+    expect(r.lines[0]!.ref).toEqual({ tipo: 'rentaSalon', id: 'c', cantidad: 1, unidad: 'evento', precioUnitario: 40_001 });
+    expect([r.rentaTotal, r.otrosTotal, r.total]).toEqual([42_001, 10_000, 52_001]);
+  });
+
+  it('reparte entre varios salones y el último se queda con el residuo', () => {
+    const r = conSalones(conCargo, [{ id: 'a', nombre: 'Arcos' }, { id: 'c', nombre: 'Los Campos' }, { id: 'd', nombre: 'Jardín' }]);
+    const salon = r.lines.filter((l) => l.spaceId);
+    expect(salon.map((l) => l.monto)).toEqual([13_333.66, 13_333.66, 13_333.68]);
+    expect(salon.reduce((s, l) => s + l.monto, 0)).toBeCloseTo(40_001, 2);
+  });
+
+  it('sin salones o sin renta de salón, falla con un mensaje claro', () => {
+    expect(() => conSalones(conCargo, [])).toThrow('al menos un salón');
+    expect(() => conSalones({ ...conCargo, lines: [] }, [{ id: 'c', nombre: 'Los Campos' }])).toThrow('renta de salón');
   });
 });

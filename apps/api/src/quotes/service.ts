@@ -1158,6 +1158,47 @@ export async function updateQuote(db: PrismaClient, id: string, rawInput: unknow
  * diario— borraba el descuento y represiaba el evento solo.
  */
 export async function moveQuoteDate(db: PrismaClient, id: string, fecha: string, actor: Actor) {
+  return moverEvento(db, id, { fecha }, actor);
+}
+
+/** Lo que se mueve de un evento: la fecha, los salones, o los dos. */
+export interface DestinoEvento {
+  fecha?: string;
+  spaceIds?: string[];
+}
+
+function describirMovimiento(antes: { fecha: string; espacios: string }, despues: { fecha: string; espacios: string }): string {
+  const partes: string[] = [];
+  if (antes.fecha !== despues.fecha) partes.push(`Fecha: ${antes.fecha} → ${despues.fecha}`);
+  if (antes.espacios !== despues.espacios) partes.push(`Lugar: ${antes.espacios} → ${despues.espacios}`);
+  return partes.join(' · ');
+}
+
+/** Nombres de los salones, en el orden en que se eligieron. */
+export async function nombresDeSalones(db: PrismaClient, spaceIds: string[]): Promise<{ id: string; nombre: string }[]> {
+  const spaces = await db.space.findMany({ where: { id: { in: spaceIds } }, select: { id: true, nombre: true } });
+  const porId = new Map(spaces.map((s) => [s.id, s]));
+  return spaceIds.map((sid) => {
+    const sp = porId.get(sid);
+    if (!sp) throw new QuoteError(400, 'Uno de los salones elegidos no existe.');
+    return sp;
+  });
+}
+
+/**
+ * Mueve un evento de fecha, de salón o de los dos, RECOTIZANDO.
+ *
+ * Cambiar la fecha o el salón cambia el precio: la renta depende del tipo de día
+ * y del salón. Por eso no se escribe a secas — se reconstruye la selección actual
+ * con el destino y se delega en `updateQuote`, que recalcula el desglose, valida
+ * que los salones estén libres en el destino y respeta ownership y estatus
+ * editables (liquidada queda fuera por ese camino).
+ *
+ * La selección la arma `seleccionGuardada`, no este código: armarla a mano dejaba
+ * fuera los extras y el descuento de cortesía, y el arrastre —que el dueño usa a
+ * diario— borraba el descuento y represiaba el evento solo.
+ */
+export async function moverEvento(db: PrismaClient, id: string, destino: DestinoEvento, actor: Actor) {
   const existing = await db.quote.findFirst({
     where: { id, ...ownershipWhere(actor) },
     include: SELECCION_INCLUDE,
@@ -1169,22 +1210,31 @@ export async function moveQuoteDate(db: PrismaClient, id: string, fecha: string,
     throw new QuoteError(409, `No se puede mover una cotización en estatus "${existing.status}"`);
   }
 
-  const fechaAntes = existing.fechaEvento.toISOString().slice(0, 10);
+  const seleccion = seleccionGuardada(existing);
+  const fecha = destino.fecha ?? existing.fechaEvento.toISOString().slice(0, 10);
+  const spaceIds = destino.spaceIds ?? existing.spaceIds;
+  const [salonesAntes, salonesDespues] = await Promise.all([
+    nombresDeSalones(db, existing.spaceIds),
+    nombresDeSalones(db, spaceIds),
+  ]);
+  const antes = { fecha: existing.fechaEvento.toISOString().slice(0, 10), espacios: salonesAntes.map((s) => s.nombre).join(' + ') };
+  const despues = { fecha, espacios: salonesDespues.map((s) => s.nombre).join(' + ') };
 
-  const actualizada = await updateQuote(
-    db,
-    id,
-    // Lo único que cambia es la fecha; todo lo demás se recalcula con lo que la
-    // cotización ya tenía.
-    { ...seleccionGuardada(existing), fecha },
-    actor,
-  );
+  // Todo lo demás se recalcula con lo que la cotización ya tenía.
+  const actualizada = await updateQuote(db, id, { ...seleccion, fecha, spaceIds }, actor);
 
   await logActivity(db, {
     quoteId: id,
     tipo: 'edicion',
-    descripcion: `Fecha: ${fechaAntes} → ${fecha} · total ${existing.total} → ${actualizada.total}`,
-    meta: { fechaAntes, fechaDespues: fecha, totalAntes: existing.total, totalDespues: actualizada.total },
+    descripcion: `${describirMovimiento(antes, despues)} · total ${existing.total} → ${actualizada.total}`,
+    meta: {
+      fechaAntes: antes.fecha,
+      fechaDespues: despues.fecha,
+      espaciosAntes: existing.spaceIds,
+      espaciosDespues: spaceIds,
+      totalAntes: existing.total,
+      totalDespues: actualizada.total,
+    },
     actorId: actor.id,
   });
 
@@ -1192,18 +1242,20 @@ export async function moveQuoteDate(db: PrismaClient, id: string, fecha: string,
 }
 
 /**
- * Vista previa de mover un evento a otra fecha, SIN escribir: el total con la
- * fecha nueva (el mismo cálculo que hará el guardado) y qué salones estarían
- * ocupados ese día. Para el modal de "Mover fecha" y el de "Reprogramar".
+ * Vista previa de mover un evento (fecha y/o salones), SIN escribir: el total con
+ * el destino (el mismo cálculo que hará el guardado) y qué salones estarían
+ * ocupados. Para el modal de "Mover evento" y el de "Reprogramar".
  */
-export async function simularFecha(db: PrismaClient, id: string, fecha: string, actor: Actor) {
+export async function simularMovimiento(db: PrismaClient, id: string, destino: DestinoEvento, actor: Actor) {
   const existing = await db.quote.findFirst({
     where: { id, ...ownershipWhere(actor) },
     include: SELECCION_INCLUDE,
   });
   if (!existing) throw new QuoteError(404, 'Cotización no encontrada');
   assertNotTrashed(existing);
-  const disp = await getAvailability(db, fecha, existing.spaceIds, id);
+  const fecha = destino.fecha ?? existing.fechaEvento.toISOString().slice(0, 10);
+  const spaceIds = destino.spaceIds ?? existing.spaceIds;
+  const disp = await getAvailability(db, fecha, spaceIds, id);
   const ocupados = disp.spaces.filter((sp) => sp.level === 'bloqueada').map((sp) => sp.nombre);
   let despues: number | null = null;
   let error: string | null = null;
@@ -1213,15 +1265,20 @@ export async function simularFecha(db: PrismaClient, id: string, fecha: string, 
     try {
       const { breakdown } = await computeAndEnrich(
         db,
-        toSelection({ ...seleccionGuardada(existing), fecha }),
+        toSelection({ ...seleccionGuardada(existing), fecha, spaceIds }),
         existing.priceListId,
       );
       despues = centavos(breakdown.total);
     } catch (e) {
-      error = e instanceof Error ? e.message : 'No se pudo calcular el precio con esa fecha.';
+      error = e instanceof Error ? e.message : 'No se pudo calcular el precio con ese cambio.';
     }
   }
   return { antes: existing.total, despues, ocupados, error, precioPactado: existing.precioPactado };
+}
+
+/** Compatibilidad: la vista previa de solo cambiar la fecha. */
+export async function simularFecha(db: PrismaClient, id: string, fecha: string, actor: Actor) {
+  return simularMovimiento(db, id, { fecha }, actor);
 }
 
 export const moverCatalogoSchema = z.object({ priceListId: z.string().min(1) });
