@@ -19,14 +19,15 @@ interface PublicPago {
   formas: unknown;
   fecha: string;
   tieneComprobante: boolean;
-  /** `cargos` = cobro de la cuenta del punto de venta, no de la renta. */
-  destino?: 'evento' | 'cargos';
+  /** `cargos` = cobro de la cuenta del punto de venta; `banquete` = del banquete. Ninguno es renta. */
+  destino?: 'evento' | 'cargos' | 'banquete';
 }
 
 interface PublicResponse {
   quote: Quote;
   estadoCuenta: EstadoCuenta;
   cuenta?: { pagos: PublicPago[] };
+  banquete?: { pagos: PublicPago[] };
 }
 
 const CONCEPTO_LABEL: Record<string, string> = {
@@ -48,10 +49,11 @@ export function ReciboPage() {
   if (isLoading) {
     return <div className="grid min-h-screen place-items-center text-ink-500">Cargando recibo…</div>;
   }
-  // El pago puede ser de la renta o de la cuenta del punto de venta.
+  // El pago puede ser de la renta, de la cuenta del punto de venta o del banquete.
   const pago = [
     ...((data?.estadoCuenta.pagos as PublicPago[] | undefined) ?? []),
     ...(data?.cuenta?.pagos ?? []),
+    ...(data?.banquete?.pagos ?? []),
   ].find((p) => p.id === paymentId);
   if (isError || !data || !pago) {
     return <div className="grid min-h-screen place-items-center text-wine">Recibo no encontrado.</div>;
@@ -102,7 +104,7 @@ export function ReciboPage() {
         <div className="recibo-monto">{formatMXN(pago.monto)}</div>
 
         <div className="recibo-rows">
-          <div className="recibo-row"><span>Concepto</span><span>{pago.destino === 'cargos' ? 'Cargos adicionales del evento' : (CONCEPTO_LABEL[pago.concepto] ?? pago.concepto)}</span></div>
+          <div className="recibo-row"><span>Concepto</span><span>{pago.destino === 'cargos' ? 'Cargos adicionales del evento' : pago.destino === 'banquete' ? `Banquete · ${CONCEPTO_LABEL[pago.concepto] ?? pago.concepto}` : (CONCEPTO_LABEL[pago.concepto] ?? pago.concepto)}</span></div>
           {/* Un pago dividido lista cada forma con su monto: es lo que el cliente
               coteja contra los dos vouchers de sus tarjetas. */}
           {partesDePago(pago).map((p, i) => (

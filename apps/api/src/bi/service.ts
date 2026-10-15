@@ -773,7 +773,7 @@ export async function biCatalogos(db: PrismaClient) {
     estatusEvento: ['borrador', 'formalizada', 'complementada', 'liquidada', 'standby', 'cancelada'],
     // Las etiquetas del BI. `complemento` ya no se usa (5-oct-2026).
     conceptosPago: ['anticipo', 'aCuenta', 'finiquito'],
-    destinosPago: ['evento', 'cargos'],
+    destinosPago: ['evento', 'cargos', 'banquete'],
     productosCargo: Object.values(PRODUCTO_INFO).map((p) => ({
       producto: p.producto,
       nombre: p.nombre,

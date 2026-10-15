@@ -398,6 +398,7 @@ export function EditQuotePage() {
             isAdmin={isAdmin}
             estadoCuenta={estadoCuenta}
             payments={payments}
+            banquete={quoteQ.data?.banquete}
             activityLog={activityLog}
           />
         </>
@@ -468,6 +469,7 @@ export function EditQuotePage() {
           isAdmin={isAdmin}
           estadoCuenta={estadoCuenta}
           payments={payments}
+          banquete={quoteQ.data?.banquete}
           activityLog={activityLog}
           readOnly={enPapelera}
           // A un cancelado ya no le entra dinero (la API lo rechaza igual).

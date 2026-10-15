@@ -267,6 +267,12 @@ factura en el mes en que se recibe; pasado ese mes se va a la global de público
 Incluye los pagos anulados, marcados como tales — el BI decide si los descuenta.
 
 - **Rango sobre:** `fecha` del pago (la fecha en que entró el dinero, no la del evento).
+- **`destino`**: `evento` = abona a la renta; `cargos` = a la cuenta del punto de venta;
+  **`banquete`** (desde el 15-oct-2026) = lo que el cliente le paga a la hacienda por el banquete
+  (el bloque "Alimentos y otros servicios" del contrato). Un pago `banquete` lleva folio I y
+  recibo, pero **no** abona a la renta ni mueve el plan de pagos o el estatus. Su `concepto` se
+  deduce contra el total del banquete: el primero `anticipo`, el que lo completa `finiquito`, los
+  demás `aCuenta`.
 - **`concepto`** (etiquetas del BI desde el 5-oct-2026): `anticipo` = el primer pago; `finiquito` =
   el que deja lo que se debe del contrato en \$1,000 o menos por primera vez (si un solo pago lo
   cubre todo, es finiquito); `aCuenta` = los demás. Se recalcula con cada cambio de dinero (y

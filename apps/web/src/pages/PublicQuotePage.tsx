@@ -50,6 +50,8 @@ interface PublicResponse {
   quote: Quote;
   estadoCuenta: EstadoCuenta;
   cuenta?: CuentaPublica;
+  /** El banquete que cobra la hacienda: su total, lo pagado y sus recibos. */
+  banquete?: { total: number; pagado: number; saldo: number; pagos: { id: string; monto: number; fecha: string }[] };
 }
 
 export function PublicQuotePage() {
@@ -258,6 +260,38 @@ export function PublicQuotePage() {
               <p className="mt-3 flex justify-between border-t border-cream-300 pt-3 text-sm font-semibold text-ink">
                 <span>Por pagar de cargos adicionales</span>
                 <span className="tabular-nums">{formatMXN(data.cuenta.saldo)}</span>
+              </p>
+            </div>
+          </section>
+        )}
+
+        {/* El banquete: lo que se le paga a la hacienda de alimentos y servicios,
+            aparte de la renta. Solo si ya hay algún pago. */}
+        {data.banquete && data.banquete.pagos.length > 0 && (
+          <section className="mt-10">
+            <div className="mb-4 flex items-center justify-center">
+              <span className="divider-arrow text-[0.7rem] uppercase tracking-[0.25em]">Pagos del banquete</span>
+            </div>
+            <div className="rounded-[var(--radius-card)] border border-emerald-200 bg-emerald-50/70 p-6 shadow-sm">
+              <ul className="divide-y divide-emerald-200/70">
+                {data.banquete.pagos.map((p) => (
+                  <li key={p.id} className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 py-2.5 text-sm">
+                    <span className="text-charcoal-soft">{formatEventDate(p.fecha)} · Pago</span>
+                    <span className="flex items-center gap-4">
+                      <span className="tabular-nums text-charcoal">{formatMXN(p.monto)}</span>
+                      <Link
+                        to={`/c/${token}/recibo/${p.id}`}
+                        className="inline-flex items-center gap-1 text-xs font-medium text-gold hover:underline"
+                      >
+                        <Receipt size={13} /> Ver recibo
+                      </Link>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+              <p className="mt-3 flex justify-between border-t border-emerald-200 pt-3 text-sm font-semibold text-ink">
+                <span>Por pagar del banquete</span>
+                <span className="tabular-nums">{formatMXN(data.banquete.saldo)}</span>
               </p>
             </div>
           </section>
