@@ -105,3 +105,29 @@ describe('ajustar el precio pactado', () => {
     expect((await ajustar(deCatalogo.id, { renta: 45_000, motivo: 'no aplica' })).statusCode).toBe(409);
   });
 });
+
+describe('editar un evento importado y liquidado (Jorge, 15-oct-2026: "TODO editable")', () => {
+  it('cambia nombre, PAX y tipo de evento sin regresarlo a borrador ni tocar el precio', async () => {
+    const q = await importado(40_000, 10_000);
+    await registerPayment(prisma, storage, q.id, { monto: 40_000, metodo: 'transferencia', fecha: '2026-10-06' }, admin);
+    expect((await prisma.quote.findUniqueOrThrow({ where: { id: q.id } })).status).toBe('liquidada');
+    const xvId = (await prisma.eventType.findFirstOrThrow({ where: { slug: { not: 'boda' } } })).id;
+
+    const r = await app.inject({
+      method: 'PUT',
+      url: `/api/quotes/${q.id}`,
+      cookies: cookie,
+      payload: {
+        fecha: q.fechaEvento.toISOString().slice(0, 10),
+        invitados: 320,
+        spaceIds: [arcosId],
+        eventTypeId: xvId,
+        client: { nombre: 'Precio pactado corregido', telefono: '5516161616', correo: 'p@example.com' },
+      },
+    });
+    expect(r.statusCode).toBe(200);
+    const despues = await prisma.quote.findUniqueOrThrow({ where: { id: q.id }, include: { client: true } });
+    expect(despues).toMatchObject({ invitados: 320, eventTypeId: xvId, status: 'liquidada', total: 50_000, rentaTotal: 40_000 });
+    expect(despues.client.nombre).toBe('Precio pactado corregido');
+  });
+});

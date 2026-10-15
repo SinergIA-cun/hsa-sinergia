@@ -19,4 +19,4 @@ export const STATUS_STYLE: Record<QuoteStatus, string> = {
 };
 
 /** Debe seguir a `EDITABLE_STATUSES` de `apps/api/src/quotes/service.ts`. */
-export const EDITABLE_STATUSES: QuoteStatus[] = ['borrador', 'formalizada', 'complementada'];
+export const EDITABLE_STATUSES: QuoteStatus[] = ['borrador', 'formalizada', 'complementada', 'liquidada'];

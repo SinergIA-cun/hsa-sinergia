@@ -145,7 +145,12 @@ export const includeRels = {
 
 // Se permite editar el desglose incluso con compromiso de pago (formalizada/complementada);
 // las ediciones en esos estatus quedan registradas en la bitácora de actividad.
-const EDITABLE_STATUSES = new Set(['borrador', 'formalizada', 'complementada']);
+/**
+ * Todo lo que tiene fecha se edita, liquidado incluido: "TODO editable, sin
+ * tener que regresarlo a borrador" (Jorge, 15-oct-2026). Regresarlo a borrador
+ * para corregir un nombre es justo como se quedó atorado el de Karina Medina.
+ */
+const EDITABLE_STATUSES = new Set(['borrador', 'formalizada', 'complementada', 'liquidada']);
 
 // --- Código del evento -------------------------------------------------------
 
@@ -1137,6 +1142,15 @@ export async function updateQuote(db: PrismaClient, id: string, rawInput: unknow
   // (horas extra, PAX extra): se vuelven a poner.
   const { antes: sinCargos, despues: conCargos } = await sincronizarContrato(db, id);
 
+  // Editar un evento ya comprometido puede cambiar lo que debe: uno liquidado al
+  // que le suben los PAX vuelve a tener saldo, y uno al que se le baja el total
+  // puede quedar liquidado. El estatus lo dicen sus pagos, como al corregirlos.
+  // (Import dinámico: `payments/estatus` importa este módulo.)
+  if (existing.status !== 'borrador' && conCargos !== existing.total) {
+    const { ponerAlDia } = await import('../payments/estatus.js');
+    await ponerAlDia(db, id, actor.id, 'se editó el evento');
+  }
+
   // La foto se pone al día si el evento ya pasó (idempotente: si nada cambió, no
   // escribe versión nueva).
   await archivarEvento(db, id);
@@ -1151,7 +1165,7 @@ export async function updateQuote(db: PrismaClient, id: string, rawInput: unknow
  * NO se escribe la fecha a secas — se reconstruye la selección actual con la
  * fecha nueva y se delega en `updateQuote`, que recalcula el desglose, valida
  * que el espacio esté libre en el destino y respeta ownership y estatus
- * editables (liquidada queda fuera por ese camino).
+ * editables.
  *
  * La selección la arma `seleccionGuardada`, no este código: armarla a mano dejaba
  * fuera los extras y el descuento de cortesía, y el arrastre —que el dueño usa a
@@ -1192,7 +1206,7 @@ export async function nombresDeSalones(db: PrismaClient, spaceIds: string[]): Pr
  * y del salón. Por eso no se escribe a secas — se reconstruye la selección actual
  * con el destino y se delega en `updateQuote`, que recalcula el desglose, valida
  * que los salones estén libres en el destino y respeta ownership y estatus
- * editables (liquidada queda fuera por ese camino).
+ * editables.
  *
  * La selección la arma `seleccionGuardada`, no este código: armarla a mano dejaba
  * fuera los extras y el descuento de cortesía, y el arrastre —que el dueño usa a
