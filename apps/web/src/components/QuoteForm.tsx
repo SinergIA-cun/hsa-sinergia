@@ -582,7 +582,7 @@ export function QuoteForm({
                teléfono o el correo sí, porque el contrato exige uno. */
             <div className="rounded-lg border border-ink/10 bg-ink/[0.03] px-3 py-2.5">
               <p className="text-[0.7rem] font-semibold uppercase tracking-wide text-charcoal-soft">
-                Cliente directo
+                Cliente o empresa
               </p>
               <p className="mt-0.5 text-sm text-ink">{nombre}</p>
               <p className="mt-1 text-xs text-charcoal-soft">
@@ -595,7 +595,7 @@ export function QuoteForm({
                cliente paralelo del mismo señor. */
             <div className="rounded-lg border border-ink/10 bg-ink/[0.03] px-3 py-2.5">
               <p className="text-[0.7rem] font-semibold uppercase tracking-wide text-charcoal-soft">
-                Banquetero
+                Profesional de eventos
               </p>
               <p className="mt-0.5 text-sm text-ink">
                 {banqueteros.find((b) => b.id === banqueteroId)?.nombre ?? nombre}
@@ -617,7 +617,7 @@ export function QuoteForm({
 
           {esDeBanquetero && (
             <p className="rounded-lg bg-cream-200/70 px-3 py-2 text-sm text-ink">
-              El banquetero es el cliente de la hacienda: <strong>firma él y se le factura a él</strong>.
+              El profesional de eventos es el cliente de la hacienda: <strong>firma él y se le factura a él</strong>.
               Sus datos quedan de solo lectura; para corregirlos, edítalo en{' '}
               <a href="/banqueteros" className="underline">Banqueteros</a>.
               {enableClientSearch && ' Si ya tiene ficha de cliente, aparece abajo de su nombre: úsala para no duplicarla.'}
@@ -641,7 +641,7 @@ export function QuoteForm({
               listas encimadas confunden—; con banquetero elegido enseña su ficha
               si ya tiene una, para no duplicarla. */}
           <ClienteCombobox
-            label={esDeBanquetero ? 'Nombre (del banquetero)' : 'Nombre'}
+            label={esDeBanquetero ? 'Nombre (del profesional)' : 'Nombre o empresa'}
             value={nombre}
             readOnly={esDeBanquetero || bloqueado?.cliente}
             buscar={enableClientSearch && !pickedClientId && !buscandoBanquetero && !bloqueado?.cliente}
@@ -677,7 +677,7 @@ export function QuoteForm({
               primera letra del nombre regaña antes de tiempo. */}
           <p className={`-mt-2 text-xs ${faltaContacto && nombre && fecha && spaceIds.length > 0 ? 'text-wine' : 'text-charcoal-soft'}`}>
             {faltaContacto && nombre && fecha && spaceIds.length > 0
-              ? `${MENSAJE_SIN_CONTACTO}${esDeBanquetero && !telefono ? ' El banquetero no tiene teléfono: captura su correo.' : ''}`
+              ? `${MENSAJE_SIN_CONTACTO}${esDeBanquetero && !telefono ? ' El profesional no tiene teléfono: captura su correo.' : ''}`
               : 'Teléfono o correo: al menos uno es obligatorio.'}
             {pickedClientId && !faltaContacto && ' Si lo cambias, se actualiza en su ficha.'}
           </p>
