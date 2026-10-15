@@ -27,11 +27,37 @@ type Tipo = 'bienvenida' | 'recibo' | 'cierre';
 
 /** Encola un correo. Si ya existe (misma `clave`) no hace nada: cada cosa se avisa una vez. */
 export async function encolarCorreo(db: PrismaClient, quoteId: string, tipo: Tipo, paymentId?: string | null) {
+  // La bienvenida es para el cliente que se estrena, no para uno que vuelve.
+  if (tipo === 'bienvenida' && (await yaEstabaComprometido(db, quoteId))) return;
   const clave = tipo === 'recibo' ? `recibo:${paymentId}` : `${tipo}:${quoteId}`;
   await db.correoCliente.upsert({
     where: { clave },
     create: { quoteId, tipo, clave, paymentId: paymentId ?? null },
     update: {},
+  });
+}
+
+const COMPROMETIDOS = new Set(['formalizada', 'complementada', 'liquidada']);
+
+/**
+ * ¿El evento ya estuvo formalizado antes? Pasa con uno importado del BI (se
+ * vendió antes del sistema) y con uno que alguien regresó a borrador y ahora
+ * vuelve a su estatus (el de Karina Medina, 15-oct-2026: se quedó atorado en
+ * borrador porque volver a liquidado se trataba como una formalización nueva y
+ * exigía el correo). Volver no es formalizar: no pide correo ni manda bienvenida.
+ *
+ * La señal es un cambio de estatus DE uno comprometido A borrador. La primera
+ * formalización deja `borrador → formalizada`, que no cuenta.
+ */
+export async function yaEstabaComprometido(db: PrismaClient, quoteId: string): Promise<boolean> {
+  const q = await db.quote.findUnique({ where: { id: quoteId }, select: { importadoBI: true } });
+  if (q?.importadoBI) return true;
+  const yaSaludado = await db.correoCliente.findUnique({ where: { clave: `bienvenida:${quoteId}` }, select: { id: true } });
+  if (yaSaludado) return true;
+  const cambios = await db.activityLog.findMany({ where: { quoteId, tipo: 'estatus' }, select: { meta: true } });
+  return cambios.some((c) => {
+    const m = c.meta as { de?: string; a?: string } | null;
+    return m?.a === 'borrador' && !!m.de && COMPROMETIDOS.has(m.de);
   });
 }
 
@@ -42,6 +68,7 @@ export async function encolarCorreo(db: PrismaClient, quoteId: string, tipo: Tip
 export async function exigirCorreoParaFormalizar(db: PrismaClient, quoteId: string, monto?: number) {
   const q = await db.quote.findUnique({ where: { id: quoteId }, include: { client: { select: { correo: true } } } });
   if (!q || q.status !== 'borrador' || tieneCorreo(q.client?.correo)) return;
+  if (await yaEstabaComprometido(db, quoteId)) return;
   // Con un pago: solo si ese pago lo formaliza (llega al apartado). Sin plan de
   // pagos no hay cómo saberlo, así que se pide igual.
   if (monto != null) {
