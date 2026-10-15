@@ -30,7 +30,7 @@ export function FolioPapelCampo({ value, onChange }: { value: string; onChange: 
           value={value}
           onChange={(e) => onChange(soloNumero(e.target.value))}
           placeholder="5341"
-          className="pl-8"
+          className="pl-6"
         />
       </div>
     </Field>

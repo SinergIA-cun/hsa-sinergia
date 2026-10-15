@@ -100,7 +100,11 @@ export function EditQuotePage() {
 
   // Origen de la navegación: si vino de la agenda, "atrás" regresa a ese mes.
   const desdeAgenda = sp.get('volver') === 'agenda';
-  const backTo = desdeAgenda ? `/agenda?m=${sp.get('m') ?? ''}` : '/eventos';
+  const backTo = desdeAgenda
+    ? `/agenda?${new URLSearchParams(
+        ['v', 'd', 'm'].flatMap((k) => (sp.get(k) ? [[k, sp.get(k)!]] : [])),
+      ).toString()}`
+    : '/eventos';
   const backLabel = desdeAgenda ? 'Agenda' : 'Eventos';
   const { user } = useAuth();
   const [saved, setSaved] = useState(false);

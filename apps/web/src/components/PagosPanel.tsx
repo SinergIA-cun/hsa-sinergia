@@ -179,8 +179,8 @@ export function PagosPanel({
           <h3 className="mb-4 font-display text-xl text-ink">Pagos</h3>
           <ul className="divide-y divide-cream-200">
             {payments.map((p) => (
-              <li key={p.id} className={`flex flex-wrap items-center justify-between gap-x-4 gap-y-1 py-2.5 text-sm ${p.anuladoAt ? 'opacity-60' : ''}`}>
-                <span className={`flex flex-wrap items-center gap-x-1.5 gap-y-1 ${p.anuladoAt ? 'line-through' : ''}`}>
+              <li key={p.id} className={`flex flex-wrap items-center justify-between gap-x-4 gap-y-1 py-2.5 text-sm`}>
+                <span className={`flex flex-wrap items-center gap-x-1.5 gap-y-1 ${p.anuladoAt ? 'line-through opacity-60' : ''}`}>
                   <span className="font-medium text-charcoal-soft">{formatFolio(p.folio, p.folioLetra)}</span> · {formatEventDate(p.fecha)} ·{' '}
                   {/* El concepto es editable en el renglón: corregirlo es un error
                       de captura, no un movimiento de dinero. En los pagos anulados
@@ -206,7 +206,7 @@ export function PagosPanel({
                   {p.referencia && ` · ${p.referencia}`}
                 </span>
                 <span className="flex items-center gap-3">
-                  <span className={`tabular-nums ${p.anuladoAt ? 'line-through' : ''}`}>{formatMXN(p.monto)}</span>
+                  <span className={`tabular-nums ${p.anuladoAt ? 'line-through opacity-60' : ''}`}>{formatMXN(p.monto)}</span>
                   {p.comprobanteKey && !p.anuladoAt && (
                     <a
                       href={`${apiBase}/api/quotes/${quoteId}/comprobante/${p.id}`}

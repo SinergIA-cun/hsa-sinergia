@@ -102,15 +102,15 @@ export function BanquetePagos({
             {banquete.pagos.map((p) => (
               <li
                 key={p.id}
-                className={`flex flex-wrap items-center justify-between gap-x-4 gap-y-1 py-2 ${p.anuladoAt ? 'opacity-60' : ''}`}
+                className={`flex flex-wrap items-center justify-between gap-x-4 gap-y-1 py-2`}
               >
-                <span className={p.anuladoAt ? 'line-through' : ''}>
+                <span className={p.anuladoAt ? 'line-through opacity-60' : ''}>
                   <span className="font-medium text-charcoal-soft">{formatFolio(p.folio, p.folioLetra)}</span> ·{' '}
                   {formatEventDate(p.fecha)} · {CONCEPTO[p.concepto]} · {describirFormasPago(p)}
                   {p.referencia && ` · ${p.referencia}`}
                 </span>
                 <span className="flex items-center gap-3">
-                  <span className={`tabular-nums ${p.anuladoAt ? 'line-through' : ''}`}>{formatMXN(p.monto)}</span>
+                  <span className={`tabular-nums ${p.anuladoAt ? 'line-through opacity-60' : ''}`}>{formatMXN(p.monto)}</span>
                   {!p.anuladoAt && (
                     <a
                       href={`/c/${publicToken}/recibo/${p.id}`}
