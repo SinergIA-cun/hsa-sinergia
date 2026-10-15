@@ -1,4 +1,5 @@
 import type { PrismaClient, Prisma } from '@hsa/database';
+import { filaDelDia } from '../apartadosRapidos/service.js';
 import { totalAbonado } from '../banqueteros/abonos.js';
 import { hoyCivilMexico, ESTATUS_SIN_FECHA } from '@hsa/shared';
 import { INCLUDE_TITULAR, titularDeApartado } from '../banqueteros/titular.js';
@@ -98,6 +99,8 @@ export async function getAvailability(
   spaces: SpaceAvailability[];
   blocked: boolean;
   capillaEventos: CapillaEvento[];
+  /** Apartados rápidos en fila ese día: solo avisan, no bloquean (15-oct-2026). */
+  filaEspera: { total: number; primero: string | null };
 }> {
   const range = dayRange(fechaISO);
   const hoy = opts.hoy ?? hoyCivilMexico();
@@ -184,6 +187,7 @@ export async function getAvailability(
     spaces: result,
     blocked: result.some((s) => s.level === 'bloqueada'),
     capillaEventos,
+    filaEspera: await filaDelDia(db, range.gte),
   };
 }
 

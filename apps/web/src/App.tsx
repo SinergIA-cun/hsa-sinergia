@@ -8,6 +8,7 @@ import { InicioPage } from './pages/InicioPage.tsx';
 import { QuotesListPage } from './pages/QuotesListPage.tsx';
 import { NewQuotePage } from './pages/NewQuotePage.tsx';
 import { EditQuotePage } from './pages/EditQuotePage.tsx';
+import { ApartadosAgendaPage } from './pages/ApartadosAgendaPage.tsx';
 import { AgendaPage } from './pages/AgendaPage.tsx';
 import { PublicQuotePage } from './pages/PublicQuotePage.tsx';
 import { BanqueterosPage } from './pages/BanqueterosPage.tsx';
@@ -187,6 +188,14 @@ export function App() {
               element={
                 <Protected>
                   <AgendaPage />
+                </Protected>
+              }
+            />
+            <Route
+              path="/agenda/apartados"
+              element={
+                <Protected>
+                  <ApartadosAgendaPage />
                 </Protected>
               }
             />

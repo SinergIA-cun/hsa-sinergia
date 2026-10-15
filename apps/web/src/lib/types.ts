@@ -913,6 +913,8 @@ export interface Availability {
   spaces: SpaceAvailability[];
   blocked: boolean;
   capillaEventos: CapillaEvento[];
+  /** Apartados rápidos en fila ese día: solo avisan. */
+  filaEspera?: { total: number; primero: string | null };
 }
 
 export interface AgendaEvent {
@@ -1254,4 +1256,24 @@ export interface UsoEnContratos {
   total: number;
   /** Los primeros; `total` dice cuántos son en realidad. */
   muestra: ContratoQueUsa[];
+}
+
+/** Un apartado rápido en la fila de un día (Jorge, 15-oct-2026). */
+export interface ApartadoRapido {
+  id: string;
+  nombre: string;
+  telefono: string;
+  eventType: { id: string; nombre: string };
+  /** YYYY-MM-DD */
+  fecha: string;
+  vence: string;
+  diasRestantes: number;
+  porVencer: boolean;
+  /** Su lugar en la fila del día (1 = primero). */
+  posicion: number;
+  nota: string | null;
+  extensiones: number;
+  createdBy: { id: string; nombre: string };
+  createdAt: string;
+  puedeGestionar: boolean;
 }

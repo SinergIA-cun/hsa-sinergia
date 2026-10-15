@@ -1,7 +1,7 @@
-import { useMemo, useState, type ReactNode } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useMemo, useState, type MouseEvent, type ReactNode } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Bookmark, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Bookmark, Search } from 'lucide-react';
 import {
   DndContext,
   PointerSensor,
@@ -12,19 +12,16 @@ import {
   type DragEndEvent,
 } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
-import { computeQuote } from '@hsa/shared';
+import { coincideTexto, computeQuote } from '@hsa/shared';
 import { api } from '../lib/api.ts';
-import { Card, ArrowDivider, Button } from '../components/ui.tsx';
+import { CabeceraCalendario, VistaAnio, VistaMes, VistaSemana, iso, useCalendario } from '../components/calendario/Calendario.tsx';
 import { MoverFechaModal } from '../components/MoverFechaModal.tsx';
 import { SinFechaPanel } from '../components/SinFechaPanel.tsx';
 import { DESPLAZADAS_KEY, useDesplazadas } from '../lib/desplazadas.ts';
 import { STATUS_LABEL } from '../lib/status.ts';
-import type { AgendaApartado, AgendaEvent, AgendaResponse, Catalog, QuoteDetail } from '../lib/types.ts';
+import type { AgendaApartado, AgendaEvent, AgendaResponse, Catalog, Quote, QuoteDetail } from '../lib/types.ts';
+import { formatEventDate } from '../lib/date.ts';
 import { prioridadEspacio } from '@hsa/shared';
-
-const DIAS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
-const pad = (n: number) => String(n).padStart(2, '0');
-const hoyISO = new Date().toISOString().slice(0, 10);
 
 // Orden operativo de espacios: Cúpula → Arcos → Campos → Balcones → Pajaritos.
 const spacePriority = prioridadEspacio;
@@ -68,38 +65,6 @@ function primarySpaceApartado(a: AgendaApartado, nombreById: Map<string, string>
   return best.nombre;
 }
 
-/** Las tres vistas, como el calendario de Apple (Jorge, 15-oct-2026). */
-type Vista = 'anio' | 'mes' | 'semana';
-const VISTAS: { id: Vista; label: string }[] = [
-  { id: 'anio', label: 'Año' },
-  { id: 'mes', label: 'Mes' },
-  { id: 'semana', label: 'Semana' },
-];
-const MESES_CORTOS = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
-
-const iso = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-/** El lunes de la semana de `d` (la semana inicia en lunes). */
-const lunesDe = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate() - ((d.getDay() + 6) % 7));
-const capital = (t: string) => t.charAt(0).toUpperCase() + t.slice(1);
-
-/**
- * La vista y el día que se está viendo viven en la URL (?v=semana&d=2026-10-15)
- * para que "atrás" del navegador regrese al mismo lugar en vez de reiniciar a
- * hoy. `?m=YYYY-MM` es la forma vieja (solo había mes) y se sigue entendiendo.
- */
-function leerParams(params: URLSearchParams): { vista: Vista; ancla: Date } {
-  const v = params.get('v');
-  const vista: Vista = v === 'anio' || v === 'semana' ? v : 'mes';
-  const d = params.get('d');
-  const md = d ? /^(\d{4})-(\d{2})-(\d{2})$/.exec(d) : null;
-  if (md) return { vista, ancla: new Date(Number(md[1]), Number(md[2]) - 1, Number(md[3])) };
-  const m = params.get('m');
-  const mm = m ? /^(\d{4})-(\d{2})$/.exec(m) : null;
-  if (mm) return { vista, ancla: new Date(Number(mm[1]), Number(mm[2]) - 1, 1) };
-  const hoy = new Date();
-  return { vista, ancla: new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate()) };
-}
-
 /** Del más importante al menos: el punto de un día en la vista de año es el del primero. */
 function puntoDelDia(eventos: AgendaEvent[]): string | null {
   if (eventos.some((e) => e.esCortesia)) return 'bg-emerald-600';
@@ -111,19 +76,8 @@ function puntoDelDia(eventos: AgendaEvent[]): string | null {
 
 export function AgendaPage() {
   const navigate = useNavigate();
-  const [params, setParams] = useSearchParams();
-  const { vista, ancla } = leerParams(params);
-  const mes = { anio: ancla.getFullYear(), mes: ancla.getMonth() };
-  const lunes = lunesDe(ancla);
-
-  const primerDiaSemana = (new Date(mes.anio, mes.mes, 1).getDay() + 6) % 7; // 0=Lun (semana inicia lunes)
-  const diasEnMes = new Date(mes.anio, mes.mes + 1, 0).getDate();
-  const { from, to } =
-    vista === 'anio'
-      ? { from: `${mes.anio}-01-01`, to: `${mes.anio}-12-31` }
-      : vista === 'semana'
-        ? { from: iso(lunes), to: iso(new Date(lunes.getFullYear(), lunes.getMonth(), lunes.getDate() + 6)) }
-        : { from: `${mes.anio}-${pad(mes.mes + 1)}-01`, to: `${mes.anio}-${pad(mes.mes + 1)}-${pad(diasEnMes)}` };
+  const cal = useCalendario();
+  const { vista, ancla, from, to } = cal;
 
   const agendaQ = useQuery({
     queryKey: ['agenda', from, to],
@@ -180,46 +134,13 @@ export function AgendaPage() {
     return m;
   }, [agendaQ.data, nombreById]);
 
-  // Reemplaza la URL (replace) para no llenar el historial con cada clic de flecha.
-  function ir(v: Vista, d: Date) {
-    const next = new URLSearchParams(params);
-    next.delete('m');
-    next.set('v', v);
-    next.set('d', iso(d));
-    setParams(next, { replace: true });
-  }
-  function avanzar(delta: number) {
-    const y = ancla.getFullYear();
-    const m = ancla.getMonth();
-    if (vista === 'anio') ir(vista, new Date(y + delta, m, 1));
-    else if (vista === 'mes') ir(vista, new Date(y, m + delta, 1));
-    else ir(vista, new Date(y, m, ancla.getDate() + 7 * delta));
-  }
-  function irHoy() {
-    const hoy = new Date();
-    ir(vista, new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate()));
-  }
-
-  const domingo = new Date(lunes.getFullYear(), lunes.getMonth(), lunes.getDate() + 6);
-  const titulo =
-    vista === 'anio'
-      ? String(mes.anio)
-      : vista === 'mes'
-        ? capital(new Date(mes.anio, mes.mes, 1).toLocaleDateString('es-MX', { month: 'long', year: 'numeric' }))
-        : lunes.getMonth() === domingo.getMonth()
-          ? `${lunes.getDate()} – ${domingo.getDate()} ${MESES_CORTOS[domingo.getMonth()]} ${domingo.getFullYear()}`
-          : `${lunes.getDate()} ${MESES_CORTOS[lunes.getMonth()]} – ${domingo.getDate()} ${MESES_CORTOS[domingo.getMonth()]} ${domingo.getFullYear()}`;
-  const unidad = vista === 'anio' ? 'Año' : vista === 'mes' ? 'Mes' : 'Semana';
-
-  // Celdas: blancos iniciales + días del mes.
-  const celdas: (number | null)[] = [
-    ...Array.from({ length: primerDiaSemana }, () => null),
-    ...Array.from({ length: diasEnMes }, (_, i) => i + 1),
-  ];
-
-  // Al abrir una cotización, lleva el mes de origen para poder regresar aquí.
+  // Al abrir una cotización, lleva la vista y el día para poder regresar aquí.
   function abrir(quoteId: string) {
     navigate(`/eventos/${quoteId}?volver=agenda&v=${vista}&d=${iso(ancla)}`);
+  }
+  // Tocar un día vacío en Mes o Semana: un evento nuevo en ese día (Jorge, 15-oct-2026).
+  function nuevoEvento(fecha: string) {
+    navigate(`/eventos/nuevo?fecha=${fecha}`);
   }
 
   // El chip es a la vez botón (abrir el contrato) y asa de arrastre, y esos dos
@@ -398,42 +319,16 @@ export function AgendaPage() {
     );
   }
 
+  /** En Mes y Semana cada día acepta eventos soltados encima. */
+  const soltable = (alto: string) => (fecha: string, hijos: ReactNode, onClick: (e: MouseEvent<HTMLElement>) => void) => (
+    <CeldaSoltable fecha={fecha} alto={alto} onClick={onClick}>
+      {hijos}
+    </CeldaSoltable>
+  );
+
   return (
     <div>
-      <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <ArrowDivider>Disponibilidad</ArrowDivider>
-          <h1 className="mt-2 font-display text-4xl text-ink">{titulo}</h1>
-        </div>
-        <div className="flex flex-wrap items-center gap-3">
-          {/* Año · Mes · Semana, como el calendario de Apple. */}
-          <div role="tablist" aria-label="Vista del calendario" className="flex rounded-lg border border-cream-300 bg-cream-100/70 p-0.5">
-            {VISTAS.map((v) => (
-              <button
-                key={v.id}
-                type="button"
-                role="tab"
-                aria-selected={vista === v.id}
-                onClick={() => ir(v.id, ancla)}
-                className={`rounded-md px-3.5 py-1.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold/60 ${
-                  vista === v.id ? 'bg-ink text-cream shadow-sm' : 'text-ink hover:bg-ink/5'
-                }`}
-              >
-                {v.label}
-              </button>
-            ))}
-          </div>
-          <div className="flex items-center gap-2">
-            <Button variant="outline" onClick={() => avanzar(-1)} aria-label={`${unidad} anterior`}>
-              <ChevronLeft size={16} />
-            </Button>
-            <Button variant="ghost" onClick={irHoy}>Hoy</Button>
-            <Button variant="outline" onClick={() => avanzar(1)} aria-label={`${unidad} siguiente`}>
-              <ChevronRight size={16} />
-            </Button>
-          </div>
-        </div>
-      </div>
+      <CabeceraCalendario cal={cal} seccion="Agenda de eventos" extra={<BuscadorEventos onAbrir={abrir} onVer={(f) => cal.ir('mes', new Date(`${f}T12:00:00`))} />} />
 
       <SinFechaPanel />
 
@@ -447,83 +342,25 @@ export function AgendaPage() {
       )}
 
       {vista === 'anio' && (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {Array.from({ length: 12 }, (_, m) => (
-            <MiniMes
-              key={m}
-              anio={mes.anio}
-              mes={m}
-              punto={(fecha) => {
-                const p = puntoDelDia(porDia.get(fecha) ?? []);
-                return p ?? ((apartadosPorDia.get(fecha) ?? []).length > 0 ? 'bg-gold' : null);
-              }}
-              cuantos={(fecha) => (porDia.get(fecha) ?? []).length + (apartadosPorDia.get(fecha) ?? []).length}
-              onMes={() => ir('mes', new Date(mes.anio, m, 1))}
-              onDia={(d) => ir('semana', d)}
-            />
-          ))}
-        </div>
+        <VistaAnio
+          cal={cal}
+          punto={(fecha) => {
+            const p = puntoDelDia(porDia.get(fecha) ?? []);
+            return p ?? ((apartadosPorDia.get(fecha) ?? []).length > 0 ? 'bg-gold' : null);
+          }}
+          cuantos={(fecha) => (porDia.get(fecha) ?? []).length + (apartadosPorDia.get(fecha) ?? []).length}
+        />
       )}
 
       {vista !== 'anio' && (
-      <DndContext sensors={sensors} onDragEnd={onDragEnd}>
-        {vista === 'mes' && (
-        <Card className="overflow-hidden p-0">
-          <div className="grid grid-cols-7 border-b border-cream-300 bg-cream-100 text-center text-xs font-semibold uppercase tracking-wide text-charcoal-soft">
-            {DIAS.map((d) => (
-              <div key={d} className="py-2">{d}</div>
-            ))}
-          </div>
-          <div className="grid grid-cols-7">
-            {celdas.map((dia, i) => {
-              if (dia === null) return <div key={`b${i}`} className="min-h-[6rem] border-b border-r border-cream-200 bg-cream-50/40" />;
-              const fecha = `${mes.anio}-${pad(mes.mes + 1)}-${pad(dia)}`;
-              const esHoy = fecha === hoyISO;
-              return (
-                <CeldaSoltable key={fecha} fecha={fecha}>
-                  <button
-                    type="button"
-                    onClick={() => ir('semana', new Date(mes.anio, mes.mes, dia))}
-                    aria-label={`Ver la semana del ${dia}`}
-                    className={`mb-1 block w-full text-right text-xs hover:text-ink ${esHoy ? 'font-bold text-gold' : 'text-charcoal-soft'}`}
-                  >
-                    {esHoy ? <span className="rounded-full bg-gold px-1.5 py-0.5 text-cream">{dia}</span> : dia}
-                  </button>
-                  <div className="space-y-1">{chipsDelDia(fecha, false)}</div>
-                </CeldaSoltable>
-              );
-            })}
-          </div>
-        </Card>
-        )}
-
-        {vista === 'semana' && (
-          <Card className="overflow-hidden p-0">
-            <div className="grid md:grid-cols-7">
-              {Array.from({ length: 7 }, (_, i) => {
-                const d = new Date(lunes.getFullYear(), lunes.getMonth(), lunes.getDate() + i);
-                const fecha = iso(d);
-                const esHoy = fecha === hoyISO;
-                return (
-                  <CeldaSoltable key={fecha} fecha={fecha} alto="md:min-h-[24rem]">
-                    <div className="mb-2 flex items-baseline gap-2 border-b border-cream-200 pb-1.5 md:block md:text-center">
-                      <span className="text-xs font-semibold uppercase tracking-wide text-charcoal-soft">{DIAS[i]}</span>
-                      <span
-                        className={`font-display text-2xl md:block ${
-                          esHoy ? 'mx-auto inline-flex h-9 w-9 items-center justify-center rounded-full bg-gold text-cream' : 'text-ink'
-                        }`}
-                      >
-                        {d.getDate()}
-                      </span>
-                    </div>
-                    <div className="space-y-1.5">{chipsDelDia(fecha, true)}</div>
-                  </CeldaSoltable>
-                );
-              })}
-            </div>
-          </Card>
-        )}
-      </DndContext>
+        <DndContext sensors={sensors} onDragEnd={onDragEnd}>
+          {vista === 'mes' && (
+            <VistaMes cal={cal} contenido={(f) => chipsDelDia(f, false)} onDia={nuevoEvento} etiquetaNuevo="Nuevo evento" envolver={soltable('')} />
+          )}
+          {vista === 'semana' && (
+            <VistaSemana cal={cal} contenido={(f) => chipsDelDia(f, true)} onDia={nuevoEvento} etiquetaNuevo="Nuevo evento" envolver={soltable('min-h-[5rem] md:min-h-[24rem]')} />
+          )}
+        </DndContext>
       )}
 
       {agendaQ.isLoading && <p className="mt-4 text-sm text-charcoal-soft">Cargando…</p>}
@@ -537,7 +374,7 @@ export function AgendaPage() {
       </div>
       <p className="mt-2 text-xs text-charcoal-soft">
         El chip muestra el espacio (Cúpula → Arcos → Campos). Toca un evento para abrirlo, o
-        arrástralo a otro día para cambiarle la fecha. El símbolo ⚠ marca las
+        arrástralo a otro día para cambiarle la fecha. Toca un día vacío para crear un evento nuevo ese día. El símbolo ⚠ marca las
         cotizaciones cuyo espacio ya fue apartado por otro evento ese mismo día.
       </p>
       <p className="mt-1 text-xs text-charcoal-soft">
@@ -649,12 +486,15 @@ function ChipApartado({
 }
 
 /** Una celda de día que acepta eventos soltados encima. */
-function CeldaSoltable({ fecha, alto = '', children }: { fecha: string; alto?: string; children: ReactNode }) {
+function CeldaSoltable({ fecha, alto, onClick, children }: {
+  fecha: string; alto: string; onClick: (e: MouseEvent<HTMLElement>) => void; children: ReactNode;
+}) {
   const { setNodeRef, isOver } = useDroppable({ id: fecha });
   return (
     <div
       ref={setNodeRef}
-      className={`min-h-[6rem] border-b border-r border-cream-200 p-1.5 ${alto} ${isOver ? 'bg-gold/10 ring-1 ring-inset ring-gold' : ''}`}
+      onClick={onClick}
+      className={`cursor-pointer border-b border-r border-cream-200 p-1.5 transition-colors hover:bg-cream-100/60 ${alto || 'min-h-[6rem]'} ${isOver ? 'bg-gold/10 ring-1 ring-inset ring-gold' : ''}`}
     >
       {children}
     </div>
@@ -662,79 +502,69 @@ function CeldaSoltable({ fecha, alto = '', children }: { fecha: string; alto?: s
 }
 
 /**
- * Un mes en miniatura para la vista de año. Cada día con algo lleva un punto del
- * color de su evento más avanzado (el mismo código de colores que los chips), y
- * el número en negritas. Tocar el nombre abre el mes; tocar un día, su semana.
+ * Buscar un evento desde la agenda (Jorge, 15-oct-2026): por cliente, código,
+ * tipo de evento, teléfono o fecha. Tocar el resultado abre el evento; "Ver en
+ * agenda" lleva el calendario a su mes.
  */
-function MiniMes({
-  anio,
-  mes,
-  punto,
-  cuantos,
-  onMes,
-  onDia,
-}: {
-  anio: number;
-  mes: number;
-  punto: (fecha: string) => string | null;
-  cuantos: (fecha: string) => number;
-  onMes: () => void;
-  onDia: (d: Date) => void;
-}) {
-  const blancos = (new Date(anio, mes, 1).getDay() + 6) % 7;
-  const dias = new Date(anio, mes + 1, 0).getDate();
-  const nombre = capital(new Date(anio, mes, 1).toLocaleDateString('es-MX', { month: 'long' }));
-  const esMesActual = new Date().getFullYear() === anio && new Date().getMonth() === mes;
-  const total = Array.from({ length: dias }, (_, i) => cuantos(`${anio}-${pad(mes + 1)}-${pad(i + 1)}`)).reduce((a, b) => a + b, 0);
+function BuscadorEventos({ onAbrir, onVer }: { onAbrir: (id: string) => void; onVer: (fecha: string) => void }) {
+  const [q, setQ] = useState('');
+  const needle = q.trim();
+  const { data } = useQuery({
+    queryKey: ['quotes'],
+    queryFn: () => api.get<{ quotes: Quote[] }>('/api/quotes'),
+    enabled: needle.length > 0,
+  });
+  const resultados = useMemo(() => {
+    if (needle.length < 2) return [];
+    return (data?.quotes ?? [])
+      .filter((x) =>
+        coincideTexto(
+          [x.client?.nombre, x.client?.telefono, x.etiqueta, x.folio, x.eventType?.nombre, x.festejado, x.fechaEvento.slice(0, 10), formatEventDate(x.fechaEvento)],
+          needle,
+        ),
+      )
+      .sort((a, b) => a.fechaEvento.localeCompare(b.fechaEvento))
+      .slice(0, 8);
+  }, [data, needle]);
+
   return (
-    <Card className="p-4">
-      <button
-        type="button"
-        onClick={onMes}
-        className={`mb-2 flex w-full items-baseline justify-between rounded font-display text-xl hover:text-gold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold/60 ${
-          esMesActual ? 'text-gold' : 'text-ink'
-        }`}
-      >
-        {nombre}
-        <span className="font-sans text-xs text-charcoal-soft">
-          {total > 0 ? `${total} ${total === 1 ? 'evento' : 'eventos'}` : ''}
-        </span>
-      </button>
-      <div className="grid grid-cols-7 text-center text-[0.6rem] font-semibold uppercase text-charcoal-soft">
-        {DIAS.map((d) => (
-          <span key={d}>{d.charAt(0)}</span>
-        ))}
-      </div>
-      <div className="mt-1 grid grid-cols-7 gap-y-0.5 text-center text-xs">
-        {Array.from({ length: blancos }, (_, i) => (
-          <span key={`b${i}`} />
-        ))}
-        {Array.from({ length: dias }, (_, i) => {
-          const dia = i + 1;
-          const fecha = `${anio}-${pad(mes + 1)}-${pad(dia)}`;
-          const color = punto(fecha);
-          const esHoy = fecha === hoyISO;
-          const n = cuantos(fecha);
-          return (
-            <button
-              key={fecha}
-              type="button"
-              onClick={() => onDia(new Date(anio, mes, dia))}
-              aria-label={`${dia} de ${nombre}${n ? `: ${n} ${n === 1 ? 'evento' : 'eventos'}` : ''}`}
-              className="flex flex-col items-center rounded py-0.5 hover:bg-cream-200/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold/60"
-            >
-              <span
-                className={`flex h-5 w-5 items-center justify-center rounded-full tabular-nums ${
-                  esHoy ? 'bg-gold font-bold text-cream' : color ? 'font-semibold text-ink' : 'text-charcoal-soft'
-                }`}
+    <div className="relative max-w-xl">
+      <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-charcoal-soft" aria-hidden />
+      <input
+        type="search"
+        value={q}
+        onChange={(e) => setQ(e.target.value)}
+        onKeyDown={(e) => e.key === 'Escape' && setQ('')}
+        placeholder="Buscar evento: cliente, código, teléfono, tipo o fecha…"
+        aria-label="Buscar evento"
+        className="w-full rounded-lg border border-ink/15 bg-white/80 py-2.5 pl-9 pr-3 text-sm text-charcoal placeholder:text-charcoal-soft/60 focus:border-gold focus:outline-none focus:ring-2 focus:ring-gold/30"
+      />
+      {needle.length >= 2 && (
+        <ul className="absolute z-30 mt-1 w-full divide-y divide-cream-200 overflow-hidden rounded-lg border border-cream-300 bg-white shadow-lg">
+          {resultados.length === 0 && <li className="px-3 py-2.5 text-sm text-charcoal-soft">{data ? 'Sin coincidencias.' : 'Buscando…'}</li>}
+          {resultados.map((x) => (
+            <li key={x.id} className="flex items-center justify-between gap-3 px-3 py-2 text-sm hover:bg-cream-100">
+              <button type="button" onClick={() => onAbrir(x.id)} className="min-w-0 flex-1 text-left">
+                <span className="block truncate font-medium text-ink">{x.client?.nombre ?? 'Cliente'}</span>
+                <span className="block truncate text-xs text-charcoal-soft">
+                  {formatEventDate(x.fechaEvento)} · {x.eventType?.nombre ?? 'Evento'} · {STATUS_LABEL[x.status]}
+                  {x.etiqueta ? ` · ${x.etiqueta}` : ''}
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  onVer(x.fechaEvento.slice(0, 10));
+                  setQ('');
+                }}
+                className="shrink-0 text-xs font-medium text-gold hover:underline"
               >
-                {dia}
-              </span>
-              <span className={`mt-0.5 h-1 w-1 rounded-full ${color ?? 'bg-transparent'}`} />
-            </button>
-          );
-        })}
-      </div>
-    </Card>
+                Ver en agenda
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   );
 }

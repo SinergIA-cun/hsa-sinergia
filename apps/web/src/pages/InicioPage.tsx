@@ -1,4 +1,5 @@
 import { useNavigate } from 'react-router-dom';
+import { AvisosApartados } from '../components/apartados/AvisosApartados.tsx';
 import { useQuery } from '@tanstack/react-query';
 import {
   CalendarDays,
@@ -130,6 +131,11 @@ export function InicioPage() {
           .fop-alerta { font-weight: 700; }
         }
       `}</style>
+
+      {/* Apartados que vencen en 3 días o menos: hay que confirmar con la persona. */}
+      <div className="print:hidden">
+        <AvisosApartados />
+      </div>
 
       <div className="mb-8 flex flex-wrap items-end justify-between gap-4 print:hidden">
         <div>
