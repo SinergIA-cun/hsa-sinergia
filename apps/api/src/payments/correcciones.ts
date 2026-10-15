@@ -4,7 +4,7 @@ import { metodoCapturaSchema, formasPagoSchema, describirFormasPago, formatFolio
 import { QuoteError, ownershipWhere, assertNotTrashed, type Actor } from '../quotes/service.js';
 import { logActivity } from '../quotes/activityLog.js';
 import { validarCobroDeCargos } from '../cargos/service.js';
-import { resolverOError } from './service.js';
+import { resolverOError, validarCobroDeBanquete } from './service.js';
 import { folioPapelSchema, subirSecuenciaSobre, validarFolioDePapel } from './folios.js';
 import { ponerAlDia } from './estatus.js';
 
@@ -84,6 +84,7 @@ export async function corregirPago(db: PrismaClient, quoteId: string, paymentId:
   }
   if (input.folioPapel != null && input.folioPapel !== pago.folio) await validarFolioDePapel(db, input.folioPapel, actor);
   if (pago.destino === 'cargos' && monto > pago.monto) await validarCobroDeCargos(db, quote, restarDinero(monto, pago.monto));
+  if (pago.destino === 'banquete' && monto > pago.monto) await validarCobroDeBanquete(db, quote, restarDinero(monto, pago.monto));
 
   const antes = { monto: pago.monto, fecha: pago.fecha.toISOString().slice(0, 10), formas: describirFormasPago(pago), referencia: pago.referencia, folio: pago.folio };
   const actualizado = await db.payment.update({
@@ -132,7 +133,7 @@ export async function eventoPorCodigo(db: PrismaClient, codigo: string, actor: A
       deletedAt: null,
       OR: [{ id: { in: ids } }, { etiqueta: { equals: c, mode: 'insensitive' } }],
     },
-    select: { id: true, etiqueta: true, fechaEvento: true, status: true, client: { select: { nombre: true } } },
+    select: { id: true, etiqueta: true, fechaEvento: true, status: true, total: true, rentaTotal: true, client: { select: { nombre: true } } },
   });
 }
 
@@ -149,6 +150,7 @@ export async function moverPago(db: PrismaClient, quoteId: string, paymentId: st
   if (destino.id === quoteId) throw new QuoteError(400, 'El pago ya está en ese evento.');
   if (destino.status === 'cancelada') throw new QuoteError(409, 'Ese evento está cancelado: no se le pasan pagos.');
   if (pago.destino === 'cargos') await validarCobroDeCargos(db, destino, pago.monto);
+  if (pago.destino === 'banquete') await validarCobroDeBanquete(db, destino, pago.monto);
 
   const origen = await db.quote.findUniqueOrThrow({ where: { id: quoteId }, select: { etiqueta: true } });
   await db.payment.update({ where: { id: paymentId }, data: { quoteId: destino.id } });

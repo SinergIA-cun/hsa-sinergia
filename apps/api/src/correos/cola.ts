@@ -67,7 +67,12 @@ function pagoCorreo(p: Payment): PagoCorreo {
     folio: formatFolio(p.folio, p.folioLetra),
     monto: p.monto,
     fecha: p.fecha.toISOString().slice(0, 10),
-    concepto: p.destino === 'cargos' ? 'Cargos adicionales del evento' : (CONCEPTO[p.concepto] ?? p.concepto),
+    concepto:
+      p.destino === 'cargos'
+        ? 'Cargos adicionales del evento'
+        : p.destino === 'banquete'
+          ? `Banquete · ${CONCEPTO[p.concepto] ?? p.concepto}`
+          : (CONCEPTO[p.concepto] ?? p.concepto),
     formas: partesDePago(p).map((f) => ({ forma: FORMA_PAGO_LABEL[f.forma as MetodoPago] ?? f.forma, monto: f.monto })),
   };
 }

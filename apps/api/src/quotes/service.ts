@@ -22,6 +22,7 @@ import {
 import { loadCatalog } from '../catalog/loader.js';
 import { getAvailability } from '../availability/service.js';
 import { cuentaDelEvento, productosDelEvento } from '../cargos/cuenta.js';
+import { cuentaBanquete } from '../payments/banquete.js';
 import { sincronizarContrato } from '../cargos/contrato.js';
 import { logActivity } from './activityLog.js';
 import { cambiosDeServicios, conNombres, type ServiciosDeCotizacion } from './serviciosDiff.js';
@@ -1752,8 +1753,9 @@ export async function getQuote(db: PrismaClient, id: string, actor: Actor) {
 
   // La cuenta del punto de venta va aparte del estado de cuenta: son ventas
   // posteriores que no cambian el valor del evento.
-  const [cuenta, productos, devoluciones, codigos, cancelacion] = await Promise.all([
+  const [cuenta, banquete, productos, devoluciones, codigos, cancelacion] = await Promise.all([
     cuentaDelEvento(db, id),
+    cuentaBanquete(db, quote),
     productosDelEvento(db, quote),
     db.devolucion.findMany({
       where: { quoteId: id },
@@ -1778,6 +1780,14 @@ export async function getQuote(db: PrismaClient, id: string, actor: Actor) {
     fiscalEditable: datosFiscalesEditables(payments),
     activityLog,
     cuenta: cuentaConCandado,
+    // La cuenta del banquete: alimentos y servicios que cobra la hacienda aparte.
+    banquete: {
+      ...banquete,
+      pagos: banquete.pagos.map((p) => {
+        const est = estadoFacturaPago(p, hoy);
+        return { ...p, facturable: est.facturable, motivoFactura: est.motivo };
+      }),
+    },
     productosPuntoDeVenta: productos,
     devoluciones,
     // Todos los códigos que ha tenido, del primero al vigente.
@@ -1792,7 +1802,7 @@ export async function getByToken(db: PrismaClient, token: string) {
   const quote = await db.quote.findUnique({ where: { publicToken: token }, include: includeRels });
   if (!quote || quote.deletedAt) return null; // en papelera: invisible para el cliente
   const { estadoCuenta, payments } = await loadEstadoCuenta(db, quote);
-  const cuenta = await cuentaDelEvento(db, quote.id);
+  const [cuenta, banquete] = await Promise.all([cuentaDelEvento(db, quote.id), cuentaBanquete(db, quote)]);
   const aPublico = (p: (typeof payments)[number]) => ({
       id: p.id,
       folio: p.folio,
@@ -1828,5 +1838,12 @@ export async function getByToken(db: PrismaClient, token: string) {
     pagado: cuenta.pagado,
     saldo: cuenta.saldo,
   };
-  return { quote, estadoCuenta: { ...estadoCuenta, pagos: pagosPublicos }, cuenta: cuentaPublica };
+  // El banquete es del cliente: ve su total, lo pagado y sus recibos.
+  const banquetePublico = {
+    total: banquete.total,
+    pagado: banquete.pagado,
+    saldo: banquete.saldo,
+    pagos: banquete.pagos.filter((p) => p.anuladoAt == null).map(aPublico),
+  };
+  return { quote, estadoCuenta: { ...estadoCuenta, pagos: pagosPublicos }, cuenta: cuentaPublica, banquete: banquetePublico };
 }

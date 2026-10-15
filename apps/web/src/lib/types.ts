@@ -351,8 +351,11 @@ export interface Payment {
   metodo: PaymentMethod;
   /** Las partes si vino dividido; `null` en los pagos de antes de la división. */
   formas: PartePago[] | null;
-  /** `evento` = abona a la renta; `cargos` = a la cuenta del punto de venta. */
-  destino: 'evento' | 'cargos';
+  /**
+   * `evento` = abona a la renta; `cargos` = a la cuenta del punto de venta;
+   * `banquete` = al banquete (alimentos y servicios), que cobra la hacienda aparte.
+   */
+  destino: 'evento' | 'cargos' | 'banquete';
   /**
    * El concepto EFECTIVO: se deduce de dónde deja el acumulado contra los hitos
    * del plan, no de lo que se teclea. Se reclasifica cuando cambia el acumulado
@@ -461,6 +464,8 @@ export interface QuoteDetail {
   activityLog: ActivityEntry[];
   /** La cuenta del punto de venta: lo cargado después de contratar. */
   cuenta: CuentaEvento;
+  /** La cuenta del banquete: alimentos y servicios del contrato que cobra la hacienda. */
+  banquete: CuentaBanquete;
   productosPuntoDeVenta: ProductoPuntoDeVenta[];
   devoluciones: Devolucion[];
   /** Todos los códigos que ha tenido, del primero al vigente. */
@@ -541,6 +546,14 @@ export interface CargoEvento {
 }
 
 /** La cuenta del evento: sus cargos, sus cobros y el saldo. No toca el valor del evento. */
+/** El banquete: el total es el bloque "Alimentos y otros servicios" del contrato. */
+export interface CuentaBanquete {
+  total: number;
+  pagado: number;
+  saldo: number;
+  pagos: Payment[];
+}
+
 export interface CuentaEvento {
   cargos: CargoEvento[];
   pagos: Payment[];

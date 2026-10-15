@@ -71,6 +71,9 @@ enum PaymentConcept {
 enum PaymentDestino {
   evento
   cargos
+  /// Lo que el cliente le paga a la hacienda por el banquete (alimentos y
+  /// servicios del contrato). No toca la renta, el plan ni el estatus.
+  banquete
 }
 
 /// Lo que se le puede cargar a la cuenta de un evento en el punto de venta.
