@@ -257,6 +257,47 @@ export function conPrecioPactado(b: QuoteBreakdown, nuevo: { renta: number; otro
   };
 }
 
+/**
+ * Mueve un evento con precio pactado a OTROS salones sin recotizarlo: la renta de
+ * salón que ya tenía se reparte entre los salones nuevos (el último se queda con
+ * el residuo, como en `conPrecioPactado`). Los totales no cambian; cambian el
+ * nombre del renglón, su `spaceId` y su clave para el BI.
+ */
+export function conSalones(b: QuoteBreakdown, salones: { id: string; nombre: string }[]): QuoteBreakdown {
+  if (salones.length === 0) throw new Error('Elige al menos un salón.');
+  const esRentaSalon = (l: QuoteLine) => l.grupo === 'renta' && !l.cargoId && (Boolean(l.spaceId) || l.ref?.tipo === 'rentaSalon');
+  const deSalon = b.lines.filter(esRentaSalon);
+  if (deSalon.length === 0) throw new Error('El evento no tiene renta de salón en su desglose.');
+  const renta = r2(deSalon.reduce((s, l) => s + l.monto, 0));
+  const detalle = deSalon[0]!.detalle;
+
+  const parte = r2(Math.floor((renta / salones.length) * 100) / 100);
+  const nuevas = salones.map((sp, i): QuoteLine => {
+    const monto = i === salones.length - 1 ? r2(renta - parte * (salones.length - 1)) : parte;
+    return {
+      concepto: `Renta ${sp.nombre}`,
+      ...(detalle ? { detalle } : {}),
+      monto,
+      ivaIncluido: true,
+      grupo: 'renta',
+      spaceId: sp.id,
+      ref: { tipo: 'rentaSalon', id: sp.id, cantidad: 1, unidad: 'evento', precioUnitario: monto },
+    };
+  });
+
+  // Los renglones nuevos van donde estaba el primero de salón; el resto, igual.
+  const lines: QuoteLine[] = [];
+  let puestos = false;
+  for (const l of b.lines) {
+    if (!esRentaSalon(l)) lines.push(l);
+    else if (!puestos) {
+      lines.push(...nuevas);
+      puestos = true;
+    }
+  }
+  return { ...b, lines };
+}
+
 /** Lo que se compara de un evento, del lado del BI y del lado de la hacienda. */
 export interface EventoComparable {
   fechaEvento: string;

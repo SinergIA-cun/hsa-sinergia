@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { prisma } from '@hsa/database';
-import { createQuote, getQuote, updateQuote, seleccionGuardada, simularFecha, type Actor } from './service.js';
+import { createQuote, getQuote, updateQuote, seleccionGuardada, simularFecha, simularMovimiento, type Actor } from './service.js';
 import { cancelarEvento, eventosSinFecha, ponerEnStandby, reprogramarEvento } from './ciclo.js';
 import { ServerStorage } from '../payments/storage.js';
 import { registerPayment } from '../payments/service.js';
@@ -139,6 +139,68 @@ describe('mover de fecha', () => {
 
     const recotizado = await reprogramarEvento(prisma, q.id, { fecha: sabado() }, admin);
     expect(recotizado.total).toBe(previa.antes); // de vuelta a sábado, precio de sábado
+  });
+});
+
+describe('mover evento: de fecha, de lugar o de los dos (Jorge, 15-oct-2026)', () => {
+  const otroSalon = async () =>
+    (await prisma.space.findFirstOrThrow({ where: { nombre: 'Cúpula' } })).id;
+  const rentaSalon = (q: { breakdown: unknown }) =>
+    (q.breakdown as { lines: { concepto: string; spaceId?: string; grupo: string }[] }).lines.filter((l) => l.grupo === 'renta' && l.spaceId);
+
+  it('solo de lugar: recotiza con el salón nuevo, conserva la fecha y deja bitácora con el lugar', async () => {
+    const q = await evento();
+    const destino = await otroSalon();
+    const previa = await simularMovimiento(prisma, q.id, { spaceIds: [destino] }, admin);
+    expect(previa.ocupados).toEqual([]);
+
+    const movido = await reprogramarEvento(prisma, q.id, { spaceIds: [destino] }, admin);
+    expect(movido.spaceIds).toEqual([destino]);
+    expect(movido.fechaEvento.toISOString()).toBe(q.fechaEvento.toISOString());
+    expect(movido.total).toBe(previa.despues);
+    expect(rentaSalon(movido).map((l) => l.spaceId)).toEqual([destino]);
+    const log = await prisma.activityLog.findFirstOrThrow({ where: { quoteId: q.id, tipo: 'reprogramada' } });
+    expect(log.descripcion).toMatch(/Arcos → /);
+    expect(log.descripcion).not.toMatch(/\d{4}-\d{2}-\d{2} →/); // la fecha no se movió
+  });
+
+  it('de fecha y de lugar a la vez', async () => {
+    const q = await evento();
+    const destino = await otroSalon();
+    const fecha = sabado();
+    const movido = await reprogramarEvento(prisma, q.id, { fecha, spaceIds: [destino] }, admin);
+    expect(movido.fechaEvento.toISOString().slice(0, 10)).toBe(fecha);
+    expect(movido.spaceIds).toEqual([destino]);
+  });
+
+  it('respetando el precio pactado: cambia de salón sin recotizar y el renglón de renta nombra el salón nuevo', async () => {
+    const q = await evento();
+    const destino = await otroSalon();
+    const nombre = (await prisma.space.findUniqueOrThrow({ where: { id: destino } })).nombre;
+    const movido = await reprogramarEvento(prisma, q.id, { spaceIds: [destino], conservarPrecio: true }, admin);
+    expect(movido.total).toBe(q.total);
+    expect(movido.rentaTotal).toBe(q.rentaTotal);
+    expect(movido.spaceIds).toEqual([destino]);
+    expect(rentaSalon(movido).map((l) => [l.spaceId, l.concepto])).toEqual([[destino, `Renta ${nombre}`]]);
+    expect(movido.etiqueta).not.toBe(q.etiqueta); // el código lleva el salón
+  });
+
+  it('sin cambiar nada se rechaza; un salón ocupado ese día también', async () => {
+    const q = await evento();
+    const fecha = q.fechaEvento.toISOString().slice(0, 10);
+    await expect(reprogramarEvento(prisma, q.id, { fecha, spaceIds: [arcosId] }, admin)).rejects.toMatchObject({ status: 400 });
+    await expect(reprogramarEvento(prisma, q.id, {}, admin)).rejects.toThrow(/fecha nueva, el lugar nuevo/);
+
+    const destino = await otroSalon();
+    const ocupa = await createQuote(
+      prisma,
+      { fecha, invitados: 250, spaceIds: [destino], eventTypeId, client: { nombre: 'Ocupa', telefono: '5512345678' } },
+      admin,
+    );
+    quotes.push(ocupa.id);
+    clients.push(ocupa.clientId);
+    await pagar(ocupa.id, 25_000); // apartado: bloquea el salón
+    await expect(reprogramarEvento(prisma, q.id, { spaceIds: [destino] }, admin)).rejects.toMatchObject({ status: 409 });
   });
 });
 
