@@ -12,6 +12,7 @@ import { FolioPapelCampo, folioPapelParaEnviar } from './FolioPapelCampo.tsx';
 import { NotasCampo, NotasEditables } from './NotasPago.tsx';
 import { CorregirPagoForm, MoverPagoForm } from './CorregirPago.tsx';
 import type { EstadoCuenta, Payment, PaymentConcept, ActivityEntry, QuoteStatus } from '../lib/types.ts';
+import { ReciboWhatsApp, type ClienteContacto } from './ReciboWhatsApp.tsx';
 
 /**
  * Los conceptos que se pueden elegir, con la etiqueta que ve la vendedora. Son
@@ -36,6 +37,8 @@ interface Props {
   quoteId: string;
   /** Token público de la cotización: con él se arma el enlace al recibo del pago. */
   publicToken: string;
+  /** A quién se le manda el recibo por WhatsApp. */
+  cliente?: ClienteContacto | null;
   isAdmin: boolean;
   estadoCuenta: EstadoCuenta;
   payments: Payment[];
@@ -49,6 +52,7 @@ interface Props {
 export function PagosPanel({
   quoteId,
   publicToken,
+  cliente,
   isAdmin,
   estadoCuenta,
   payments,
@@ -317,6 +321,7 @@ export function PagosPanel({
                       <Receipt size={12} /> Ver recibo
                     </a>
                   )}
+                  {!p.anuladoAt && <ReciboWhatsApp cliente={cliente} publicToken={publicToken} pago={p} />}
                   {p.facturadoAt && (
                     <span
                       className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700"
