@@ -284,6 +284,8 @@ export interface Quote {
    *  hacienda: firma él y se le factura a él. */
   banqueteroId?: string | null;
   banquetero?: { id: string; nombre: string; telefono: string | null } | null;
+  /** La agencia que paga la comisión del paquete (BI #4); aparte del banquetero-cliente. */
+  agencia?: { id: string; nombre: string } | null;
   /** El cliente FINAL. Dato operativo: va en la hoja operativa, NO en el contrato. */
   festejado?: string | null;
   festejadoTelefono?: string | null;
@@ -472,6 +474,15 @@ export interface QuoteDetail {
   codigos?: CodigoHistorial[];
   /** Si está cancelado: lo acordado, lo devuelto y lo que falta devolver. */
   cancelacion?: ResumenCancelacion | null;
+  /** El paquete de alimentos: del catálogo o puesto desde el BI en un importado. */
+  paquete?: PaqueteDelEvento | null;
+}
+
+export interface PaqueteDelEvento {
+  clave: string;
+  nombre: string;
+  comisionMonto: number | null;
+  origen: 'catalogo' | 'pactado';
 }
 
 export interface ResumenCancelacion {

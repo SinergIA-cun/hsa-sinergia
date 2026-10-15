@@ -26,6 +26,7 @@ import { CompartirClienteModal } from '../components/CompartirClienteModal.tsx';
 import { ConfirmarEmpalmeModal, type EspacioOcupado } from '../components/ConfirmarEmpalmeModal.tsx';
 import { MoverCatalogoModal } from '../components/MoverCatalogoModal.tsx';
 import { AjustarPrecioForm } from '../components/AjustarPrecio.tsx';
+import { AgenciaPaquete } from '../components/AgenciaPaquete.tsx';
 import { OperativaSection } from '../components/OperativaSection.tsx';
 import { CodigoEvento } from '../components/CodigoEvento.tsx';
 import { CicloEvento } from '../components/ciclo/CicloEvento.tsx';
@@ -518,6 +519,17 @@ export function EditQuotePage() {
           readOnly={enPapelera}
           // A un cancelado ya no le entra dinero (la API lo rechaza igual).
           sinPagosNuevos={quote.status === 'cancelada'}
+        />
+      )}
+
+      {/* El paquete de alimentos y la agencia que paga su comisión (BI #4). */}
+      {quoteQ.data?.paquete && (
+        <AgenciaPaquete
+          quoteId={quote.id}
+          paquete={quoteQ.data.paquete}
+          agencia={quote.agencia ?? null}
+          banqueteroDelEvento={quote.banquetero ?? null}
+          readOnly={enPapelera}
         />
       )}
 

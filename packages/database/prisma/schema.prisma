@@ -271,7 +271,9 @@ model Banquetero {
   /// sin invalidar su checksum en `_prisma_migrations`. Manda esto.
   publicToken  String           @unique @default(dbgenerated("replace((gen_random_uuid())::text, '-'::text, ''::text)"))
   createdAt    DateTime         @default(now())
-  quotes       Quote[]
+  quotes       Quote[]          @relation("BanqueteroDelEvento")
+  /// Eventos en los que es la agencia del paquete (sin ser el cliente).
+  agenciaDe    Quote[]          @relation("AgenciaDelPaquete")
   /// Los depósitos a cuenta que ha hecho. El dinero entra a su cuenta y DESPUÉS
   /// se reparte entre sus eventos (decisión 3 del dueño).
   depositos    PagoBanquetero[]
@@ -454,12 +456,12 @@ model AbonoApartado {
   anuladoById      String?
   motivoAnulacion  String?
   createdAt        DateTime        @default(now())
-
-  @@index([apartadoId])
-  @@index([pagoBanqueteroId])
   /// El `idBI` del pago en el BI, si vino de allá (`R-6054`). Pasa al pago del
   /// evento al convertir: es la llave del BI para no contar doble.
   importadoBI      String?
+
+  @@index([apartadoId])
+  @@index([pagoBanqueteroId])
 }
 
 model Empleado {
@@ -492,14 +494,14 @@ model CuadrillaMiembro {
 }
 
 model Client {
-  id                String   @id @default(cuid())
+  id                String          @id @default(cuid())
   nombre            String
   telefono          String?
   correo            String?
   empresa           String?
   domicilio         String?
   identificacion    String?
-  numeroReferencia  Int      @unique @default(dbgenerated("nextval('client_ref_seq')"))
+  numeroReferencia  Int             @unique @default(dbgenerated("nextval('client_ref_seq')"))
   // Datos fiscales (CFDI 4.0). Opcionales: se capturan solo si el cliente
   // pide factura, y se reutilizan en todos sus eventos.
   rfc               String?
@@ -510,33 +512,33 @@ model Client {
   correoFacturacion String?
   csfKey            String? // Constancia de Situación Fiscal adjunta
   csfMime           String?
-  createdAt         DateTime @default(now())
+  createdAt         DateTime        @default(now())
   quotes            Quote[]
   apartados         ApartadoFecha[]
 }
 
 model Quote {
-  id                  String            @id @default(cuid())
-  client              Client            @relation(fields: [clientId], references: [id])
+  id                  String               @id @default(cuid())
+  client              Client               @relation(fields: [clientId], references: [id])
   clientId            String
-  eventType           EventType         @relation(fields: [eventTypeId], references: [id])
+  eventType           EventType            @relation(fields: [eventTypeId], references: [id])
   eventTypeId         String
   fechaEvento         DateTime
   horasEvento         Int?
   invitados           Int
   spaceIds            String[]
-  horasExtra          Int               @default(0)
+  horasExtra          Int                  @default(0)
   foodPackageId       String?
-  addOns              Json              @default("[]")
+  addOns              Json                 @default("[]")
   breakdown           Json
   total               Float
   rentaTotal          Float
-  status              QuoteStatus       @default(borrador)
+  status              QuoteStatus          @default(borrador)
   /// **El folio: la llave interna que no cambia.** `27SEP-0184` — año y mes en
   /// que se contrató, más un consecutivo. Lo asigna POSTGRES (`folio_evento()`):
   /// una fila sin folio no puede existir y dos altas simultáneas no chocan. La app
   /// nunca lo escribe ni lo cambia. Ya no es lo que se enseña primero: ver abajo.
-  folio               String            @unique @default(dbgenerated("folio_evento()"))
+  folio               String               @unique @default(dbgenerated("folio_evento()"))
   /// **El código: el identificador principal.** `04SEP26-HLANGRUEN-CUPULA` —
   /// día, mes, año, inicial + apellido del cliente y el salón.
   ///
@@ -546,15 +548,15 @@ model Quote {
   /// ya formalizado— y cada cambio queda en `CodigoEvento`. Dos eventos vivos no
   /// lo comparten: el segundo lleva sufijo (`-2`). Ver `quotes/codigo.ts`.
   etiqueta            String?
-  publicToken         String            @unique
+  publicToken         String               @unique
   vigenciaHasta       DateTime?
-  usaCapilla          Boolean           @default(false) // cortesía; $5,000 en sábado. Varios eventos pueden usarla el mismo día.
+  usaCapilla          Boolean              @default(false) // cortesía; $5,000 en sábado. Varios eventos pueden usarla el mismo día.
   capillaHorario      String? // horario de la capilla para este evento (varios eventos comparten el día).
-  esCortesia          Boolean           @default(false) // cortesía familiar: se marca verde en la agenda.
+  esCortesia          Boolean              @default(false) // cortesía familiar: se marca verde en la agenda.
   /// Descuento / promoción: el mismo descuento que la cortesía (`descuentoPct`,
   /// solo sobre la renta del local) pero sin marcar el evento en la agenda. Es
   /// una u otra: el formulario no deja marcar las dos.
-  esPromocion         Boolean           @default(false)
+  esPromocion         Boolean              @default(false)
   /// Descuento de cortesía, en por ciento (0..100). Pega SOLO sobre la renta, y
   /// lo hace CAMBIANDO SU PRECIO: las horas extra y el descuento del 5% por
   /// alimentos se calculan sobre el precio ya descontado. La capilla nunca se
@@ -585,9 +587,16 @@ model Quote {
   /// anulado) y el acuerdo es el de ese día.
   cancelacionPagado   Float?
   cancelacionDevolver Float?
-  usaDjHoraExtra      Boolean           @default(false) // DJ por hora extra (precio según tipo de evento).
-  requiereFactura     Boolean           @default(false) // este cliente pidió factura para ESTE evento.
-  banquetero          Banquetero?       @relation(fields: [banqueteroId], references: [id])
+  usaDjHoraExtra      Boolean              @default(false) // DJ por hora extra (precio según tipo de evento).
+  requiereFactura     Boolean              @default(false) // este cliente pidió factura para ESTE evento.
+  banquetero          Banquetero?          @relation("BanqueteroDelEvento", fields: [banqueteroId], references: [id])
+  /// La agencia que paga la comisión del paquete de alimentos (BI #4, 15-oct-2026).
+  /// Se escoge de la lista de banqueteros y es independiente de `banqueteroId`:
+  /// en los eventos importados el cliente es la persona, no la agencia, y
+  /// ponerla en `banquetero` la haría firmar y facturar. Sin ella, la agencia es
+  /// el banquetero del evento (si tiene).
+  agencia             Banquetero?          @relation("AgenciaDelPaquete", fields: [agenciaId], references: [id], onDelete: Restrict)
+  agenciaId           String?
   /// El banquetero de este evento. Con banquetero, ÉL es el cliente de la
   /// hacienda: firma él y se le factura a él (decisión del dueño en el diseño de
   /// banqueteros). El festejado de abajo es el cliente final, y es dato operativo.
@@ -604,9 +613,9 @@ model Quote {
   /// sobre la de la hoja, que queda como respaldo de los eventos anteriores.
   festejado           String?
   festejadoTelefono   String?
-  createdBy           User?             @relation("QuoteCreatedBy", fields: [createdById], references: [id])
+  createdBy           User?                @relation("QuoteCreatedBy", fields: [createdById], references: [id])
   createdById         String?
-  createdAt           DateTime          @default(now())
+  createdAt           DateTime             @default(now())
   horaInicio          String?
   horaTermino         String?
   horarioCivil        String?
@@ -616,7 +625,7 @@ model Quote {
   deletedAt           DateTime?
   /// Catálogo con el que se coteó. MANDA al recalcular: reeditar una cotización
   /// de 2027 usa precios de 2027 aunque el catálogo activo ya sea 2028.
-  priceList           PriceList         @relation(fields: [priceListId], references: [id])
+  priceList           PriceList            @relation(fields: [priceListId], references: [id])
   priceListId         String
   payments            Payment[]
   activityLog         ActivityLog[]
@@ -632,11 +641,11 @@ model Quote {
   ///
   /// Un evento importado tiene PRECIO PACTADO: su desglose son los montos del BI
   /// y editarlo nunca lo recotiza contra el catálogo (se vendió a ese precio).
-  importadoBI         String?           @unique
+  importadoBI         String?              @unique
   /// Precio PACTADO: el desglose no se recotiza al editar, mover de fecha ni de
   /// catálogo. Lo tienen los eventos importados del BI y los apartados que se
   /// convirtieron con una renta acordada (decisión del dueño, 5-oct-2026).
-  precioPactado       Boolean           @default(false)
+  precioPactado       Boolean              @default(false)
   /// Cuándo se contrató, si no fue aquí. Los importados se vendieron antes de que
   /// existiera el sistema, así que `createdAt` es la fecha de la importación.
   contratadoEl        DateTime?
@@ -654,6 +663,7 @@ model Quote {
   @@index([fechaEvento])
   @@index([deletedAt])
   @@index([banqueteroId])
+  @@index([agenciaId])
   @@index([priceListId])
 }
 
@@ -712,7 +722,7 @@ model FoodPackagePrice {
 }
 
 model AddOn {
-  id          String    @id @default(cuid())
+  id          String        @id @default(cuid())
   nombre      String
   /// Para agruparlos al cotizar ("Mobiliario", "Iluminación", "Bebidas"…). Texto
   /// libre que pone el admin; `null` = sin categoría. Son muchos servicios y una
@@ -720,16 +730,16 @@ model AddOn {
   categoria   String?
   kind        AddOnKind
   price       Int
-  activo      Boolean   @default(true)
-  priceList   PriceList @relation(fields: [priceListId], references: [id])
+  activo      Boolean       @default(true)
+  priceList   PriceList     @relation(fields: [priceListId], references: [id])
   priceListId String
   /// Identifica al MISMO servicio en todos los catálogos: al clonar 2027 → 2028
   /// el servicio recibe un `id` nuevo pero conserva su `clave`. Es lo que lee el
   /// BI para seguir un servicio de un año a otro aunque cambie de nombre.
-  clave       String    @default(cuid())
+  clave       String        @default(cuid())
   /// Quién da el servicio y cuánto gana la hacienda por él (porcentaje del precio
   /// sin IVA). Se capturan una vez en el catálogo, no por evento.
-  proveedor   Proveedor? @relation(fields: [proveedorId], references: [id])
+  proveedor   Proveedor?    @relation(fields: [proveedorId], references: [id])
   proveedorId String?
   comisionPct Float?
   /// Quién le cobra el servicio al cliente: el proveedor directo (le debe la
@@ -1131,22 +1141,22 @@ enum EstadoCorreo {
 /// momento (formalizar, registrar un pago, cierre) y un proceso del servidor lo
 /// manda. Si el envío falla se reintenta; lo que pasó queda aquí y se ve en el evento.
 model CorreoCliente {
-  id         String       @id @default(cuid())
-  quote      Quote        @relation(fields: [quoteId], references: [id], onDelete: Cascade)
-  quoteId    String
-  tipo       TipoCorreo
+  id        String       @id @default(cuid())
+  quote     Quote        @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  quoteId   String
+  tipo      TipoCorreo
   /// El pago del recibo (`recibo`) o el que formalizó el evento (`bienvenida`).
-  paymentId  String?
+  paymentId String?
   /// Un correo por cosa: `bienvenida:<quoteId>`, `recibo:<paymentId>`, `cierre:<quoteId>`.
-  clave      String       @unique
+  clave     String       @unique
   /// A quién se mandó (el correo del cliente en ese momento).
-  para       String?
-  estado     EstadoCorreo @default(pendiente)
-  intentos   Int          @default(0)
-  error      String?
-  enviadoAt  DateTime?
-  createdAt  DateTime     @default(now())
-  updatedAt  DateTime     @updatedAt
+  para      String?
+  estado    EstadoCorreo @default(pendiente)
+  intentos  Int          @default(0)
+  error     String?
+  enviadoAt DateTime?
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
 
   @@index([estado])
   @@index([quoteId])

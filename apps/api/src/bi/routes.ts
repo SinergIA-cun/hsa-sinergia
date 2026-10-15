@@ -5,6 +5,7 @@ import { requireApiKey } from './apiKey.js';
 import { importarLote, conciliarLote } from './importar.js';
 import { conciliarBanqueteros, importarBanqueteros } from './banqueteros.js';
 import { conciliarApartados, importarApartados } from './apartados.js';
+import { conciliarPaquetes, importarPaquetes } from './paquetes.js';
 import { biEventos, biPagos, biIngresos, biCargos, biDevoluciones, biPagosEsperados, biCambios, biFacturacion, biApartados, biCatalogos, type RangoBI } from './service.js';
 
 const LIMITE_MAX = 500;
@@ -109,4 +110,6 @@ async function rutasDeImportacion(app: FastifyInstance): Promise<void> {
   app.post('/bi/importar/banqueteros', opciones, async (req) => importarBanqueteros(app.prisma, req.body));
   app.post('/bi/conciliar/apartados', opciones, async (req) => conciliarApartados(app.prisma, req.body));
   app.post('/bi/importar/apartados', opciones, async (req) => importarApartados(app.prisma, req.body));
+  app.post('/bi/conciliar/paquetes', opciones, async (req) => conciliarPaquetes(app.prisma, req.body));
+  app.post('/bi/importar/paquetes', opciones, async (req) => importarPaquetes(app.prisma, req.body));
 }

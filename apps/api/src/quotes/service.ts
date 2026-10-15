@@ -136,6 +136,8 @@ export const includeRels = {
   // El banquetero por nombre: el formulario tiene que poder reabrir la cotización
   // en modo "Banquetero" y enseñar de quién se trata sin otra consulta.
   banquetero: { select: { id: true, nombre: true, telefono: true } },
+  // La agencia del paquete (BI #4): aparte del banquetero-cliente.
+  agencia: { select: { id: true, nombre: true } },
   // Los servicios sueltos del evento: no viven en el catálogo, así que la única
   // forma de recuperarlos para reeditar (y para recalcular) es leerlos de aquí.
   extras: { select: { nombre: true, kind: true, monto: true, cantidad: true } },
@@ -1824,7 +1826,8 @@ export async function getQuote(db: PrismaClient, id: string, actor: Actor) {
 
   // La cuenta del punto de venta va aparte del estado de cuenta: son ventas
   // posteriores que no cambian el valor del evento.
-  const [cuenta, banquete, productos, devoluciones, codigos, cancelacion] = await Promise.all([
+  const { paqueteDelEvento } = await import('./agencia.js');
+  const [cuenta, banquete, productos, devoluciones, codigos, cancelacion, paquete] = await Promise.all([
     cuentaDelEvento(db, id),
     cuentaBanquete(db, quote),
     productosDelEvento(db, quote),
@@ -1835,6 +1838,7 @@ export async function getQuote(db: PrismaClient, id: string, actor: Actor) {
     }),
     historialDeCodigos(db, id),
     resumenCancelacion(db, quote),
+    paqueteDelEvento(db, quote),
   ]);
   const cuentaConCandado = {
     ...cuenta,
@@ -1865,6 +1869,8 @@ export async function getQuote(db: PrismaClient, id: string, actor: Actor) {
     codigos,
     // Si está cancelado: lo acordado, lo devuelto y lo que falta devolver.
     cancelacion,
+    // El paquete de alimentos y su agencia (BI #4).
+    paquete,
   };
 }
 
