@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { FORMAS_PAGO, type FormaPago } from '@hsa/shared';
+import { FORMAS_PAGO, type FormaPago, tieneCentavosValidos } from '@hsa/shared';
 import { api } from '../lib/api.ts';
 import { formatEventDate } from '../lib/date.ts';
 import { Button, Field, MoneyInput, TextInput } from './ui.tsx';
@@ -57,7 +57,7 @@ export function CorregirPagoForm({
   async function guardar(e: React.FormEvent) {
     e.preventDefault();
     const n = Number(monto);
-    if (!Number.isInteger(n) || n <= 0) return setError('El monto es en pesos enteros, mayor a cero.');
+    if (!tieneCentavosValidos(n) || n <= 0) return setError('El monto debe ser mayor a cero, con a lo más dos decimales.');
     const errorDeFormas = errorFormas(formas, n);
     if (errorDeFormas) return setError(errorDeFormas);
     if (motivo.trim().length < 3) return setError('Escribe el motivo de la corrección.');

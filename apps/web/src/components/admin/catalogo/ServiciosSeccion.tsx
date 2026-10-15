@@ -275,7 +275,8 @@ function ServicioRow({
           />
           <CategoriaInput value={categoria} onChange={setCategoria} />
           <KindSelect value={kind} onChange={setKind} />
-          <MoneyInput aria-label="Precio del servicio" value={price} onValue={setPrice} />
+          <MoneyInput
+                enteros aria-label="Precio del servicio" value={price} onValue={setPrice} />
         </div>
         <ProveedorCampos
           proveedores={proveedores}
@@ -428,7 +429,8 @@ function NuevoServicio({
         <KindSelect value={kind} onChange={setKind} />
       </Field>
       <Field label="Precio (MXN)" hint="Pesos enteros, sin centavos.">
-        <MoneyInput value={price} onValue={setPrice} placeholder="0" />
+        <MoneyInput
+                enteros value={price} onValue={setPrice} placeholder="0" />
       </Field>
       <Field
         label="Proveedor, comisión y quién lo cobra"

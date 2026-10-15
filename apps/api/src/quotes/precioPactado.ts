@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import type { PrismaClient, Prisma } from '@hsa/database';
-import { conPrecioPactado, type QuoteBreakdown } from '@hsa/shared';
+import { conPrecioPactado, type QuoteBreakdown, centavos, montoNoNegativoSchema } from '@hsa/shared';
 import { QuoteError, ownershipWhere, assertNotTrashed, loadEstadoCuenta, type Actor } from './service.js';
 import { logActivity } from './activityLog.js';
 import { ponerAlDia } from '../payments/estatus.js';
@@ -10,13 +10,13 @@ import { ponerAlDia } from '../payments/estatus.js';
 // después de venderlo ("el valor del contrato subió", 13-oct-2026): esto lo
 // ajusta un admin, con motivo, y queda en la bitácora.
 
-const pesos = (n: number) => `$${Math.round(n).toLocaleString('es-MX')}`;
+const pesos = (n: number) => `$${centavos(n).toLocaleString('es-MX', { maximumFractionDigits: 2 })}`;
 
 export const ajustarPrecioSchema = z.object({
   /** La renta del salón, con IVA. */
-  renta: z.number().int().nonnegative(),
+  renta: montoNoNegativoSchema,
   /** Alimentos y servicios pactados, con IVA. Solo eventos del BI; sin él no se tocan. */
-  otros: z.number().int().nonnegative().optional(),
+  otros: montoNoNegativoSchema.optional(),
   motivo: z.string().trim().min(3, 'Escribe el motivo (al menos 3 letras).').max(300),
 });
 
@@ -37,8 +37,8 @@ export async function ajustarPrecioPactado(db: PrismaClient, quoteId: string, ra
   } catch (e) {
     throw new QuoteError(409, e instanceof Error ? e.message : String(e));
   }
-  const total = Math.round(nuevo.total);
-  const rentaTotal = Math.round(nuevo.rentaTotal);
+  const total = centavos(nuevo.total);
+  const rentaTotal = centavos(nuevo.rentaTotal);
   if (total === quote.total && rentaTotal === quote.rentaTotal) throw new QuoteError(400, 'El precio es el mismo: no hay nada que ajustar.');
 
   // Lo pagado va contra la renta: no puede quedar por encima de ella.
@@ -54,8 +54,8 @@ export async function ajustarPrecioPactado(db: PrismaClient, quoteId: string, ra
     where: { id: quoteId },
     data: { breakdown: nuevo as unknown as Prisma.InputJsonValue, total, rentaTotal },
   });
-  const otrosAntes = Math.round(antes.otrosTotal ?? 0);
-  const otrosDespues = Math.round(nuevo.otrosTotal ?? 0);
+  const otrosAntes = centavos(antes.otrosTotal ?? 0);
+  const otrosDespues = centavos(nuevo.otrosTotal ?? 0);
   await logActivity(db, {
     quoteId,
     tipo: 'edicion',

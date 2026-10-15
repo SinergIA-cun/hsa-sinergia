@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import type { PrismaClient } from '@hsa/database';
-import { emparejarNombre, formatFolio, resolverFormasPago, FormasPagoError, ESTATUS_SIN_FECHA } from '@hsa/shared';
+import { emparejarNombre, formatFolio, resolverFormasPago, FormasPagoError, ESTATUS_SIN_FECHA, montoSchema, sumarDinero } from '@hsa/shared';
 import { cargarCatalogos, pagoBISchema, type Candidato, type Catalogos } from './importar.js';
 import { apartadoVivo } from '../banqueteros/apartados.js';
 import { INCLUDE_TITULAR, titularDeApartado } from '../banqueteros/titular.js';
@@ -38,7 +38,7 @@ export const apartadoBISchema = z
         correo: z.string().max(200).nullish(),
       })
       .nullish(),
-    precioAcordado: z.number().int().positive().nullish(),
+    precioAcordado: montoSchema.nullish(),
     /** La fecha apartada lleva capilla. Marca: no cobra ni bloquea; prellena la conversión. */
     usaCapilla: z.boolean().optional(),
     nota: z.string().max(500).nullish(),
@@ -167,8 +167,8 @@ async function conciliarUno(
     }
     const hasta = pagosHasta ? dia(pagosHasta).getTime() : Infinity;
     const vivos = existente.abonos.filter((x) => x.anuladoAt == null && x.fecha.getTime() <= hasta);
-    const pagadoHSA = vivos.reduce((s, x) => s + x.monto, 0);
-    const pagadoBI = a.pagos.reduce((s, p) => s + p.monto, 0);
+    const pagadoHSA = vivos.reduce((s, x) => sumarDinero(s, x.monto), 0);
+    const pagadoBI = a.pagos.reduce((s, p) => sumarDinero(s, p.monto), 0);
     if (pagadoHSA !== pagadoBI) diferencias.push({ campo: 'pagado', bi: pagadoBI, hsa: pagadoHSA });
     const fHSA = vivos.map((x) => x.folio).filter((f): f is number => f != null);
     const fBI = a.pagos.map((p) => p.folio);

@@ -143,6 +143,7 @@ export function ParametrosSeccion({
         ))}
         <Field label="Capilla en sábado (MXN)" hint="Entre semana es cortesía; el sábado se cobra.">
           <MoneyInput
+                enteros
             value={capilla}
             onValue={(v) => {
               limpiar();

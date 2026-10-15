@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import type { PrismaClient } from '@hsa/database';
-import { formasPagoSchema, metodoCapturaSchema, describirFormasPago, hoyCivilMexico } from '@hsa/shared';
+import { formasPagoSchema, metodoCapturaSchema, describirFormasPago, hoyCivilMexico, montoSchema, restarDinero } from '@hsa/shared';
 import { QuoteError, assertNotTrashed, loadEstadoCuenta, type Actor } from '../quotes/service.js';
 import { logActivity } from '../quotes/activityLog.js';
 import { resolverOError } from '../payments/service.js';
@@ -22,7 +22,7 @@ import { cargarDeposito, saldoDeDeposito, saldoLiberadoPorApartados } from '../b
 const fechaISO = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 
 const baseSchema = z.object({
-  monto: z.number().int().positive(),
+  monto: montoSchema,
   /** Cómo salió el dinero: una forma, o varias (una parte en efectivo y otra por transferencia). */
   metodo: metodoCapturaSchema.optional(),
   formas: formasPagoSchema.optional(),
@@ -124,7 +124,7 @@ async function disponibleBanquetero(db: PrismaClient, banqueteroId: string, pago
       _sum: { monto: true },
     }),
   ]);
-  return saldoLiberadoPorApartados(apartados, hoyCivilMexico()) - (devueltas._sum.monto ?? 0);
+  return restarDinero(saldoLiberadoPorApartados(apartados, hoyCivilMexico()), devueltas._sum.monto ?? 0);
 }
 
 /**

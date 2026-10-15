@@ -1,3 +1,4 @@
+import { restarDinero } from '../dinero.js';
 import { z } from 'zod';
 
 /**
@@ -44,7 +45,7 @@ export interface PagoParaConcepto {
  * primer pago vivo del evento.
  */
 export function deducirConcepto(antes: number, monto: number, total: number, esPrimero: boolean): PaymentConcept {
-  const meta = total - TOLERANCIA_FINIQUITO;
+  const meta = restarDinero(total, TOLERANCIA_FINIQUITO);
   if (antes < meta && antes + monto >= meta) return 'finiquito';
   // Un contrato de $1,000 o menos: el primer pago ya lo completa.
   if (meta <= 0 && esPrimero) return 'finiquito';

@@ -1,3 +1,4 @@
+import { centavos, sumarDinero, restarDinero, pesosTexto } from '../dinero.js';
 import type { QuoteBreakdown, QuoteLine } from '../types.js';
 
 /**
@@ -111,7 +112,7 @@ export function conCargosDelContrato(b: QuoteBreakdown, cargos: QuoteLine[], iva
 export function lineaDeCargo(c: { id: string; producto: ProductoCargo; descripcion: string; cantidad: number; precioUnitario: number; total: number }): QuoteLine {
   return {
     concepto: c.descripcion || PRODUCTO_INFO[c.producto].nombre,
-    detalle: `${c.cantidad} × $${c.precioUnitario.toLocaleString('es-MX')} · punto de venta`,
+    detalle: `${c.cantidad} × ${pesosTexto(c.precioUnitario)} · punto de venta`,
     monto: c.total,
     ivaIncluido: true,
     grupo: 'renta',
@@ -152,12 +153,12 @@ export function rentaBaseDeDesglose(breakdown: unknown): number {
         (typeof l.spaceId === 'string' ||
           (typeof l.concepto === 'string' && l.concepto.startsWith('Descuento de cortesía'))),
     )
-    .reduce((s, l) => s + (typeof l.monto === 'number' ? l.monto : 0), 0);
+    .reduce((s, l) => sumarDinero(s, (typeof l.monto === 'number' ? l.monto : 0)), 0);
 }
 
 /** Precio sugerido de una hora extra de salón, redondeado a pesos. */
 export function precioHoraExtra(rentaBase: number, extraHourRate: number): number {
-  return Math.max(0, Math.round(rentaBase * extraHourRate));
+  return Math.max(0, centavos(rentaBase * extraHourRate));
 }
 
 /** Lo que suma la cuenta del evento y lo que falta cobrar de ella. */
@@ -165,7 +166,7 @@ export function saldoDeCargos(
   cargos: readonly { total: number; anuladoAt: Date | string | null }[],
   pagos: readonly { monto: number; anuladoAt: Date | string | null }[],
 ): { total: number; pagado: number; saldo: number } {
-  const total = cargos.filter((c) => c.anuladoAt == null).reduce((s, c) => s + c.total, 0);
-  const pagado = pagos.filter((p) => p.anuladoAt == null).reduce((s, p) => s + p.monto, 0);
-  return { total, pagado, saldo: total - pagado };
+  const total = cargos.filter((c) => c.anuladoAt == null).reduce((s, c) => sumarDinero(s, c.total), 0);
+  const pagado = pagos.filter((p) => p.anuladoAt == null).reduce((s, p) => sumarDinero(s, p.monto), 0);
+  return { total, pagado, saldo: restarDinero(total, pagado) };
 }

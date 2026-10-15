@@ -442,9 +442,9 @@ describe('validaciones y permisos', () => {
     await expect(nuevoApartado({ deposito: 10_000, depositoMetodo: 'efectivo' })).rejects.toThrow();
   });
 
-  it('un depósito con decimales se rechaza, no se redondea', async () => {
+  it('un depósito con más de dos decimales se rechaza, no se redondea', async () => {
     await expect(
-      nuevoApartado({ deposito: 10_000.5, depositoMetodo: 'efectivo', depositoFecha: '2026-03-05' }),
+      nuevoApartado({ deposito: 10_000.555, depositoMetodo: 'efectivo', depositoFecha: '2026-03-05' }),
     ).rejects.toThrow();
   });
 

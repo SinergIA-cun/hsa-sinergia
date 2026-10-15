@@ -1,3 +1,4 @@
+import { sumarDinero } from '../dinero.js';
 import { describe, it, expect } from 'vitest';
 import { calcularCancelacion, pendientePorDevolver, sueltaLaFecha } from './ciclo.js';
 
@@ -7,10 +8,11 @@ describe('cancelación', () => {
     expect(calcularCancelacion(45_000, 0)).toEqual({ pagado: 45_000, porcentaje: 0, devolver: 0, retenido: 45_000 });
   });
 
-  it('un porcentaje cualquiera redondea al peso y cuadra exacto', () => {
+  it('un porcentaje cualquiera redondea a centavos y cuadra exacto', () => {
     const c = calcularCancelacion(33_333, 35);
-    expect(c.devolver).toBe(11_667);
-    expect(c.devolver + c.retenido).toBe(33_333);
+    expect(c.devolver).toBe(11_666.55);
+    expect(c.retenido).toBe(21_666.45);
+    expect(sumarDinero(c.devolver, c.retenido)).toBe(33_333);
   });
 
   it('fuera de 0..100 no es una decisión', () => {

@@ -91,6 +91,7 @@ export function DjSeccion({
                 </p>
               </div>
               <MoneyInput
+                enteros
                 aria-label={`DJ hora extra en ${t.nombre}`}
                 placeholder="no se cobra"
                 className={`w-36 px-2.5 py-1.5 text-sm ${malo ? 'border-wine' : ''}`}

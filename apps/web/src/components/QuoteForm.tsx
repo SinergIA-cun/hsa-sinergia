@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
+  tieneCentavosValidos,
   capacidadTotal,
   computeQuote,
   tieneContacto,
@@ -361,13 +362,13 @@ export function QuoteForm({
   const montoValido = useMemo(() => {
     if (!conDescuento || descuentoTipo !== 'monto' || descuentoValor.trim() === '') return undefined;
     const n = Number(descuentoValor);
-    if (!Number.isInteger(n) || n <= 0) return undefined;
+    if (!tieneCentavosValidos(n) || n <= 0) return undefined;
     return n;
   }, [conDescuento, descuentoTipo, descuentoValor]);
   const hayDescuento = pctValido != null || montoValido != null;
   /** Los extras válidos (con nombre y monto): un renglón a medias no se cobra. */
   const extrasValidos = useMemo(
-    () => extras.filter((e) => e.nombre.trim() !== '' && Number.isInteger(e.monto) && e.monto > 0),
+    () => extras.filter((e) => e.nombre.trim() !== '' && tieneCentavosValidos(e.monto) && e.monto > 0),
     [extras],
   );
 

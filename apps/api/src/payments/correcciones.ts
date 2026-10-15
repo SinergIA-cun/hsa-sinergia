@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import type { PrismaClient } from '@hsa/database';
-import { metodoCapturaSchema, formasPagoSchema, describirFormasPago, formatFolio } from '@hsa/shared';
+import { metodoCapturaSchema, formasPagoSchema, describirFormasPago, formatFolio, montoSchema, restarDinero } from '@hsa/shared';
 import { QuoteError, ownershipWhere, assertNotTrashed, type Actor } from '../quotes/service.js';
 import { logActivity } from '../quotes/activityLog.js';
 import { validarCobroDeCargos } from '../cargos/service.js';
@@ -17,7 +17,7 @@ const motivo = z.string().trim().min(3, 'Escribe el motivo (al menos 3 letras).'
 
 export const corregirPagoSchema = z
   .object({
-    monto: z.number().int().positive().optional(),
+    monto: montoSchema.optional(),
     fecha: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
     metodo: metodoCapturaSchema.optional(),
     formas: formasPagoSchema.optional(),
@@ -83,7 +83,7 @@ export async function corregirPago(db: PrismaClient, quoteId: string, paymentId:
     formas = r.formas as typeof formas;
   }
   if (input.folioPapel != null && input.folioPapel !== pago.folio) await validarFolioDePapel(db, input.folioPapel, actor);
-  if (pago.destino === 'cargos' && monto > pago.monto) await validarCobroDeCargos(db, quote, monto - pago.monto);
+  if (pago.destino === 'cargos' && monto > pago.monto) await validarCobroDeCargos(db, quote, restarDinero(monto, pago.monto));
 
   const antes = { monto: pago.monto, fecha: pago.fecha.toISOString().slice(0, 10), formas: describirFormasPago(pago), referencia: pago.referencia, folio: pago.folio };
   const actualizado = await db.payment.update({

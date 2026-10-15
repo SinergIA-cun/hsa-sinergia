@@ -1,3 +1,4 @@
+import { sumarDinero } from '../dinero.js';
 import type { CobraServicio, QuoteLine, TipoRenglon, UnidadRenglon } from '../types.js';
 
 /**
@@ -101,7 +102,7 @@ export function desgloseParaBI(
 /** El último renglón absorbe la diferencia de redondeo contra el total del bloque. */
 function cuadrar(renglones: RenglonBI[], total: number): RenglonBI[] {
   if (renglones.length === 0) return renglones;
-  const suma = renglones.reduce((s, r) => s + r.total, 0);
+  const suma = renglones.reduce((s, r) => sumarDinero(s, r.total), 0);
   const dif = r2(total - suma);
   if (dif === 0) return renglones;
   const ultimo = renglones[renglones.length - 1]!;

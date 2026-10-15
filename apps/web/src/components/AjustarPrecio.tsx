@@ -1,3 +1,4 @@
+import { tieneCentavosValidos, sumarDinero } from '@hsa/shared';
 import { useState } from 'react';
 import type { QuoteBreakdown, QuoteLine } from '@hsa/shared';
 import { api } from '../lib/api.ts';
@@ -12,7 +13,7 @@ import { apiErrorMessage } from './admin/shared.tsx';
 
 const esRentaSalon = (l: QuoteLine) => l.grupo === 'renta' && !l.cargoId && (Boolean(l.spaceId) || l.ref?.tipo === 'rentaSalon');
 const esOtrosPactado = (l: QuoteLine) => l.grupo === 'otros' && !l.cargoId && l.ref?.tipo === 'pactado';
-const suma = (ls: QuoteLine[]) => Math.round(ls.reduce((s, l) => s + l.monto, 0));
+const suma = (ls: QuoteLine[]) => ls.reduce((s, l) => sumarDinero(s, l.monto), 0);
 
 export function AjustarPrecioForm({
   quoteId,
@@ -48,7 +49,7 @@ export function AjustarPrecioForm({
 
   async function guardar(e: React.FormEvent) {
     e.preventDefault();
-    if (!Number.isInteger(nRenta) || nRenta < 0) return setError('La renta es en pesos enteros.');
+    if (!tieneCentavosValidos(nRenta) || nRenta < 0) return setError('La renta admite a lo más dos decimales.');
     if (nRenta + otraRenta < pagado) return setError(`Ya hay ${formatMXN(pagado)} pagados: la renta no puede quedar por debajo.`);
     if (nuevoTotal === total) return setError('El total es el mismo: no hay nada que ajustar.');
     if (motivo.trim().length < 3) return setError('Escribe el motivo del ajuste.');

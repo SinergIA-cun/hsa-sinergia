@@ -1,3 +1,5 @@
+import { centavos, restarDinero } from '../dinero.js';
+
 /**
  * El ciclo de un evento fuera del camino normal: cancelarlo, ponerlo en standby
  * (sin fecha) y reprogramarlo.
@@ -37,9 +39,9 @@ export function calcularCancelacion(pagado: number, porcentaje: number): Cancela
   if (!Number.isFinite(porcentaje) || porcentaje < 0 || porcentaje > 100) {
     throw new Error('El porcentaje a devolver va de 0 a 100.');
   }
-  const base = Math.max(0, Math.round(pagado));
-  const devolver = Math.round((base * porcentaje) / 100);
-  return { pagado: base, porcentaje, devolver, retenido: base - devolver };
+  const base = Math.max(0, centavos(pagado));
+  const devolver = centavos((base * porcentaje) / 100);
+  return { pagado: base, porcentaje, devolver, retenido: restarDinero(base, devolver) };
 }
 
 /**

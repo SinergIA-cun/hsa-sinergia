@@ -17,6 +17,8 @@ import {
   anularDeposito,
   listarDepositos,
   saldoSinAsignar,
+  saldoDeDeposito,
+  cargarDeposito,
 } from './cuenta.js';
 
 const storage = new ServerStorage(join(tmpdir(), 'hsa-banq-test-' + randomUUID()));
@@ -332,16 +334,29 @@ describe('cuenta corriente del banquetero', () => {
     expect(await prisma.payment.count({ where: { pagoBanqueteroId: dep.id } })).toBe(0);
   });
 
-  it('un monto con decimales se RECHAZA, no se redondea (Prisma trunca sin avisar)', async () => {
+  it('un monto con más de dos decimales se RECHAZA, no se redondea', async () => {
     await expect(
-      registrarDeposito(prisma, storage, banqueteroId, { monto: 55_000.5, metodo: 'efectivo', fecha: '2026-03-05' }, actor),
+      registrarDeposito(prisma, storage, banqueteroId, { monto: 55_000.555, metodo: 'efectivo', fecha: '2026-03-05' }, actor),
     ).rejects.toThrow();
     const dep = await nuevoDeposito(100_000);
     const a = await nuevoEvento(banqueteroId);
     await expect(
-      asignarDeposito(prisma, storage, dep.id, { asignaciones: [{ quoteId: a.id, monto: 10_000.9 }] }, actor),
+      asignarDeposito(prisma, storage, dep.id, { asignaciones: [{ quoteId: a.id, monto: 10_000.999 }] }, actor),
     ).rejects.toThrow();
     expect(await prisma.payment.count({ where: { quoteId: a.id } })).toBe(0);
+  });
+
+  it('con centavos: el depósito y su reparto se guardan exactos y el saldo cuadra al centavo', async () => {
+    const dep = await nuevoDeposito(100_000.3);
+    const a = await nuevoEvento(banqueteroId);
+    await asignarDeposito(prisma, storage, dep.id, { asignaciones: [{ quoteId: a.id, monto: 10_000.1 }] }, actor);
+    await asignarDeposito(prisma, storage, dep.id, { asignaciones: [{ quoteId: a.id, monto: 20_000.2 }] }, actor);
+    const pagos = await prisma.payment.findMany({ where: { quoteId: a.id }, orderBy: { createdAt: 'asc' } });
+    expect(pagos.map((p) => p.monto)).toEqual([10_000.1, 20_000.2]);
+    const guardado = await prisma.pagoBanquetero.findUniqueOrThrow({ where: { id: dep.id } });
+    expect(guardado.monto).toBe(100_000.3);
+    // 100,000.30 − 10,000.10 − 20,000.20 = 70,000.00 exacto (en flotante a secas daría 69999.99999999999)
+    expect(saldoDeDeposito(await cargarDeposito(prisma, dep.id))).toBe(70_000);
   });
 
   it('un depósito de un banquetero que no existe responde 404', async () => {

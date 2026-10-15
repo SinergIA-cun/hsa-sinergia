@@ -7,7 +7,7 @@ import { Button, Card, MoneyInput } from '../ui.tsx';
 import { apiErrorMessage } from '../admin/shared.tsx';
 import { STATUS_LABEL } from '../../lib/status.ts';
 import type { ApartadoFecha, DepositoBanquetero, EventoBanquetero } from '../../lib/types.ts';
-import { describirFormasPago, formatFolio } from '@hsa/shared';
+import { describirFormasPago, formatFolio, sumarDinero } from '@hsa/shared';
 
 interface Props {
   deposito: DepositoBanquetero;
@@ -53,13 +53,14 @@ export function RepartirDepositoModal({ deposito, eventos, apartados, onCancel, 
 
   /**
    * Un monto capturado tiene que ser un entero: la columna es `Int` y Prisma
-   * TRUNCA los flotantes del lado del cliente sin avisar (55000.9 → 55000). Un
-   * decimal se rechaza aquí y también en el servidor; nunca se redondea.
+   * TRUNCABA los flotantes cuando la columna era entera. Desde el 15-oct-2026 el
+   * dinero lleva centavos: se aceptan hasta dos decimales y más se rechaza aquí y
+   * en el servidor; nunca se redondea.
    */
   function parseMonto(v: string): number | null {
     const s = v.trim();
     if (s === '') return 0;
-    if (!/^\d+$/.test(s)) return null;
+    if (!/^\d+(\.\d{1,2})?$/.test(s)) return null;
     return Number(s);
   }
 
@@ -80,8 +81,10 @@ export function RepartirDepositoModal({ deposito, eventos, apartados, onCancel, 
 
   const invalido = renglones.some((r) => r.monto == null) || filasApartado.some((r) => r.monto == null);
   const pedido =
-    renglones.reduce((s, r) => s + (r.monto ?? 0), 0) +
-    filasApartado.reduce((s, r) => s + (r.monto ?? 0), 0);
+    sumarDinero(
+      renglones.reduce((s, r) => sumarDinero(s, r.monto ?? 0), 0),
+      filasApartado.reduce((s, r) => sumarDinero(s, r.monto ?? 0), 0),
+    );
   const remanente = deposito.saldoSinAsignar - pedido;
   const conMonto = renglones.filter((r) => (r.monto ?? 0) > 0);
   const apartadosConMonto = filasApartado.filter((r) => (r.monto ?? 0) > 0);

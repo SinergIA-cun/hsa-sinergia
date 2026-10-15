@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import type { PrismaClient } from '@hsa/database';
-import { PRODUCTOS_CARGO, PRODUCTO_INFO, afectaContrato, formatFolio, type ProductoCargo } from '@hsa/shared';
+import { PRODUCTOS_CARGO, PRODUCTO_INFO, afectaContrato, formatFolio, type ProductoCargo, montoSchema, restarDinero, centavos } from '@hsa/shared';
 import { cuentaDelEvento } from './cuenta.js';
 import { sincronizarContrato } from './contrato.js';
 import { QuoteError, ownershipWhere, assertNotTrashed, loadEstadoCuenta, type Actor } from '../quotes/service.js';
@@ -30,7 +30,7 @@ export const cargoSchema = z.object({
   /** Enteros: dos horas, cinco invitados. Prisma truncaría un decimal. */
   cantidad: z.number().int().positive().max(10_000),
   /** Con IVA incluido. Cero se rechaza: un cargo de cero no es venta. */
-  precioUnitario: z.number().int().positive(),
+  precioUnitario: montoSchema,
   descripcion: z.string().trim().max(200).optional(),
   fecha: fechaISO,
 });
@@ -78,7 +78,7 @@ export async function registrarCargo(db: PrismaClient, quoteId: string, rawInput
     throw new QuoteError(400, `Describe qué pasó: "${info.nombre}" sin descripción no se puede cobrar ni aclarar después.`);
   }
   const descripcion = input.descripcion || info.nombre;
-  const total = input.cantidad * input.precioUnitario;
+  const total = centavos(input.cantidad * input.precioUnitario);
   const cargo = await db.cargoEvento.create({
     data: {
       quoteId,
@@ -137,10 +137,10 @@ export async function anularCargo(
     }
   } else {
     const cuenta = await cuentaDelEvento(db, quoteId);
-    if (cuenta.pagado > cuenta.total - cargo.total) {
+    if (cuenta.pagado > restarDinero(cuenta.total, cargo.total)) {
       throw new QuoteError(
         409,
-        `La cuenta ya tiene cobrados $${cuenta.pagado}; sin este cargo quedaría en $${cuenta.total - cargo.total}. Anula primero el pago.`,
+        `La cuenta ya tiene cobrados $${cuenta.pagado}; sin este cargo quedaría en $${restarDinero(cuenta.total, cargo.total)}. Anula primero el pago.`,
       );
     }
   }

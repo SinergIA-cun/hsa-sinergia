@@ -1,6 +1,8 @@
 import type { PrismaClient } from '@hsa/database';
 import { resumenCancelacion } from '../quotes/ciclo.js';
 import {
+  restarDinero,
+  sumarDinero,
   estadoFacturaPago,
   hoyCivilMexico,
   requisitosFactura,
@@ -103,7 +105,7 @@ function desgloseDelEvento(
     quoteId: q.id,
     ivaRate: q.priceList?.ivaRate ?? 0.16,
     rentaTotal: q.rentaTotal,
-    otrosTotal: q.total - q.rentaTotal,
+    otrosTotal: restarDinero(q.total, q.rentaTotal),
   });
   const vendidos = renglones.map(({ refId, servicio: congelado, paquete: paqueteCongelado, ...r }) => {
     const servicio = r.tipo === 'servicioCatalogo' && refId ? refs.servicio.get(refId) : undefined;
@@ -273,7 +275,7 @@ export async function biEventos(db: PrismaClient, r: RangoBI) {
     banquetero: q.banquetero ? { id: q.banquetero.id, nombre: q.banquetero.nombre } : null,
     // Dos bloques separados: la renta la cobra la hacienda, lo demás se paga al proveedor.
     renta: { subtotal: rentaSubtotalDe(q.breakdown), total: q.rentaTotal },
-    otros: { total: q.total - q.rentaTotal },
+    otros: { total: restarDinero(q.total, q.rentaTotal) },
     total: q.total,
     // Renglón por renglón, con la clave fija de lo vendido. Suma `renta.total` + `otros.total`.
     desglose: desgloseDelEvento(q, refs),
@@ -675,7 +677,7 @@ export async function biApartados(db: PrismaClient, r: RangoBI) {
       cliente: a.client ? { id: a.client.id, nombre: a.client.nombre } : null,
       precioAcordado: a.precioAcordado,
       usaCapilla: a.usaCapilla,
-      abonado: vivos.reduce((s, x) => s + x.monto, 0),
+      abonado: vivos.reduce((s, x) => sumarDinero(s, x.monto), 0),
       estado: a.quoteId
         ? 'convertido'
         : a.canceladoAt

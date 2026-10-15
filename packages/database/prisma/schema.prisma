@@ -295,7 +295,7 @@ model PagoBanquetero {
   /// salen de repartirlo llevan este mismo folio. `null` = depósito de antes del
   /// folio (no se renumeró nada: decisión del dueño).
   folio           Int?            @default(dbgenerated("nextval('recibo_folio_seq')"))
-  monto           Int
+  monto           Float
   metodo          PaymentMethod
   /// Partes del depósito si vino dividido. Ver `Payment.formas`.
   formas          Json?
@@ -353,7 +353,7 @@ model ApartadoFecha {
   /// El precio que ya se pactó por la fecha, en pesos enteros, si lo hay. No es
   /// un total calculado: un apartado sigue sin pasar por el motor de precios.
   /// Se enseña al convertir para que no se pierda.
-  precioAcordado    Int?
+  precioAcordado    Float?
   /// El tipo de evento, si ya se sabe. Solo prellena la conversión.
   eventType         EventType?      @relation(fields: [eventTypeId], references: [id])
   eventTypeId       String?
@@ -419,7 +419,7 @@ model AbonoApartado {
   folio            Int?            @default(dbgenerated("nextval('recibo_folio_seq')"))
   /// Su letra si salió de un depósito (`I 5340-C`). Ver `Payment.folioLetra`.
   folioLetra       String?
-  monto            Int
+  monto            Float
   metodo           PaymentMethod
   /// Partes del abono si vino dividido. Ver `Payment.formas`.
   formas           Json?
@@ -526,8 +526,8 @@ model Quote {
   foodPackageId       String?
   addOns              Json              @default("[]")
   breakdown           Json
-  total               Int
-  rentaTotal          Int
+  total               Float
+  rentaTotal          Float
   status              QuoteStatus       @default(borrador)
   /// **El folio: la llave interna que no cambia.** `27SEP-0184` — año y mes en
   /// que se contrató, más un consecutivo. Lo asigna POSTGRES (`folio_evento()`):
@@ -563,7 +563,7 @@ model Quote {
   /// esquema de crear/editar—, pero la columna es nullable porque la enorme
   /// mayoría de las cotizaciones no lleva descuento.
   /// El descuento en MONTO FIJO (pesos con IVA), en lugar de `descuentoPct`. Uno u otro.
-  descuentoMonto      Int?
+  descuentoMonto      Float?
   descuentoMotivo     String?
   /// El estatus que tenía antes de ponerse en standby o cancelarse. Es al que
   /// vuelve al reprogramarse (y de ahí sube si los pagos ya dan para más).
@@ -580,8 +580,8 @@ model Quote {
   /// Lo pagado al cancelar y lo que de eso se acordó devolver, en pesos. Se
   /// guardan porque lo pagado puede cambiar después (una devolución, un pago
   /// anulado) y el acuerdo es el de ese día.
-  cancelacionPagado   Int?
-  cancelacionDevolver Int?
+  cancelacionPagado   Float?
+  cancelacionDevolver Float?
   usaDjHoraExtra      Boolean           @default(false) // DJ por hora extra (precio según tipo de evento).
   requiereFactura     Boolean           @default(false) // este cliente pidió factura para ESTE evento.
   banquetero          Banquetero?       @relation(fields: [banqueteroId], references: [id])
@@ -673,7 +673,7 @@ model QuoteExtra {
   quoteId  String
   nombre   String
   kind     AddOnKind // fijo | porPersona | porUnidad
-  monto    Int
+  monto    Float
   cantidad Int       @default(1) // solo se usa en porUnidad
 
   @@index([quoteId])
@@ -753,7 +753,7 @@ model ServicioBanquetero {
   nombre   String
   cantidad Int    @default(1)
   /// Lo que cobra el banquetero por eso (pesos, total). Opcional.
-  monto    Int?
+  monto    Float?
 
   @@index([quoteId])
 }
@@ -782,7 +782,7 @@ model Payment {
   id               String          @id @default(cuid())
   quote            Quote           @relation(fields: [quoteId], references: [id])
   quoteId          String
-  monto            Int
+  monto            Float
   metodo           PaymentMethod
   /// Concepto EFECTIVO del pago: el que se DEDUCE de dónde deja el acumulado
   /// contra los hitos del plan (`packages/shared/src/pagos/concepto.ts`). No es
@@ -966,9 +966,9 @@ model EventoHistorico {
   banquetero  String?
   eventoTipo  String
   espacios    String[]
-  total       Int
-  pagado      Int
-  saldo       Int
+  total       Float
+  pagado      Float
+  saldo       Float
   /// ¿Llegó a apartar la fecha? `false` = quedó en borrador y el evento no se dio.
   seRealizo   Boolean
   liquidado   Boolean
@@ -1047,8 +1047,8 @@ model CargoEvento {
   descripcion     String
   cantidad        Int
   /// Con IVA incluido: lo que se teclea es lo que se cobra.
-  precioUnitario  Int
-  total           Int
+  precioUnitario  Float
+  total           Float
   /// El día de la venta (medianoche UTC, como `Payment.fecha`).
   fecha           DateTime
   registradoBy    User?         @relation("CargoRegistradoBy", fields: [registradoById], references: [id])
@@ -1085,7 +1085,7 @@ model Devolucion {
   banqueteroId     String?
   pagoBanquetero   PagoBanquetero? @relation(fields: [pagoBanqueteroId], references: [id], onDelete: Restrict)
   pagoBanqueteroId String?
-  monto            Int
+  monto            Float
   metodo           PaymentMethod
   formas           Json?
   /// Cuándo SALIÓ el dinero.

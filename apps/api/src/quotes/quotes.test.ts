@@ -1533,7 +1533,7 @@ describe('servicios sueltos del evento (extras)', () => {
     expect(copia.total).toBe(q.total);
   });
 
-  it('un monto con decimales se rechaza (Postgres truncaría el flotante sin avisar)', async () => {
+  it('un monto con más de dos decimales se rechaza', async () => {
     const { eventTypeId, arcosId } = await ids();
     await expect(
       createQuote(
@@ -1543,7 +1543,7 @@ describe('servicios sueltos del evento (extras)', () => {
           invitados: 250,
           spaceIds: [arcosId],
           eventTypeId,
-          extras: [{ ...extraMenu, monto: 200.5 }],
+          extras: [{ ...extraMenu, monto: 200.555 }],
           client: { telefono: '5555550000', nombre: 'Extra Roto' },
         },
         actor,
@@ -1751,9 +1751,10 @@ describe('el contrato cuadra: renglones de renta contra su total', () => {
     expect(suma).toBe(61962.5);
     expect(breakdown.rentaTotal).toBe(61962.5);
 
-    // Y por esto el pie del contrato imprime el total del DESGLOSE y no la
-    // columna: la columna es entera y aquí redondea medio peso hacia arriba.
-    expect(q.rentaTotal).toBe(61963);
+    // La columna guarda el total del desglose al centavo (15-oct-2026). Antes era
+    // entera y redondeaba medio peso hacia arriba: el estado de cuenta cobraba
+    // 50 centavos más de lo que decía el contrato.
+    expect(q.rentaTotal).toBe(61962.5);
   });
 });
 

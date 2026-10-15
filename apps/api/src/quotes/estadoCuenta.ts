@@ -1,4 +1,4 @@
-import { prorratearRenta, sueltaLaFecha } from '@hsa/shared';
+import { prorratearRenta, sueltaLaFecha, sumarDinero, restarDinero } from '@hsa/shared';
 
 export type PaymentStatus = 'formalizada' | 'complementada' | 'liquidada';
 
@@ -86,8 +86,8 @@ export function computeEstadoCuenta(args: {
   now?: Date;
 }): EstadoCuenta {
   const { total, fechaEvento, status, rules, payments, fechaApartado } = args;
-  const pagado = payments.filter((p) => p.anuladoAt == null).reduce((s, p) => s + p.monto, 0);
-  const saldo = total - pagado;
+  const pagado = payments.filter((p) => p.anuladoAt == null).reduce((s, p) => sumarDinero(s, p.monto), 0);
+  const saldo = restarDinero(total, pagado);
 
   if (!rules || rules.length === 0) {
     return { total, pagado, saldo, plan: null, planPendiente: true, sugerido: null, desfase: false };
@@ -104,7 +104,7 @@ export function computeEstadoCuenta(args: {
     spaceId: r.spaceId,
     rentaBase: r.rentaBase,
     pct: r.rule.complementoPct,
-    monto: Math.round(r.rule.complementoPct * r.rentaBase),
+    monto: Math.round(r.rule.complementoPct * r.rentaBase), // meta sugerida: en pesos redondos
   }));
   // Ningún hito puede pedir más de lo que cuesta el evento.
   //
@@ -118,7 +118,7 @@ export function computeEstadoCuenta(args: {
   const tope = Math.max(0, total);
   const objFiniquito = tope;
   const objApartar = Math.min(apartarSinTope, tope);
-  const objComplemento = Math.min(apartarSinTope + desglose.reduce((s, d) => s + d.monto, 0), tope);
+  const objComplemento = Math.min(apartarSinTope + desglose.reduce((s, d) => sumarDinero(s, d.monto), 0), tope);
 
   // El apartado por salón. Sin tope es su propio anticipo; con tope, su parte
   // proporcional — se reutiliza `prorratearRenta` porque garantiza que la suma
@@ -150,7 +150,7 @@ export function computeEstadoCuenta(args: {
     desgloseHito?: AportePorEspacio[],
   ): Milestone => {
     const cubierto = Math.min(pagado, objetivo);
-    return { key, label, objetivo, cubierto, restante: Math.max(0, objetivo - cubierto), completo: pagado >= objetivo, venceISO, desglose: desgloseHito };
+    return { key, label, objetivo, cubierto, restante: Math.max(0, restarDinero(objetivo, cubierto)), completo: pagado >= objetivo, venceISO, desglose: desgloseHito };
   };
 
   const plan: Milestone[] = [

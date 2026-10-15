@@ -1,3 +1,4 @@
+import { sumarDinero } from '@hsa/shared';
 import type { Marca } from '@hsa/shared';
 
 // Los tres correos al cliente (decisión del dueño, 6-oct-2026). Son funciones
@@ -191,7 +192,7 @@ export function correoRecibo(marca: Marca, e: EventoCorreo, pago: PagoCorreo, es
 
 /** A los 2 días hábiles: gracias, el total del evento con sus extras y una invitación a recomendarnos. */
 export function correoCierre(marca: Marca, e: EventoCorreo, c: CierreCorreo): Correo {
-  const extrasTotal = c.extras.reduce((s, x) => s + x.total, 0);
+  const extrasTotal = c.extras.reduce((s, x) => sumarDinero(s, x.total), 0);
   const filasExtras = c.extras.map((x): [string, string] => [x.cantidad > 1 ? `${x.nombre} (${x.cantidad})` : x.nombre, pesos(x.total)]);
   const totalEvento = c.contrato + extrasTotal;
   const cuerpo =
