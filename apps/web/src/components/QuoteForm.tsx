@@ -882,6 +882,17 @@ export function QuoteForm({
             <AvailabilityBanner key={id} avail={availBySpace.get(id)} fecha={fecha} />
           ))}
 
+          {/* Apartados rápidos en fila ese día: solo avisan, no bloquean (15-oct-2026). */}
+          {fecha && (availability?.filaEspera?.total ?? 0) > 0 && (
+            <p className="rounded-lg border border-gold/40 bg-gold/10 px-3 py-2 text-sm text-ink">
+              Hay <strong>{availability!.filaEspera!.total}</strong>{' '}
+              {availability!.filaEspera!.total === 1 ? 'persona' : 'personas'} en la fila de apartados de ese día
+              {availability!.filaEspera!.primero ? ` (primero: ${availability!.filaEspera!.primero})` : ''}. No bloquea la
+              fecha, pero conviene revisarlo en{' '}
+              <a href={`/agenda/apartados?v=mes&d=${fecha}`} className="underline">Apartados</a>.
+            </p>
+          )}
+
           {/* Capilla: cortesía (entre semana) / $5,000 sábado. La comparten varios eventos el día. */}
           <div className={`mt-1 rounded-lg border px-4 py-3 text-sm transition-colors ${usaCapilla ? 'border-gold bg-gold/10' : 'border-ink/12 bg-white/50'}`}>
             <label className="flex cursor-pointer items-start gap-3">

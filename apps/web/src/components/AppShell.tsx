@@ -6,6 +6,7 @@ import {
   FileText,
   Plus,
   CalendarDays,
+  CalendarClock,
   ChefHat,
   Archive,
   SlidersHorizontal,
@@ -77,7 +78,8 @@ export function AppShell({ children }: { children: ReactNode }) {
   const apartados: Apartado[] = [
     { to: '/', icon: <LayoutDashboard size={18} />, label: 'Inicio' },
     { to: '/eventos', icon: <FileText size={18} />, label: 'Eventos' },
-    { to: '/agenda', icon: <CalendarDays size={18} />, label: 'Agenda' },
+    { to: '/agenda', icon: <CalendarDays size={18} />, label: 'Agenda de Eventos' },
+    { to: '/agenda/apartados', icon: <CalendarClock size={18} />, label: 'Apartados' },
     { to: '/banqueteros', icon: <ChefHat size={18} />, label: 'Banqueteros' },
     { to: '/historico', icon: <Archive size={18} />, label: 'Histórico' },
     { to: '/eventos/nuevo', icon: <Plus size={18} />, label: 'Nuevo' },

@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useMemo, useState } from 'react';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft } from 'lucide-react';
 import { api } from '../lib/api.ts';
@@ -17,6 +17,21 @@ interface CatalogoElegible {
 export function NewQuotePage() {
   const navigate = useNavigate();
   const qc = useQueryClient();
+  const [sp] = useSearchParams();
+  /**
+   * Lo que llega prellenado: la fecha del día que se tocó en la agenda y, al
+   * convertir un apartado rápido, su nombre, teléfono y tipo de evento.
+   */
+  const apartadoId = sp.get('apartado');
+  const initial = useMemo(() => {
+    const fecha = sp.get('fecha');
+    return {
+      ...(fecha && /^\d{4}-\d{2}-\d{2}$/.test(fecha) ? { fecha } : {}),
+      ...(sp.get('nombre') ? { nombre: sp.get('nombre')! } : {}),
+      ...(sp.get('telefono') ? { telefono: sp.get('telefono')! } : {}),
+      ...(sp.get('tipo') ? { eventTypeId: sp.get('tipo')! } : {}),
+    };
+  }, [sp]);
 
   // Los catálogos entre los que se puede cotizar. Van por un endpoint propio y
   // no por el de admin: quien cotiza es ventas.
@@ -50,6 +65,12 @@ export function NewQuotePage() {
     setError('');
     try {
       const res = await api.post<{ quote: Quote }>('/api/quotes', payload);
+      // Venía de un apartado rápido: se cierra ligado al evento. Si falla, el
+      // evento ya existe; el apartado se libera a mano o vence solo.
+      if (apartadoId) {
+        await api.post(`/api/apartados-rapidos/${apartadoId}/convertir`, { quoteId: res.quote.id }).catch(() => undefined);
+        await qc.invalidateQueries({ queryKey: ['apartados-rapidos'] });
+      }
       await qc.invalidateQueries({ queryKey: ['quotes'] });
       navigate(`/eventos/${res.quote.id}?creado=1`);
     } catch {
@@ -63,15 +84,16 @@ export function NewQuotePage() {
   return (
     <div>
       <Link
-        to="/eventos"
+        to={apartadoId ? '/agenda/apartados' : '/eventos'}
         className="mb-4 inline-flex items-center gap-1.5 text-sm text-charcoal-soft hover:text-ink"
       >
-        <ArrowLeft size={15} /> Eventos
+        <ArrowLeft size={15} /> {apartadoId ? 'Apartados' : 'Eventos'}
       </Link>
       <ArrowDivider>Nuevo</ArrowDivider>
       <h1 className="mb-8 mt-2 font-display text-4xl text-ink">Nuevo evento</h1>
       <QuoteForm
         catalog={catalog}
+        initial={initial}
         catalogos={catalogos}
         priceListId={priceListId ?? catalogos.find((c) => c.activa)?.id}
         onPriceListChange={setPriceListId}

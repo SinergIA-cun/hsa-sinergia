@@ -208,16 +208,17 @@ model RentalPrice {
 }
 
 model EventType {
-  id           String             @id @default(cuid())
-  nombre       String
-  slug         String             @unique
-  rentaPlana   Boolean            @default(false) // usa la renta plana (Team Building) en vez de la de por-día
-  foodPackages FoodPackage[]
+  id               String             @id @default(cuid())
+  nombre           String
+  slug             String             @unique
+  rentaPlana       Boolean            @default(false) // usa la renta plana (Team Building) en vez de la de por-día
+  foodPackages     FoodPackage[]
   /// El precio del DJ por hora extra, por catálogo. Vivía aquí como un `Int?`
   /// global: clonar el catálogo no lo subía y editarlo represiaba lo reeditado.
-  djPrices     DjHoraExtraPrice[]
-  quotes       Quote[]
-  apartados    ApartadoFecha[]
+  djPrices         DjHoraExtraPrice[]
+  quotes           Quote[]
+  apartados        ApartadoFecha[]
+  apartadosRapidos ApartadoRapido[]
 }
 
 /// Precio de la hora extra de DJ, por catálogo y por tipo de evento.
@@ -657,6 +658,8 @@ model Quote {
   /// `etiqueta`; aquí queda el rastro de cada cambio de fecha, salón o cliente.
   codigos             CodigoEvento[]
 
+  apartadoRapido ApartadoRapido?
+
   @@index([clientId])
   @@index([status])
   @@index([createdById])
@@ -909,6 +912,8 @@ model User {
   cargosAnulados            CargoEvento[]    @relation("CargoAnuladoBy")
   devolucionesRegistradas   Devolucion[]     @relation("DevolucionRegistradaBy")
   devolucionesAnuladas      Devolucion[]     @relation("DevolucionAnuladaBy")
+  apartadosRapidosCreados   ApartadoRapido[] @relation("ApartadoRapidoCreadoPor")
+  apartadosRapidosCerrados  ApartadoRapido[] @relation("ApartadoRapidoCerradoPor")
 }
 
 /// La bitácora forense: quién tocó qué fila, con el contenido antes y después.
@@ -1160,4 +1165,59 @@ model CorreoCliente {
 
   @@index([estado])
   @@index([quoteId])
+}
+
+enum EstadoApartadoRapido {
+  activo
+  /// Se venció (15 días) o alguien lo soltó.
+  liberado
+  /// Se volvió evento (cotización).
+  convertido
+}
+
+/// Un apartado rápido (Jorge, 15-oct-2026): alguien pidió una fecha y se la
+/// guardamos 15 días con lo mínimo —nombre, teléfono y tipo de evento—. Varios
+/// pueden pedir el mismo día: hacen FILA, en orden de llegada, hasta el tope
+/// que fije el admin (5 a 10). NO bloquea la fecha: solo avisa al cotizarla.
+///
+/// Es aparte de `ApartadoFecha` (los de banquetero o cliente con abonos, que sí
+/// bloquean y lee el BI) a propósito: estos son interesados, no dinero.
+model ApartadoRapido {
+  id             String               @id @default(cuid())
+  nombre         String
+  telefono       String
+  eventType      EventType            @relation(fields: [eventTypeId], references: [id])
+  eventTypeId    String
+  /// El día que pide (medianoche UTC, como `Quote.fechaEvento`).
+  fecha          DateTime
+  /// Hasta cuándo se le guarda: 15 días desde que se capturó o desde la última
+  /// vez que se confirmó con la persona.
+  vence          DateTime
+  estado         EstadoApartadoRapido @default(activo)
+  nota           String?
+  /// Cuántas veces se confirmó con la persona y se le dieron otros 15 días.
+  extensiones    Int                  @default(0)
+  /// Cuándo se mandó el correo de "vence en 3 días" de ESTE vencimiento.
+  avisoEnviadoAt DateTime?
+  createdBy      User                 @relation("ApartadoRapidoCreadoPor", fields: [createdById], references: [id])
+  createdById    String
+  createdAt      DateTime             @default(now())
+  cerradoAt      DateTime?
+  /// `null` con `cerradoAt` = lo liberó el sistema al vencer.
+  cerradoBy      User?                @relation("ApartadoRapidoCerradoPor", fields: [cerradoById], references: [id])
+  cerradoById    String?
+  motivoCierre   String?
+  /// El evento en que se convirtió.
+  quote          Quote?               @relation(fields: [quoteId], references: [id])
+  quoteId        String?              @unique
+
+  @@index([fecha, estado])
+  @@index([estado, vence])
+}
+
+/// Ajustes sueltos que cambia el admin (p. ej. el tope de la fila de apartados).
+model Ajuste {
+  clave     String   @id
+  valor     Json
+  updatedAt DateTime @updatedAt
 }

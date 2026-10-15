@@ -223,3 +223,41 @@ export function correoCierre(marca: Marca, e: EventoCorreo, c: CierreCorreo): Co
     ]),
   };
 }
+
+/**
+ * Aviso INTERNO (al vendedor que lo capturó y a los admins): un apartado rápido
+ * vence en 3 días o menos. Hay que confirmar con la persona; si no, la fecha se
+ * libera sola al vencer y pasa el siguiente de la fila (Jorge, 15-oct-2026).
+ */
+export function correoApartadoPorVencer(
+  marca: Marca,
+  a: { nombre: string; telefono: string; tipoEvento: string; fecha: string; vence: string; diasRestantes: number; posicion: number; capturo: string },
+  enlace: string,
+): Correo {
+  const filas: [string, string][] = [
+    ['Quién', a.nombre],
+    ['Teléfono', a.telefono],
+    ['Evento', a.tipoEvento],
+    ['Fecha que pidió', a.fecha],
+    ['Lugar en la fila', a.posicion === 1 ? '1.º (primero)' : `${a.posicion}.º`],
+    ['Vence', `${a.vence} (en ${a.diasRestantes} ${a.diasRestantes === 1 ? 'día' : 'días'})`],
+    ['Lo capturó', a.capturo],
+  ];
+  const cuerpo =
+    parrafo(`El apartado de <strong>${esc(a.nombre)}</strong> para el ${esc(a.fecha)} está por vencer.`) +
+    tabla(filas) +
+    parrafo('Confirma con la persona. Si sigue interesada, dale "Confirmar (+15 días)" en la agenda de Apartados; si no, libéralo. Si nadie hace nada, la fecha se libera sola al vencer.') +
+    parrafo(`<a href="${esc(enlace)}">Abrir la agenda de Apartados</a>`);
+  return {
+    subject: `Apartado por vencer: ${a.nombre} · ${a.fecha}`,
+    html: layout(marca, 'Apartado por vencer', cuerpo),
+    text: textoPlano([
+      `El apartado de ${a.nombre} para el ${a.fecha} está por vencer.`,
+      '',
+      ...filas.map(([k, v]) => `${k}: ${v}`),
+      '',
+      'Confirma con la persona: "Confirmar (+15 días)" o liberarlo. Si nadie hace nada, se libera solo al vencer.',
+      enlace,
+    ]),
+  };
+}

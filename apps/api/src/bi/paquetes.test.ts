@@ -44,7 +44,7 @@ async function importado(over: Partial<EventoBI> = {}) {
   return prisma.quote.findUniqueOrThrow({ where: { importadoBI: idBI } });
 }
 
-const post = (ruta: string, payload: unknown) =>
+const post = (ruta: string, payload: Record<string, unknown>) =>
   app.inject({ method: 'POST', url: `/api/bi/${ruta}/paquetes`, headers: { 'x-api-key': LLAVE_IMPORTAR }, payload });
 
 async function renglonPactadoBI(quoteId: string) {
