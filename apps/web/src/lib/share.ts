@@ -15,6 +15,11 @@ export function mensajeSaludo(cliente: string, evento: string): string {
   return `Hola ${cliente}, le escribimos de ${MARCA.nombre} sobre su ${evento.toLowerCase()}.`;
 }
 
+/** Mensaje para mandarle al cliente el recibo de UN pago. */
+export function mensajeRecibo(cliente: string, folio: string, monto: string, url: string): string {
+  return `Hola ${cliente}, le compartimos su recibo ${folio} por ${monto} de ${MARCA.nombre}: ${url}`;
+}
+
 /** Mensaje estándar para enviar una cotización/estado de cuenta al cliente. */
 export function mensajeCotizacion(cliente: string, evento: string, url: string): string {
   return `Hola ${cliente}, le comparto su cotización de ${evento} en ${MARCA.nombre}: ${url}`;
