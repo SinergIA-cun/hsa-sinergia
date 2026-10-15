@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Receipt, UtensilsCrossed } from 'lucide-react';
 import { describirFormasPago, formatFolio } from '@hsa/shared';
 import { formatMXN } from '../lib/money.ts';
@@ -5,6 +6,7 @@ import { formatEventDate } from '../lib/date.ts';
 import { Card } from './ui.tsx';
 import { RegistrarPagoForm } from './RegistrarPagoForm.tsx';
 import { ReciboWhatsApp, type ClienteContacto } from './ReciboWhatsApp.tsx';
+import { MoverPagoForm } from './CorregirPago.tsx';
 import type { CuentaBanquete, PaymentConcept } from '../lib/types.ts';
 
 const CONCEPTO: Record<PaymentConcept, string> = {
@@ -42,6 +44,7 @@ export function BanquetePagos({
   onCambio: (mensaje?: string) => Promise<void>;
   onAnular: (paymentId: string) => Promise<void>;
 }) {
+  const [reasignando, setReasignando] = useState<string | null>(null);
   const sinBanquete = banquete.total <= 0;
   const saldado = !sinBanquete && banquete.saldo <= 0;
 
@@ -124,7 +127,23 @@ export function BanquetePagos({
                       Anular
                     </button>
                   )}
+                  {isAdmin && !readOnly && p.anuladoAt && !p.facturadoAt && !p.pagoBanqueteroId && (
+                    <button type="button" onClick={() => setReasignando(p.id)} className="text-xs text-ink hover:underline">
+                      Reasignar a otro evento
+                    </button>
+                  )}
                 </span>
+                {reasignando === p.id && (
+                  <MoverPagoForm
+                    quoteId={quoteId}
+                    pago={p}
+                    onCancelar={() => setReasignando(null)}
+                    onListo={async (destino) => {
+                      setReasignando(null);
+                      await onCambio(`Pago ${formatFolio(p.folio, p.folioLetra)} reasignado al evento ${destino.codigo}.`);
+                    }}
+                  />
+                )}
               </li>
             ))}
           </ul>

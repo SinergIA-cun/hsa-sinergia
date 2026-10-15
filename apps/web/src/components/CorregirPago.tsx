@@ -132,6 +132,8 @@ export function MoverPagoForm({
   onListo: (destino: { id: string; codigo: string }) => Promise<void> | void;
   onCancelar: () => void;
 }) {
+  // Un recibo anulado se REASIGNA: pasa al evento correcto y vuelve a valer ahí.
+  const reasigna = Boolean(pago.anuladoAt);
   const [codigo, setCodigo] = useState('');
   const [destino, setDestino] = useState<EventoDestino | null>(null);
   const [motivo, setMotivo] = useState('');
@@ -171,7 +173,14 @@ export function MoverPagoForm({
 
   return (
     <form onSubmit={mover} className="mt-2 grid w-full gap-3 rounded-lg border border-gold/40 bg-gold/5 p-3">
-      <p className="text-sm font-medium text-ink">Mover el recibo a otro evento</p>
+      <p className="text-sm font-medium text-ink">
+        {reasigna ? 'Reasignar el recibo anulado al evento correcto' : 'Mover el recibo a otro evento'}
+      </p>
+      {reasigna && (
+        <p className="text-xs text-charcoal-soft">
+          Vuelve a valer en ese evento, con su mismo folio. La anulación queda en la bitácora de este.
+        </p>
+      )}
       <Field label="Código del evento" hint="El vigente o uno anterior, ej. 18DIC27-NGONZALEZ-CAMPOS.">
         <div className="flex gap-2">
           <TextInput
@@ -206,7 +215,7 @@ export function MoverPagoForm({
       )}
       <div className="flex gap-2">
         <Button type="submit" variant="gold" className="px-3 py-1.5 text-xs" disabled={enviando || !destino}>
-          {enviando ? 'Moviendo…' : 'Mover el pago'}
+          {enviando ? (reasigna ? 'Reasignando…' : 'Moviendo…') : reasigna ? 'Reasignar el pago' : 'Mover el pago'}
         </Button>
         <Button type="button" variant="ghost" className="px-3 py-1.5 text-xs" onClick={onCancelar}>
           Cancela

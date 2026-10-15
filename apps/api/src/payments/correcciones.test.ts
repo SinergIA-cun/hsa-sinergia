@@ -171,3 +171,30 @@ describe('mover un recibo a otro evento', () => {
     expect(http.statusCode).toBe(404);
   });
 });
+
+describe('reasignar un recibo anulado (Jorge, 15-oct-2026)', () => {
+  it('el anulado pasa al evento correcto con su folio y vuelve a valer ahí', async () => {
+    const a = await evento();
+    const b = await evento();
+    const p = await pagar(a.id, b.total);
+    await anularPayment(prisma, a.id, p.id, 'Era de otro evento', admin);
+    // Recapturarlo con el mismo folio de papel no se puede: el folio ya está usado.
+    await expect(pagar(b.id, b.total, { folioPapel: p.folio })).rejects.toMatchObject({ status: 409 });
+
+    await moverPago(prisma, a.id, p.id, { destino: b.etiqueta, motivo: 'Se capturó en el evento equivocado' }, admin);
+    const reasignado = await prisma.payment.findUniqueOrThrow({ where: { id: p.id } });
+    expect(reasignado).toMatchObject({ quoteId: b.id, folio: p.folio, anuladoAt: null, motivoAnulacion: null });
+    expect((await prisma.quote.findUniqueOrThrow({ where: { id: b.id } })).status).toBe('liquidada');
+    const enA = await prisma.activityLog.findFirstOrThrow({ where: { quoteId: a.id, tipo: 'edicion' }, orderBy: { createdAt: 'desc' } });
+    expect(enA.meta).toMatchObject({ reasignado: true, motivoAnulacion: 'Era de otro evento' });
+  });
+
+  it('un anulado facturado no se reasigna', async () => {
+    const a = await evento();
+    const b = await evento();
+    const p = await pagar(a.id, 10_000);
+    await anularPayment(prisma, a.id, p.id, 'prueba', admin);
+    await prisma.payment.update({ where: { id: p.id }, data: { facturadoAt: new Date() } });
+    await expect(moverPago(prisma, a.id, p.id, { destino: b.etiqueta, motivo: 'facturado' }, admin)).rejects.toMatchObject({ status: 409 });
+  });
+});

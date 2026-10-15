@@ -93,7 +93,8 @@ export function PagosPanel({
   });
 
   async function anular(paymentId: string) {
-    const motivo = window.prompt('Motivo de la anulación:');
+    // Si solo se capturó en el evento equivocado, "Mover" lo lleva al correcto con su folio.
+    const motivo = window.prompt('Motivo de la anulación:\n(Si se capturó en el evento equivocado, cancela y usa "Mover": conserva el folio.)');
     if (!motivo) return;
     await api.patch(`/api/quotes/${quoteId}/payments/${paymentId}/anular`, { motivo });
     await refresh();
@@ -266,6 +267,13 @@ export function PagosPanel({
                     </>
                   )}
                   {isAdmin && !readOnly && !p.anuladoAt && <button onClick={() => anular(p.id)} className="text-xs text-wine hover:underline">Anular</button>}
+                  {/* Se anuló porque iba en otro evento: se reasigna allá con su
+                      folio, en vez de recapturarlo (el folio ya está "usado"). */}
+                  {isAdmin && !readOnly && p.anuladoAt && !p.facturadoAt && !p.pagoBanqueteroId && (
+                    <button type="button" onClick={() => setAccion({ id: p.id, tipo: 'mover' })} className="text-xs text-ink hover:underline">
+                      Reasignar a otro evento
+                    </button>
+                  )}
                 </span>
                 {accion?.id === p.id && accion.tipo === 'corregir' && (
                   <CorregirPagoForm
@@ -286,7 +294,7 @@ export function PagosPanel({
                     onCancelar={() => setAccion(null)}
                     onListo={async (destino) => {
                       setAccion(null);
-                      setInfo(`Pago ${formatFolio(p.folio, p.folioLetra)} movido al evento ${destino.codigo}.`);
+                      setInfo(`Pago ${formatFolio(p.folio, p.folioLetra)} ${p.anuladoAt ? 'reasignado' : 'movido'} al evento ${destino.codigo}.`);
                       await refresh();
                     }}
                   />
