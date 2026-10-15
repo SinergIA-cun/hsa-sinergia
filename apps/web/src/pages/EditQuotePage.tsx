@@ -394,6 +394,7 @@ export function EditQuotePage() {
           <PagosPanel
             quoteId={quote.id}
             publicToken={quote.publicToken}
+            cliente={quote.client}
             isAdmin={isAdmin}
             estadoCuenta={estadoCuenta}
             payments={payments}
@@ -463,6 +464,7 @@ export function EditQuotePage() {
         <PagosPanel
           quoteId={quote.id}
           publicToken={quote.publicToken}
+          cliente={quote.client}
           isAdmin={isAdmin}
           estadoCuenta={estadoCuenta}
           payments={payments}
@@ -482,6 +484,7 @@ export function EditQuotePage() {
         <PuntoDeVentaPanel
           quoteId={quote.id}
           publicToken={quote.publicToken}
+          cliente={quote.client}
           cuenta={quoteQ.data.cuenta}
           productos={quoteQ.data.productosPuntoDeVenta}
           isAdmin={isAdmin}

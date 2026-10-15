@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Receipt, ShoppingBag } from 'lucide-react';
+import { ReciboWhatsApp, type ClienteContacto } from './ReciboWhatsApp.tsx';
 import { describirFormasPago, formatFolio, PRODUCTO_INFO } from '@hsa/shared';
 import { api, API_BASE } from '../lib/api.ts';
 import { formatMXN } from '../lib/money.ts';
@@ -29,6 +30,7 @@ const hoy = () => new Date().toISOString().slice(0, 10);
 export function PuntoDeVentaPanel({
   quoteId,
   publicToken,
+  cliente,
   cuenta,
   productos,
   isAdmin,
@@ -36,6 +38,8 @@ export function PuntoDeVentaPanel({
 }: {
   quoteId: string;
   publicToken: string;
+  /** A quién se le manda el recibo por WhatsApp. */
+  cliente?: ClienteContacto | null;
   cuenta: CuentaEvento;
   productos: ProductoPuntoDeVenta[];
   isAdmin: boolean;
@@ -171,6 +175,7 @@ export function PuntoDeVentaPanel({
                       <Receipt size={12} /> Ver recibo
                     </a>
                   )}
+                  {!p.anuladoAt && <ReciboWhatsApp cliente={cliente} publicToken={publicToken} pago={p} />}
                   {isAdmin && !readOnly && !p.anuladoAt && (
                     <button type="button" onClick={() => anularCobro(p.id)} className="text-xs text-wine hover:underline">
                       Anular
