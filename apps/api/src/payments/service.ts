@@ -1,8 +1,9 @@
 import { z } from 'zod';
 import { notasSchema, notaONull, editarNotasSchema } from './notas.js';
-import type { PrismaClient } from '@hsa/database';
+import type { PaymentConcept, PrismaClient } from '@hsa/database';
 import {
   montoSchema,
+  pesosTexto,
   estadoFacturaPago,
   hoyCivilMexico,
   paymentConceptSchema,
@@ -24,6 +25,7 @@ import { folioPapelSchema, subirSecuenciaSobre, validarFolioDePapel } from './fo
 import type { ComprobanteStorage } from './storage.js';
 import { validarCobroDeCargos, descripcionPagoCargos } from '../cargos/service.js';
 import { encolarCorreo } from '../correos/cola.js';
+import { cuentaBanquete, conceptoDeBanquete } from './banquete.js';
 
 export const registerPaymentSchema = z.object({
   monto: montoSchema,
@@ -51,9 +53,11 @@ export const registerPaymentSchema = z.object({
   /**
    * A qué va el pago. `evento` (lo de siempre) abona a la renta contratada y
    * mueve el plan de pagos. `cargos` abona a la cuenta del punto de venta —horas
-   * extra, multas, daños— y NO toca el plan ni el valor del evento.
+   * extra, multas, daños— y NO toca el plan ni el valor del evento. `banquete`
+   * abona a la cuenta del banquete (alimentos y servicios), que cobra la
+   * hacienda aparte de la renta (Jorge, 15-oct-2026).
    */
-  destino: z.enum(['evento', 'cargos']).default('evento'),
+  destino: z.enum(['evento', 'cargos', 'banquete']).default('evento'),
   /** El número de la hoja de papel, si el recibo se llenó a mano. Solo admin. */
   folioPapel: folioPapelSchema.optional(),
 });
@@ -149,6 +153,12 @@ export async function registerPayment(
     if (origen?.pagoBanqueteroId) throw new QuoteError(400, 'Un depósito se reparte a eventos, no a su cuenta de cargos.');
     await validarCobroDeCargos(db, quote, input.monto);
   }
+  let conceptoBanquete: PaymentConcept | null = null;
+  if (input.destino === 'banquete') {
+    if (origen) throw new QuoteError(400, 'Un depósito o un abono paga la renta del evento, no su banquete.');
+    const cuenta = await validarCobroDeBanquete(db, quote, input.monto);
+    conceptoBanquete = conceptoDeBanquete(cuenta, input.monto);
+  }
 
   let comprobanteKey: string | null = origen?.comprobanteKey ?? null;
   let comprobanteMime: string | null = origen?.comprobanteMime ?? null;
@@ -165,7 +175,7 @@ export async function registerPayment(
       metodo,
       // `Prisma.DbNull` no hace falta: `undefined` deja la columna en NULL.
       formas: formas ?? undefined,
-      concepto: input.concepto,
+      concepto: conceptoBanquete ?? input.concepto,
       fecha: new Date(`${input.fecha}T00:00:00.000Z`),
       referencia: input.referencia ?? null,
       notas: notaONull(input.notas),
@@ -195,6 +205,20 @@ export async function registerPayment(
     // Su recibo por correo. Lo que sale de un depósito o un abono no es dinero
     // nuevo del cliente: su recibo fue el de esa entrada.
     if (!origen) await encolarCorreo(db, quoteId, 'recibo', payment.id);
+    const { estadoCuenta } = await loadEstadoCuenta(db, quote);
+    return { payment, estadoCuenta, nuevoEstatus: null };
+  }
+
+  // El banquete tampoco toca la renta: su bitácora, la foto y su recibo.
+  if (input.destino === 'banquete') {
+    await logActivity(db, {
+      quoteId, tipo: 'pago',
+      descripcion: `Pago ${formatFolio(payment.folio, payment.folioLetra)} del banquete (${conceptoBanquete}) ${pesosTexto(input.monto)} (${describirFormasPago(payment)})`,
+      meta: { paymentId: payment.id, folio: payment.folio, monto: input.monto, destino: 'banquete', concepto: conceptoBanquete, metodo, formas },
+      actorId: actor.id,
+    });
+    await archivarEvento(db, quoteId);
+    await encolarCorreo(db, quoteId, 'recibo', payment.id);
     const { estadoCuenta } = await loadEstadoCuenta(db, quote);
     return { payment, estadoCuenta, nuevoEstatus: null };
   }
@@ -491,4 +515,28 @@ export async function loadComprobantePublico(
   const data = await storage.load(payment.comprobanteKey);
   if (!data) return null;
   return { data, mime: payment.comprobanteMime ?? 'application/octet-stream' };
+}
+
+/**
+ * Que entren `monto` pesos más al banquete sin pasarse de su total. Devuelve la
+ * cuenta como estaba, para deducir el concepto del pago.
+ */
+export async function validarCobroDeBanquete(
+  db: PrismaClient,
+  quote: { id: string; total: number; rentaTotal: number },
+  monto: number,
+) {
+  const cuenta = await cuentaBanquete(db, quote);
+  if (cuenta.total <= 0) {
+    throw new QuoteError(409, 'Este evento no tiene alimentos ni servicios contratados: no hay banquete que cobrar.');
+  }
+  if (monto > cuenta.saldo) {
+    throw new QuoteError(
+      409,
+      cuenta.saldo <= 0
+        ? 'El banquete ya está pagado completo.'
+        : `Al banquete le faltan ${pesosTexto(cuenta.saldo)}: el pago no puede ser mayor.`,
+    );
+  }
+  return cuenta;
 }

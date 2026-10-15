@@ -22,6 +22,7 @@ import {
 import { loadCatalog } from '../catalog/loader.js';
 import { getAvailability } from '../availability/service.js';
 import { cuentaDelEvento, productosDelEvento } from '../cargos/cuenta.js';
+import { cuentaBanquete } from '../payments/banquete.js';
 import { sincronizarContrato } from '../cargos/contrato.js';
 import { logActivity } from './activityLog.js';
 import { cambiosDeServicios, conNombres, type ServiciosDeCotizacion } from './serviciosDiff.js';
@@ -135,6 +136,8 @@ export const includeRels = {
   // El banquetero por nombre: el formulario tiene que poder reabrir la cotización
   // en modo "Banquetero" y enseñar de quién se trata sin otra consulta.
   banquetero: { select: { id: true, nombre: true, telefono: true } },
+  // La agencia del paquete (BI #4): aparte del banquetero-cliente.
+  agencia: { select: { id: true, nombre: true } },
   // Los servicios sueltos del evento: no viven en el catálogo, así que la única
   // forma de recuperarlos para reeditar (y para recalcular) es leerlos de aquí.
   extras: { select: { nombre: true, kind: true, monto: true, cantidad: true } },
@@ -144,7 +147,12 @@ export const includeRels = {
 
 // Se permite editar el desglose incluso con compromiso de pago (formalizada/complementada);
 // las ediciones en esos estatus quedan registradas en la bitácora de actividad.
-const EDITABLE_STATUSES = new Set(['borrador', 'formalizada', 'complementada']);
+/**
+ * Todo lo que tiene fecha se edita, liquidado incluido: "TODO editable, sin
+ * tener que regresarlo a borrador" (Jorge, 15-oct-2026). Regresarlo a borrador
+ * para corregir un nombre es justo como se quedó atorado un importado del BI.
+ */
+const EDITABLE_STATUSES = new Set(['borrador', 'formalizada', 'complementada', 'liquidada']);
 
 // --- Código del evento -------------------------------------------------------
 
@@ -1136,6 +1144,15 @@ export async function updateQuote(db: PrismaClient, id: string, rawInput: unknow
   // (horas extra, PAX extra): se vuelven a poner.
   const { antes: sinCargos, despues: conCargos } = await sincronizarContrato(db, id);
 
+  // Editar un evento ya comprometido puede cambiar lo que debe: uno liquidado al
+  // que le suben los PAX vuelve a tener saldo, y uno al que se le baja el total
+  // puede quedar liquidado. El estatus lo dicen sus pagos, como al corregirlos.
+  // (Import dinámico: `payments/estatus` importa este módulo.)
+  if (existing.status !== 'borrador' && conCargos !== existing.total) {
+    const { ponerAlDia } = await import('../payments/estatus.js');
+    await ponerAlDia(db, id, actor.id, 'se editó el evento');
+  }
+
   // La foto se pone al día si el evento ya pasó (idempotente: si nada cambió, no
   // escribe versión nueva).
   await archivarEvento(db, id);
@@ -1150,7 +1167,7 @@ export async function updateQuote(db: PrismaClient, id: string, rawInput: unknow
  * NO se escribe la fecha a secas — se reconstruye la selección actual con la
  * fecha nueva y se delega en `updateQuote`, que recalcula el desglose, valida
  * que el espacio esté libre en el destino y respeta ownership y estatus
- * editables (liquidada queda fuera por ese camino).
+ * editables.
  *
  * La selección la arma `seleccionGuardada`, no este código: armarla a mano dejaba
  * fuera los extras y el descuento de cortesía, y el arrastre —que el dueño usa a
@@ -1191,7 +1208,7 @@ export async function nombresDeSalones(db: PrismaClient, spaceIds: string[]): Pr
  * y del salón. Por eso no se escribe a secas — se reconstruye la selección actual
  * con el destino y se delega en `updateQuote`, que recalcula el desglose, valida
  * que los salones estén libres en el destino y respeta ownership y estatus
- * editables (liquidada queda fuera por ese camino).
+ * editables.
  *
  * La selección la arma `seleccionGuardada`, no este código: armarla a mano dejaba
  * fuera los extras y el descuento de cortesía, y el arrastre —que el dueño usa a
@@ -1809,8 +1826,10 @@ export async function getQuote(db: PrismaClient, id: string, actor: Actor) {
 
   // La cuenta del punto de venta va aparte del estado de cuenta: son ventas
   // posteriores que no cambian el valor del evento.
-  const [cuenta, productos, devoluciones, codigos, cancelacion] = await Promise.all([
+  const { paqueteDelEvento } = await import('./agencia.js');
+  const [cuenta, banquete, productos, devoluciones, codigos, cancelacion, paquete] = await Promise.all([
     cuentaDelEvento(db, id),
+    cuentaBanquete(db, quote),
     productosDelEvento(db, quote),
     db.devolucion.findMany({
       where: { quoteId: id },
@@ -1819,6 +1838,7 @@ export async function getQuote(db: PrismaClient, id: string, actor: Actor) {
     }),
     historialDeCodigos(db, id),
     resumenCancelacion(db, quote),
+    paqueteDelEvento(db, quote),
   ]);
   const cuentaConCandado = {
     ...cuenta,
@@ -1835,12 +1855,22 @@ export async function getQuote(db: PrismaClient, id: string, actor: Actor) {
     fiscalEditable: datosFiscalesEditables(payments),
     activityLog,
     cuenta: cuentaConCandado,
+    // La cuenta del banquete: alimentos y servicios que cobra la hacienda aparte.
+    banquete: {
+      ...banquete,
+      pagos: banquete.pagos.map((p) => {
+        const est = estadoFacturaPago(p, hoy);
+        return { ...p, facturable: est.facturable, motivoFactura: est.motivo };
+      }),
+    },
     productosPuntoDeVenta: productos,
     devoluciones,
     // Todos los códigos que ha tenido, del primero al vigente.
     codigos,
     // Si está cancelado: lo acordado, lo devuelto y lo que falta devolver.
     cancelacion,
+    // El paquete de alimentos y su agencia (BI #4).
+    paquete,
   };
 }
 
@@ -1849,7 +1879,7 @@ export async function getByToken(db: PrismaClient, token: string) {
   const quote = await db.quote.findUnique({ where: { publicToken: token }, include: includeRels });
   if (!quote || quote.deletedAt) return null; // en papelera: invisible para el cliente
   const { estadoCuenta, payments } = await loadEstadoCuenta(db, quote);
-  const cuenta = await cuentaDelEvento(db, quote.id);
+  const [cuenta, banquete] = await Promise.all([cuentaDelEvento(db, quote.id), cuentaBanquete(db, quote)]);
   const aPublico = (p: (typeof payments)[number]) => ({
       id: p.id,
       folio: p.folio,
@@ -1885,5 +1915,12 @@ export async function getByToken(db: PrismaClient, token: string) {
     pagado: cuenta.pagado,
     saldo: cuenta.saldo,
   };
-  return { quote, estadoCuenta: { ...estadoCuenta, pagos: pagosPublicos }, cuenta: cuentaPublica };
+  // El banquete es del cliente: ve su total, lo pagado y sus recibos.
+  const banquetePublico = {
+    total: banquete.total,
+    pagado: banquete.pagado,
+    saldo: banquete.saldo,
+    pagos: banquete.pagos.filter((p) => p.anuladoAt == null).map(aPublico),
+  };
+  return { quote, estadoCuenta: { ...estadoCuenta, pagos: pagosPublicos }, cuenta: cuentaPublica, banquete: banquetePublico };
 }

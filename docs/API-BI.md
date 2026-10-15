@@ -208,8 +208,8 @@ Cada renglón del desglose guardado con el evento, en datos y no en texto:
 | `precioUnitario` | Con IVA. Es el precio del catálogo **del evento** (cada evento se queda con su catálogo); no hay descuento por renglón. |
 | `subtotal`, `total` | Sin IVA y con IVA. El último renglón de cada bloque absorbe los centavos de redondeo. |
 | `origen` | `contrato`, o `puntoDeVenta` para un cargo que sube el contrato (`cargoId` trae el id del cargo de `/cargos`). |
-| `proveedor`, `comision` | En `servicioCatalogo` con proveedor: `{ clave, nombre }` y `{ porcentaje, monto }`. En `alimentos`: `comision` es lo que la agencia le paga a la hacienda por el paquete (`proveedor` va `null`; la agencia va en `agencia`). La comisión es un % sobre el **subtotal sin IVA** del renglón, congelado al guardar el evento. `null` si no tiene. |
-| `agencia` | Solo en `alimentos`: `{ clave, nombre }` del banquetero del evento, que es la agencia que paga la comisión del paquete. `clave` es el mismo `id` que el `banquetero.id` del evento y el `banqueteroId` de `/pagos`. `null` si el evento no tiene banquetero, y en los demás renglones. |
+| `proveedor`, `comision` | En `servicioCatalogo` con proveedor: `{ clave, nombre }` y `{ porcentaje, monto }`. En `alimentos`: `comision` es lo que la agencia le paga a la hacienda por el paquete (`proveedor` va `null`; la agencia va en `agencia`). La comisión es un % sobre el **subtotal sin IVA** del renglón, congelado al guardar el evento. En `pactado` con paquete (importados, ver `/importar/paquetes`): `comision.monto` es el monto fijo que mandó el BI y `porcentaje` se deduce del subtotal. `null` si no tiene. |
+| `agencia` | Solo en el renglón del paquete (`alimentos`, o `pactado` con `clave`): `{ clave, nombre }` de la agencia que paga la comisión. Es la **agencia del paquete** que la hacienda escoge a mano en el evento, de la lista de banqueteros; si no escogió, el banquetero del evento. `clave` es un `id` de banquetero (el mismo de `banquetero.id` y del `banqueteroId` de `/pagos`). Escoger agencia **no** pone banquetero al evento: el cliente sigue siendo el mismo. `null` si no hay ninguna, y en los demás renglones. |
 | `cobra` | Solo en `servicioCatalogo`: `proveedor` (el cliente le paga directo al proveedor, que le debe la comisión a la hacienda) o `hacienda` (la hacienda lo cobra y le paga al proveedor). `null` en los demás. |
 | `banquetero` | Solo en `bloque: "banquetero"`: `{ id, nombre }`. `null` en los demás. |
 
@@ -267,6 +267,12 @@ factura en el mes en que se recibe; pasado ese mes se va a la global de público
 Incluye los pagos anulados, marcados como tales — el BI decide si los descuenta.
 
 - **Rango sobre:** `fecha` del pago (la fecha en que entró el dinero, no la del evento).
+- **`destino`**: `evento` = abona a la renta; `cargos` = a la cuenta del punto de venta;
+  **`banquete`** (desde el 15-oct-2026) = lo que el cliente le paga a la hacienda por el banquete
+  (el bloque "Alimentos y otros servicios" del contrato). Un pago `banquete` lleva folio I y
+  recibo, pero **no** abona a la renta ni mueve el plan de pagos o el estatus. Su `concepto` se
+  deduce contra el total del banquete: el primero `anticipo`, el que lo completa `finiquito`, los
+  demás `aCuenta`.
 - **`concepto`** (etiquetas del BI desde el 5-oct-2026): `anticipo` = el primer pago; `finiquito` =
   el que deja lo que se debe del contrato en \$1,000 o menos por primera vez (si un solo pago lo
   cubre todo, es finiquito); `aCuenta` = los demás. Se recalcula con cada cambio de dinero (y
@@ -875,3 +881,38 @@ aquí vence a los siete días hábiles). Estados del reporte:
 
 En `/ingresos`, el abono de un apartado de cliente directo trae `de` = el nombre del cliente
 y `banqueteroId: null`.
+
+### `POST /api/bi/conciliar/paquetes` y `POST /api/bi/importar/paquetes`
+
+El paquete de alimentos de los eventos **importados** (BI #4, 15-oct-2026). Su renglón
+`pactado` de "alimentos y servicios" pasa a traer la `clave` del paquete y, si se manda, la
+comisión de la agencia como monto fijo. **El monto no cambia** y el renglón sigue siendo
+`pactado` (no es precio por persona). La agencia **no** viaja aquí: la hacienda la escoge en el
+evento (ver `agencia` en `desglose[]`).
+
+```json
+{ "paquetes": [ { "idBI": "24ENE26-…", "clave": "cm…", "comision": { "monto": 19200 } } ] }
+```
+
+| Campo | Notas |
+|---|---|
+| `idBI` | El `idBI` con el que se importó el evento (no su código actual). |
+| `clave` | La `clave` de `/catalogos.paquetesAlimentos`. Si no está en el catálogo del evento pero sí en otro, se acepta (la clave es la misma) con un aviso en `avisos`. |
+| `comision.monto` | Opcional, pesos (hasta dos decimales). Sin él, el paquete queda sin comisión. |
+
+`conciliar` nunca escribe. `importar` aplica los `aplicar`; mandar el mismo lote otra vez deja
+`sinCambios`. Hasta 500 renglones por lote. Estados del reporte (`resultados[]`, con `resumen`
+por estado):
+
+| `estado` | Qué significa |
+|---|---|
+| `aplicar` / `aplicado` | Se pone (o se puso) el paquete. Trae `quoteId`, `codigo`, `paquete: { clave, nombre }` y `comision`. |
+| `sinCambios` | Ya tenía esa clave y esa comisión. |
+| `noEncontrado` | No hay un evento importado con ese `idBI`. |
+| `cancelado` | El evento está cancelado aquí: no se toca. |
+| `sinPactado` | El evento no tiene renglón `pactado` (no tiene alimentos y servicios). |
+| `claveDesconocida` | Ningún paquete tiene esa `clave`. |
+| `comisionInvalida` | La comisión es mayor que el monto de alimentos y servicios. |
+
+Ajustar el precio pactado de un evento conserva su paquete y su comisión.
+

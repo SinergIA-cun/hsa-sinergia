@@ -32,6 +32,8 @@ export interface RenglonBI {
   /** Solo `alimentos` guardado desde el 14-oct-2026: la comisión de la agencia,
    *  congelada con el evento. Sin esto, el lector la toma del catálogo. */
   paquete?: { comisionPct: number | null };
+  /** Solo `pactado` con paquete (importados, BI #4): su clave y la comisión fija. */
+  pactadoPaquete?: { clave: string; comisionMonto: number | null };
 }
 
 const r2 = (n: number): number => Math.round(n * 100) / 100;
@@ -90,6 +92,9 @@ export function desgloseParaBI(
         ? { servicio: { proveedorId: l.ref.proveedorId ?? null, comisionPct: l.ref.comisionPct ?? null, cobra: l.ref.cobra } }
         : {}),
       ...(tipo === 'alimentos' && l.ref && l.ref.comisionPct !== undefined ? { paquete: { comisionPct: l.ref.comisionPct } } : {}),
+      ...(tipo === 'pactado' && l.ref?.paqueteClave
+        ? { pactadoPaquete: { clave: l.ref.paqueteClave, comisionMonto: l.ref.comisionMonto ?? null } }
+        : {}),
     };
   });
 

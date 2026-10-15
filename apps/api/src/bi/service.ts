@@ -44,6 +44,7 @@ const incluirEvento = {
   eventType: { select: { nombre: true, slug: true } },
   createdBy: { select: { id: true, nombre: true } },
   banquetero: { select: { id: true, nombre: true } },
+  agencia: { select: { id: true, nombre: true } },
   apartado: { select: { importadoBI: true } },
   priceList: { select: { ivaRate: true } },
   serviciosBanquetero: { select: { nombre: true, cantidad: true, monto: true }, orderBy: { id: 'asc' as const } },
@@ -97,6 +98,7 @@ function desgloseDelEvento(
     total: number;
     priceList: { ivaRate: number } | null;
     banquetero: { id: string; nombre: string } | null;
+    agencia: { id: string; nombre: string } | null;
     serviciosBanquetero: { nombre: string; cantidad: number; monto: number | null }[];
   },
   refs: Awaited<ReturnType<typeof referenciasDelDesglose>>,
@@ -107,13 +109,17 @@ function desgloseDelEvento(
     rentaTotal: q.rentaTotal,
     otrosTotal: restarDinero(q.total, q.rentaTotal),
   });
-  const vendidos = renglones.map(({ refId, servicio: congelado, paquete: paqueteCongelado, ...r }) => {
+  // La agencia del paquete: la escogida a mano (importados, BI #4) o, si no, el
+  // banquetero del evento.
+  const agencia = q.agencia ?? q.banquetero;
+  const vendidos = renglones.map(({ refId, servicio: congelado, paquete: paqueteCongelado, pactadoPaquete, ...r }) => {
     const servicio = r.tipo === 'servicioCatalogo' && refId ? refs.servicio.get(refId) : undefined;
     const paquete = r.tipo === 'alimentos' && refId ? refs.paquete.get(refId) : undefined;
     const clave =
       r.tipo === 'servicioCatalogo' ? servicio?.clave ?? null
       : r.tipo === 'alimentos' ? paquete?.clave ?? null
       : r.tipo === 'rentaSalon' || r.tipo === 'cargoContrato' ? refId
+      : r.tipo === 'pactado' ? pactadoPaquete?.clave ?? null
       : null;
     const datos = congelado ?? (servicio ? { proveedorId: servicio.proveedorId, comisionPct: servicio.comisionPct, cobra: servicio.cobra } : null);
     const pct =
@@ -126,9 +132,16 @@ function desgloseDelEvento(
       categoria: servicio?.categoria ?? null,
       cobra: datos?.cobra ?? null,
       proveedor: datos?.proveedorId ? { clave: datos.proveedorId, nombre: refs.proveedor.get(datos.proveedorId) ?? null } : null,
-      comision: pct != null ? { porcentaje: pct, monto: Math.round(r.subtotal * pct) / 100 } : null,
-      /** Solo `alimentos`: la agencia que paga la comisión del paquete (el banquetero del evento). */
-      agencia: r.tipo === 'alimentos' && q.banquetero ? { clave: q.banquetero.id, nombre: q.banquetero.nombre } : null,
+      comision:
+        pactadoPaquete?.comisionMonto != null
+          ? // Importado: la comisión viene del libro como monto; el % se deduce.
+            { porcentaje: r.subtotal > 0 ? Math.round((pactadoPaquete.comisionMonto / r.subtotal) * 10_000) / 100 : 0, monto: pactadoPaquete.comisionMonto }
+          : pct != null ? { porcentaje: pct, monto: Math.round(r.subtotal * pct) / 100 } : null,
+      /** El renglón del paquete (`alimentos`, o `pactado` con paquete): la agencia que paga su comisión. */
+      agencia:
+        (r.tipo === 'alimentos' || (r.tipo === 'pactado' && pactadoPaquete)) && agencia
+          ? { clave: agencia.id, nombre: agencia.nombre }
+          : null,
       banquetero: null as { id: string; nombre: string } | null,
     };
   });
@@ -773,7 +786,7 @@ export async function biCatalogos(db: PrismaClient) {
     estatusEvento: ['borrador', 'formalizada', 'complementada', 'liquidada', 'standby', 'cancelada'],
     // Las etiquetas del BI. `complemento` ya no se usa (5-oct-2026).
     conceptosPago: ['anticipo', 'aCuenta', 'finiquito'],
-    destinosPago: ['evento', 'cargos'],
+    destinosPago: ['evento', 'cargos', 'banquete'],
     productosCargo: Object.values(PRODUCTO_INFO).map((p) => ({
       producto: p.producto,
       nombre: p.nombre,

@@ -4,7 +4,7 @@ import { metodoCapturaSchema, formasPagoSchema, describirFormasPago, formatFolio
 import { QuoteError, ownershipWhere, assertNotTrashed, type Actor } from '../quotes/service.js';
 import { logActivity } from '../quotes/activityLog.js';
 import { validarCobroDeCargos } from '../cargos/service.js';
-import { resolverOError } from './service.js';
+import { resolverOError, validarCobroDeBanquete } from './service.js';
 import { folioPapelSchema, subirSecuenciaSobre, validarFolioDePapel } from './folios.js';
 import { ponerAlDia } from './estatus.js';
 
@@ -37,14 +37,20 @@ export const moverPagoSchema = z.object({
 });
 
 /** El pago editable de un evento propio, o el error que explica por qué no. */
-async function pagoCorregible(db: PrismaClient, quoteId: string, paymentId: string, actor: Actor) {
+async function pagoCorregible(
+  db: PrismaClient,
+  quoteId: string,
+  paymentId: string,
+  actor: Actor,
+  { permitirAnulado = false }: { permitirAnulado?: boolean } = {},
+) {
   if (actor.role !== 'admin') throw new QuoteError(403, 'Solo un admin puede corregir o mover un pago.');
   const quote = await db.quote.findFirst({ where: { id: quoteId, ...ownershipWhere(actor) } });
   if (!quote) throw new QuoteError(404, 'Cotización no encontrada');
   assertNotTrashed(quote);
   const pago = await db.payment.findFirst({ where: { id: paymentId, quoteId } });
   if (!pago) throw new QuoteError(404, 'Pago no encontrado');
-  if (pago.anuladoAt) throw new QuoteError(409, 'El pago está anulado: ya no se corrige ni se mueve.');
+  if (pago.anuladoAt && !permitirAnulado) throw new QuoteError(409, 'El pago está anulado: ya no se corrige ni se mueve.');
   if (pago.facturadoAt) throw new QuoteError(409, 'El pago ya tiene CFDI: cancélalo antes de corregir o mover el pago.');
   // Un pago que salió de repartir un depósito de banquetero (o de convertir un
   // abono) es una parte de esa entrada: se corrige desde ella, o se anula y se
@@ -84,6 +90,7 @@ export async function corregirPago(db: PrismaClient, quoteId: string, paymentId:
   }
   if (input.folioPapel != null && input.folioPapel !== pago.folio) await validarFolioDePapel(db, input.folioPapel, actor);
   if (pago.destino === 'cargos' && monto > pago.monto) await validarCobroDeCargos(db, quote, restarDinero(monto, pago.monto));
+  if (pago.destino === 'banquete' && monto > pago.monto) await validarCobroDeBanquete(db, quote, restarDinero(monto, pago.monto));
 
   const antes = { monto: pago.monto, fecha: pago.fecha.toISOString().slice(0, 10), formas: describirFormasPago(pago), referencia: pago.referencia, folio: pago.folio };
   const actualizado = await db.payment.update({
@@ -132,7 +139,7 @@ export async function eventoPorCodigo(db: PrismaClient, codigo: string, actor: A
       deletedAt: null,
       OR: [{ id: { in: ids } }, { etiqueta: { equals: c, mode: 'insensitive' } }],
     },
-    select: { id: true, etiqueta: true, fechaEvento: true, status: true, client: { select: { nombre: true } } },
+    select: { id: true, etiqueta: true, fechaEvento: true, status: true, total: true, rentaTotal: true, client: { select: { nombre: true } } },
   });
 }
 
@@ -140,31 +147,48 @@ export async function eventoPorCodigo(db: PrismaClient, codigo: string, actor: A
  * Mueve un pago a otro evento: el recibo se capturó en el evento equivocado. Es
  * el MISMO recibo (mismo folio, monto y forma); cambia el evento. Los dos eventos
  * se ponen al día y los dos dejan el rastro en su bitácora.
+ *
+ * También REASIGNA uno anulado (Jorge, 15-oct-2026): se capturó en el evento
+ * equivocado, lo anularon, y al recapturarlo en el correcto el folio de papel ya
+ * estaba "usado" por el anulado. El recibo anulado se pasa al evento correcto y
+ * vuelve a valer ahí, con su folio; la anulación queda en la bitácora del origen.
  */
 export async function moverPago(db: PrismaClient, quoteId: string, paymentId: string, rawInput: unknown, actor: Actor) {
-  const { pago } = await pagoCorregible(db, quoteId, paymentId, actor);
+  const { pago } = await pagoCorregible(db, quoteId, paymentId, actor, { permitirAnulado: true });
+  const reasigna = pago.anuladoAt != null;
   const input = moverPagoSchema.parse(rawInput);
   const destino = await eventoPorCodigo(db, input.destino, actor);
   if (!destino) throw new QuoteError(404, `No hay un evento con el código ${input.destino}.`);
   if (destino.id === quoteId) throw new QuoteError(400, 'El pago ya está en ese evento.');
   if (destino.status === 'cancelada') throw new QuoteError(409, 'Ese evento está cancelado: no se le pasan pagos.');
   if (pago.destino === 'cargos') await validarCobroDeCargos(db, destino, pago.monto);
+  if (pago.destino === 'banquete') await validarCobroDeBanquete(db, destino, pago.monto);
 
   const origen = await db.quote.findUniqueOrThrow({ where: { id: quoteId }, select: { etiqueta: true } });
-  await db.payment.update({ where: { id: paymentId }, data: { quoteId: destino.id } });
+  await db.payment.update({
+    where: { id: paymentId },
+    data: { quoteId: destino.id, ...(reasigna ? { anuladoAt: null, anuladoById: null, motivoAnulacion: null } : {}) },
+  });
   const folio = formatFolio(pago.folio, pago.folioLetra);
+  const verbo = reasigna ? 'anulado, reasignado' : 'movido';
   await logActivity(db, {
     quoteId,
     tipo: 'edicion',
-    descripcion: `Pago ${folio} $${pago.monto} movido al evento ${destino.etiqueta}: ${input.motivo}`,
-    meta: { paymentId, movidoA: destino.id, codigoDestino: destino.etiqueta, monto: pago.monto, motivo: input.motivo },
+    descripcion: `Pago ${folio} $${pago.monto} ${verbo} al evento ${destino.etiqueta}: ${input.motivo}`,
+    meta: {
+      paymentId, movidoA: destino.id, codigoDestino: destino.etiqueta, monto: pago.monto, motivo: input.motivo,
+      ...(reasigna ? { reasignado: true, motivoAnulacion: pago.motivoAnulacion } : {}),
+    },
     actorId: actor.id,
   });
   await logActivity(db, {
     quoteId: destino.id,
     tipo: 'pago',
-    descripcion: `Pago ${folio} $${pago.monto} recibido del evento ${origen.etiqueta}: ${input.motivo}`,
-    meta: { paymentId, folio: pago.folio, monto: pago.monto, movidoDe: quoteId, codigoOrigen: origen.etiqueta, motivo: input.motivo },
+    descripcion: `Pago ${folio} $${pago.monto} ${reasigna ? 'reasignado (estaba anulado en' : 'recibido del'} evento ${origen.etiqueta}${reasigna ? ')' : ''}: ${input.motivo}`,
+    meta: {
+      paymentId, folio: pago.folio, monto: pago.monto, movidoDe: quoteId, codigoOrigen: origen.etiqueta, motivo: input.motivo,
+      ...(reasigna ? { reasignado: true } : {}),
+    },
     actorId: actor.id,
   });
   if (pago.destino === 'evento') {

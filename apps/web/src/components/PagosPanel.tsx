@@ -5,25 +5,13 @@ import { api, API_BASE } from '../lib/api.ts';
 import { formatMXN } from '../lib/money.ts';
 import { formatEventDate, formatTimestamp } from '../lib/date.ts';
 import { describirFormasPago, formatFolio } from '@hsa/shared';
-import { Button, Card, MoneyInput, TextInput, SelectInput, Field } from './ui.tsx';
-import { FormasPagoCampo, errorFormas, formasEnFormData, formasIniciales } from './FormasPagoCampo.tsx';
-import { STATUS_LABEL } from '../lib/status.ts';
-import { FolioPapelCampo, folioPapelParaEnviar } from './FolioPapelCampo.tsx';
-import { NotasCampo, NotasEditables } from './NotasPago.tsx';
+import { Button, Card, Field, TextInput } from './ui.tsx';
+import { NotasEditables } from './NotasPago.tsx';
+import { RegistrarPagoForm, CONCEPTOS } from './RegistrarPagoForm.tsx';
+import { BanquetePagos } from './BanquetePagos.tsx';
 import { CorregirPagoForm, MoverPagoForm } from './CorregirPago.tsx';
-import type { EstadoCuenta, Payment, PaymentConcept, ActivityEntry, QuoteStatus } from '../lib/types.ts';
+import type { EstadoCuenta, Payment, PaymentConcept, ActivityEntry, CuentaBanquete } from '../lib/types.ts';
 import { ReciboWhatsApp, type ClienteContacto } from './ReciboWhatsApp.tsx';
-
-/**
- * Los conceptos que se pueden elegir, con la etiqueta que ve la vendedora. Son
- * los del BI (5-oct-2026): sin "complemento", que solo sigue en la etiqueta de
- * pagos viejos.
- */
-const CONCEPTOS: { value: PaymentConcept; label: string }[] = [
-  { value: 'anticipo', label: 'Anticipo' },
-  { value: 'aCuenta', label: 'A cuenta' },
-  { value: 'finiquito', label: 'Finiquito' },
-];
 
 const CONCEPTO_LABEL: Record<PaymentConcept, string> = {
   anticipo: 'Anticipo',
@@ -42,6 +30,8 @@ interface Props {
   isAdmin: boolean;
   estadoCuenta: EstadoCuenta;
   payments: Payment[];
+  /** La cuenta del banquete (alimentos y servicios que cobra la hacienda). */
+  banquete?: CuentaBanquete;
   activityLog: ActivityEntry[];
   /** Solo lectura (papelera): sin registrar pagos ni anular. */
   readOnly?: boolean;
@@ -56,23 +46,13 @@ export function PagosPanel({
   isAdmin,
   estadoCuenta,
   payments,
+  banquete,
   activityLog,
   readOnly = false,
   sinPagosNuevos = false,
 }: Props) {
   const qc = useQueryClient();
-  const [monto, setMonto] = useState('');
-  const [formas, setFormas] = useState(() => formasIniciales());
-  const [concepto, setConcepto] = useState('anticipo');
-  const [fecha, setFecha] = useState(() => new Date().toISOString().slice(0, 10));
-  const [referencia, setReferencia] = useState('');
-  const [notas, setNotas] = useState('');
-  const [folioPapel, setFolioPapel] = useState('');
-  const [comprobante, setComprobante] = useState<File | null>(null);
-  const [fileKey, setFileKey] = useState(0);
   const [info, setInfo] = useState('');
-  const [err, setErr] = useState('');
-  const [busy, setBusy] = useState(false);
   const [pagoAFacturar, setPagoAFacturar] = useState<Payment | null>(null);
   /** El pago que se está corrigiendo o moviendo (uno a la vez). */
   const [accion, setAccion] = useState<{ id: string; tipo: 'corregir' | 'mover' } | null>(null);
@@ -86,54 +66,6 @@ export function PagosPanel({
     // Un pago encola su recibo por correo.
     await qc.invalidateQueries({ queryKey: ['correos', quoteId] });
     await qc.invalidateQueries({ queryKey: ['quotes'] });
-  }
-
-  // Se envía multipart (FormData) para poder anexar la foto de comprobante
-  // (cámara en tablet o archivo). El backend acepta multipart y JSON.
-  async function registrar(e: React.FormEvent) {
-    e.preventDefault();
-    setErr('');
-    const errorDeFormas = errorFormas(formas, Number(monto) || 0);
-    if (errorDeFormas) {
-      setErr(errorDeFormas);
-      return;
-    }
-    setBusy(true);
-    try {
-      const fd = new FormData();
-      fd.set('monto', monto);
-      formasEnFormData(fd, formas);
-      fd.set('concepto', concepto);
-      fd.set('fecha', fecha);
-      if (referencia) fd.set('referencia', referencia);
-      if (notas.trim()) fd.set('notas', notas.trim());
-      const folio = isAdmin ? folioPapelParaEnviar(folioPapel) : undefined;
-      if (folio) fd.set('folioPapel', String(folio));
-      if (comprobante) fd.set('comprobante', comprobante);
-
-      const res = await fetch(`${apiBase}/api/quotes/${quoteId}/payments`, {
-        method: 'POST',
-        credentials: 'include',
-        body: fd,
-      });
-      if (!res.ok) {
-        const cuerpo = (await res.json().catch(() => null)) as { error?: string } | null;
-        throw new Error(cuerpo?.error ?? 'No se pudo registrar el pago. Revisa los datos.');
-      }
-      const body = (await res.json()) as { nuevoEstatus: QuoteStatus | null; payment: Payment };
-
-      setMonto(''); setReferencia(''); setNotas(''); setFolioPapel(''); setComprobante(null); setFileKey((k) => k + 1);
-      setFormas(formasIniciales(formas.dividido ? 'transferencia' : formas.forma));
-      setInfo(
-        `Pago registrado con el folio ${formatFolio(body.payment.folio, body.payment.folioLetra)}.` +
-          (body.nuevoEstatus ? ` Estatus actualizado automáticamente a ${STATUS_LABEL[body.nuevoEstatus]}.` : ''),
-      );
-      await refresh();
-    } catch (e) {
-      setErr(e instanceof Error && e.message ? e.message : 'No se pudo registrar el pago. Revisa los datos.');
-    } finally {
-      setBusy(false);
-    }
   }
 
   // Reabrir la facturación de un pago cuyo mes ya cerró. Solo admin, y queda en
@@ -161,7 +93,8 @@ export function PagosPanel({
   });
 
   async function anular(paymentId: string) {
-    const motivo = window.prompt('Motivo de la anulación:');
+    // Si solo se capturó en el evento equivocado, "Mover" lo lleva al correcto con su folio.
+    const motivo = window.prompt('Motivo de la anulación:\n(Si se capturó en el evento equivocado, cancela y usa "Mover": conserva el folio.)');
     if (!motivo) return;
     await api.patch(`/api/quotes/${quoteId}/payments/${paymentId}/anular`, { motivo });
     await refresh();
@@ -213,50 +146,31 @@ export function PagosPanel({
         </Card>
       )}
 
-      {/* Registrar pago */}
+      {/* Registrar pago de la RENTA y, debajo, del BANQUETE (Jorge, 15-oct-2026):
+          dos cuentas separadas, de distinto color para no confundirlas. */}
       {!readOnly && !sinPagosNuevos && (
-      <Card className="p-6">
-        <h3 className="mb-4 font-display text-xl text-ink">Registrar pago</h3>
-        <form onSubmit={registrar} className="grid gap-4 sm:grid-cols-2">
-          <Field label="Monto (MXN)"><MoneyInput value={monto} onValue={setMonto} required /></Field>
-          <Field label="Fecha"><TextInput type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} required /></Field>
-          <FormasPagoCampo value={formas} onChange={setFormas} monto={Number(monto) || 0} />
-          {/* El concepto se DEDUCE del saldo: comparando el pagado acumulado con
-              los hitos del plan sale solo si es anticipo, a cuenta o
-              finiquito. Lo que se elige aquí solo se usa en los eventos SIN plan
-              de pagos (los espacios cuyos montos no están definidos). Si hace
-              falta discrepar, el concepto se corrige en el renglón del pago. */}
-          <Field
-            label="Concepto"
-            hint="Se deduce del saldo. Solo se usa tal cual si el evento no tiene plan de pagos."
-          >
-            <SelectInput value={concepto} onChange={(e) => setConcepto(e.target.value)}>
-              {CONCEPTOS.map((c) => (
-                <option key={c.value} value={c.value}>{c.label}</option>
-              ))}
-            </SelectInput>
-          </Field>
-          <Field label="Referencia (opcional)"><TextInput value={referencia} onChange={(e) => setReferencia(e.target.value)} /></Field>
-          <Field label="Comprobante (foto, opcional)" hint="En tablet abre la cámara.">
-            <input
-              key={fileKey}
-              type="file"
-              accept="image/*"
-              capture="environment"
-              onChange={(e) => setComprobante(e.target.files?.[0] ?? null)}
-              className="block w-full text-sm text-charcoal file:mr-3 file:rounded-lg file:border-0 file:bg-ink file:px-3 file:py-2 file:text-sm file:text-cream hover:file:bg-ink-700"
-            />
-          </Field>
-          {isAdmin && <FolioPapelCampo value={folioPapel} onChange={setFolioPapel} />}
-          <div className="sm:col-span-2">
-            <NotasCampo value={notas} onChange={setNotas} />
-          </div>
-          <div className="sm:col-span-2">
-            {err && <p className="mb-2 text-sm text-wine">{err}</p>}
-            <Button type="submit" variant="primary" disabled={busy}>{busy ? 'Guardando…' : 'Guardar pago'}</Button>
-          </div>
-        </form>
-      </Card>
+        <Card className="p-6">
+          <RegistrarPagoForm
+            quoteId={quoteId}
+            isAdmin={isAdmin}
+            destino="evento"
+            titulo={<>Registrar pago <span className="font-sans text-base font-semibold uppercase tracking-[0.12em] text-gold">Renta</span></>}
+            onListo={async (mensaje) => { setInfo(mensaje); await refresh(); }}
+          />
+        </Card>
+      )}
+      {banquete && (
+        <BanquetePagos
+          quoteId={quoteId}
+          publicToken={publicToken}
+          cliente={cliente}
+          isAdmin={isAdmin}
+          banquete={banquete}
+          puedeRegistrar={!readOnly && !sinPagosNuevos}
+          readOnly={readOnly}
+          onCambio={async (mensaje) => { if (mensaje) setInfo(mensaje); await refresh(); }}
+          onAnular={anular}
+        />
       )}
 
       {/* Lista de pagos */}
@@ -265,8 +179,8 @@ export function PagosPanel({
           <h3 className="mb-4 font-display text-xl text-ink">Pagos</h3>
           <ul className="divide-y divide-cream-200">
             {payments.map((p) => (
-              <li key={p.id} className={`flex flex-wrap items-center justify-between gap-x-4 gap-y-1 py-2.5 text-sm ${p.anuladoAt ? 'opacity-60' : ''}`}>
-                <span className={`flex flex-wrap items-center gap-x-1.5 gap-y-1 ${p.anuladoAt ? 'line-through' : ''}`}>
+              <li key={p.id} className={`flex flex-wrap items-center justify-between gap-x-4 gap-y-1 py-2.5 text-sm`}>
+                <span className={`flex flex-wrap items-center gap-x-1.5 gap-y-1 ${p.anuladoAt ? 'line-through opacity-60' : ''}`}>
                   <span className="font-medium text-charcoal-soft">{formatFolio(p.folio, p.folioLetra)}</span> · {formatEventDate(p.fecha)} ·{' '}
                   {/* El concepto es editable en el renglón: corregirlo es un error
                       de captura, no un movimiento de dinero. En los pagos anulados
@@ -292,7 +206,7 @@ export function PagosPanel({
                   {p.referencia && ` · ${p.referencia}`}
                 </span>
                 <span className="flex items-center gap-3">
-                  <span className={`tabular-nums ${p.anuladoAt ? 'line-through' : ''}`}>{formatMXN(p.monto)}</span>
+                  <span className={`tabular-nums ${p.anuladoAt ? 'line-through opacity-60' : ''}`}>{formatMXN(p.monto)}</span>
                   {p.comprobanteKey && !p.anuladoAt && (
                     <a
                       href={`${apiBase}/api/quotes/${quoteId}/comprobante/${p.id}`}
@@ -353,6 +267,13 @@ export function PagosPanel({
                     </>
                   )}
                   {isAdmin && !readOnly && !p.anuladoAt && <button onClick={() => anular(p.id)} className="text-xs text-wine hover:underline">Anular</button>}
+                  {/* Se anuló porque iba en otro evento: se reasigna allá con su
+                      folio, en vez de recapturarlo (el folio ya está "usado"). */}
+                  {isAdmin && !readOnly && p.anuladoAt && !p.facturadoAt && !p.pagoBanqueteroId && (
+                    <button type="button" onClick={() => setAccion({ id: p.id, tipo: 'mover' })} className="text-xs text-ink hover:underline">
+                      Reasignar a otro evento
+                    </button>
+                  )}
                 </span>
                 {accion?.id === p.id && accion.tipo === 'corregir' && (
                   <CorregirPagoForm
@@ -373,7 +294,7 @@ export function PagosPanel({
                     onCancelar={() => setAccion(null)}
                     onListo={async (destino) => {
                       setAccion(null);
-                      setInfo(`Pago ${formatFolio(p.folio, p.folioLetra)} movido al evento ${destino.codigo}.`);
+                      setInfo(`Pago ${formatFolio(p.folio, p.folioLetra)} ${p.anuladoAt ? 'reasignado' : 'movido'} al evento ${destino.codigo}.`);
                       await refresh();
                     }}
                   />

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { normalizarNombre, emparejarNombre, desgloseImportado, compararEvento, conRentaAcordada, conPrecioPactado, conSalones } from './importacion.js';
+import { normalizarNombre, emparejarNombre, desgloseImportado, compararEvento, conRentaAcordada, conPrecioPactado, conSalones, conPaquetePactado } from './importacion.js';
 import type { QuoteBreakdown } from '../types.js';
 
 describe('normalizarNombre y emparejarNombre', () => {
@@ -194,5 +194,28 @@ describe('conSalones', () => {
   it('sin salones o sin renta de salón, falla con un mensaje claro', () => {
     expect(() => conSalones(conCargo, [])).toThrow('al menos un salón');
     expect(() => conSalones({ ...conCargo, lines: [] }, [{ id: 'c', nombre: 'Los Campos' }])).toThrow('renta de salón');
+  });
+});
+
+describe('conPaquetePactado (BI #4)', () => {
+  const b = desgloseImportado({ salones: [{ spaceId: 's1', nombre: 'Arcos' }], rentaTotal: 40_000, otrosTotal: 116_000, ivaRate: 0.16 });
+
+  it('pone clave y comisión en el renglón pactado sin mover montos', () => {
+    const r = conPaquetePactado(b, { clave: 'pq-supreme', comisionMonto: 19_200 })!;
+    const pactado = r.lines.find((l) => l.ref?.tipo === 'pactado')!;
+    expect(pactado.ref).toMatchObject({ paqueteClave: 'pq-supreme', comisionMonto: 19_200, precioUnitario: 116_000 });
+    expect(r.total).toBe(b.total);
+    expect(pactado.monto).toBe(116_000);
+  });
+
+  it('sin renglón pactado devuelve null', () => {
+    const soloRenta = desgloseImportado({ salones: [{ spaceId: 's1', nombre: 'Arcos' }], rentaTotal: 40_000, otrosTotal: 0, ivaRate: 0.16 });
+    expect(conPaquetePactado(soloRenta, { clave: 'x', comisionMonto: null })).toBeNull();
+  });
+
+  it('ajustar el precio pactado conserva el paquete', () => {
+    const con = conPaquetePactado(b, { clave: 'pq-supreme', comisionMonto: 19_200 })!;
+    const r = conPrecioPactado(con, { renta: 42_000, otros: 120_000 }, 0.16);
+    expect(r.lines.find((l) => l.ref?.tipo === 'pactado')!.ref).toMatchObject({ paqueteClave: 'pq-supreme', comisionMonto: 19_200, precioUnitario: 120_000 });
   });
 });

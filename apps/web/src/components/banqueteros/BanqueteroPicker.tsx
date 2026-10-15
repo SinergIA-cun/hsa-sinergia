@@ -1,5 +1,5 @@
 import { useMemo, useState, type ReactNode } from 'react';
-import { Building2, Search, UserRound, X } from 'lucide-react';
+import { Search, Sparkles, UserRound, X } from 'lucide-react';
 import { coincideTexto } from '@hsa/shared';
 
 export interface BanqueteroLite {
@@ -19,6 +19,11 @@ const TOPE_RESULTADOS = 8;
  * preguntas distintas en un mismo control: *qué tipo* de venta es y *cuál*
  * banquetero. Aquí van separadas —el interruptor decide el tipo, el buscador
  * encuentra al banquetero— que es también el orden en que se piensa al capturar.
+ *
+ * Los nombres son los de Jorge (15-oct-2026): "Cliente o empresa" y
+ * "Profesional de eventos" —wedding planners, banqueteros, quien organiza
+ * graduaciones—, que es como piensan en quien les trae el evento. Por dentro
+ * sigue siendo el "banquetero" de siempre: el profesional firma y se le factura.
  *
  * El interruptor nunca elige banquetero por su cuenta. Preseleccionar "el
  * primero de la lista" es como se firma un contrato a nombre de quien no era.
@@ -65,17 +70,28 @@ export function BanqueteroPicker({
     setQ('');
   }
 
-  const opcion = (activo: boolean, label: string, icon: ReactNode, onClick: () => void) => (
+  const opcion = (activo: boolean, titulo: string, detalle: string, icon: ReactNode, onClick: () => void) => (
     <button
       type="button"
       onClick={onClick}
       aria-pressed={activo}
-      className={`inline-flex flex-1 items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium transition-colors ${
+      className={`group flex flex-1 items-start gap-3 rounded-lg px-4 py-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold/60 ${
         activo ? 'bg-ink text-cream shadow-sm' : 'text-ink hover:bg-ink/5'
       }`}
     >
-      {icon}
-      {label}
+      <span
+        className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full ${
+          activo ? 'bg-gold text-ink' : 'bg-cream-300/70 text-ink'
+        }`}
+      >
+        {icon}
+      </span>
+      <span>
+        <span className="block text-sm font-semibold">{titulo}</span>
+        <span className={`mt-0.5 block text-xs leading-snug ${activo ? 'text-cream/75' : 'text-charcoal-soft'}`}>
+          {detalle}
+        </span>
+      </span>
     </button>
   );
 
@@ -84,24 +100,28 @@ export function BanqueteroPicker({
       <p className="text-xs font-medium uppercase tracking-wide text-charcoal-soft">
         ¿Para quién es este evento?
       </p>
-      <div className="flex gap-1 rounded-xl border border-cream-300 bg-cream-100/60 p-1">
-        {opcion(modo === 'cliente', 'Cliente', <UserRound size={15} />, () => {
+      <div className="flex flex-col gap-1 rounded-xl border border-cream-300 bg-cream-100/60 p-1 sm:flex-row">
+        {opcion(modo === 'cliente', 'Cliente o empresa', 'Contrata directo con la hacienda.', <UserRound size={15} />, () => {
           onModo('cliente');
           // Cambiar de modo SÍ desliga: si no, un contrato capturado como
           // banquetero y corregido a cliente se guardaría con el banquetero
           // pegado y nadie lo vería en la pantalla.
           if (value !== '') elegir('');
         })}
-        {opcion(modo === 'banquetero', 'Banquetero', <Building2 size={15} />, () =>
-          onModo('banquetero'),
+        {opcion(
+          modo === 'banquetero',
+          'Profesional de eventos',
+          'Wedding planners, banqueteros, graduaciones… Firma y se le factura a él.',
+          <Sparkles size={15} />,
+          () => onModo('banquetero'),
         )}
       </div>
 
       {modo === 'banquetero' && value !== '' && (
         <div className="flex items-center justify-between gap-3 rounded-lg border border-gold/40 bg-gold/5 px-3 py-2.5 text-sm">
           <span className="inline-flex items-center gap-2 text-ink">
-            <Building2 size={15} className="text-gold" />
-            <strong className="font-medium">{nombreActual || 'Banquetero'}</strong>
+            <Sparkles size={15} className="text-gold" />
+            <strong className="font-medium">{nombreActual || 'Profesional de eventos'}</strong>
           </span>
           <button
             type="button"
@@ -124,7 +144,7 @@ export function BanqueteroPicker({
               autoFocus
               value={q}
               onChange={(e) => setQ(e.target.value)}
-              placeholder="Busca al banquetero por nombre o teléfono…"
+              placeholder="Busca al profesional por nombre o teléfono…"
               className="w-full rounded-lg border border-ink/15 bg-white/70 py-2.5 pl-9 pr-3 text-sm text-charcoal placeholder:text-charcoal-soft/60 focus:border-gold focus:outline-none focus:ring-2 focus:ring-gold/30"
             />
           </div>
@@ -154,13 +174,13 @@ export function BanqueteroPicker({
               Sin coincidencias. Si es nuevo, un admin lo da de alta en{' '}
               <a href="/banqueteros" className="underline">
                 Banqueteros
-              </a>
-              .
+              </a>{' '}
+              (ahí van también wedding planners y organizadores).
             </p>
           )}
           {!needle && (
             <p className="mt-1 text-xs text-charcoal-soft">
-              Sin banquetero elegido, este contrato se guarda como venta directa a cliente.
+              Sin profesional elegido, este contrato se guarda como venta directa a cliente.
             </p>
           )}
         </div>

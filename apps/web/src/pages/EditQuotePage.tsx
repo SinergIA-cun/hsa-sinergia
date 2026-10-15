@@ -26,6 +26,7 @@ import { CompartirClienteModal } from '../components/CompartirClienteModal.tsx';
 import { ConfirmarEmpalmeModal, type EspacioOcupado } from '../components/ConfirmarEmpalmeModal.tsx';
 import { MoverCatalogoModal } from '../components/MoverCatalogoModal.tsx';
 import { AjustarPrecioForm } from '../components/AjustarPrecio.tsx';
+import { AgenciaPaquete } from '../components/AgenciaPaquete.tsx';
 import { OperativaSection } from '../components/OperativaSection.tsx';
 import { CodigoEvento } from '../components/CodigoEvento.tsx';
 import { CicloEvento } from '../components/ciclo/CicloEvento.tsx';
@@ -100,7 +101,11 @@ export function EditQuotePage() {
 
   // Origen de la navegación: si vino de la agenda, "atrás" regresa a ese mes.
   const desdeAgenda = sp.get('volver') === 'agenda';
-  const backTo = desdeAgenda ? `/agenda?m=${sp.get('m') ?? ''}` : '/eventos';
+  const backTo = desdeAgenda
+    ? `/agenda?${new URLSearchParams(
+        ['v', 'd', 'm'].flatMap((k) => (sp.get(k) ? [[k, sp.get(k)!]] : [])),
+      ).toString()}`
+    : '/eventos';
   const backLabel = desdeAgenda ? 'Agenda' : 'Eventos';
   const { user } = useAuth();
   const [saved, setSaved] = useState(false);
@@ -239,7 +244,9 @@ export function EditQuotePage() {
   // vivo contra el catálogo, y el servidor nunca lo recotiza. Enseñar otro total
   // sería mentir.
   const importado = Boolean(quote.precioPactado ?? quote.importadoBI);
-  const editable = EDITABLE_STATUSES.includes(quote.status) && !enPapelera && !importado;
+  // Los importados también se editan (Jorge, 15-oct-2026: "TODO editable"): el
+  // formulario entra en modo precio pactado y no recotiza.
+  const editable = EDITABLE_STATUSES.includes(quote.status) && !enPapelera;
   const contratoDisponible =
     !enPapelera && ['formalizada', 'complementada', 'liquidada'].includes(quote.status);
   const publicUrl = `${window.location.origin}/c/${quote.publicToken}`;
@@ -378,10 +385,50 @@ export function EditQuotePage() {
         <>
           {saved && (
             <p className="mb-4 rounded-lg bg-gold/15 px-4 py-2 text-sm text-gold">
-              Cambios guardados. El desglose se recalculó.
+              {importado ? 'Cambios guardados. El precio pactado no cambió.' : 'Cambios guardados. El desglose se recalculó.'}
             </p>
           )}
+          {importado && (
+            <div className="mb-4 rounded-lg border border-gold/30 bg-gold/5 px-4 py-3 text-sm text-charcoal">
+              {quote.importadoBI
+                ? `Importado del BI${quote.contratadoEl ? `, contratado el ${formatEventDate(quote.contratadoEl)}` : ''}`
+                : 'Renta acordada al apartar'}
+              . Tiene precio pactado: se editan los datos, el precio no se recotiza.
+              {isAdmin && !ajustarPrecio && (
+                <>
+                  {' '}
+                  <button
+                    type="button"
+                    className="rounded font-medium text-gold underline underline-offset-2 hover:text-gold-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold/60"
+                    onClick={() => setAjustarPrecio(true)}
+                  >
+                    Ajustar precio
+                  </button>
+                </>
+              )}
+              {ajustarPrecio && (
+                <div className="mt-3">
+                  <AjustarPrecioForm
+                    quoteId={quote.id}
+                    breakdown={quote.breakdown}
+                    total={quote.total}
+                    pagado={estadoCuenta.pagado}
+                    onCancelar={() => setAjustarPrecio(false)}
+                    onListo={async () => {
+                      setAjustarPrecio(false);
+                      await Promise.all([
+                        qc.invalidateQueries({ queryKey: ['quote', id] }),
+                        qc.invalidateQueries({ queryKey: ['quotes'] }),
+                      ]);
+                    }}
+                  />
+                </div>
+              )}
+            </div>
+          )}
           <QuoteForm
+            key={`${quote.id}-${quote.total}`}
+            precioPactado={importado ? quote.breakdown : undefined}
             catalog={catalog}
             initial={toInitial(quote)}
             submitLabel="Guardar cambios"
@@ -398,6 +445,7 @@ export function EditQuotePage() {
             isAdmin={isAdmin}
             estadoCuenta={estadoCuenta}
             payments={payments}
+            banquete={quoteQ.data?.banquete}
             activityLog={activityLog}
           />
         </>
@@ -416,9 +464,7 @@ export function EditQuotePage() {
                   ? `${quote.importadoBI ? `Importado del BI${quote.contratadoEl ? `, contratado el ${formatEventDate(quote.contratadoEl)}` : ''}` : 'Renta acordada al apartar'}. Tiene precio pactado: no se recotiza. La fecha y el lugar se cambian con "Mover evento" y los datos del día, en la hoja operativa.`
                   : quote.status === 'standby'
                     ? 'Sin fecha: se edita de nuevo en cuanto se reprograme.'
-                    : quote.status === 'cancelada'
-                      ? 'Cancelado: solo lectura. Un admin lo puede reactivar.'
-                      : 'Ya no es editable (está liquidado). Puedes cambiar el estatus o imprimir.'}
+                    : 'Cancelado: solo lectura. Un admin lo puede reactivar.'}
               {isAdmin && importado && !enPapelera && quote.status !== 'cancelada' && !ajustarPrecio && (
                 <>
                   {' '}
@@ -468,10 +514,22 @@ export function EditQuotePage() {
           isAdmin={isAdmin}
           estadoCuenta={estadoCuenta}
           payments={payments}
+          banquete={quoteQ.data?.banquete}
           activityLog={activityLog}
           readOnly={enPapelera}
           // A un cancelado ya no le entra dinero (la API lo rechaza igual).
           sinPagosNuevos={quote.status === 'cancelada'}
+        />
+      )}
+
+      {/* El paquete de alimentos y la agencia que paga su comisión (BI #4). */}
+      {quoteQ.data?.paquete && (
+        <AgenciaPaquete
+          quoteId={quote.id}
+          paquete={quoteQ.data.paquete}
+          agencia={quote.agencia ?? null}
+          banqueteroDelEvento={quote.banquetero ?? null}
+          readOnly={enPapelera}
         />
       )}
 

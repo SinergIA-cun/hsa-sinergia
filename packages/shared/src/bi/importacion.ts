@@ -210,6 +210,11 @@ export function conPrecioPactado(b: QuoteBreakdown, nuevo: { renta: number; otro
       ref: { tipo: 'rentaSalon', ...(l.spaceId ? { id: l.spaceId } : {}), cantidad: 1, unidad: 'evento', precioUnitario: monto },
     };
   });
+  // El paquete que se le puso al renglón pactado (BI #4) sobrevive al ajuste.
+  const paqueteAntes = b.lines.find(esOtrosPactado)?.ref;
+  const delPaquete = paqueteAntes?.paqueteClave
+    ? { paqueteClave: paqueteAntes.paqueteClave, comisionMonto: paqueteAntes.comisionMonto ?? null }
+    : {};
   const otros: QuoteLine[] =
     nuevo.otros === undefined || nuevo.otros <= 0
       ? []
@@ -220,7 +225,7 @@ export function conPrecioPactado(b: QuoteBreakdown, nuevo: { renta: number; otro
             monto: nuevo.otros,
             ivaIncluido: true,
             grupo: 'otros',
-            ref: { tipo: 'pactado', cantidad: 1, unidad: 'evento', precioUnitario: nuevo.otros },
+            ref: { tipo: 'pactado', cantidad: 1, unidad: 'evento', precioUnitario: nuevo.otros, ...delPaquete },
           },
         ];
 
@@ -352,4 +357,23 @@ export function compararEvento(bi: EventoComparable, hsa: EventoComparable): Dif
     d.push({ campo: 'usaCapilla', bi: bi.usaCapilla, hsa: hsa.usaCapilla ?? false });
   }
   return d;
+}
+
+/**
+ * Le pone a un evento importado el paquete que se vendió (BI #4, 15-oct-2026):
+ * la `clave` del paquete y la comisión de la agencia como monto fijo, en su
+ * renglón `pactado` de "alimentos y servicios". El monto NO cambia: es un monto
+ * único pactado, no un precio por persona. Sin renglón pactado, `null`.
+ */
+export function conPaquetePactado(
+  b: QuoteBreakdown,
+  paquete: { clave: string; comisionMonto: number | null },
+): QuoteBreakdown | null {
+  const i = b.lines.findIndex((l) => l.grupo === 'otros' && !l.cargoId && l.ref?.tipo === 'pactado');
+  if (i < 0) return null;
+  const l = b.lines[i]!;
+  const lines = b.lines.map((x, j) =>
+    j === i ? { ...l, ref: { ...l.ref!, paqueteClave: paquete.clave, comisionMonto: paquete.comisionMonto } } : x,
+  );
+  return { ...b, lines };
 }

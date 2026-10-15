@@ -284,6 +284,8 @@ export interface Quote {
    *  hacienda: firma él y se le factura a él. */
   banqueteroId?: string | null;
   banquetero?: { id: string; nombre: string; telefono: string | null } | null;
+  /** La agencia que paga la comisión del paquete (BI #4); aparte del banquetero-cliente. */
+  agencia?: { id: string; nombre: string } | null;
   /** El cliente FINAL. Dato operativo: va en la hoja operativa, NO en el contrato. */
   festejado?: string | null;
   festejadoTelefono?: string | null;
@@ -351,8 +353,11 @@ export interface Payment {
   metodo: PaymentMethod;
   /** Las partes si vino dividido; `null` en los pagos de antes de la división. */
   formas: PartePago[] | null;
-  /** `evento` = abona a la renta; `cargos` = a la cuenta del punto de venta. */
-  destino: 'evento' | 'cargos';
+  /**
+   * `evento` = abona a la renta; `cargos` = a la cuenta del punto de venta;
+   * `banquete` = al banquete (alimentos y servicios), que cobra la hacienda aparte.
+   */
+  destino: 'evento' | 'cargos' | 'banquete';
   /**
    * El concepto EFECTIVO: se deduce de dónde deja el acumulado contra los hitos
    * del plan, no de lo que se teclea. Se reclasifica cuando cambia el acumulado
@@ -461,12 +466,23 @@ export interface QuoteDetail {
   activityLog: ActivityEntry[];
   /** La cuenta del punto de venta: lo cargado después de contratar. */
   cuenta: CuentaEvento;
+  /** La cuenta del banquete: alimentos y servicios del contrato que cobra la hacienda. */
+  banquete: CuentaBanquete;
   productosPuntoDeVenta: ProductoPuntoDeVenta[];
   devoluciones: Devolucion[];
   /** Todos los códigos que ha tenido, del primero al vigente. */
   codigos?: CodigoHistorial[];
   /** Si está cancelado: lo acordado, lo devuelto y lo que falta devolver. */
   cancelacion?: ResumenCancelacion | null;
+  /** El paquete de alimentos: del catálogo o puesto desde el BI en un importado. */
+  paquete?: PaqueteDelEvento | null;
+}
+
+export interface PaqueteDelEvento {
+  clave: string;
+  nombre: string;
+  comisionMonto: number | null;
+  origen: 'catalogo' | 'pactado';
 }
 
 export interface ResumenCancelacion {
@@ -541,6 +557,14 @@ export interface CargoEvento {
 }
 
 /** La cuenta del evento: sus cargos, sus cobros y el saldo. No toca el valor del evento. */
+/** El banquete: el total es el bloque "Alimentos y otros servicios" del contrato. */
+export interface CuentaBanquete {
+  total: number;
+  pagado: number;
+  saldo: number;
+  pagos: Payment[];
+}
+
 export interface CuentaEvento {
   cargos: CargoEvento[];
   pagos: Payment[];

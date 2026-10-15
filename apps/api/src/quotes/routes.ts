@@ -1,4 +1,5 @@
 import type { FastifyInstance } from 'fastify';
+import { cambiarAgencia } from './agencia.js';
 import { z } from 'zod';
 import { requireAdmin, requireAuth } from '../auth/plugin.js';
 import { encolarCorreo, exigirCorreoParaFormalizar } from '../correos/cola.js';
@@ -217,6 +218,16 @@ export async function quoteRoutes(app: FastifyInstance): Promise<void> {
   app.patch<{ Params: { id: string } }>('/quotes/:id/precio-pactado', { preHandler: requireAdmin }, async (req, reply) => {
     try {
       return await ajustarPrecioPactado(app.prisma, req.params.id, req.body, req.user as Actor);
+    } catch (e) {
+      if (e instanceof QuoteError) return reply.code(e.status).send({ error: e.message });
+      throw e;
+    }
+  });
+
+  // La agencia del paquete de alimentos (BI #4): de la lista de banqueteros.
+  app.patch<{ Params: { id: string } }>('/quotes/:id/agencia', { preHandler: requireAuth }, async (req, reply) => {
+    try {
+      return await cambiarAgencia(app.prisma, req.params.id, req.body, req.user as Actor);
     } catch (e) {
       if (e instanceof QuoteError) return reply.code(e.status).send({ error: e.message });
       throw e;

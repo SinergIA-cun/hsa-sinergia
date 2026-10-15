@@ -125,6 +125,12 @@ export interface LineaRef {
    *  congelada al guardar. Ausente = evento guardado antes de congelarla. */
   comisionPct?: number | null;
   cobra?: CobraServicio;
+  /** Solo `pactado` de un evento importado: la `clave` del paquete de alimentos
+   *  que se vendió (BI #4). El monto sigue siendo el pactado, no por persona. */
+  paqueteClave?: string;
+  /** Solo `pactado` con paquete: la comisión de la agencia como monto fijo, con
+   *  la que vino del libro del BI. `null` = sin comisión. */
+  comisionMonto?: number | null;
 }
 
 export interface QuoteBreakdown {

@@ -166,6 +166,15 @@ interface Props {
   fiscalEditable?: { editable: boolean; motivo: string | null };
   /** Un admin puede corregir datos fiscales ya congelados por una factura emitida. */
   isAdmin?: boolean;
+  /**
+   * El desglose GUARDADO de un evento con precio pactado (importado del BI o
+   * apartado con renta acordada). Con él, el formulario edita los datos —cliente,
+   * tipo de evento, PAX, festejado, facturación— pero no recotiza: el precio es el
+   * que se pactó y el servidor no lo toca. Lo que solo mueve el precio (salón,
+   * alimentos, servicios) no se enseña; la fecha y el salón van por "Mover
+   * evento" y el precio por "Ajustar precio".
+   */
+  precioPactado?: QuoteBreakdown;
 }
 
 export function QuoteForm({
@@ -183,6 +192,7 @@ export function QuoteForm({
   enableClientSearch = false,
   fiscalEditable,
   isAdmin = false,
+  precioPactado,
 }: Props) {
   const [nombre, setNombre] = useState(initial?.nombre ?? '');
   const [telefono, setTelefono] = useState(initial?.telefono ?? '');
@@ -393,19 +403,20 @@ export function QuoteForm({
   );
 
   const { breakdown, calcError } = useMemo(() => {
+    if (precioPactado) return { breakdown: precioPactado, calcError: '' };
     if (spaceIds.length === 0) return { breakdown: null as QuoteBreakdown | null, calcError: '' };
     try {
       return { breakdown: computeQuote(catalog.engine, selection), calcError: '' };
     } catch (e) {
       return { breakdown: null, calcError: e instanceof Error ? e.message : 'No se pudo calcular' };
     }
-  }, [catalog, selection, spaceIds.length]);
+  }, [catalog, selection, spaceIds.length, precioPactado]);
 
   // Preview del plan de pago. Se calcula sobre la RENTA (lo único que cobra y
   // rastrea HSA) y replica la fórmula del servidor: los anticipos se suman y el
   // porcentaje del complemento pesa según la renta que aporta cada espacio.
   const plan = useMemo(() => {
-    if (!breakdown || spaceIds.length === 0) return null;
+    if (precioPactado || !breakdown || spaceIds.length === 0) return null;
     const reglas = spaceIds.map((id) => catalog.spaces.find((s) => s.id === id)?.paymentRule ?? null);
     if (reglas.some((r) => !r)) return null; // un espacio sin regla ⇒ plan pendiente
 
@@ -571,7 +582,7 @@ export function QuoteForm({
                teléfono o el correo sí, porque el contrato exige uno. */
             <div className="rounded-lg border border-ink/10 bg-ink/[0.03] px-3 py-2.5">
               <p className="text-[0.7rem] font-semibold uppercase tracking-wide text-charcoal-soft">
-                Cliente directo
+                Cliente o empresa
               </p>
               <p className="mt-0.5 text-sm text-ink">{nombre}</p>
               <p className="mt-1 text-xs text-charcoal-soft">
@@ -584,7 +595,7 @@ export function QuoteForm({
                cliente paralelo del mismo señor. */
             <div className="rounded-lg border border-ink/10 bg-ink/[0.03] px-3 py-2.5">
               <p className="text-[0.7rem] font-semibold uppercase tracking-wide text-charcoal-soft">
-                Banquetero
+                Profesional de eventos
               </p>
               <p className="mt-0.5 text-sm text-ink">
                 {banqueteros.find((b) => b.id === banqueteroId)?.nombre ?? nombre}
@@ -606,7 +617,7 @@ export function QuoteForm({
 
           {esDeBanquetero && (
             <p className="rounded-lg bg-cream-200/70 px-3 py-2 text-sm text-ink">
-              El banquetero es el cliente de la hacienda: <strong>firma él y se le factura a él</strong>.
+              El profesional de eventos es el cliente de la hacienda: <strong>firma él y se le factura a él</strong>.
               Sus datos quedan de solo lectura; para corregirlos, edítalo en{' '}
               <a href="/banqueteros" className="underline">Banqueteros</a>.
               {enableClientSearch && ' Si ya tiene ficha de cliente, aparece abajo de su nombre: úsala para no duplicarla.'}
@@ -630,7 +641,7 @@ export function QuoteForm({
               listas encimadas confunden—; con banquetero elegido enseña su ficha
               si ya tiene una, para no duplicarla. */}
           <ClienteCombobox
-            label={esDeBanquetero ? 'Nombre (del banquetero)' : 'Nombre'}
+            label={esDeBanquetero ? 'Nombre (del profesional)' : 'Nombre o empresa'}
             value={nombre}
             readOnly={esDeBanquetero || bloqueado?.cliente}
             buscar={enableClientSearch && !pickedClientId && !buscandoBanquetero && !bloqueado?.cliente}
@@ -666,7 +677,7 @@ export function QuoteForm({
               primera letra del nombre regaña antes de tiempo. */}
           <p className={`-mt-2 text-xs ${faltaContacto && nombre && fecha && spaceIds.length > 0 ? 'text-wine' : 'text-charcoal-soft'}`}>
             {faltaContacto && nombre && fecha && spaceIds.length > 0
-              ? `${MENSAJE_SIN_CONTACTO}${esDeBanquetero && !telefono ? ' El banquetero no tiene teléfono: captura su correo.' : ''}`
+              ? `${MENSAJE_SIN_CONTACTO}${esDeBanquetero && !telefono ? ' El profesional no tiene teléfono: captura su correo.' : ''}`
               : 'Teléfono o correo: al menos uno es obligatorio.'}
             {pickedClientId && !faltaContacto && ' Si lo cambias, se actualiza en su ficha.'}
           </p>
@@ -722,13 +733,19 @@ export function QuoteForm({
             </Field>
             <Field
               label="Fecha del evento"
-              hint={bloqueado?.fecha ? 'Es la fecha que se apartó.' : undefined}
+              hint={
+                bloqueado?.fecha
+                  ? 'Es la fecha que se apartó.'
+                  : precioPactado
+                    ? 'Se cambia con "Mover evento", que revisa que el salón esté libre.'
+                    : undefined
+              }
             >
               <TextInput
                 type="date"
                 value={fecha}
                 onChange={(e) => setFecha(e.target.value)}
-                disabled={bloqueado?.fecha}
+                disabled={bloqueado?.fecha || Boolean(precioPactado)}
               />
             </Field>
             {catalogos && catalogos.length > 0 && (
@@ -771,6 +788,9 @@ export function QuoteForm({
           </div>
         </Card>
 
+        {/* Con precio pactado, lo que solo mueve el precio no se enseña. */}
+        {!precioPactado && (
+          <>
         <Card className="space-y-3 p-6">
           <h2 className="font-display text-xl text-ink">Espacio</h2>
           <p className="-mt-1 text-xs text-charcoal-soft">
@@ -1179,6 +1199,8 @@ export function QuoteForm({
             <ServiciosBanqueteroCampo servicios={serviciosBanquetero} onChange={setServiciosBanquetero} />
           )}
         </Card>
+          </>
+        )}
 
         <FacturacionSection
           requiereFactura={requiereFactura}
@@ -1195,10 +1217,18 @@ export function QuoteForm({
       <div className="lg:sticky lg:top-24 lg:self-start">
         <Card className="overflow-hidden">
           <div className="bg-ink px-6 py-4 text-cream">
-            <p className="text-xs uppercase tracking-[0.2em] text-gold-200">Desglose en vivo</p>
+            <p className="text-xs uppercase tracking-[0.2em] text-gold-200">
+              {precioPactado ? 'Precio pactado' : 'Desglose en vivo'}
+            </p>
             <p className="mt-1 font-display text-3xl">{breakdown ? formatMXN(breakdown.total) : '—'}</p>
           </div>
           <div className="p-6">
+            {precioPactado && (
+              <p className="mb-4 rounded-lg bg-cream-200/70 px-3 py-2 text-xs text-charcoal">
+                Editar estos datos no cambia el precio. La fecha y el salón se cambian con "Mover evento"; el
+                precio, con "Ajustar precio".
+              </p>
+            )}
             {calcError && (
               <p className="rounded-lg bg-wine/10 px-3 py-2 text-xs text-wine">Ajusta los datos: {calcError}</p>
             )}

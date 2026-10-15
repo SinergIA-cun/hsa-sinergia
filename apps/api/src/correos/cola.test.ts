@@ -174,3 +174,26 @@ describe('el correo es obligatorio al formalizar (desde la pantalla)', () => {
     expect(lista.json().correos).toEqual([expect.objectContaining({ tipo: 'bienvenida', estado: 'pendiente' })]);
   });
 });
+
+describe('volver a su estatus no es formalizar (15-oct-2026)', () => {
+  const estatus = (id: string, status: string) =>
+    app.inject({ method: 'PATCH', url: `/api/quotes/${id}/status`, cookies: cookie, payload: { status } });
+
+  it('un evento que estuvo liquidado y se regresó a borrador vuelve a liquidado sin correo ni bienvenida', async () => {
+    const q = await evento('antes@example.com');
+    expect((await estatus(q.id, 'liquidada')).statusCode).toBe(200);
+    expect((await estatus(q.id, 'borrador')).statusCode).toBe(200);
+    // Sin correo y sin la bienvenida de la primera vez: se borra para probar la bitácora sola.
+    await prisma.correoCliente.deleteMany({ where: { quoteId: q.id } });
+    await prisma.client.update({ where: { id: q.clientId }, data: { correo: null } });
+    expect((await estatus(q.id, 'liquidada')).statusCode).toBe(200);
+    expect(await correosDe(q.id)).toEqual([]);
+  });
+
+  it('uno importado del BI vuelve sin correo y sin bienvenida', async () => {
+    const q = await evento(null);
+    await prisma.quote.update({ where: { id: q.id }, data: { importadoBI: `test-regreso-${randomUUID()}` } });
+    expect((await estatus(q.id, 'liquidada')).statusCode).toBe(200);
+    expect(await correosDe(q.id)).toEqual([]);
+  });
+});

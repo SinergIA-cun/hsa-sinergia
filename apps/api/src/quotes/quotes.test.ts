@@ -428,7 +428,7 @@ describe('quotes service', () => {
     expect(movida.total).toBeLessThan(totalSabado);
   });
 
-  it('no se puede mover una cotización liquidada', async () => {
+  it('una cotización liquidada también se mueve (todo editable, 15-oct-2026)', async () => {
     const { eventTypeId, camposId } = await ids();
     const q = await createQuote(
       prisma,
@@ -441,7 +441,8 @@ describe('quotes service', () => {
     createdClientIds.push(q.clientId);
     await updateStatus(prisma, q.id, 'liquidada', actor);
 
-    await expect(moveQuoteDate(prisma, q.id, '2030-02-16', actor)).rejects.toThrow(/liquidada/i);
+    const movida = await moveQuoteDate(prisma, q.id, '2030-02-16', actor);
+    expect(movida.fechaEvento.toISOString().slice(0, 10)).toBe('2030-02-16');
   });
 
   it('no se puede mover a una fecha donde el espacio está comprometido', async () => {
@@ -658,7 +659,7 @@ describe('quotes HTTP', () => {
     });
     expect(edit2.statusCode).toBe(200);
 
-    // Editar tras liquidar: bloqueado (409)
+    // Editar tras liquidar: también se permite (Jorge, 15-oct-2026: "TODO editable")
     await app.inject({ method: 'PATCH', url: `/api/quotes/${q.id}/status`, cookies: auth, payload: { status: 'liquidada' } });
     const edit3 = await app.inject({
       method: 'PUT',
@@ -666,7 +667,8 @@ describe('quotes HTTP', () => {
       cookies: auth,
       payload: { fecha: '2030-01-19', invitados: 250, spaceIds: [arcosId], eventTypeId },
     });
-    expect(edit3.statusCode).toBe(409);
+    expect(edit3.statusCode).toBe(200);
+    expect(edit3.json().quote.invitados).toBe(250);
   });
 });
 
