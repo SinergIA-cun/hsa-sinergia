@@ -54,7 +54,7 @@ export async function cotizacionesDesplazadas(db: PrismaClient, actor: Actor): P
   const [eventos, apartados] = await Promise.all([
     db.quote.findMany({
       where: { status: { in: [...BLOQUEANTES] }, deletedAt: null, fechaEvento: { in: fechas } },
-      select: { id: true, fechaEvento: true, spaceIds: true, client: { select: { nombre: true } } },
+      select: { id: true, fechaEvento: true, spaceIds: true, createdById: true, client: { select: { nombre: true } } },
       orderBy: { createdAt: 'asc' },
     }),
     // Los apartados de banquetero también desplazan: bloquean la fecha igual que
@@ -75,7 +75,12 @@ export async function cotizacionesDesplazadas(db: PrismaClient, actor: Actor): P
     }),
   ]);
   const bloqueantes = [
-    ...eventos.map((e) => ({ ...e, nombre: e.client.nombre, tipo: 'evento' as const })),
+    // De un evento ajeno, un vendedor solo sabe que el salón ya está ocupado.
+    ...eventos.map((e) => ({
+      ...e,
+      nombre: actor.role !== 'admin' && e.createdById !== actor.id ? 'otro evento' : e.client.nombre,
+      tipo: 'evento' as const,
+    })),
     // Un apartado vencido ya soltó la fecha (se libera solo, sin que nadie lo toque).
     ...apartados.filter((a) => apartadoVivo(a)).map((a) => ({ ...a, nombre: titularDeApartado(a), tipo: 'apartado' as const })),
   ];

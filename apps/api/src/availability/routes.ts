@@ -26,12 +26,12 @@ export async function availabilityRoutes(app: FastifyInstance): Promise<void> {
     if (!parsed.success) return reply.code(400).send({ error: 'Parámetros inválidos' });
     const { fecha, spaceIds, excludeQuoteId, excludeApartadoId } = parsed.data;
     const ids = spaceIds.split(',').filter(Boolean);
-    return getAvailability(app.prisma, fecha, ids, excludeQuoteId, { excludeApartadoId });
+    return getAvailability(app.prisma, fecha, ids, excludeQuoteId, { excludeApartadoId, actor: req.user as { id: string; role: string } });
   });
 
   app.get('/agenda', { preHandler: requireAuth }, async (req, reply) => {
     const parsed = agendaQuery.safeParse(req.query);
     if (!parsed.success) return reply.code(400).send({ error: 'Parámetros inválidos' });
-    return getAgenda(app.prisma, parsed.data.from, parsed.data.to);
+    return getAgenda(app.prisma, parsed.data.from, parsed.data.to, { actor: req.user as { id: string; role: string } });
   });
 }

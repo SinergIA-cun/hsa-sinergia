@@ -279,6 +279,21 @@ export function AgendaPage() {
             primarySpace(e, nombreById).nombre || (e.spaceIds.length === 0 && e.usaCapilla ? 'Capilla' : '');
           const empalmada = desplazadas.has(e.quoteId);
           const estatus = e.esCortesia ? 'Cortesía familiar' : STATUS_LABEL[e.status];
+          // De otro vendedor: solo "ocupado" y el salón. No se abre ni se arrastra.
+          if (e.ajeno) {
+            return (
+              <button
+                key={e.quoteId}
+                type="button"
+                title={`${espacio || 'Salón'} ocupado por otro evento`}
+                aria-label={`${espacio || 'Salón'} ocupado`}
+                className={`block w-full cursor-default rounded bg-ink/10 text-left leading-tight text-charcoal-soft ${tam}`}
+              >
+                <span className="block truncate font-semibold">{espacio || 'Salón'}</span>
+                <span className="block truncate opacity-80">Ocupado</span>
+              </button>
+            );
+          }
           return (
             <ChipArrastrable
               key={e.quoteId}
