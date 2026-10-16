@@ -36,6 +36,9 @@ export async function productosDelEvento(
     invitados: number;
     spaceIds: string[];
     foodPackageId: string | null;
+    /** Cómo se cobra la hora extra en este evento; sin ninguno, el % del catálogo. */
+    horaExtraPct?: number | null;
+    horaExtraMonto?: number | null;
   },
 ) {
   const [lista, dj] = await Promise.all([
@@ -45,7 +48,11 @@ export async function productosDelEvento(
       select: { price: true },
     }),
   ]);
-  const hora = precioHoraExtra(rentaBaseDeDesglose(quote.breakdown), lista?.extraHourRate ?? 0.05);
+  // La hora extra se sugiere como se pactó en el evento: monto fijo, otro %, o el del catálogo.
+  const hora =
+    quote.horaExtraMonto != null
+      ? quote.horaExtraMonto
+      : precioHoraExtra(rentaBaseDeDesglose(quote.breakdown), quote.horaExtraPct != null ? quote.horaExtraPct / 100 : (lista?.extraHourRate ?? 0.05));
   // Si el catálogo no alcanza para calcularlo (un salón sin rango para esos
   // invitados, un evento importado con salón fuera de catálogo), no se sugiere:
   // se teclea, como cualquier producto sin tarifa.

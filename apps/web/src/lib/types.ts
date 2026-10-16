@@ -312,6 +312,9 @@ export interface Quote {
   descuentoPct?: number | null;
   /** El mismo descuento en monto fijo (pesos con IVA). Uno u otro. */
   descuentoMonto?: number | null;
+  /** Hora extra de este evento: % de la renta o monto fijo por hora. Sin ninguno, el del catálogo. */
+  horaExtraPct?: number | null;
+  horaExtraMonto?: number | null;
   descuentoMotivo?: string | null;
   breakdown: QuoteBreakdown;
   total: number;

@@ -17,6 +17,8 @@ export async function cargoRoutes(app: FastifyInstance): Promise<void> {
         invitados: true,
         spaceIds: true,
         foodPackageId: true,
+        horaExtraPct: true,
+        horaExtraMonto: true,
       },
     });
     if (!quote) return reply.code(404).send({ error: 'Evento no encontrado' });
