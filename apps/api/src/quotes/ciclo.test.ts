@@ -269,13 +269,12 @@ describe('cancelar: qué pasa con el dinero', () => {
   });
 });
 
-describe('mover un evento formalizado es de admin (15-oct-2026)', () => {
-  it('un vendedor mueve su borrador, pero no uno formalizado', async () => {
+describe('la vendedora mueve sus eventos (16-oct-2026)', () => {
+  it('mueve su borrador y también uno formalizado', async () => {
     const borrador = await evento();
     await expect(reprogramarEvento(prisma, borrador.id, { fecha: sabado() }, ventas)).resolves.toBeTruthy();
     const formal = await evento();
     await prisma.quote.update({ where: { id: formal.id }, data: { status: 'formalizada' } });
-    await expect(reprogramarEvento(prisma, formal.id, { fecha: sabado() }, ventas)).rejects.toMatchObject({ status: 403 });
-    await expect(reprogramarEvento(prisma, formal.id, { fecha: sabado() }, admin)).resolves.toBeTruthy();
+    await expect(reprogramarEvento(prisma, formal.id, { fecha: sabado() }, ventas)).resolves.toBeTruthy();
   });
 });
