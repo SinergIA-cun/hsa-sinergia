@@ -129,7 +129,7 @@ function CatalogoRow({
             )}
           </p>
           <p className="mt-0.5 text-xs text-charcoal-soft">
-            Año {pl.anio} · {plural(pl.cotizaciones, 'cotización', 'cotizaciones')} ·{' '}
+            {plural(pl.cotizaciones, 'cotización', 'cotizaciones')} ·{' '}
             {plural(pl.renta, 'renglón de renta', 'renglones de renta')} ·{' '}
             {plural(pl.servicios, 'servicio', 'servicios')} ·{' '}
             {plural(pl.paquetes, 'paquete', 'paquetes')} · <DjCobertura dj={pl.dj} />
@@ -240,29 +240,30 @@ function NuevoCatalogoCard({
 }) {
   const activo = priceLists.find((p) => p.activa);
   const [nombre, setNombre] = useState('');
-  const [anio, setAnio] = useState('');
   // `null` = nadie ha tocado el select todavía, así que manda el activo. La
   // cadena vacía SÍ es una elección ("empezar vacío"); si se usara `''` como
   // "sin tocar", esa opción sería imposible de elegir: el fallback la pisaría.
   const [clonarDe, setClonarDe] = useState<string | null>(null);
+  // Dos maneras de empezar, a la vista (16-oct-2026): antes "empezar vacío" era
+  // la última opción escondida del desplegable "Clonar de" y parecía que solo
+  // se podía clonar.
+  const [desdeCero, setDesdeCero] = useState(false);
   const [incrementoPct, setIncrementoPct] = useState('');
   const [error, setError] = useState('');
   const [creado, setCreado] = useState('');
 
-  const origen = clonarDe ?? activo?.id ?? '';
+  const origen = desdeCero ? '' : clonarDe ?? activo?.id ?? '';
 
   const crear = useMutation({
     mutationFn: () =>
       api.post<{ priceList: PriceList }>('/api/admin/price-lists', {
         nombre: nombre.trim(),
-        anio: Number(anio),
         ...(origen ? { clonarDe: origen } : {}),
-        ...(incrementoPct.trim() ? { incrementoPct: Number(incrementoPct) } : {}),
+        ...(origen && incrementoPct.trim() ? { incrementoPct: Number(incrementoPct) } : {}),
       }),
     onSuccess: async (res) => {
       setCreado(res.priceList.nombre);
       setNombre('');
-      setAnio('');
       setIncrementoPct('');
       setError('');
       await onCreated();
@@ -275,9 +276,8 @@ function NuevoCatalogoCard({
 
   function onSubmit(e: FormEvent) {
     e.preventDefault();
-    const anioNum = Number(anio);
-    if (!nombre.trim() || !Number.isInteger(anioNum) || anioNum < 2000 || anioNum > 2100) {
-      setError('Pon un nombre y un año entre 2000 y 2100.');
+    if (!nombre.trim()) {
+      setError('Ponle un nombre al catálogo.');
       return;
     }
     if (incrementoPct.trim() && Number.isNaN(Number(incrementoPct))) {
@@ -299,39 +299,64 @@ function NuevoCatalogoCard({
             placeholder="2028"
           />
         </Field>
-        <Field label="Año">
-          <TextInput
-            type="number"
-            min={2000}
-            max={2100}
-            value={anio}
-            onChange={(e) => setAnio(e.target.value)}
-            placeholder="2028"
-          />
-        </Field>
-        <Field label="Clonar de">
-          <SelectInput value={origen} onChange={(e) => setClonarDe(e.target.value)}>
-            {priceLists.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.nombre}
-                {p.activa ? ' (activo)' : ''}
-              </option>
+        <div>
+          <p className="mb-1.5 text-xs font-medium uppercase tracking-wide text-charcoal-soft">¿Cómo empiezas?</p>
+          <div className="flex flex-col gap-1 rounded-xl border border-cream-300 bg-cream-100/60 p-1 sm:flex-row">
+            {(
+              [
+                [false, 'Copiar uno existente', 'Trae todos sus precios; puedes subirlos un %.'],
+                [true, 'Desde cero', 'Trae los salones y rangos de invitados, sin precios. Servicios y alimentos vacíos.'],
+              ] as const
+            ).map(([cero, titulo, detalle]) => (
+              <button
+                key={titulo}
+                type="button"
+                aria-pressed={desdeCero === cero}
+                onClick={() => setDesdeCero(cero)}
+                className={`flex-1 rounded-lg px-3 py-2.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold/60 ${
+                  desdeCero === cero ? 'bg-ink text-cream shadow-sm' : 'text-ink hover:bg-ink/5'
+                }`}
+              >
+                <span className="block text-sm font-semibold">{titulo}</span>
+                <span className={`mt-0.5 block text-xs leading-snug ${desdeCero === cero ? 'text-cream/75' : 'text-charcoal-soft'}`}>
+                  {detalle}
+                </span>
+              </button>
             ))}
-            <option value="">Empezar vacío (mismos salones y rangos, sin precios)</option>
-          </SelectInput>
-        </Field>
-        <Field
-          label="Incremento (%)"
-          hint="Se aplica a la renta, a los servicios y a los paquetes de alimentos. No se aplica a la tarifa de capilla en sábado ni al IVA, la hora extra o el descuento por alimentos: esos se copian tal cual."
-        >
-          <TextInput
-            type="number"
-            step="0.01"
-            value={incrementoPct}
-            onChange={(e) => setIncrementoPct(e.target.value)}
-            placeholder="0"
-          />
-        </Field>
+          </div>
+        </div>
+        {!desdeCero && (
+          <>
+            <Field label="Copiar de">
+              <SelectInput value={origen} onChange={(e) => setClonarDe(e.target.value)}>
+                {priceLists.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.nombre}
+                    {p.activa ? ' (activo)' : ''}
+                  </option>
+                ))}
+              </SelectInput>
+            </Field>
+            <Field
+              label="Incremento (%)"
+              hint="Se aplica a la renta, a los servicios y a los paquetes de alimentos. No se aplica a la tarifa de capilla en sábado ni al IVA, la hora extra o el descuento por alimentos: esos se copian tal cual."
+            >
+              <TextInput
+                type="number"
+                step="0.01"
+                value={incrementoPct}
+                onChange={(e) => setIncrementoPct(e.target.value)}
+                placeholder="0"
+              />
+            </Field>
+          </>
+        )}
+        {desdeCero && (
+          <p className="text-xs text-charcoal-soft">
+            Después de crearlo, ábrelo con <strong>Editar</strong> y captura los precios de renta; los servicios y
+            paquetes de alimentos se dan de alta en sus secciones.
+          </p>
+        )}
 
         {/* Nace inactivo a propósito: crear el catálogo del año que viene no debe
             cambiar el precio de lo que se cotiza hoy. */}
