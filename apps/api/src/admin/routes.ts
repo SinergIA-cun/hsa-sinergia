@@ -1,10 +1,14 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
+import { TIPOS_PROFESIONAL } from '@hsa/shared';
 import { requireAdmin, requireAuth } from '../auth/plugin.js';
 import { contratosQueUsan, mensajeEnUso, type UsoEnContratos } from '../quotes/usos.js';
 
+const tipoProfesional = z.enum(TIPOS_PROFESIONAL);
+
 const banqueteroCreateSchema = z.object({
   nombre: z.string().min(1),
+  tipo: tipoProfesional.optional(),
   // OBLIGATORIO al dar de alta (decisión del dueño): un banquetero sin teléfono
   // es una contraparte con la que no se puede hablar, y de éstos depende dinero.
   // El correo es opcional.
@@ -14,6 +18,7 @@ const banqueteroCreateSchema = z.object({
 
 const banqueteroUpdateSchema = z.object({
   nombre: z.string().min(1).optional(),
+  tipo: tipoProfesional.optional(),
   // Al EDITAR sí puede llegar vacío como `null`: es como se corrige un teléfono
   // mal capturado, y los banqueteros que ya existían sin él no se pueden bloquear
   // retroactivamente. La ficha los marca como incompletos.

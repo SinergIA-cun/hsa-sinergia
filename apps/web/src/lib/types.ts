@@ -1,4 +1,5 @@
 import type { ProductoInfo } from '@hsa/shared';
+import type { TipoProfesional } from '@hsa/shared';
 import type { QuoteBreakdown, Catalog as EngineCatalog } from '@hsa/shared';
 
 export type { QuoteBreakdown, EngineCatalog };
@@ -623,6 +624,8 @@ export interface CapillaEvento {
 export interface Banquetero {
   id: string;
   nombre: string;
+  /** B, BG, A o WP (reunión del 15-oct-2026). */
+  tipo?: TipoProfesional;
   telefono?: string | null;
   correo?: string | null;
   activo: boolean;
@@ -784,6 +787,7 @@ export interface EstadoCuentaBanquetero {
   banquetero: {
     id: string;
     nombre: string;
+    tipo?: TipoProfesional;
     telefono: string | null;
     correo: string | null;
     activo: boolean;
@@ -848,6 +852,7 @@ export interface EstadoCuentaPublico {
 export interface ResumenBanquetero {
   banqueteroId: string;
   nombre: string;
+  tipo?: TipoProfesional;
   telefono: string | null;
   correo: string | null;
   activo: boolean;

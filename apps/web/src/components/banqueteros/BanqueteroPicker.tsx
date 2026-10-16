@@ -1,11 +1,12 @@
 import { useMemo, useState, type ReactNode } from 'react';
 import { Search, Sparkles, UserRound, X } from 'lucide-react';
-import { coincideTexto } from '@hsa/shared';
+import { coincideTexto, TIPO_PROFESIONAL, type TipoProfesional } from '@hsa/shared';
 
 export interface BanqueteroLite {
   id: string;
   nombre: string;
   telefono: string | null;
+  tipo?: TipoProfesional;
 }
 
 /** Cuántas coincidencias se pintan antes de pedir que se teclee un poco más. */
@@ -59,7 +60,7 @@ export function BanqueteroPicker({
   const needle = q.trim();
   const resultados = useMemo(() => {
     if (!needle) return [];
-    return banqueteros.filter((b) => coincideTexto([b.nombre, b.telefono], needle));
+    return banqueteros.filter((b) => coincideTexto([b.nombre, b.telefono, b.tipo ? TIPO_PROFESIONAL[b.tipo].label : null], needle));
   }, [banqueteros, needle]);
 
   const visibles = resultados.slice(0, TOPE_RESULTADOS);
@@ -157,7 +158,10 @@ export function BanqueteroPicker({
                     onClick={() => elegir(b.id)}
                     className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm hover:bg-cream-100"
                   >
-                    <span className="font-medium text-ink">{b.nombre}</span>
+                    <span className="font-medium text-ink">
+                      {b.nombre}
+                      {b.tipo && <span className="ml-2 text-xs font-normal text-charcoal-soft">{TIPO_PROFESIONAL[b.tipo].label}</span>}
+                    </span>
                     {b.telefono && <span className="text-xs text-charcoal-soft">{b.telefono}</span>}
                   </button>
                 </li>

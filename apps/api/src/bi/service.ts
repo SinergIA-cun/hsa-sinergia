@@ -1,4 +1,5 @@
 import type { PrismaClient } from '@hsa/database';
+import { TIPO_PROFESIONAL, type TipoProfesional } from '@hsa/shared';
 import { resumenCancelacion } from '../quotes/ciclo.js';
 import {
   restarDinero,
@@ -43,8 +44,8 @@ const incluirEvento = {
   client: true,
   eventType: { select: { nombre: true, slug: true } },
   createdBy: { select: { id: true, nombre: true } },
-  banquetero: { select: { id: true, nombre: true } },
-  agencia: { select: { id: true, nombre: true } },
+  banquetero: { select: { id: true, nombre: true, tipo: true } },
+  agencia: { select: { id: true, nombre: true, tipo: true } },
   apartado: { select: { importadoBI: true } },
   priceList: { select: { ivaRate: true } },
   serviciosBanquetero: { select: { nombre: true, cantidad: true, monto: true }, orderBy: { id: 'asc' as const } },
@@ -97,8 +98,8 @@ function desgloseDelEvento(
     rentaTotal: number;
     total: number;
     priceList: { ivaRate: number } | null;
-    banquetero: { id: string; nombre: string } | null;
-    agencia: { id: string; nombre: string } | null;
+    banquetero: { id: string; nombre: string; tipo: TipoProfesional } | null;
+    agencia: { id: string; nombre: string; tipo: TipoProfesional } | null;
     serviciosBanquetero: { nombre: string; cantidad: number; monto: number | null }[];
   },
   refs: Awaited<ReturnType<typeof referenciasDelDesglose>>,
@@ -140,7 +141,7 @@ function desgloseDelEvento(
       /** El renglón del paquete (`alimentos`, o `pactado` con paquete): la agencia que paga su comisión. */
       agencia:
         (r.tipo === 'alimentos' || (r.tipo === 'pactado' && pactadoPaquete)) && agencia
-          ? { clave: agencia.id, nombre: agencia.nombre }
+          ? { clave: agencia.id, nombre: agencia.nombre, tipo: TIPO_PROFESIONAL[agencia.tipo].codigo }
           : null,
       banquetero: null as { id: string; nombre: string } | null,
     };
@@ -287,7 +288,8 @@ export async function biEventos(db: PrismaClient, r: RangoBI) {
     requiereFactura: q.requiereFactura,
     cliente: { id: q.clientId, nombre: q.client?.nombre ?? null, referencia: q.client?.numeroReferencia ?? null },
     vendedora: q.createdBy ? { id: q.createdBy.id, nombre: q.createdBy.nombre } : null,
-    banquetero: q.banquetero ? { id: q.banquetero.id, nombre: q.banquetero.nombre } : null,
+    // `tipo`: B, BG, A o WP (reunión del 15-oct-2026).
+    banquetero: q.banquetero ? { id: q.banquetero.id, nombre: q.banquetero.nombre, tipo: TIPO_PROFESIONAL[q.banquetero.tipo].codigo } : null,
     // Dos bloques separados: la renta la cobra la hacienda, lo demás se paga al proveedor.
     renta: { subtotal: rentaSubtotalDe(q.breakdown), total: q.rentaTotal },
     otros: { total: restarDinero(q.total, q.rentaTotal) },

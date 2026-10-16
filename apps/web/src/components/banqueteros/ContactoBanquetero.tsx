@@ -3,7 +3,8 @@ import { useMutation } from '@tanstack/react-query';
 import { AlertTriangle, Mail, Pencil, Phone, Save, X } from 'lucide-react';
 import { api } from '../../lib/api.ts';
 import { useAuth } from '../../auth/auth.tsx';
-import { Button, Card, Field, TextInput } from '../ui.tsx';
+import { Button, Card, Field, SelectInput, TextInput } from '../ui.tsx';
+import { TIPOS_PROFESIONAL, TIPO_PROFESIONAL, type TipoProfesional } from '@hsa/shared';
 import { apiErrorMessage } from '../admin/shared.tsx';
 import type { Banquetero } from '../../lib/types.ts';
 
@@ -12,6 +13,7 @@ interface Props {
   nombre: string;
   telefono: string | null;
   correo: string | null;
+  tipo?: TipoProfesional;
   onGuardado: () => Promise<void>;
 }
 
@@ -27,17 +29,18 @@ interface Props {
  * incompletos hasta que alguien capture el de verdad. Un teléfono inventado para
  * cumplir una validación se ve igual que uno real, y es peor.
  */
-export function ContactoBanquetero({ banqueteroId, nombre, telefono, correo, onGuardado }: Props) {
+export function ContactoBanquetero({ banqueteroId, nombre, telefono, correo, tipo = 'banquetero', onGuardado }: Props) {
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin';
   const [editando, setEditando] = useState(false);
-  const [form, setForm] = useState({ nombre, telefono: telefono ?? '', correo: correo ?? '' });
+  const [form, setForm] = useState({ nombre, tipo, telefono: telefono ?? '', correo: correo ?? '' });
   const [error, setError] = useState('');
 
   const guardar = useMutation({
     mutationFn: () =>
       api.patch<{ banquetero: Banquetero }>(`/api/admin/banqueteros/${banqueteroId}`, {
         nombre: form.nombre.trim(),
+        tipo: form.tipo,
         telefono: form.telefono.trim() || null,
         correo: form.correo.trim() || null,
       }),
@@ -59,6 +62,9 @@ export function ContactoBanquetero({ banqueteroId, nombre, telefono, correo, onG
     return (
       <Card className="mb-6 flex flex-wrap items-center justify-between gap-3 p-4">
         <div className="flex flex-wrap items-center gap-x-5 gap-y-1 text-sm">
+          <span className="rounded-full bg-cream-200 px-2.5 py-0.5 text-xs font-semibold uppercase tracking-wide text-ink-500">
+            {TIPO_PROFESIONAL[tipo].label}
+          </span>
           <span
             className={`inline-flex items-center gap-1.5 ${
               telefono ? 'text-ink' : 'font-medium text-wine'
@@ -87,12 +93,19 @@ export function ContactoBanquetero({ banqueteroId, nombre, telefono, correo, onG
 
   return (
     <Card className="mb-6 p-5">
-      <form onSubmit={onSubmit} className="grid gap-4 sm:grid-cols-3">
+      <form onSubmit={onSubmit} className="grid gap-4 sm:grid-cols-4">
         <Field label="Nombre">
           <TextInput
             value={form.nombre}
             onChange={(e) => setForm((f) => ({ ...f, nombre: e.target.value }))}
           />
+        </Field>
+        <Field label="Tipo">
+          <SelectInput value={form.tipo} onChange={(e) => setForm((f) => ({ ...f, tipo: e.target.value as TipoProfesional }))}>
+            {TIPOS_PROFESIONAL.map((t) => (
+              <option key={t} value={t}>{TIPO_PROFESIONAL[t].label}</option>
+            ))}
+          </SelectInput>
         </Field>
         <Field label="Teléfono" hint="Obligatorio.">
           <TextInput
@@ -130,7 +143,7 @@ export function ContactoBanquetero({ banqueteroId, nombre, telefono, correo, onG
           onClick={() => {
             setEditando(false);
             setError('');
-            setForm({ nombre, telefono: telefono ?? '', correo: correo ?? '' });
+            setForm({ nombre, tipo, telefono: telefono ?? '', correo: correo ?? '' });
           }}
         >
           <X size={13} /> Cancela

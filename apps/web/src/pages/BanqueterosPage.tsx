@@ -15,7 +15,8 @@ import { formatMXN } from '../lib/money.ts';
 import { formatEventDate } from '../lib/date.ts';
 import { coincideTexto } from '@hsa/shared';
 import { useAuth } from '../auth/auth.tsx';
-import { ArrowDivider, Button, Card, Field, TextInput } from '../components/ui.tsx';
+import { ArrowDivider, Button, Card, Field, SelectInput, TextInput } from '../components/ui.tsx';
+import { TIPOS_PROFESIONAL, TIPO_PROFESIONAL, type TipoProfesional } from '@hsa/shared';
 import { apiErrorMessage, ConfirmDelete } from '../components/admin/shared.tsx';
 import {
   ADMIN_BANQUETEROS_KEY,
@@ -265,6 +266,7 @@ function AltaBanquetero({
   onCerrar: () => void;
 }) {
   const [nombre, setNombre] = useState('');
+  const [tipo, setTipo] = useState<TipoProfesional>('banquetero');
   const [telefono, setTelefono] = useState('');
   const [correo, setCorreo] = useState('');
   const [error, setError] = useState('');
@@ -273,6 +275,7 @@ function AltaBanquetero({
     mutationFn: () =>
       api.post<{ banquetero: Banquetero }>('/api/admin/banqueteros', {
         nombre: nombre.trim(),
+        tipo,
         telefono: telefono.trim(),
         correo: correo.trim() || undefined,
       }),
@@ -297,14 +300,21 @@ function AltaBanquetero({
 
   return (
     <Card className="mb-6 p-6">
-      <h2 className="mb-4 font-display text-lg text-ink">Nuevo banquetero</h2>
-      <form onSubmit={onSubmit} className="grid gap-4 sm:grid-cols-[1fr_1fr_1fr_auto] sm:items-end">
-        <Field label="Nombre">
+      <h2 className="mb-4 font-display text-lg text-ink">Nuevo profesional de eventos</h2>
+      <form onSubmit={onSubmit} className="grid gap-4 sm:grid-cols-[1fr_auto_1fr_1fr_auto] sm:items-end">
+        <Field label="Nombre de la empresa">
           <TextInput
             value={nombre}
             onChange={(e) => setNombre(e.target.value)}
             placeholder="ej. Carlos Barrera"
           />
+        </Field>
+        <Field label="Tipo">
+          <SelectInput value={tipo} onChange={(e) => setTipo(e.target.value as TipoProfesional)}>
+            {TIPOS_PROFESIONAL.map((t) => (
+              <option key={t} value={t}>{TIPO_PROFESIONAL[t].label}</option>
+            ))}
+          </SelectInput>
         </Field>
         <Field label="Teléfono" hint="Obligatorio.">
           <TextInput
@@ -368,6 +378,11 @@ function BanqueteroRow({
         >
           {b.nombre}
         </Link>
+        {b.tipo && (
+          <span className="ml-2 rounded-full bg-cream-200 px-2 py-0.5 text-[0.65rem] font-semibold uppercase tracking-wide text-ink-500" title={TIPO_PROFESIONAL[b.tipo].label}>
+            {TIPO_PROFESIONAL[b.tipo].label}
+          </span>
+        )}
         <p className="mt-0.5 flex flex-wrap items-center gap-x-3 text-xs text-charcoal-soft">
           {b.telefono ? (
             <span className="inline-flex items-center gap-1">

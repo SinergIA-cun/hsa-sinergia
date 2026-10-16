@@ -98,6 +98,7 @@ export function BanqueteroPage() {
         nombre={banquetero.nombre}
         telefono={banquetero.telefono}
         correo={banquetero.correo}
+        tipo={banquetero.tipo}
         onGuardado={invalidar}
       />
 

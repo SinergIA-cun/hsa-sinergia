@@ -23,6 +23,7 @@ import { DIAS_POR_VENCER } from './estadoCuenta.js';
 export interface ResumenBanquetero {
   banqueteroId: string;
   nombre: string;
+  tipo: string;
   telefono: string | null;
   correo: string | null;
   activo: boolean;
@@ -122,6 +123,7 @@ export async function resumenBanqueteros(
     return {
       banqueteroId: b.id,
       nombre: b.nombre,
+      tipo: b.tipo,
       telefono: b.telefono,
       correo: b.correo,
       activo: b.activo,
