@@ -51,8 +51,9 @@ export function CicloEvento({
   const puedeCancelar = !cancelado && (pagado === 0 || isAdmin);
   // Mover un evento formalizado (o regresarlo a su fecha como formalizado) es
   // editarlo: solo un admin después de formalizar (15-oct-2026). La API lo exige igual.
-  const destino = enStandby ? quote.statusPrevio ?? 'borrador' : quote.status;
-  const puedeMover = isAdmin || destino === 'borrador';
+  // La vendedora mueve sus eventos, también formalizados (16-oct-2026). Reactivar
+  // uno cancelado sigue siendo de admin; la API lo exige igual.
+  const puedeMover = isAdmin || quote.status !== 'cancelada';
 
   return (
     <>

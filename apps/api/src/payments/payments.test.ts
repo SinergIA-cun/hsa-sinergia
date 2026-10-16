@@ -609,13 +609,15 @@ describe('datos fiscales con una factura emitida', () => {
     expect(actualizada.client.rfc).toBe('XAXX010101000');
   });
 
-  it('después de formalizar, un vendedor ya no edita; un admin sí (15-oct-2026)', async () => {
-    const { quoteId, quote } = await crearPagoDePrueba();
+  it('la vendedora edita su evento formalizado; los pagos no (16-oct-2026)', async () => {
+    const { quoteId, paymentId, quote } = await crearPagoDePrueba();
     await prisma.quote.update({ where: { id: quoteId }, data: { status: 'formalizada' } });
     const ventas = { id: actor.id, role: 'ventas' as const };
-    const cambio = { ...selectionDe(quote), invitados: 175, client: { telefono: '5555550000', nombre: 'Pago Test' } };
-    await expect(updateQuote(prisma, quoteId, cambio, ventas)).rejects.toMatchObject({ status: 403 });
-    expect((await updateQuote(prisma, quoteId, cambio, actor)).invitados).toBe(175);
+    const cambio = { ...selectionDe(quote), invitados: 175, client: { telefono: '5555550000', nombre: 'Pago Test Editado' } };
+    const editada = await updateQuote(prisma, quoteId, cambio, ventas);
+    expect(editada.invitados).toBe(175);
+    expect(editada.client.nombre).toBe('Pago Test Editado');
+    await expect(anularPayment(prisma, quoteId, paymentId, 'no', ventas)).rejects.toMatchObject({ status: 403 });
   });
 
   it('sin factura emitida no se escribe bitácora fiscal de desbloqueo', async () => {

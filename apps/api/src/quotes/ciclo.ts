@@ -15,7 +15,6 @@ import {
   QuoteError,
   assertNotTrashed,
   assertEspaciosDisponibles,
-  assertPuedeEditarFormalizado,
   includeRels,
   loadEstadoCuenta,
   moverEvento,
@@ -193,8 +192,6 @@ export async function reprogramarEvento(db: PrismaClient, id: string, raw: unkno
   }
   const regresa = sueltaLaFecha(q.status);
   const destino: QuoteStatus = regresa ? (q.statusPrevio && CON_FECHA.has(q.statusPrevio) ? q.statusPrevio : 'borrador') : q.status;
-  // Mover un evento formalizado (o regresarlo a una fecha como formalizado) es editarlo.
-  assertPuedeEditarFormalizado(actor, destino);
   const fechaAntes = q.fechaEvento.toISOString().slice(0, 10);
   const fechaNueva = input.fecha ?? fechaAntes;
   const espaciosNuevos = input.spaceIds ? [...new Set(input.spaceIds)] : q.spaceIds;

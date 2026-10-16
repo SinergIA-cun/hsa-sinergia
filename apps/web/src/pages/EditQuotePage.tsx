@@ -251,10 +251,9 @@ export function EditQuotePage() {
   const importado = Boolean(quote.precioPactado ?? quote.importadoBI);
   // Los importados también se editan (Jorge, 15-oct-2026: "TODO editable"): el
   // formulario entra en modo precio pactado y no recotiza.
-  // Después de formalizar solo un admin edita (15-oct-2026); un vendedor ve el
-  // evento en solo lectura. La API lo exige igual.
-  const soloAdmin = !isAdmin && quote.status !== 'borrador';
-  const editable = EDITABLE_STATUSES.includes(quote.status) && !congelado && !soloAdmin;
+  // La vendedora edita los datos de su evento también formalizado (Jorge,
+  // 16-oct-2026); los pagos siguen con sus candados de admin.
+  const editable = EDITABLE_STATUSES.includes(quote.status) && !congelado;
   const contratoDisponible =
     !enPapelera && ['formalizada', 'complementada', 'liquidada'].includes(quote.status);
   const publicUrl = `${window.location.origin}/c/${quote.publicToken}`;
@@ -486,7 +485,7 @@ export function EditQuotePage() {
                     ? 'Sin fecha: se edita de nuevo en cuanto se reprograme.'
                     : quote.status === 'cancelada'
                       ? 'Cancelado: solo lectura. Un admin lo puede reactivar.'
-                      : 'Ya está formalizado: solo un admin puede editarlo o moverlo. Pagos, recibos y la hoja operativa siguen igual.'}
+                      : 'Solo lectura.'}
               {isAdmin && importado && !congelado && quote.status !== 'cancelada' && !ajustarPrecio && (
                 <>
                   {' '}

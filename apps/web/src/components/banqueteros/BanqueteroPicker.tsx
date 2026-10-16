@@ -1,6 +1,6 @@
 import { useMemo, useState, type ReactNode } from 'react';
 import { Search, Sparkles, UserRound, X } from 'lucide-react';
-import { coincideTexto, TIPO_PROFESIONAL, type TipoProfesional } from '@hsa/shared';
+import { coincideTexto, TIPO_PROFESIONAL, TIPOS_PROFESIONAL, type TipoProfesional } from '@hsa/shared';
 
 export interface BanqueteroLite {
   id: string;
@@ -56,12 +56,27 @@ export function BanqueteroPicker({
   onModo: (m: ModoVenta) => void;
 }) {
   const [q, setQ] = useState('');
+  // Qué tipo de profesional es (Jorge, 16-oct-2026: "¿cómo selecciono si es
+  // wedding planner, banquetero de graduación…?"). El tipo es del profesional
+  // —se fija en su alta—, así que aquí filtra: al tocarlo aparecen los de ese
+  // tipo sin tener que teclear nada.
+  const [tipo, setTipo] = useState<TipoProfesional | null>(null);
 
   const needle = q.trim();
   const resultados = useMemo(() => {
-    if (!needle) return [];
-    return banqueteros.filter((b) => coincideTexto([b.nombre, b.telefono, b.tipo ? TIPO_PROFESIONAL[b.tipo].label : null], needle));
-  }, [banqueteros, needle]);
+    if (!needle && !tipo) return [];
+    return banqueteros.filter(
+      (b) =>
+        (!tipo || b.tipo === tipo) &&
+        (!needle || coincideTexto([b.nombre, b.telefono, b.tipo ? TIPO_PROFESIONAL[b.tipo].label : null], needle)),
+    );
+  }, [banqueteros, needle, tipo]);
+  const cuantosPorTipo = useMemo(() => {
+    const m = new Map<TipoProfesional, number>();
+    for (const b of banqueteros) if (b.tipo) m.set(b.tipo, (m.get(b.tipo) ?? 0) + 1);
+    return m;
+  }, [banqueteros]);
+  const tipoElegido = banqueteros.find((b) => b.id === value)?.tipo;
 
   const visibles = resultados.slice(0, TOPE_RESULTADOS);
   const ocultos = resultados.length - visibles.length;
@@ -123,6 +138,7 @@ export function BanqueteroPicker({
           <span className="inline-flex items-center gap-2 text-ink">
             <Sparkles size={15} className="text-gold" />
             <strong className="font-medium">{nombreActual || 'Profesional de eventos'}</strong>
+            {tipoElegido && <span className="text-xs text-charcoal-soft">{TIPO_PROFESIONAL[tipoElegido].label}</span>}
           </span>
           <button
             type="button"
@@ -136,6 +152,25 @@ export function BanqueteroPicker({
 
       {modo === 'banquetero' && value === '' && (
         <div>
+          <div role="group" aria-label="Tipo de profesional" className="mb-2 flex flex-wrap gap-1.5">
+            {TIPOS_PROFESIONAL.map((t) => {
+              const activo = tipo === t;
+              return (
+                <button
+                  key={t}
+                  type="button"
+                  aria-pressed={activo}
+                  onClick={() => setTipo(activo ? null : t)}
+                  className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold/60 ${
+                    activo ? 'border-ink bg-ink text-cream' : 'border-cream-300 bg-white/70 text-ink hover:border-gold/60'
+                  }`}
+                >
+                  {TIPO_PROFESIONAL[t].label}
+                  <span className={`ml-1.5 ${activo ? 'text-cream/70' : 'text-charcoal-soft'}`}>{cuantosPorTipo.get(t) ?? 0}</span>
+                </button>
+              );
+            })}
+          </div>
           <div className="relative">
             <Search
               size={15}
@@ -145,11 +180,11 @@ export function BanqueteroPicker({
               autoFocus
               value={q}
               onChange={(e) => setQ(e.target.value)}
-              placeholder="Busca al profesional por nombre o teléfono…"
+              placeholder={tipo ? `${TIPO_PROFESIONAL[tipo].label}: busca por nombre o teléfono…` : 'Busca al profesional por nombre o teléfono…'}
               className="w-full rounded-lg border border-ink/15 bg-white/70 py-2.5 pl-9 pr-3 text-sm text-charcoal placeholder:text-charcoal-soft/60 focus:border-gold focus:outline-none focus:ring-2 focus:ring-gold/30"
             />
           </div>
-          {needle && visibles.length > 0 && (
+          {(needle || tipo) && visibles.length > 0 && (
             <ul className="mt-1 divide-y divide-cream-200 overflow-hidden rounded-lg border border-cream-300 bg-white shadow-sm">
               {visibles.map((b) => (
                 <li key={b.id}>
@@ -173,18 +208,18 @@ export function BanqueteroPicker({
               )}
             </ul>
           )}
-          {needle && visibles.length === 0 && (
+          {(needle || tipo) && visibles.length === 0 && (
             <p className="mt-1 text-xs text-charcoal-soft">
-              Sin coincidencias. Si es nuevo, un admin lo da de alta en{' '}
+              {tipo && !needle ? `Todavía no hay nadie dado de alta como «${TIPO_PROFESIONAL[tipo].label}».` : 'Sin coincidencias.'} Si es nuevo, un admin lo da de alta en{' '}
               <a href="/banqueteros" className="underline">
                 Banqueteros
               </a>{' '}
               (ahí van también wedding planners y organizadores).
             </p>
           )}
-          {!needle && (
+          {!needle && !tipo && (
             <p className="mt-1 text-xs text-charcoal-soft">
-              Sin profesional elegido, este contrato se guarda como venta directa a cliente.
+              Elige el tipo o busca por nombre. Sin profesional elegido, este contrato se guarda como venta directa a cliente.
             </p>
           )}
         </div>
