@@ -6,7 +6,13 @@ import { INCLUDE_TITULAR, titularDeApartado } from '../banqueteros/titular.js';
 
 export const clonarCatalogoSchema = z.object({
   nombre: z.string().min(1).max(60),
-  anio: z.number().int().min(2000).max(2100),
+  /**
+   * Solo sirve para ordenar los catálogos y como etiqueta (también la recibe el
+   * BI): NO decide qué precios se aplican —eso lo decide cuál está activo—. Por
+   * eso ya no se pide (16-oct-2026): si no viene, se toma del nombre ("2028") o
+   * es el año en curso.
+   */
+  anio: z.number().int().min(2000).max(2100).optional(),
   /** Catálogo del que se copia todo. Sin él nace un catálogo vacío. */
   clonarDe: z.string().optional(),
   /** Porcentaje de incremento sobre renta, servicios y alimentos. */
@@ -30,6 +36,12 @@ export const clonarCatalogoSchema = z.object({
 // Un precio "no aplica" (null) se queda así en el catálogo clonado.
 const conIncremento = <T extends number | null>(v: T, pct: number): T =>
   (v == null ? v : Math.round(v * (1 + pct / 100))) as T;
+
+/** "Precios 2028" → 2028; sin un año en el nombre, el año en curso. */
+export function anioDelNombre(nombre: string, hoy = new Date()): number {
+  const m = /\b(20\d{2})\b/.exec(nombre);
+  return m ? Number(m[1]) : hoy.getUTCFullYear();
+}
 
 /**
  * Crea un catálogo nuevo, opcionalmente clonando otro con un % de incremento.
@@ -61,7 +73,7 @@ export async function clonarCatalogo(db: PrismaClient, rawInput: unknown) {
     const creado = await tx.priceList.create({
       data: {
         nombre: input.nombre,
-        anio: input.anio,
+        anio: input.anio ?? anioDelNombre(input.nombre),
         activa: false,
         // Los parámetros viajan tal cual: el IVA y los porcentajes no son precios
         // y subirlos un 8% junto con la renta sería un error de $1,000s.
