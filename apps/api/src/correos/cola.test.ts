@@ -10,7 +10,7 @@ import { loadConfig } from '../config.js';
 import { createQuote, type Actor } from '../quotes/service.js';
 import { registerPayment } from '../payments/service.js';
 import { ServerStorage } from '../payments/storage.js';
-import { encolarCierres, procesarCola } from './cola.js';
+import { encolarCierres, encolarLiquidaciones, procesarCola } from './cola.js';
 import type { Mailer, Mensaje } from './mailer.js';
 
 /** Correos al cliente: bienvenida al formalizar, recibo por pago, cierre (6-oct-2026). */
@@ -195,5 +195,38 @@ describe('volver a su estatus no es formalizar (15-oct-2026)', () => {
     await prisma.quote.update({ where: { id: q.id }, data: { importadoBI: `test-regreso-${randomUUID()}` } });
     expect((await estatus(q.id, 'liquidada')).statusCode).toBe(200);
     expect(await correosDe(q.id)).toEqual([]);
+  });
+});
+
+describe('recordatorio de liquidación (reunión del 15-oct-2026)', () => {
+  it('se encola entre 21 y 30 días antes si hay saldo, una vez; si ya liquidó no se manda', async () => {
+    const hoy = new Date('2067-01-01T00:00:00.000Z');
+    const enVentana = await evento('liq@example.com', '2067-01-25');
+    await prisma.quote.update({ where: { id: enVentana.id }, data: { status: 'formalizada' } });
+    const muyPronto = await evento('pronto@example.com', '2067-01-10');
+    await prisma.quote.update({ where: { id: muyPronto.id }, data: { status: 'formalizada' } });
+
+    await encolarLiquidaciones(prisma, hoy);
+    await encolarLiquidaciones(prisma, hoy);
+    expect((await correosDe(enVentana.id)).map((c) => c.tipo)).toEqual(['liquidacion']);
+    expect(await correosDe(muyPronto.id)).toEqual([]);
+
+    // La cola omite lo encolado hace más de 3 días: se "encola" en la fecha simulada.
+    const alDia = () => prisma.correoCliente.updateMany({ where: { tipo: 'liquidacion', createdAt: { lt: hoy } }, data: { createdAt: hoy } });
+    await alDia();
+    const mailer = buzon();
+    await procesarCola(prisma, mailer, MARCA_POR_OMISION, new Date('2067-01-01T15:00:00.000Z'));
+    const m = mailer.enviados.find((x) => x.to === 'liq@example.com')!;
+    expect(m.subject).toContain('Recordatorio de liquidación');
+    expect(m.text).toContain('Faltan 24 días');
+
+    // Uno que liquidó antes de que saliera su recordatorio no lo recibe.
+    const pagado = await evento('pagado@example.com', '2067-01-28');
+    await prisma.quote.update({ where: { id: pagado.id }, data: { status: 'formalizada' } });
+    await encolarLiquidaciones(prisma, hoy);
+    await pagar(pagado.id, pagado.total);
+    await alDia();
+    await procesarCola(prisma, buzon(), MARCA_POR_OMISION, new Date('2067-01-01T15:00:00.000Z'));
+    expect((await correosDe(pagado.id)).find((c) => c.tipo === 'liquidacion')).toMatchObject({ estado: 'omitido', error: 'Ya liquidó.' });
   });
 });

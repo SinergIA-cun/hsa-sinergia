@@ -1,8 +1,8 @@
 import type { PrismaClient, Payment } from '@hsa/database';
 import { afectaContrato, formatFolio, partesDePago, FORMA_PAGO_LABEL, hoyCivilMexico, type Marca, type MetodoPago, sumarDinero, restarDinero } from '@hsa/shared';
-import { loadEstadoCuenta, QuoteError } from '../quotes/service.js';
+import { loadEstadoCuenta, loadEstadoCuentaBulk, QuoteError } from '../quotes/service.js';
 import type { Mailer } from './mailer.js';
-import { correoBienvenida, correoCierre, correoRecibo, type EventoCorreo, type PagoCorreo } from './plantillas.js';
+import { correoBienvenida, correoCierre, correoLiquidacion, correoRecibo, type EventoCorreo, type PagoCorreo } from './plantillas.js';
 import { reciboPdf } from './reciboPdf.js';
 import { sumarHabiles } from './habiles.js';
 
@@ -23,7 +23,7 @@ const VENTANA_CIERRE_DIAS = 10;
 const CORREO_VALIDO = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 export const tieneCorreo = (c: string | null | undefined): c is string => !!c && CORREO_VALIDO.test(c.trim());
 
-type Tipo = 'bienvenida' | 'recibo' | 'cierre';
+type Tipo = 'bienvenida' | 'recibo' | 'cierre' | 'liquidacion';
 
 /** Encola un correo. Si ya existe (misma `clave`) no hace nada: cada cosa se avisa una vez. */
 export async function encolarCorreo(db: PrismaClient, quoteId: string, tipo: Tipo, paymentId?: string | null) {
@@ -155,6 +155,15 @@ export async function armarCorreo(
     const m = correoRecibo(marca, evento, pagoCorreo(vivo), vivo.destino === 'cargos');
     return { para: q.client.correo, q, mensaje: { ...m, attachments: [await adjunto(vivo)] } };
   }
+  if (c.tipo === 'liquidacion') {
+    // Se revisa al MANDAR: si ya liquidó entre que se encoló y ahora, no se manda.
+    if (evento.saldo <= 0) return { para: q.client.correo, q, mensaje: null, motivo: 'Ya liquidó.' };
+    const dias = Math.max(0, Math.round((q.fechaEvento.getTime() - hoyCivilMexico(ahora).getTime()) / 86_400_000));
+    // La fecha límite es la del ÚLTIMO hito del plan (la liquidación), no la del siguiente.
+    const ultimo = evento.plan?.at(-1);
+    const limite = ultimo && !ultimo.completo ? ultimo.venceISO : null;
+    return { para: q.client.correo, q, mensaje: { ...correoLiquidacion(marca, evento, dias, limite), attachments: [] } };
+  }
   // Cierre: el contrato como se firmó y, aparte, todo lo que se agregó en el punto
   // de venta (los que suben el contrato también, sin contarlos dos veces).
   const cargos = await db.cargoEvento.findMany({ where: { quoteId: c.quoteId, anuladoAt: null }, orderBy: { fecha: 'asc' } });
@@ -238,6 +247,41 @@ export async function encolarCierres(db: PrismaClient, hoy = hoyCivilMexico()) {
   return encolados;
 }
 
+/**
+ * Encola el recordatorio de liquidación de los eventos a los que les faltan
+ * entre 21 y 30 días y tienen saldo en la renta (reunión del 15-oct-2026). Uno
+ * por evento. La ventana empieza en 21 y no en 0 a propósito: al estrenar esto
+ * no se les escribe de golpe a los eventos de la semana que entra, y un evento
+ * contratado ya dentro de la ventana lo recibe igual en la siguiente vuelta.
+ *
+ * No entran los importados del BI (su saldo puede venir de pagos que el BI aún
+ * cuadra), los cerrados ni las cortesías.
+ */
+export async function encolarLiquidaciones(db: PrismaClient, hoy = hoyCivilMexico()) {
+  const dia = 24 * 60 * 60 * 1000;
+  const eventos = await db.quote.findMany({
+    where: {
+      deletedAt: null,
+      cerradoAt: null,
+      importadoBI: null,
+      esCortesia: false,
+      status: { in: ['formalizada', 'complementada'] },
+      fechaEvento: { gte: new Date(hoy.getTime() + 21 * dia), lte: new Date(hoy.getTime() + 30 * dia) },
+      correos: { none: { tipo: 'liquidacion' } },
+    },
+    select: { id: true, rentaTotal: true, fechaEvento: true, status: true, spaceIds: true, breakdown: true },
+  });
+  if (eventos.length === 0) return 0;
+  const cuentas = await loadEstadoCuentaBulk(db, eventos);
+  let encolados = 0;
+  for (const e of eventos) {
+    if ((cuentas.get(e.id)?.saldo ?? 0) <= 0) continue;
+    await encolarCorreo(db, e.id, 'liquidacion');
+    encolados++;
+  }
+  return encolados;
+}
+
 /** Vuelve a mandar un correo (desde el evento, admin). */
 export async function reenviarCorreo(db: PrismaClient, quoteId: string, correoId: string) {
   const c = await db.correoCliente.findFirst({ where: { id: correoId, quoteId } });
@@ -259,6 +303,7 @@ export function iniciarCorreos(db: PrismaClient, mailer: Mailer | null, marca: M
     corriendo = true;
     try {
       await encolarCierres(db);
+      await encolarLiquidaciones(db);
       const r = await procesarCola(db, mailer, marca);
       if (r.enviados || r.fallidos) console.log(`Correos: ${r.enviados} enviados, ${r.fallidos} con error, ${r.omitidos} omitidos.`);
     } catch (e) {

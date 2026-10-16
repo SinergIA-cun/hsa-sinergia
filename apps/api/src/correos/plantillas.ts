@@ -225,6 +225,45 @@ export function correoCierre(marca: Marca, e: EventoCorreo, c: CierreCorreo): Co
 }
 
 /**
+ * Recordatorio al cliente: faltan unos 30 días para su evento y tiene saldo
+ * (reunión del 15-oct-2026). Sin PDF: el saldo y la fecha límite en el cuerpo.
+ */
+export function correoLiquidacion(marca: Marca, e: EventoCorreo, diasParaEvento: number, limiteISO: string | null): Correo {
+  const limite = limiteISO ? fechaLarga(limiteISO.slice(0, 10)) : null;
+  const cuerpo =
+    parrafo(`Hola ${esc(e.cliente)}:`) +
+    parrafo(
+      `Faltan ${diasParaEvento} días para su ${esc((e.tipoEvento ?? 'evento').toLowerCase())} del ${fechaLarga(e.fecha)}. ` +
+        `Le recordamos el saldo pendiente${limite ? `, que debe quedar liquidado a más tardar el <strong>${esc(limite)}</strong>` : ''}.`,
+    ) +
+    tabla([
+      ['Renta del evento', pesos(e.renta)],
+      ['Pagado a la fecha', pesos(e.pagado)],
+      ['Saldo por liquidar', pesos(e.saldo)],
+    ]) +
+    tabla(datosEvento(e)) +
+    parrafo(`Para pagar o para cualquier duda, llámenos al ${esc(marca.telefono)} o responda este correo. Si ya liquidó, gracias y disculpe la molestia.`);
+  return {
+    subject: `Recordatorio de liquidación · ${marca.nombre}`,
+    html: layout(marca, 'Recordatorio de liquidación', cuerpo),
+    text: textoPlano([
+      `Hola ${e.cliente}:`,
+      '',
+      `Faltan ${diasParaEvento} días para su ${(e.tipoEvento ?? 'evento').toLowerCase()} del ${fechaLarga(e.fecha)}.` +
+        (limite ? ` El saldo debe quedar liquidado a más tardar el ${limite}.` : ''),
+      '',
+      `Renta del evento: ${pesos(e.renta)}`,
+      `Pagado a la fecha: ${pesos(e.pagado)}`,
+      `Saldo por liquidar: ${pesos(e.saldo)}`,
+      '',
+      ...datosEvento(e).map(([k, v]) => `${k}: ${v}`),
+      '',
+      `Dudas: ${marca.telefono}. Si ya liquidó, gracias y disculpe la molestia.`,
+    ]),
+  };
+}
+
+/**
  * Aviso INTERNO (al vendedor que lo capturó y a los admins): un apartado rápido
  * vence en 3 días o menos. Hay que confirmar con la persona; si no, la fecha se
  * libera sola al vencer y pasa el siguiente de la fila (Jorge, 15-oct-2026).
