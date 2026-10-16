@@ -305,3 +305,30 @@ export function iniciarApartados(db: PrismaClient, mailer: Mailer | null, marca:
   void vuelta();
   return setInterval(() => void vuelta(), cadaMs);
 }
+
+/**
+ * Días con lugar en la fila, cuando la del día que piden ya está llena: el mismo
+ * día de la semana en las semanas de alrededor (reunión del 15-oct-2026).
+ */
+export async function diasConLugar(db: PrismaClient, fecha: string, cuantas = 5, ahora = new Date()): Promise<{ fecha: string; enFila: number }[]> {
+  const base = aFecha(fecha);
+  const hoy = aFecha(ahora.toISOString().slice(0, 10));
+  const candidatas: Date[] = [];
+  for (let k = -2; k <= 26; k++) {
+    if (k === 0) continue;
+    const d = new Date(base.getTime() + k * 7 * DIA_MS);
+    if (d.getTime() >= hoy.getTime()) candidatas.push(d);
+  }
+  if (candidatas.length === 0) return [];
+  const [tope, grupos] = await Promise.all([
+    topePorDia(db),
+    db.apartadoRapido.groupBy({ by: ['fecha'], where: { estado: 'activo', fecha: { in: candidatas } }, _count: { _all: true } }),
+  ]);
+  const enFila = new Map(grupos.map((g) => [isoDe(g.fecha), g._count._all]));
+  return candidatas
+    .map((d) => ({ fecha: isoDe(d), enFila: enFila.get(isoDe(d)) ?? 0 }))
+    .filter((x) => x.enFila < tope)
+    .sort((a, b) => Math.abs(Date.parse(a.fecha) - base.getTime()) - Math.abs(Date.parse(b.fecha) - base.getTime()))
+    .slice(0, cuantas)
+    .sort((a, b) => a.fecha.localeCompare(b.fecha));
+}

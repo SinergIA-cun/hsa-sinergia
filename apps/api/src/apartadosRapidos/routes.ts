@@ -7,6 +7,7 @@ import {
   confirmarApartado,
   convertirApartado,
   crearApartado,
+  diasConLugar,
   fijarTope,
   liberarApartado,
   listarApartados,
@@ -35,6 +36,11 @@ export async function apartadoRapidoRoutes(app: FastifyInstance): Promise<void> 
     return listarApartados(app.prisma, parsed.data.from, parsed.data.to, req.user as Actor);
   });
   app.get('/apartados-rapidos/por-vencer', { preHandler: requireAuth }, async (req) => apartadosPorVencer(app.prisma, req.user as Actor));
+  app.get('/apartados-rapidos/sugerencias', { preHandler: requireAuth }, async (req, reply) => {
+    const f = (req.query as { fecha?: string }).fecha ?? '';
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(f)) return reply.code(400).send({ error: 'Fecha inválida' });
+    return { dias: await diasConLugar(app.prisma, f) };
+  });
   app.get('/apartados-rapidos/tope', { preHandler: requireAuth }, async () => ({ tope: await topePorDia(app.prisma) }));
   app.put('/apartados-rapidos/tope', { preHandler: requireAuth }, async (req, reply) =>
     conErrores(reply, () => fijarTope(app.prisma, req.body, req.user as Actor)),
