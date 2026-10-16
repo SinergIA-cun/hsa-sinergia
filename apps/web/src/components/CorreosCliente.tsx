@@ -6,7 +6,7 @@ import { Card } from './ui.tsx';
 
 interface CorreoCliente {
   id: string;
-  tipo: 'bienvenida' | 'recibo' | 'cierre';
+  tipo: 'bienvenida' | 'recibo' | 'cierre' | 'liquidacion';
   para: string | null;
   estado: 'pendiente' | 'enviado' | 'error' | 'omitido';
   error: string | null;
@@ -18,6 +18,7 @@ const TIPO: Record<CorreoCliente['tipo'], string> = {
   bienvenida: 'Confirmación del evento',
   recibo: 'Recibo de pago',
   cierre: 'Agradecimiento y total del evento',
+  liquidacion: 'Recordatorio de liquidación (30 días antes)',
 };
 
 const ESTADO: Record<CorreoCliente['estado'], { label: string; clase: string }> = {

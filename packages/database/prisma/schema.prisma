@@ -1140,6 +1140,8 @@ enum TipoCorreo {
   bienvenida
   recibo
   cierre
+  /// Recordatorio de liquidar, 30 días antes del evento (reunión del 15-oct-2026).
+  liquidacion
 }
 
 enum EstadoCorreo {
