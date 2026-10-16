@@ -61,6 +61,9 @@ export interface QuoteFormInitial {
   spaceIds: string[];
   foodPackageId: string;
   horasExtra: number;
+  /** Cómo se cobra la hora extra en este evento (uno u otro; sin ninguno, el % del catálogo). */
+  horaExtraPct: number | null;
+  horaExtraMonto: number | null;
   usaCapilla: boolean;
   capillaHorario: string;
   esCortesia: boolean;
@@ -95,6 +98,8 @@ export interface QuotePayload {
   invitados: number;
   spaceIds: string[];
   horasExtra: number;
+  horaExtraPct?: number;
+  horaExtraMonto?: number;
   usaCapilla: boolean;
   capillaHorario?: string | null;
   esCortesia: boolean;
@@ -299,6 +304,29 @@ export function QuoteForm({
   const [spaceIds, setSpaceIds] = useState<string[]>(initial?.spaceIds ?? []);
   const [foodPackageId, setFoodPackageId] = useState(initial?.foodPackageId ?? '');
   const [horasExtra, setHorasExtra] = useState(initial?.horasExtra ?? 0);
+  // Cómo se cobra cada hora extra (Fernando, 16-oct-2026): % de la renta o monto
+  // fijo por hora. En %, vacío = el del catálogo; en monto, hay que teclearlo.
+  const pctCatalogo = Math.round(catalog.engine.extraHourRate * 10_000) / 100;
+  const [horaExtraTipo, setHoraExtraTipo] = useState<'pct' | 'monto'>(initial?.horaExtraMonto != null ? 'monto' : 'pct');
+  const [horaExtraValor, setHoraExtraValor] = useState<string>(
+    initial?.horaExtraMonto != null
+      ? String(initial.horaExtraMonto)
+      : initial?.horaExtraPct != null
+        ? String(initial.horaExtraPct)
+        : '',
+  );
+  const horaExtra = useMemo((): { horaExtraPct?: number; horaExtraMonto?: number; invalida?: string } => {
+    if (horasExtra <= 0) return {};
+    const v = horaExtraValor.trim();
+    const n = Number(v);
+    if (horaExtraTipo === 'pct') {
+      if (v === '') return {};
+      if (!Number.isFinite(n) || n < 0 || n > 100) return { invalida: 'La hora extra en % va de 0 a 100.' };
+      return n === pctCatalogo ? {} : { horaExtraPct: n };
+    }
+    if (v === '' || !tieneCentavosValidos(n) || n <= 0) return { invalida: 'Escribe cuánto se cobra por hora extra.' };
+    return { horaExtraMonto: n };
+  }, [horasExtra, horaExtraTipo, horaExtraValor, pctCatalogo]);
   const [usaCapilla, setUsaCapilla] = useState(initial?.usaCapilla ?? false);
   const [capillaHorario, setCapillaHorario] = useState(initial?.capillaHorario ?? '');
   const [esCortesia, setEsCortesia] = useState(initial?.esCortesia ?? false);
@@ -399,6 +427,8 @@ export function QuoteForm({
       invitados,
       spaceIds,
       horasExtra,
+      horaExtraPct: horaExtra.horaExtraPct,
+      horaExtraMonto: horaExtra.horaExtraMonto,
       usaCapilla,
       usaDjHoraExtra,
       eventTypeId: eventTypeId || undefined,
@@ -410,7 +440,7 @@ export function QuoteForm({
       descuentoMotivo: descuentoMotivo.trim() || undefined,
       esPromocion,
     }),
-    [fecha, invitados, spaceIds, horasExtra, usaCapilla, usaDjHoraExtra, eventTypeId, foodPackageId, addOns, extrasValidos, pctValido, montoValido, descuentoMotivo, esPromocion],
+    [fecha, invitados, spaceIds, horasExtra, horaExtra, usaCapilla, usaDjHoraExtra, eventTypeId, foodPackageId, addOns, extrasValidos, pctValido, montoValido, descuentoMotivo, esPromocion],
   );
 
   const { breakdown, calcError } = useMemo(() => {
@@ -509,7 +539,7 @@ export function QuoteForm({
   const faltaTipoCliente = !esDeBanquetero && tipoCliente === '';
   const canSave = Boolean(
     nombre && !faltaContacto && !faltaTipoCliente && eventTypeId && fecha && spaceIds.length >= 1 && spaceIds.length <= MAX_ESPACIOS &&
-    breakdown && !calcError && !blocked && !faltaMotivo,
+    breakdown && !calcError && !blocked && !faltaMotivo && !horaExtra.invalida,
   );
 
   // Hasta 3 espacios por evento (hay graduaciones que juntan salones).
@@ -544,6 +574,8 @@ export function QuoteForm({
         invitados,
         spaceIds,
         horasExtra,
+        horaExtraPct: horaExtra.horaExtraPct,
+        horaExtraMonto: horaExtra.horaExtraMonto,
         usaCapilla,
         capillaHorario: usaCapilla ? capillaHorario || null : null,
         esCortesia,
@@ -816,6 +848,64 @@ export function QuoteForm({
               </Field>
             )}
           </div>
+          {/* Al poner horas extra: cómo se cobra cada una (16-oct-2026). */}
+          {!precioPactado && horasExtra > 0 && (
+            <div className="space-y-2 rounded-lg border border-cream-300 bg-cream-100/60 p-3">
+              <p className="text-xs font-medium uppercase tracking-wide text-charcoal-soft">Cobro de cada hora extra</p>
+              <div role="radiogroup" aria-label="Cobro de la hora extra" className="inline-flex rounded-lg border border-ink/15 bg-white/70 p-0.5 text-sm">
+                {(
+                  [
+                    ['pct', '% de la renta'],
+                    ['monto', 'Monto fijo por hora ($)'],
+                  ] as const
+                ).map(([tipo, etiqueta]) => (
+                  <button
+                    key={tipo}
+                    type="button"
+                    role="radio"
+                    aria-checked={horaExtraTipo === tipo}
+                    onClick={() => {
+                      if (tipo === horaExtraTipo) return;
+                      setHoraExtraTipo(tipo);
+                      setHoraExtraValor('');
+                    }}
+                    className={`rounded-md px-3 py-1.5 font-medium transition-colors ${
+                      horaExtraTipo === tipo ? 'bg-ink text-cream' : 'text-ink hover:bg-ink/5'
+                    }`}
+                  >
+                    {etiqueta}
+                  </button>
+                ))}
+              </div>
+              <div className="max-w-56">
+                {horaExtraTipo === 'pct' ? (
+                  <Field label="% de la renta por hora" hint={`Vacío: el del catálogo (${pctCatalogo}%).`}>
+                    <TextInput
+                      type="number"
+                      min={0}
+                      max={100}
+                      step={0.5}
+                      value={horaExtraValor}
+                      onChange={(e) => setHoraExtraValor(e.target.value)}
+                      placeholder={String(pctCatalogo)}
+                    />
+                  </Field>
+                ) : (
+                  <Field label="$ por hora (con IVA)">
+                    <MoneyInput value={horaExtraValor} onValue={setHoraExtraValor} placeholder="0" />
+                  </Field>
+                )}
+              </div>
+              {horaExtra.invalida && horaExtraValor.trim() !== '' && (
+                <p className="inline-flex items-center gap-1.5 text-xs font-medium text-wine">
+                  <AlertTriangle size={13} /> {horaExtra.invalida}
+                </p>
+              )}
+              {horaExtra.invalida && horaExtraValor.trim() === '' && (
+                <p className="text-xs text-charcoal-soft">{horaExtra.invalida}</p>
+              )}
+            </div>
+          )}
         </Card>
 
         {/* Con precio pactado, lo que solo mueve el precio no se enseña. */}

@@ -161,15 +161,22 @@ export function computeQuote(
     });
   }
 
-  // 3. Horas extra (5% del precio YA descontado por hora, con IVA porque es sobre
-  //    la renta). Con 100% de cortesía `rentaBase` es cero y esto sale cero.
+  // 3. Horas extra, con IVA porque son renta. Por hora: el % del catálogo (5%) del
+  //    precio YA descontado, o lo que se eligió en el evento: otro % o un monto
+  //    fijo por hora (16-oct-2026). Con 100% de cortesía el % sale cero; el monto
+  //    fijo no, porque no depende de la renta.
   let rentaConIva = rentaBase;
   if (sel.horasExtra > 0) {
-    const monto = rentaBase * catalog.extraHourRate * sel.horasExtra;
+    const pct = sel.horaExtraPct != null ? sel.horaExtraPct / 100 : catalog.extraHourRate;
+    const porHora = sel.horaExtraMonto != null ? sel.horaExtraMonto : rentaBase * pct;
+    const monto = porHora * sel.horasExtra;
     rentaConIva += monto;
     lines.push({
       concepto: 'Horas extra',
-      detalle: `${sel.horasExtra} × 5% renta`,
+      detalle:
+        sel.horaExtraMonto != null
+          ? `${sel.horasExtra} × $${sel.horaExtraMonto.toLocaleString('es-MX')} por hora`
+          : `${sel.horasExtra} × ${round2(pct * 100)}% renta`,
       monto: round2(monto),
       ivaIncluido: true,
       grupo: 'renta',

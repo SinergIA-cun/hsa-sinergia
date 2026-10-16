@@ -211,6 +211,8 @@ export function AgendaPage() {
             invitados: detalle.quote.invitados,
             spaceIds: detalle.quote.spaceIds,
             horasExtra: detalle.quote.horasExtra,
+            horaExtraPct: detalle.quote.horaExtraPct ?? undefined,
+            horaExtraMonto: detalle.quote.horaExtraMonto ?? undefined,
             usaCapilla: detalle.quote.usaCapilla ?? false,
             usaDjHoraExtra: detalle.quote.usaDjHoraExtra ?? false,
             eventTypeId: detalle.quote.eventTypeId,

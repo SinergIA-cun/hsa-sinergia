@@ -82,6 +82,25 @@ describe('computeQuote', () => {
     expect(r.total).toBeCloseTo(108500 + 2 * 0.05 * 108500, 2);
   });
 
+  // Fernando, 16-oct-2026: al poner horas extra se elige si cada una se cobra en
+  // % de la renta o en monto fijo por hora.
+  it('hora extra en otro % del evento o en monto fijo por hora', () => {
+    const pct = computeQuote(catalog, mk({ horasExtra: 2, horaExtraPct: 8 }));
+    const lineaPct = pct.lines.find((l) => l.concepto === 'Horas extra')!;
+    expect(lineaPct.monto).toBeCloseTo(2 * 0.08 * 108500, 2);
+    expect(lineaPct.detalle).toBe('2 × 8% renta');
+
+    const fijo = computeQuote(catalog, mk({ horasExtra: 3, horaExtraMonto: 4_500 }));
+    const lineaFijo = fijo.lines.find((l) => l.concepto === 'Horas extra')!;
+    expect(lineaFijo.monto).toBe(13_500);
+    expect(lineaFijo.detalle).toBe('3 × $4,500 por hora');
+    expect(lineaFijo.ref).toMatchObject({ tipo: 'horasExtra', cantidad: 3, unidad: 'horas', precioUnitario: 4_500 });
+    expect(fijo.total).toBeCloseTo(108500 + 13_500, 2);
+
+    // Sin nada elegido, el % del catálogo, y el detalle dice el que es.
+    expect(computeQuote(catalog, mk({ horasExtra: 1 })).lines.find((l) => l.concepto === 'Horas extra')!.detalle).toBe('1 × 5% renta');
+  });
+
   it('add-ons: porUnidad e IVA; DJ fijo con IVA', () => {
     const r = computeQuote(catalog, mk({ addOns: [{ addOnId: 'porunidad', cantidad: 50 }, { addOnId: 'dj', cantidad: 1 }] }));
     const addonBase = 100 * 50 + 2950;

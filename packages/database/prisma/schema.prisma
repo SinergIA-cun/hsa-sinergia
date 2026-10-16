@@ -612,6 +612,10 @@ model Quote {
   /// mayoría de las cotizaciones no lleva descuento.
   /// El descuento en MONTO FIJO (pesos con IVA), en lugar de `descuentoPct`. Uno u otro.
   descuentoMonto      Float?
+  /// Hora extra de ESTE evento: % de la renta por hora o monto fijo por hora
+  /// (con IVA). Uno u otro; sin ninguno, el % del catálogo (16-oct-2026).
+  horaExtraPct        Float?
+  horaExtraMonto      Float?
   descuentoMotivo     String?
   /// El estatus que tenía antes de ponerse en standby o cancelarse. Es al que
   /// vuelve al reprogramarse (y de ahí sube si los pagos ya dan para más).

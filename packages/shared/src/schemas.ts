@@ -46,6 +46,13 @@ export const quoteSelectionSchema = z.object({
       message: 'spaceIds no debe tener duplicados',
     }),
   horasExtra: z.number().int().min(0).default(0),
+  /**
+   * Cómo se cobra cada hora extra de ESTE evento (Fernando, 16-oct-2026): en %
+   * de la renta ya descontada (0..100) o en monto fijo por hora, con IVA. Uno u
+   * otro; sin ninguno, el % del catálogo.
+   */
+  horaExtraPct: z.number().min(0).max(100).optional(),
+  horaExtraMonto: montoSchema.optional(),
   usaCapilla: z.boolean().default(false),
   usaDjHoraExtra: z.boolean().default(false),
   // Tipo de evento: necesario para el precio del DJ por hora extra. Opcional en el
@@ -105,6 +112,13 @@ export const motivoObligatorio = {
 };
 
 /** Un descuento es en porcentaje O en monto fijo, nunca los dos. */
+/** La hora extra es en porcentaje o en monto fijo, no los dos. */
+export const unModoHoraExtra = {
+  check: (d: { horaExtraPct?: number | null; horaExtraMonto?: number | null }): boolean =>
+    !(d.horaExtraPct != null && d.horaExtraMonto != null),
+  opts: { message: 'La hora extra es en porcentaje o en monto fijo, no los dos.', path: ['horaExtraMonto'] },
+};
+
 export const unSoloDescuento = {
   check: (d: { descuentoPct?: number | null; descuentoMonto?: number | null }): boolean =>
     !(d.descuentoPct != null && d.descuentoPct > 0 && d.descuentoMonto != null && d.descuentoMonto > 0),
