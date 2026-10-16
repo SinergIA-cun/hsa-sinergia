@@ -211,6 +211,8 @@ export interface CambioCatalogo {
 export interface Client {
   id: string;
   nombre: string;
+  /** Persona o empresa; `null` en los de antes de preguntarlo. */
+  tipo?: 'persona' | 'empresa' | null;
   telefono: string | null;
   correo: string | null;
   empresa: string | null;
@@ -737,7 +739,7 @@ export interface ApartadoFecha {
   motivoCancelacion: string | null;
   createdAt: string;
   banquetero?: { id: string; nombre: string; telefono: string | null } | null;
-  client?: { id: string; nombre: string; telefono: string | null; correo: string | null } | null;
+  client?: { id: string; nombre: string; tipo?: 'persona' | 'empresa' | null; telefono: string | null; correo: string | null } | null;
   eventType?: { id: string; nombre: string } | null;
   priceList?: { id: string; nombre: string; anio: number } | null;
   quote?: { id: string; folio: string; etiqueta: string | null; total: number; status: QuoteStatus } | null;

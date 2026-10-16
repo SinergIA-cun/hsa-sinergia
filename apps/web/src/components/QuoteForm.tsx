@@ -9,6 +9,7 @@ import {
   type DatosFiscales,
   type QuoteBreakdown,
   type QuoteLine,
+  type TipoCliente,
 } from '@hsa/shared';
 import { Sparkles, AlertTriangle, CheckCircle2, Ban, UserCheck, X, Plus, Trash2 } from 'lucide-react';
 import { FechasLibres } from './FechasLibres.tsx';
@@ -16,7 +17,7 @@ import { api } from '../lib/api.ts';
 import { formatMXN } from '../lib/money.ts';
 import { Button, Card, Field, MoneyInput, TextInput, SelectInput } from './ui.tsx';
 import { ClienteCombobox, type ClienteLite } from './ClienteSearch.tsx';
-import { BanqueteroPicker, type BanqueteroLite, type ModoVenta } from './banqueteros/BanqueteroPicker.tsx';
+import { BanqueteroPicker, TipoClienteChips, type BanqueteroLite, type ModoVenta } from './banqueteros/BanqueteroPicker.tsx';
 import { FacturacionSection } from './FacturacionSection.tsx';
 import { BreakdownGrouped } from './BreakdownGrouped.tsx';
 import type { Catalog, Availability, SpaceAvailability, QuoteExtraInput, ServicioBanqueteroInput } from '../lib/types.ts';
@@ -50,6 +51,8 @@ function fiscalesParaGuardar(d: DatosFiscales): DatosFiscales {
 
 export interface QuoteFormInitial {
   nombre: string;
+  /** Persona o empresa (cliente directo). `''` = sin elegir todavía. */
+  tipoCliente: TipoCliente | '';
   telefono: string;
   correo: string;
   eventTypeId: string;
@@ -202,6 +205,7 @@ export function QuoteForm({
   telefonoObligatorio = false,
 }: Props) {
   const [nombre, setNombre] = useState(initial?.nombre ?? '');
+  const [tipoCliente, setTipoCliente] = useState<TipoCliente | ''>(initial?.tipoCliente ?? '');
   const [telefono, setTelefono] = useState(initial?.telefono ?? '');
   const [correo, setCorreo] = useState(initial?.correo ?? '');
   // Cliente reutilizado: si viene de una búsqueda, guardamos su id; si el usuario
@@ -240,6 +244,7 @@ export function QuoteForm({
 
   function pickCliente(c: ClienteLite) {
     setNombre(c.nombre);
+    if (c.tipo) setTipoCliente(c.tipo);
     setTelefono(c.telefono ?? '');
     setCorreo(c.correo ?? '');
     setPickedClientId(c.id);
@@ -501,8 +506,10 @@ export function QuoteForm({
   // Teléfono o correo, al menos uno (decisión del dueño). La misma regla que exige la API.
   const faltaTelefono = telefonoObligatorio && telefono.replace(/\D/g, '').length < 10;
   const faltaContacto = !tieneContacto({ telefono, correo }) || faltaTelefono;
+  // Cliente directo: termina de elegir si es cliente o empresa (como el tipo del profesional).
+  const faltaTipoCliente = !esDeBanquetero && tipoCliente === '';
   const canSave = Boolean(
-    nombre && !faltaContacto && eventTypeId && fecha && spaceIds.length >= 1 && spaceIds.length <= MAX_ESPACIOS &&
+    nombre && !faltaContacto && !faltaTipoCliente && eventTypeId && fecha && spaceIds.length >= 1 && spaceIds.length <= MAX_ESPACIOS &&
     breakdown && !calcError && !blocked && !faltaMotivo,
   );
 
@@ -557,6 +564,7 @@ export function QuoteForm({
         requiereFactura,
         client: {
           nombre,
+          ...(esDeBanquetero || !tipoCliente ? {} : { tipo: tipoCliente }),
           telefono: telefono || undefined,
           correo: correo || undefined,
           ...fiscalesParaGuardar(fiscales),
@@ -597,6 +605,9 @@ export function QuoteForm({
               <p className="mt-1 text-xs text-charcoal-soft">
                 Es quien apartó la fecha. Completa su teléfono o correo si no los tiene.
               </p>
+              <div className="mt-2.5">
+                <TipoClienteChips value={tipoCliente} onChange={setTipoCliente} />
+              </div>
             </div>
           ) : bloqueado?.banquetero ? (
             /* Al convertir un apartado, el banquetero es quien lo apartó y quien
@@ -621,6 +632,8 @@ export function QuoteForm({
               onChange={elegirBanquetero}
               modo={modoVenta}
               onModo={setModoVenta}
+              tipoCliente={tipoCliente}
+              onTipoCliente={setTipoCliente}
             />
           )}
 
@@ -650,7 +663,15 @@ export function QuoteForm({
               listas encimadas confunden—; con banquetero elegido enseña su ficha
               si ya tiene una, para no duplicarla. */}
           <ClienteCombobox
-            label={esDeBanquetero ? 'Nombre (del profesional)' : 'Nombre o empresa'}
+            label={
+              esDeBanquetero
+                ? 'Nombre (del profesional)'
+                : tipoCliente === 'empresa'
+                  ? 'Nombre de la empresa'
+                  : tipoCliente === 'persona'
+                    ? 'Nombre del cliente'
+                    : 'Nombre o empresa'
+            }
             value={nombre}
             readOnly={esDeBanquetero || bloqueado?.cliente}
             buscar={enableClientSearch && !pickedClientId && !buscandoBanquetero && !bloqueado?.cliente}

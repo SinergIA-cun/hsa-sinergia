@@ -1,12 +1,48 @@
 import { useMemo, useState, type ReactNode } from 'react';
 import { Search, Sparkles, UserRound, X } from 'lucide-react';
-import { coincideTexto, TIPO_PROFESIONAL, TIPOS_PROFESIONAL, type TipoProfesional } from '@hsa/shared';
+import { coincideTexto, TIPO_CLIENTE, TIPO_PROFESIONAL, TIPOS_CLIENTE, TIPOS_PROFESIONAL, type TipoCliente, type TipoProfesional } from '@hsa/shared';
 
 export interface BanqueteroLite {
   id: string;
   nombre: string;
   telefono: string | null;
   tipo?: TipoProfesional;
+}
+
+/** Una pastilla de "termina de elegir": la de los tipos de profesional y la de cliente/empresa. */
+function Chip({ activo, onClick, children }: { activo: boolean; onClick: () => void; children: ReactNode }) {
+  return (
+    <button
+      type="button"
+      aria-pressed={activo}
+      onClick={onClick}
+      className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold/60 ${
+        activo ? 'border-ink bg-ink text-cream' : 'border-cream-300 bg-white/70 text-ink hover:border-gold/60'
+      }`}
+    >
+      {children}
+    </button>
+  );
+}
+
+/**
+ * Cliente o empresa (Fernando, 16-oct-2026): igual que con el profesional, al
+ * elegir "Cliente o empresa" abajo se termina de elegir cuál de los dos es. Se
+ * guarda en la ficha del cliente, así que uno que ya existe llega con el suyo.
+ */
+export function TipoClienteChips({ value, onChange }: { value: TipoCliente | ''; onChange: (t: TipoCliente) => void }) {
+  return (
+    <div>
+      <div role="group" aria-label="Cliente o empresa" className="flex flex-wrap gap-1.5">
+        {TIPOS_CLIENTE.map((t) => (
+          <Chip key={t} activo={value === t} onClick={() => onChange(t)}>
+            {TIPO_CLIENTE[t].label}
+          </Chip>
+        ))}
+      </div>
+      {value === '' && <p className="mt-1 text-xs text-charcoal-soft">Elige si es un cliente o una empresa.</p>}
+    </div>
+  );
 }
 
 /** Cuántas coincidencias se pintan antes de pedir que se teclee un poco más. */
@@ -38,6 +74,8 @@ export function BanqueteroPicker({
   onChange,
   modo,
   onModo,
+  tipoCliente,
+  onTipoCliente,
 }: {
   /** Los activos, más el de esta cotización aunque esté dado de baja. */
   banqueteros: BanqueteroLite[];
@@ -54,6 +92,9 @@ export function BanqueteroPicker({
    */
   modo: ModoVenta;
   onModo: (m: ModoVenta) => void;
+  /** Persona o empresa, cuando es cliente directo (`''` = sin elegir). */
+  tipoCliente: TipoCliente | '';
+  onTipoCliente: (t: TipoCliente) => void;
 }) {
   const [q, setQ] = useState('');
   // Qué tipo de profesional es (Jorge, 16-oct-2026: "¿cómo selecciono si es
@@ -133,6 +174,8 @@ export function BanqueteroPicker({
         )}
       </div>
 
+      {modo === 'cliente' && <TipoClienteChips value={tipoCliente} onChange={onTipoCliente} />}
+
       {modo === 'banquetero' && value !== '' && (
         <div className="flex items-center justify-between gap-3 rounded-lg border border-gold/40 bg-gold/5 px-3 py-2.5 text-sm">
           <span className="inline-flex items-center gap-2 text-ink">
@@ -156,18 +199,10 @@ export function BanqueteroPicker({
             {TIPOS_PROFESIONAL.map((t) => {
               const activo = tipo === t;
               return (
-                <button
-                  key={t}
-                  type="button"
-                  aria-pressed={activo}
-                  onClick={() => setTipo(activo ? null : t)}
-                  className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold/60 ${
-                    activo ? 'border-ink bg-ink text-cream' : 'border-cream-300 bg-white/70 text-ink hover:border-gold/60'
-                  }`}
-                >
+                <Chip key={t} activo={activo} onClick={() => setTipo(activo ? null : t)}>
                   {TIPO_PROFESIONAL[t].label}
                   <span className={`ml-1.5 ${activo ? 'text-cream/70' : 'text-charcoal-soft'}`}>{cuantosPorTipo.get(t) ?? 0}</span>
-                </button>
+                </Chip>
               );
             })}
           </div>

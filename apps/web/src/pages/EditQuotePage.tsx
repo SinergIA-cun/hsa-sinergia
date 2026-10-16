@@ -55,6 +55,7 @@ const APARTAN = new Set<string>(ESTATUS_QUE_APARTAN);
 function toInitial(q: Quote): Partial<QuoteFormInitial> {
   return {
     nombre: q.client?.nombre ?? '',
+    tipoCliente: q.client?.tipo ?? '',
     telefono: q.client?.telefono ?? '',
     correo: q.client?.correo ?? '',
     eventTypeId: q.eventTypeId,

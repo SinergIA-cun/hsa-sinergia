@@ -11,3 +11,12 @@ export const TIPO_PROFESIONAL: Record<TipoProfesional, { label: string; codigo: 
   agencia: { label: 'Agencia', codigo: 'A' },
   weddingPlanner: { label: 'Wedding planner', codigo: 'WP' },
 };
+
+/** Un cliente directo: persona o empresa (16-oct-2026). */
+export const TIPOS_CLIENTE = ['persona', 'empresa'] as const;
+export type TipoCliente = (typeof TIPOS_CLIENTE)[number];
+
+export const TIPO_CLIENTE: Record<TipoCliente, { label: string }> = {
+  persona: { label: 'Cliente' },
+  empresa: { label: 'Empresa' },
+};
