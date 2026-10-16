@@ -317,7 +317,7 @@ function NuevoCatalogoCard({
                 {p.activa ? ' (activo)' : ''}
               </option>
             ))}
-            <option value="">Empezar vacío (sin precios)</option>
+            <option value="">Empezar vacío (mismos salones y rangos, sin precios)</option>
           </SelectInput>
         </Field>
         <Field
