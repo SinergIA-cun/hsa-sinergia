@@ -1,5 +1,6 @@
 import { useNavigate } from 'react-router-dom';
 import { AvisosApartados } from '../components/apartados/AvisosApartados.tsx';
+import { DescuadresPanel } from '../components/DescuadresPanel.tsx';
 import { useQuery } from '@tanstack/react-query';
 import {
   CalendarDays,
@@ -135,6 +136,8 @@ export function InicioPage() {
       {/* Apartados que vencen en 3 días o menos: hay que confirmar con la persona. */}
       <div className="print:hidden">
         <AvisosApartados />
+        {/* Lo cobrado contra lo contratado: solo el admin. */}
+        {user?.role === 'admin' && <DescuadresPanel />}
       </div>
 
       <div className="mb-8 flex flex-wrap items-end justify-between gap-4 print:hidden">
