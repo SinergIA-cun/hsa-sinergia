@@ -255,6 +255,8 @@ export async function biEventos(db: PrismaClient, r: RangoBI) {
         ? { desde: q.standbyDesde?.toISOString() ?? null, motivo: q.standbyMotivo, estatusPrevio: q.statusPrevio }
         : null,
     cancelacion: cancelaciones.get(q.id) ?? null,
+    // "Cerrar evento": conciliado y congelado; nada cambia hasta que un admin lo reabra.
+    cerradoAt: q.cerradoAt?.toISOString() ?? null,
     tipoEvento: q.eventType?.nombre ?? null,
     invitados: q.invitados,
     espacios: q.spaceIds,

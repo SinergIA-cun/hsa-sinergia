@@ -7,6 +7,7 @@ import { validarCobroDeCargos } from '../cargos/service.js';
 import { resolverOError, validarCobroDeBanquete } from './service.js';
 import { folioPapelSchema, subirSecuenciaSobre, validarFolioDePapel } from './folios.js';
 import { ponerAlDia } from './estatus.js';
+import { assertAbierto } from '../quotes/cierre.js';
 
 // Corregir y mover recibos desde el punto de venta. Desde que el BI y el punto de
 // venta están enlazados, el BI ya no edita lo que mandó: los errores de captura
@@ -161,6 +162,8 @@ export async function moverPago(db: PrismaClient, quoteId: string, paymentId: st
   if (!destino) throw new QuoteError(404, `No hay un evento con el código ${input.destino}.`);
   if (destino.id === quoteId) throw new QuoteError(400, 'El pago ya está en ese evento.');
   if (destino.status === 'cancelada') throw new QuoteError(409, 'Ese evento está cancelado: no se le pasan pagos.');
+  // El de origen ya lo revisa el candado de la ruta; el destino también tiene que estar abierto.
+  await assertAbierto(db, destino.id);
   if (pago.destino === 'cargos') await validarCobroDeCargos(db, destino, pago.monto);
   if (pago.destino === 'banquete') await validarCobroDeBanquete(db, destino, pago.monto);
 

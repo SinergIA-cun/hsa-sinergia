@@ -253,6 +253,9 @@ export interface ServicioBanqueteroInput {
 
 export interface Quote {
   id: string;
+  /** "Cerrar evento": cuándo y quién. Cerrado, nada cambia hasta reabrirlo. */
+  cerradoAt?: string | null;
+  cerradoBy?: { nombre: string } | null;
   /** El id del evento en el BI si vino de allá: tiene PRECIO PACTADO, no se recotiza. */
   importadoBI?: string | null;
   /** Precio pactado: no se recotiza (importado del BI o apartado con renta acordada). */
@@ -921,6 +924,8 @@ export interface AgendaEvent {
   quoteId: string;
   /** Evento de otro vendedor: solo se sabe que ocupa el salón (15-oct-2026). */
   ajeno?: boolean;
+  /** "Cerrar evento": no se arrastra. */
+  cerrado?: boolean;
   cliente: string;
   eventoNombre: string;
   fechaEvento: string;

@@ -29,6 +29,7 @@ import { historicoRoutes } from './historico/routes.js';
 import { proveedorRoutes } from './proveedores/routes.js';
 import { correoRoutes } from './correos/routes.js';
 import { apartadoRapidoRoutes } from './apartadosRapidos/routes.js';
+import { candadoDeEventoCerrado } from './quotes/cierre.js';
 
 declare module 'fastify' {
   interface FastifyInstance {
@@ -63,6 +64,8 @@ export async function buildServer(opts: BuildOptions = {}): Promise<FastifyInsta
   // autenticación lo llena con el usuario del token.
   setupContextoActor(app);
   setupAuth(app);
+  // Un evento cerrado no se cambia por ninguna ruta (ver quotes/cierre.ts).
+  candadoDeEventoCerrado(app);
 
   app.setErrorHandler((error, req, reply) => {
     if (error instanceof ZodError) {

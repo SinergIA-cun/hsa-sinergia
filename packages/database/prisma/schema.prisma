@@ -660,6 +660,13 @@ model Quote {
 
   apartadoRapido ApartadoRapido?
 
+  /// "Cerrar evento" (reunión del 15-oct-2026): tras conciliar, nada del evento
+  /// se cambia —ni pagos, ni cargos, ni datos— hasta que un admin lo reabra con
+  /// motivo (queda en la bitácora). Facturar y reenviar correos sí se puede.
+  cerradoAt   DateTime?
+  cerradoBy   User?     @relation("EventoCerradoPor", fields: [cerradoById], references: [id])
+  cerradoById String?
+
   @@index([clientId])
   @@index([status])
   @@index([createdById])
@@ -914,6 +921,7 @@ model User {
   devolucionesAnuladas      Devolucion[]     @relation("DevolucionAnuladaBy")
   apartadosRapidosCreados   ApartadoRapido[] @relation("ApartadoRapidoCreadoPor")
   apartadosRapidosCerrados  ApartadoRapido[] @relation("ApartadoRapidoCerradoPor")
+  eventosCerrados           Quote[]          @relation("EventoCerradoPor")
 }
 
 /// La bitácora forense: quién tocó qué fila, con el contenido antes y después.

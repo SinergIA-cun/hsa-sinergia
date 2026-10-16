@@ -298,7 +298,7 @@ export function AgendaPage() {
             <ChipArrastrable
               key={e.quoteId}
               id={e.quoteId}
-              movible={isAdmin ? e.status !== 'liquidada' : e.status === 'borrador'}
+              movible={!e.cerrado && (isAdmin ? e.status !== 'liquidada' : e.status === 'borrador')}
               onClick={() => abrir(e.quoteId)}
               title={`${espacio || e.eventoNombre} · ${e.cliente} · ${e.eventoNombre} · ${estatus}${
                 empalmada ? ' · El espacio ya fue apartado por otro evento' : ''

@@ -185,6 +185,7 @@ fecha: `fechaEvento` es la que TENÍA) o `cancelada`. Los dos sueltan la fecha: 
 |---|---|
 | `standby` | `null`, o `{ desde, motivo, estatusPrevio }`: desde cuándo está sin fecha y a qué estatus vuelve al reprogramarse. |
 | `cancelacion` | `null`, o `{ fecha, motivo, porcentaje, pagado, devolver, retenido, devuelto, pendiente }`: lo pagado al cancelar, el porcentaje que se acordó devolver, cuánto es, lo que se retiene, lo ya devuelto desde la cancelación y lo que falta. Las devoluciones en sí salen en `/devoluciones`. |
+| `cerradoAt` | `null`, o cuándo se **cerró** el evento (conciliado). Cerrado no cambia nada —datos, pagos, cargos, devoluciones— hasta que un admin lo reabre con motivo; facturar sí se puede. Cerrar y reabrir salen en `/cambios` como `estatus`. |
 | `descuento` | `null`, o `{ porcentaje, monto, motivo }`: el descuento sobre la renta, en **porcentaje o en monto fijo** (pesos con IVA); uno de los dos viene en `null`. `esCortesia` / `esPromocion` dicen de qué tipo es. Ya está aplicado en `renta.total` y `total`. |
 | `salones` | Los nombres de `espacios`, en el mismo orden. |
 | `salonPrincipal` | `{ id, nombre }`: el **primero** de `espacios`, que es el que va en el código del evento (`…-CUPULA`). `null` en un evento sin salón (solo capilla, sesión de fotos). |

@@ -27,6 +27,7 @@ import { ConfirmarEmpalmeModal, type EspacioOcupado } from '../components/Confir
 import { MoverCatalogoModal } from '../components/MoverCatalogoModal.tsx';
 import { AjustarPrecioForm } from '../components/AjustarPrecio.tsx';
 import { AgenciaPaquete } from '../components/AgenciaPaquete.tsx';
+import { CierreEvento } from '../components/ciclo/CierreEvento.tsx';
 import { OperativaSection } from '../components/OperativaSection.tsx';
 import { CodigoEvento } from '../components/CodigoEvento.tsx';
 import { CicloEvento } from '../components/ciclo/CicloEvento.tsx';
@@ -239,6 +240,9 @@ export function EditQuotePage() {
   if (!catalog) return <p className="text-wine">No se pudo cargar el catálogo de la cotización.</p>;
 
   const enPapelera = Boolean(quote.deletedAt);
+  // "Cerrar evento": cerrado, todo queda en solo lectura (la API lo exige igual).
+  const cerrado = Boolean(quote.cerradoAt);
+  const congelado = enPapelera || cerrado;
   // Un evento con precio PACTADO (importado del BI, o un apartado convertido con
   // renta acordada) no abre el formulario: el formulario recalcula el precio en
   // vivo contra el catálogo, y el servidor nunca lo recotiza. Enseñar otro total
@@ -249,7 +253,7 @@ export function EditQuotePage() {
   // Después de formalizar solo un admin edita (15-oct-2026); un vendedor ve el
   // evento en solo lectura. La API lo exige igual.
   const soloAdmin = !isAdmin && quote.status !== 'borrador';
-  const editable = EDITABLE_STATUSES.includes(quote.status) && !enPapelera && !soloAdmin;
+  const editable = EDITABLE_STATUSES.includes(quote.status) && !congelado && !soloAdmin;
   const contratoDisponible =
     !enPapelera && ['formalizada', 'complementada', 'liquidada'].includes(quote.status);
   const publicUrl = `${window.location.origin}/c/${quote.publicToken}`;
@@ -295,7 +299,7 @@ export function EditQuotePage() {
               <BookMarked size={12} /> Catálogo {quote.priceList?.nombre ?? '—'}
             </span>
             <span>Sus precios mandan aunque el catálogo activo sea otro.</span>
-            {isAdmin && !enPapelera && !importado && (
+            {isAdmin && !congelado && !importado && (
               <button
                 type="button"
                 className="rounded text-xs font-medium text-gold underline underline-offset-2 hover:text-gold-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold/60"
@@ -313,7 +317,12 @@ export function EditQuotePage() {
               {STATUS_LABEL[quote.status]}
             </span>
           )}
-          {!enPapelera && quote.status !== 'standby' && quote.status !== 'cancelada' && (
+          {cerrado && quote.status !== 'standby' && quote.status !== 'cancelada' && (
+            <span className={`rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-wide ${STATUS_STYLE[quote.status]}`}>
+              {STATUS_LABEL[quote.status]}
+            </span>
+          )}
+          {!congelado && quote.status !== 'standby' && quote.status !== 'cancelada' && (
           <label className="flex items-center gap-2 text-sm">
             <span className="text-charcoal-soft">Estatus</span>
             <SelectInput
@@ -367,7 +376,8 @@ export function EditQuotePage() {
       </div>
 
       {/* Mover evento (fecha y/o lugar), standby y cancelar; y si ya está sin fecha o cancelado, cómo salir. */}
-      {!enPapelera && (
+      {!enPapelera && <CierreEvento quote={quote} isAdmin={isAdmin} />}
+      {!congelado && (
         <CicloEvento
           quote={quote}
           pagado={estadoCuenta.pagado}
@@ -463,6 +473,8 @@ export function EditQuotePage() {
             <p className="text-sm text-charcoal-soft">
               {enPapelera
                 ? 'Solo lectura: evento eliminado, conservado como evidencia.'
+                : cerrado
+                  ? 'Evento cerrado: solo lectura. Un admin lo puede reabrir con motivo.'
                 : importado
                   ? `${quote.importadoBI ? `Importado del BI${quote.contratadoEl ? `, contratado el ${formatEventDate(quote.contratadoEl)}` : ''}` : 'Renta acordada al apartar'}. Tiene precio pactado: no se recotiza. La fecha y el lugar se cambian con "Mover evento" y los datos del día, en la hoja operativa.`
                   : quote.status === 'standby'
@@ -470,7 +482,7 @@ export function EditQuotePage() {
                     : quote.status === 'cancelada'
                       ? 'Cancelado: solo lectura. Un admin lo puede reactivar.'
                       : 'Ya está formalizado: solo un admin puede editarlo o moverlo. Pagos, recibos y la hoja operativa siguen igual.'}
-              {isAdmin && importado && !enPapelera && quote.status !== 'cancelada' && !ajustarPrecio && (
+              {isAdmin && importado && !congelado && quote.status !== 'cancelada' && !ajustarPrecio && (
                 <>
                   {' '}
                   <button
@@ -521,7 +533,7 @@ export function EditQuotePage() {
           payments={payments}
           banquete={quoteQ.data?.banquete}
           activityLog={activityLog}
-          readOnly={enPapelera}
+          readOnly={congelado}
           // A un cancelado ya no le entra dinero (la API lo rechaza igual).
           sinPagosNuevos={quote.status === 'cancelada'}
         />
@@ -534,7 +546,7 @@ export function EditQuotePage() {
           paquete={quoteQ.data.paquete}
           agencia={quote.agencia ?? null}
           banqueteroDelEvento={quote.banquetero ?? null}
-          readOnly={enPapelera}
+          readOnly={congelado}
         />
       )}
 
@@ -551,7 +563,7 @@ export function EditQuotePage() {
           cuenta={quoteQ.data.cuenta}
           productos={quoteQ.data.productosPuntoDeVenta}
           isAdmin={isAdmin}
-          readOnly={enPapelera}
+          readOnly={congelado}
         />
       )}
 
@@ -563,11 +575,11 @@ export function EditQuotePage() {
           saldoRenta={estadoCuenta.saldo}
           pagadoCuenta={quoteQ.data.cuenta?.pagado ?? 0}
           devoluciones={quoteQ.data.devoluciones ?? []}
-          readOnly={enPapelera}
+          readOnly={congelado}
         />
       )}
 
-      {contratoDisponible && <OperativaSection quote={quote} />}
+      {contratoDisponible && !cerrado && <OperativaSection quote={quote} />}
 
       {compartir && (
         <CompartirClienteModal quote={quote} publicUrl={publicUrl} onClose={() => setCompartir(false)} />
