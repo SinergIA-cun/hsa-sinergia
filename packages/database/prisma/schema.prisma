@@ -865,6 +865,9 @@ model Payment {
   /// La regla del finiquito gana SIEMPRE sobre esto (decisión del dueño): la
   /// etiqueta de finiquito la manda el saldo, no la captura.
   conceptoManual   PaymentConcept?
+  /// Si es el finiquito: el total del contrato que completó. Con él, el
+  /// finiquito se queda aunque el contrato suba después (16-oct-2026).
+  finiquitoDe      Float?
   fecha            DateTime
   referencia       String?
   /// Notas libres de quien registra: lo que ayude a entender este dinero ("pagó

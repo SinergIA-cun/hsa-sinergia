@@ -51,14 +51,20 @@ export async function reclasificarConceptos(
   const ordenados = [...payments].sort(
     (a, b) => a.fecha.getTime() - b.fecha.getTime() || a.createdAt.getTime() - b.createdAt.getTime(),
   );
-  const efectivos = deducirConceptos(ordenados, totalDelContrato(estadoCuenta.plan, quote.rentaTotal));
+  const total = totalDelContrato(estadoCuenta.plan, quote.rentaTotal);
+  const efectivos = deducirConceptos(ordenados, total);
 
   const cambios: CambioConcepto[] = [];
   for (const p of ordenados) {
     const nuevo = efectivos.get(p.id);
-    if (nuevo == null || nuevo === p.concepto) continue;
-    cambios.push({ paymentId: p.id, folio: p.folio, de: p.concepto, a: nuevo });
-    await db.payment.update({ where: { id: p.id }, data: { concepto: nuevo } });
+    if (nuevo == null) continue;
+    // El finiquito guarda el total que completó (para que se quede si el
+    // contrato sube después); el que deja de serlo lo suelta.
+    const finiquitoDe =
+      p.anuladoAt != null ? p.finiquitoDe : nuevo === 'finiquito' ? (p.finiquitoDe != null && p.concepto === 'finiquito' ? p.finiquitoDe : total) : null;
+    if (nuevo === p.concepto && finiquitoDe === p.finiquitoDe) continue;
+    if (nuevo !== p.concepto) cambios.push({ paymentId: p.id, folio: p.folio, de: p.concepto, a: nuevo });
+    await db.payment.update({ where: { id: p.id }, data: { concepto: nuevo, finiquitoDe } });
   }
 
   const enCadena = cambios.filter((c) => c.paymentId !== opts.salvo);
