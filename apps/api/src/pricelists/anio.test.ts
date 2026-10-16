@@ -17,6 +17,7 @@ describe('año del catálogo', () => {
   it('se toma del nombre o es el año en curso', () => {
     expect(anioDelNombre('2028')).toBe(2028);
     expect(anioDelNombre('Precios 2029 temporada alta')).toBe(2029);
+    expect(anioDelNombre('2027TB')).toBe(2027);
     expect(anioDelNombre('Temporada alta', new Date('2026-10-16T12:00:00Z'))).toBe(2026);
   });
 

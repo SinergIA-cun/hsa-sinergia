@@ -39,7 +39,7 @@ const conIncremento = <T extends number | null>(v: T, pct: number): T =>
 
 /** "Precios 2028" → 2028; sin un año en el nombre, el año en curso. */
 export function anioDelNombre(nombre: string, hoy = new Date()): number {
-  const m = /\b(20\d{2})\b/.exec(nombre);
+  const m = /(?<!\d)(20\d{2})(?!\d)/.exec(nombre);
   return m ? Number(m[1]) : hoy.getUTCFullYear();
 }
 
