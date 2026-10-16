@@ -80,7 +80,11 @@ describe('ajustar el precio pactado', () => {
     expect(despues.total).toBe(57_913);
     expect(despues.rentaTotal).toBe(45_000);
     expect(despues.status).not.toBe('liquidada');
-    const log = await prisma.activityLog.findFirstOrThrow({ where: { quoteId: q.id, tipo: 'edicion' } });
+    // El evento tiene varios registros de edición: se busca EL del ajuste. Sin el
+    // filtro, la base devolvía cualquiera y la prueba fallaba a veces.
+    const log = await prisma.activityLog.findFirstOrThrow({
+      where: { quoteId: q.id, tipo: 'edicion', descripcion: { startsWith: 'Precio pactado ajustado' } },
+    });
     expect(log.descripcion).toContain('total $50,000 → $57,913');
     expect(log.descripcion).toContain('Motivo: Subieron invitados en el BI');
   });
