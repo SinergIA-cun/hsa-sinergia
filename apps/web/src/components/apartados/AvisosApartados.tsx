@@ -32,7 +32,7 @@ export function AvisosApartados({ onAbrir }: { onAbrir?: (a: ApartadoRapido) => 
               <span className="min-w-0">
                 <strong className="text-ink">{a.nombre}</strong>
                 <span className="text-charcoal-soft">
-                  {' '}· {formatEventDate(a.fecha)} · {a.eventType.nombre} · {a.posicion === 1 ? 'primero en la fila' : `lugar ${a.posicion}`} · {a.telefono}
+                  {' '}· {formatEventDate(a.fecha)} · {a.eventType.nombre} · {a.posicion === 1 ? 'primero en la fila' : `lugar ${a.posicion}`}{a.telefono ? ` · ${a.telefono}` : ''}
                 </span>
               </span>
               <Contador dias={a.diasRestantes} />

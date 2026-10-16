@@ -175,6 +175,11 @@ interface Props {
    * evento" y el precio por "Ajustar precio".
    */
   precioPactado?: QuoteBreakdown;
+  /**
+   * El teléfono es obligatorio (no basta el correo). Al convertir un apartado
+   * rápido en evento: en el apartado fue opcional (reunión del 15-oct-2026).
+   */
+  telefonoObligatorio?: boolean;
 }
 
 export function QuoteForm({
@@ -193,6 +198,7 @@ export function QuoteForm({
   fiscalEditable,
   isAdmin = false,
   precioPactado,
+  telefonoObligatorio = false,
 }: Props) {
   const [nombre, setNombre] = useState(initial?.nombre ?? '');
   const [telefono, setTelefono] = useState(initial?.telefono ?? '');
@@ -491,7 +497,8 @@ export function QuoteForm({
   // miles sin explicación es un problema de auditoría, no un campo opcional.
   const faltaMotivo = hayDescuento && descuentoMotivo.trim() === '';
   // Teléfono o correo, al menos uno (decisión del dueño). La misma regla que exige la API.
-  const faltaContacto = !tieneContacto({ telefono, correo });
+  const faltaTelefono = telefonoObligatorio && telefono.replace(/\D/g, '').length < 10;
+  const faltaContacto = !tieneContacto({ telefono, correo }) || faltaTelefono;
   const canSave = Boolean(
     nombre && !faltaContacto && eventTypeId && fecha && spaceIds.length >= 1 && spaceIds.length <= MAX_ESPACIOS &&
     breakdown && !calcError && !blocked && !faltaMotivo,
@@ -676,9 +683,11 @@ export function QuoteForm({
           {/* En rojo solo cuando ya es lo único que falta: gritarlo desde la
               primera letra del nombre regaña antes de tiempo. */}
           <p className={`-mt-2 text-xs ${faltaContacto && nombre && fecha && spaceIds.length > 0 ? 'text-wine' : 'text-charcoal-soft'}`}>
-            {faltaContacto && nombre && fecha && spaceIds.length > 0
-              ? `${MENSAJE_SIN_CONTACTO}${esDeBanquetero && !telefono ? ' El profesional no tiene teléfono: captura su correo.' : ''}`
-              : 'Teléfono o correo: al menos uno es obligatorio.'}
+            {telefonoObligatorio
+              ? 'El teléfono es obligatorio para convertir el apartado en evento.'
+              : faltaContacto && nombre && fecha && spaceIds.length > 0
+                ? `${MENSAJE_SIN_CONTACTO}${esDeBanquetero && !telefono ? ' El profesional no tiene teléfono: captura su correo.' : ''}`
+                : 'Teléfono o correo: al menos uno es obligatorio.'}
             {pickedClientId && !faltaContacto && ' Si lo cambias, se actualiza en su ficha.'}
           </p>
 

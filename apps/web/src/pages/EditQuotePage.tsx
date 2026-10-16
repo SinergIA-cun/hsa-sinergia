@@ -246,7 +246,10 @@ export function EditQuotePage() {
   const importado = Boolean(quote.precioPactado ?? quote.importadoBI);
   // Los importados también se editan (Jorge, 15-oct-2026: "TODO editable"): el
   // formulario entra en modo precio pactado y no recotiza.
-  const editable = EDITABLE_STATUSES.includes(quote.status) && !enPapelera;
+  // Después de formalizar solo un admin edita (15-oct-2026); un vendedor ve el
+  // evento en solo lectura. La API lo exige igual.
+  const soloAdmin = !isAdmin && quote.status !== 'borrador';
+  const editable = EDITABLE_STATUSES.includes(quote.status) && !enPapelera && !soloAdmin;
   const contratoDisponible =
     !enPapelera && ['formalizada', 'complementada', 'liquidada'].includes(quote.status);
   const publicUrl = `${window.location.origin}/c/${quote.publicToken}`;
@@ -464,7 +467,9 @@ export function EditQuotePage() {
                   ? `${quote.importadoBI ? `Importado del BI${quote.contratadoEl ? `, contratado el ${formatEventDate(quote.contratadoEl)}` : ''}` : 'Renta acordada al apartar'}. Tiene precio pactado: no se recotiza. La fecha y el lugar se cambian con "Mover evento" y los datos del día, en la hoja operativa.`
                   : quote.status === 'standby'
                     ? 'Sin fecha: se edita de nuevo en cuanto se reprograme.'
-                    : 'Cancelado: solo lectura. Un admin lo puede reactivar.'}
+                    : quote.status === 'cancelada'
+                      ? 'Cancelado: solo lectura. Un admin lo puede reactivar.'
+                      : 'Ya está formalizado: solo un admin puede editarlo o moverlo. Pagos, recibos y la hoja operativa siguen igual.'}
               {isAdmin && importado && !enPapelera && quote.status !== 'cancelada' && !ajustarPrecio && (
                 <>
                   {' '}

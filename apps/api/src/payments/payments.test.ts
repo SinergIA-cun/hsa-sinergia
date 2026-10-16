@@ -536,6 +536,9 @@ describe('datos fiscales con una factura emitida', () => {
   it('un vendedor no puede cambiar el RFC después de facturar', async () => {
     const { quoteId, paymentId, quote } = await crearPagoDePrueba();
     await marcarFacturadoComoAdmin(quoteId, paymentId);
+    // Un vendedor solo edita borradores (15-oct-2026): el candado fiscal se prueba
+    // en un borrador con un pago chico ya facturado.
+    await prisma.quote.update({ where: { id: quoteId }, data: { status: 'borrador' } });
 
     const ventas = { id: actor.id, role: 'ventas' as const };
     await expect(
@@ -570,6 +573,9 @@ describe('datos fiscales con una factura emitida', () => {
     // sería un 409 y la vendedora no podría tocar nada más del evento.
     const { quoteId, paymentId, quote } = await crearPagoDePrueba();
     await marcarFacturadoComoAdmin(quoteId, paymentId);
+    // Un vendedor solo edita borradores (15-oct-2026): el candado fiscal se prueba
+    // en un borrador con un pago chico ya facturado.
+    await prisma.quote.update({ where: { id: quoteId }, data: { status: 'borrador' } });
 
     const ventas = { id: actor.id, role: 'ventas' as const };
     const actualizada = await updateQuote(prisma, quoteId, {
@@ -589,6 +595,9 @@ describe('datos fiscales con una factura emitida', () => {
       client: { telefono: '5555550000', nombre: 'Pago Test', rfc: 'XAXX010101000' },
     }, actor);
     await marcarFacturadoComoAdmin(quoteId, paymentId);
+    // Un vendedor solo edita borradores (15-oct-2026): el candado fiscal se prueba
+    // en un borrador con un pago chico ya facturado.
+    await prisma.quote.update({ where: { id: quoteId }, data: { status: 'borrador' } });
 
     const ventas = { id: actor.id, role: 'ventas' as const };
     const actualizada = await updateQuote(prisma, quoteId, {
@@ -598,6 +607,15 @@ describe('datos fiscales con una factura emitida', () => {
     }, ventas);
     expect(actualizada.invitados).toBe(190);
     expect(actualizada.client.rfc).toBe('XAXX010101000');
+  });
+
+  it('después de formalizar, un vendedor ya no edita; un admin sí (15-oct-2026)', async () => {
+    const { quoteId, quote } = await crearPagoDePrueba();
+    await prisma.quote.update({ where: { id: quoteId }, data: { status: 'formalizada' } });
+    const ventas = { id: actor.id, role: 'ventas' as const };
+    const cambio = { ...selectionDe(quote), invitados: 175, client: { telefono: '5555550000', nombre: 'Pago Test' } };
+    await expect(updateQuote(prisma, quoteId, cambio, ventas)).rejects.toMatchObject({ status: 403 });
+    expect((await updateQuote(prisma, quoteId, cambio, actor)).invitados).toBe(175);
   });
 
   it('sin factura emitida no se escribe bitácora fiscal de desbloqueo', async () => {

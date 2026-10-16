@@ -70,7 +70,7 @@ export function NuevoApartadoModal({
     setError('');
     setBusy(true);
     try {
-      await api.post('/api/apartados-rapidos', { nombre, telefono, eventTypeId: tipo, fecha });
+      await api.post('/api/apartados-rapidos', { nombre, telefono: telefono.trim() || null, eventTypeId: tipo, fecha });
       await onListo();
     } catch (err) {
       setError(apiErrorMessage(err, 'No se pudo apartar.'));
@@ -92,8 +92,8 @@ export function NuevoApartadoModal({
           <Field label="Nombre">
             <TextInput autoFocus value={nombre} onChange={(e) => setNombre(e.target.value)} required />
           </Field>
-          <Field label="Teléfono">
-            <TextInput type="tel" inputMode="tel" value={telefono} onChange={(e) => setTelefono(e.target.value)} placeholder="55 1234 5678" required />
+          <Field label="Teléfono (opcional)" hint="Se pide al convertirlo en evento.">
+            <TextInput type="tel" inputMode="tel" value={telefono} onChange={(e) => setTelefono(e.target.value)} placeholder="55 1234 5678" />
           </Field>
           <Field label="Tipo de evento">
             <SelectInput value={tipo} onChange={(e) => setTipo(e.target.value)} required>
@@ -149,7 +149,7 @@ export function ApartadoDetalleModal({
 
   const convertir = () =>
     navigate(
-      `/eventos/nuevo?${new URLSearchParams({ fecha: a.fecha, nombre: a.nombre, telefono: a.telefono, tipo: a.eventType.id, apartado: a.id }).toString()}`,
+      `/eventos/nuevo?${new URLSearchParams({ fecha: a.fecha, nombre: a.nombre, ...(a.telefono ? { telefono: a.telefono } : {}), tipo: a.eventType.id, apartado: a.id }).toString()}`,
     );
 
   return (
@@ -164,7 +164,7 @@ export function ApartadoDetalleModal({
         <dt className="text-charcoal-soft">Fecha</dt>
         <dd className="text-ink">{formatEventDate(a.fecha, 'long')}</dd>
         <dt className="text-charcoal-soft">Teléfono</dt>
-        <dd className="text-ink">{a.telefono}</dd>
+        <dd className="text-ink">{a.telefono ?? <span className="text-charcoal-soft">Sin teléfono (se pide al convertir)</span>}</dd>
         <dt className="text-charcoal-soft">Vence</dt>
         <dd className="text-ink">
           {formatEventDate(a.vence, 'long')}
@@ -184,9 +184,11 @@ export function ApartadoDetalleModal({
             <MessageCircle size={15} /> WhatsApp
           </a>
         )}
-        <a href={`tel:${a.telefono}`} className="inline-flex items-center gap-1.5 rounded-lg border border-ink/15 px-3 py-2 text-sm text-ink hover:bg-ink/5">
-          <Phone size={15} /> Llamar
-        </a>
+        {a.telefono && (
+          <a href={`tel:${a.telefono}`} className="inline-flex items-center gap-1.5 rounded-lg border border-ink/15 px-3 py-2 text-sm text-ink hover:bg-ink/5">
+            <Phone size={15} /> Llamar
+          </a>
+        )}
       </div>
       {a.puedeGestionar ? (
         liberando ? (

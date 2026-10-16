@@ -1262,7 +1262,8 @@ export interface UsoEnContratos {
 export interface ApartadoRapido {
   id: string;
   nombre: string;
-  telefono: string;
+  /** Opcional en el apartado; se exige al convertirlo en evento. */
+  telefono: string | null;
   eventType: { id: string; nombre: string };
   /** YYYY-MM-DD */
   fecha: string;

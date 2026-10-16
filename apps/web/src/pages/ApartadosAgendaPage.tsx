@@ -83,7 +83,7 @@ export function ApartadosAgendaPage() {
               </span>
               <Contador dias={a.diasRestantes} />
             </span>
-            {grande && <span className="mt-0.5 block truncate opacity-80">{a.eventType.nombre} · {a.telefono}</span>}
+            {grande && <span className="mt-0.5 block truncate opacity-80">{a.eventType.nombre}{a.telefono ? ` · ${a.telefono}` : ''}</span>}
           </button>
         ))}
         {fila.length >= tope && <p className="text-[0.65rem] font-semibold uppercase tracking-wide text-wine">Fila llena</p>}

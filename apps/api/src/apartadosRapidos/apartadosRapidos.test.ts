@@ -4,7 +4,7 @@ import { prisma } from '@hsa/database';
 import { MARCA_POR_OMISION } from '@hsa/shared';
 import { buildServer } from '../server.js';
 import { loadConfig } from '../config.js';
-import type { Actor } from '../quotes/service.js';
+import { createQuote, type Actor } from '../quotes/service.js';
 import type { Mailer, Mensaje } from '../correos/mailer.js';
 import { barrerApartados, crearApartado, apartadosPorVencer, fijarTope } from './service.js';
 
@@ -101,12 +101,32 @@ describe('confirmar, liberar y convertir', () => {
   it('convertir lo cierra ligado al evento', async () => {
     const f = fecha();
     const a = await nuevo(f, 21);
-    const q = await prisma.quote.findFirstOrThrow({ select: { id: true } });
+    const q = await prisma.quote.findFirstOrThrow({ where: { client: { telefono: { not: null } } }, select: { id: true } });
     const r = await app.inject({ method: 'POST', url: `/api/apartados-rapidos/${a.id}/convertir`, cookies: cookie, payload: { quoteId: q.id } });
     expect(r.statusCode).toBe(200);
     expect(await prisma.apartadoRapido.findUniqueOrThrow({ where: { id: a.id } })).toMatchObject({ estado: 'convertido', quoteId: q.id });
     // Para no dejar amarrado un evento ajeno a la prueba.
     await prisma.apartadoRapido.update({ where: { id: a.id }, data: { quoteId: null } });
+  });
+});
+
+describe('teléfono opcional en el apartado, obligatorio al convertir (reunión del 15-oct-2026)', () => {
+  it('se aparta sin teléfono; no se convierte en un evento sin teléfono', async () => {
+    const f = fecha();
+    const a = await crearApartado(prisma, { nombre: 'Sin Teléfono', telefono: '', eventTypeId: bodaId, fecha: f }, admin);
+    expect(a.telefono).toBeNull();
+    const b = await crearApartado(prisma, { nombre: 'Otro Sin Teléfono', eventTypeId: bodaId, fecha: f }, admin);
+    expect(b.posicion).toBe(2);
+    const sinTel = await createQuote(
+      prisma,
+      { fecha: f, invitados: 150, spaceIds: [arcosId], eventTypeId: bodaId, client: { nombre: 'Sin Teléfono', correo: 'sintel@example.com' } },
+      admin,
+    );
+    const r = await app.inject({ method: 'POST', url: `/api/apartados-rapidos/${a.id}/convertir`, cookies: cookie, payload: { quoteId: sinTel.id } });
+    expect(r.statusCode).toBe(409);
+    await prisma.activityLog.deleteMany({ where: { quoteId: sinTel.id } });
+    await prisma.quote.delete({ where: { id: sinTel.id } });
+    await prisma.client.delete({ where: { id: sinTel.clientId } });
   });
 });
 

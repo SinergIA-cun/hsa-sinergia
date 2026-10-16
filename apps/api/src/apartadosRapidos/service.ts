@@ -29,11 +29,14 @@ const fechaISO = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Fecha en formato AAAA-
 
 export const crearSchema = z.object({
   nombre: z.string().trim().min(2, 'Escribe el nombre.').max(120),
+  /** Opcional en el apartado; se exige al convertirlo en evento (reunión del 15-oct-2026). */
   telefono: z
     .string()
     .trim()
     .transform((t) => t.replace(/[^\d+]/g, ''))
-    .refine((t) => t.replace(/\D/g, '').length >= 10, 'El teléfono necesita al menos 10 dígitos.'),
+    .refine((t) => t === '' || t.replace(/\D/g, '').length >= 10, 'El teléfono necesita al menos 10 dígitos.')
+    .transform((t) => t || null)
+    .nullish(),
   eventTypeId: z.string().min(1, 'Escoge el tipo de evento.'),
   fecha: fechaISO,
   nota: z.string().trim().max(300).optional(),
@@ -154,7 +157,7 @@ export async function crearApartado(db: PrismaClient, raw: unknown, actor: Actor
     db.apartadoRapido.findMany({ where: { fecha, estado: 'activo' }, select: { telefono: true } }),
     topePorDia(db),
   ]);
-  if (enFila.some((a) => a.telefono === input.telefono)) {
+  if (input.telefono && enFila.some((a) => a.telefono === input.telefono)) {
     throw new QuoteError(409, 'Esa persona ya está en la fila de ese día.');
   }
   if (enFila.length >= tope) {
@@ -163,7 +166,7 @@ export async function crearApartado(db: PrismaClient, raw: unknown, actor: Actor
   const creado = await db.apartadoRapido.create({
     data: {
       nombre: input.nombre,
-      telefono: input.telefono,
+      telefono: input.telefono ?? null,
       eventTypeId: input.eventTypeId,
       fecha,
       vence: new Date(ahora.getTime() + DIAS_APARTADO * DIA_MS),
@@ -209,8 +212,11 @@ export async function liberarApartado(db: PrismaClient, id: string, raw: unknown
 export async function convertirApartado(db: PrismaClient, id: string, raw: unknown, actor: Actor, ahora = new Date()) {
   await gestionable(db, id, actor);
   const { quoteId } = convertirSchema.parse(raw);
-  const q = await db.quote.findUnique({ where: { id: quoteId }, select: { id: true } });
+  const q = await db.quote.findUnique({ where: { id: quoteId }, select: { id: true, client: { select: { telefono: true } } } });
   if (!q) throw new QuoteError(400, 'Ese evento no existe.');
+  if ((q.client?.telefono ?? '').replace(/\D/g, '').length < 10) {
+    throw new QuoteError(409, 'Para convertir el apartado, el evento necesita el teléfono del cliente.');
+  }
   await db.apartadoRapido.update({
     where: { id },
     data: { estado: 'convertido', quoteId, cerradoAt: ahora, cerradoById: actor.id, motivoCierre: 'Se convirtió en evento' },
@@ -256,7 +262,7 @@ export async function barrerApartados(
       marca,
       {
         nombre: a.nombre,
-        telefono: a.telefono,
+        telefono: a.telefono ?? 'sin teléfono',
         tipoEvento: a.eventType.nombre,
         fecha: isoDe(a.fecha),
         vence: a.vence.toISOString().slice(0, 10),

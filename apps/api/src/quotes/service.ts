@@ -404,6 +404,19 @@ export function seleccionGuardada(q: SeleccionGuardadaInput): SeleccionGuardada 
 }
 
 /** Ventas solo ve/edita lo suyo; admin todo. */
+/**
+ * Después de formalizar, solo un admin edita o mueve el evento (Fernando,
+ * 15-oct-2026, "hasta que nos digan que no"; lo pidió la reunión con Jorge:
+ * "los vendedores no pueden modificar datos una vez capturados"). Un borrador lo
+ * sigue editando quien lo hizo.
+ */
+const ESTATUS_FORMALIZADOS = new Set(['formalizada', 'complementada', 'liquidada']);
+export function assertPuedeEditarFormalizado(actor: Actor, status: string): void {
+  if (actor.role !== 'admin' && ESTATUS_FORMALIZADOS.has(status)) {
+    throw new QuoteError(403, 'El evento ya está formalizado: solo un admin puede editarlo o moverlo.');
+  }
+}
+
 export function ownershipWhere(actor: Actor): Prisma.QuoteWhereInput {
   return actor.role === 'admin' ? {} : { createdById: actor.id };
 }
@@ -904,6 +917,7 @@ export async function updateQuote(db: PrismaClient, id: string, rawInput: unknow
   if (!EDITABLE_STATUSES.has(existing.status)) {
     throw new QuoteError(409, `No se puede editar una cotización en estatus "${existing.status}"`);
   }
+  assertPuedeEditarFormalizado(actor, existing.status);
   const input = updateQuoteSchema.parse(rawInput);
   // Se excluye a sí misma: editar sin mover fecha ni espacio no se auto-bloquea.
   await assertEspaciosDisponibles(db, input.fecha, input.spaceIds, id);
