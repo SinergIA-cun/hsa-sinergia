@@ -244,9 +244,20 @@ model DjHoraExtraPrice {
 
 // Banqueteros (proveedores de alimentos). Se elige uno en la hoja operativa para
 // llevar registro de ventas por banquetero.
+/// Qué clase de profesional de eventos es (reunión del 15-oct-2026, para el BI):
+/// B = banquetero, BG = banquete de graduación, A = agencia, WP = wedding planner.
+enum TipoProfesional {
+  banquetero
+  banqueteGraduacion
+  agencia
+  weddingPlanner
+}
+
 model Banquetero {
   id           String           @id @default(cuid())
   nombre       String
+  /// Qué clase de profesional es. Los que ya existían quedan como banqueteros.
+  tipo         TipoProfesional  @default(banquetero)
   /// OBLIGATORIO al dar de alta (lo exige el esquema de la API), pero la columna
   /// es nullable: a los banqueteros que ya existían sin teléfono no se les puede
   /// inventar uno, y rellenarlos sería peor —un teléfono falso se ve igual que

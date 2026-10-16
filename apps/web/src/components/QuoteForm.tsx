@@ -15,7 +15,7 @@ import { api } from '../lib/api.ts';
 import { formatMXN } from '../lib/money.ts';
 import { Button, Card, Field, MoneyInput, TextInput, SelectInput } from './ui.tsx';
 import { ClienteCombobox, type ClienteLite } from './ClienteSearch.tsx';
-import { BanqueteroPicker, type ModoVenta } from './banqueteros/BanqueteroPicker.tsx';
+import { BanqueteroPicker, type BanqueteroLite, type ModoVenta } from './banqueteros/BanqueteroPicker.tsx';
 import { FacturacionSection } from './FacturacionSection.tsx';
 import { BreakdownGrouped } from './BreakdownGrouped.tsx';
 import type { Catalog, Availability, SpaceAvailability, QuoteExtraInput, ServicioBanqueteroInput } from '../lib/types.ts';
@@ -223,7 +223,7 @@ export function QuoteForm({
 
   const { data: banqData } = useQuery({
     queryKey: ['banqueteros'],
-    queryFn: () => api.get<{ banqueteros: { id: string; nombre: string; telefono: string | null }[] }>('/api/banqueteros'),
+    queryFn: () => api.get<{ banqueteros: BanqueteroLite[] }>('/api/banqueteros'),
   });
   /**
    * Los banqueteros del desplegable: los activos, más el de ESTA cotización si ya
