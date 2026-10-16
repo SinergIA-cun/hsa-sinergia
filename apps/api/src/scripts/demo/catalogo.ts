@@ -139,11 +139,13 @@ export async function sembrarCatalogoDemo(prisma: PrismaClient): Promise<Catalog
         spaceId: space.id,
         min: r.min,
         max: r.max,
-        viernes: r.viernes,
-        // El viernes especial es la mitad del viernes, igual que en el catálogo real.
-        viernesEspecial: Math.round(r.viernes / 2),
-        sabado: r.sabado,
-        domAJue: r.domAJue,
+        precios: {
+          viernes: r.viernes,
+          // El viernes especial es la mitad del viernes, igual que en el catálogo real.
+          viernesEspecial: Math.round(r.viernes / 2),
+          sabado: r.sabado,
+          domAJue: r.domAJue,
+        },
       })),
     });
     await prisma.spacePaymentRule.create({

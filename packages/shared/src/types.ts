@@ -1,3 +1,5 @@
+import type { ColumnaRenta } from './pricing/columnasRenta.js';
+
 export type DayType = 'viernes' | 'viernesEspecial' | 'sabado' | 'domAJue';
 
 /** Rango de capacidad: [min, max] inclusivo. max = null => sin tope. */
@@ -8,8 +10,11 @@ export interface CapacityBracket {
 
 export interface RentalPriceRow extends CapacityBracket {
   spaceId: string;
-  /** Con IVA, en pesos. `null` = no aplica: ese día no se ofrece (ver `precioDelDia`). */
-  prices: Record<DayType, number | null>;
+  /**
+   * Con IVA, en pesos, por clave de columna (`ColumnaRenta.clave`). `null` o
+   * ausente = sin precio en esa columna (ver `precioEnColumna`).
+   */
+  prices: Record<string, number | null>;
 }
 
 export interface FoodPackageRow extends CapacityBracket {
@@ -66,6 +71,11 @@ export interface Catalog {
   addOns: AddOn[];
   /** Nombre de cada espacio por id, para que un error diga "Arcos" y no un id. */
   spaceNames?: Record<string, string>;
+  /**
+   * Las columnas de la tabla de renta y su regla (días y meses). Sin ellas, las
+   * cuatro de siempre (`COLUMNAS_BASE`).
+   */
+  columnasRenta?: ColumnaRenta[];
 }
 
 // QuoteSelection se define en schemas.ts (derivado del esquema zod) para evitar

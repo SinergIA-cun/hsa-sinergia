@@ -7,6 +7,7 @@ import { buildServer } from '../server.js';
 import { loadConfig } from '../config.js';
 import { hashPassword } from '../auth/password.js';
 import { clonarCatalogo } from '../pricelists/service.js';
+import { preciosDe } from '../catalog/loader.js';
 import {
   createQuote,
   duplicateQuote,
@@ -1051,10 +1052,7 @@ describe('casamiento con el catálogo', () => {
         tipo: r.tipo,
         min: r.min,
         max: r.max,
-        viernes: r.viernes! * factor,
-        viernesEspecial: r.viernesEspecial! * factor,
-        sabado: r.sabado! * factor,
-        domAJue: r.domAJue! * factor,
+        precios: Object.fromEntries(Object.entries(preciosDe(r.precios)).map(([k, v]) => [k, v == null ? null : v * factor])),
       })),
     });
     const dj = await prisma.djHoraExtraPrice.findMany({ where: { priceListId: viejo.id } });

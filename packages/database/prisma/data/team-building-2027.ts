@@ -38,7 +38,7 @@ const PAJARITOS_FLAT: FlatRow[] = [{ min: 1, max: 50, precio: 9000 }];
 
 /** Convierte un precio plano a las 4 columnas por-día (todas iguales). */
 function flatCols(precio: number) {
-  return { viernes: precio, viernesEspecial: precio, sabado: precio, domAJue: precio };
+  return { precios: { viernes: precio, viernesEspecial: precio, sabado: precio, domAJue: precio } };
 }
 
 /** Crea el espacio si no existe (por su nombre de hoy o el de antes) y lo devuelve activo. */

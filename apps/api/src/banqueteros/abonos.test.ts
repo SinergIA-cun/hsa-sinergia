@@ -403,7 +403,7 @@ describe('al convertir se puede armar el contrato completo', () => {
         capillaSabado: 5000,
         rentalPrices: {
           create: [
-            { spaceId: arcosId, min: 1, max: 900, viernes: 1000, viernesEspecial: 500, sabado: 1200, domAJue: 900 },
+            { spaceId: arcosId, min: 1, max: 900, precios: { viernes: 1000, viernesEspecial: 500, sabado: 1200, domAJue: 900 } },
           ],
         },
       },
@@ -436,7 +436,7 @@ describe('al convertir se puede armar el contrato completo', () => {
         capillaSabado: 5000,
         rentalPrices: {
           create: [
-            { spaceId: arcosId, min: 1, max: 900, viernes: 1000, viernesEspecial: 500, sabado: 1200, domAJue: 900 },
+            { spaceId: arcosId, min: 1, max: 900, precios: { viernes: 1000, viernesEspecial: 500, sabado: 1200, domAJue: 900 } },
           ],
         },
       },

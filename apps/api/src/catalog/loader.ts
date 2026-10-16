@@ -1,24 +1,28 @@
-import type { PrismaClient } from '@hsa/database';
-import type { Catalog, RentalPriceRow } from '@hsa/shared';
+import type { Prisma, PrismaClient } from '@hsa/database';
+import type { Catalog, ColumnaRenta, RentalPriceRow } from '@hsa/shared';
+
+/**
+ * Lee `RentalPrice.precios` (JSON) como mapa clave → pesos | null. Lo que no sea
+ * un número entero se lee como "sin precio": un JSON torcido no debe cobrar.
+ */
+export function preciosDe(json: Prisma.JsonValue): Record<string, number | null> {
+  if (!json || typeof json !== 'object' || Array.isArray(json)) return {};
+  const out: Record<string, number | null> = {};
+  for (const [k, v] of Object.entries(json)) out[k] = typeof v === 'number' && Number.isFinite(v) ? v : null;
+  return out;
+}
+
+/** Las columnas de renta de un catálogo, en su orden; vacío = las de siempre. */
+export async function columnasDe(db: Pick<PrismaClient, 'columnaRenta'>, priceListId: string): Promise<ColumnaRenta[]> {
+  const cols = await db.columnaRenta.findMany({ where: { priceListId }, orderBy: { orden: 'asc' } });
+  return cols.map((c) => ({ clave: c.clave, nombre: c.nombre, dias: c.dias, meses: c.meses, respaldo: c.respaldo }));
+}
 
 /** Mapea filas de RentalPrice de Prisma al shape del motor. */
 function toRentalRows(
-  rows: {
-    spaceId: string;
-    min: number;
-    max: number | null;
-    viernes: number | null;
-    viernesEspecial: number | null;
-    sabado: number | null;
-    domAJue: number | null;
-  }[],
+  rows: { spaceId: string; min: number; max: number | null; precios: Prisma.JsonValue }[],
 ): RentalPriceRow[] {
-  return rows.map((r) => ({
-    spaceId: r.spaceId,
-    min: r.min,
-    max: r.max,
-    prices: { viernes: r.viernes, viernesEspecial: r.viernesEspecial, sabado: r.sabado, domAJue: r.domAJue },
-  }));
+  return rows.map((r) => ({ spaceId: r.spaceId, min: r.min, max: r.max, prices: preciosDe(r.precios) }));
 }
 
 /**
@@ -45,8 +49,9 @@ export async function loadCatalog(
     );
   }
 
-  const [rentals, packages, addOns, djPrices, eventTypes, spaces] = await Promise.all([
+  const [rentals, columnasRenta, packages, addOns, djPrices, eventTypes, spaces] = await Promise.all([
     db.rentalPrice.findMany({ where: { priceListId: priceList.id } }),
+    columnasDe(db, priceList.id),
     db.foodPackage.findMany({ where: { priceListId: priceList.id }, include: { brackets: true } }),
     // SIN filtrar por `activo`: el catálogo tiene que RESOLVER todos los
     // add-ons, incluidos los dados de baja, porque las cotizaciones ya emitidas
@@ -108,5 +113,7 @@ export async function loadCatalog(
       cobra: a.cobra,
     })),
     spaceNames: Object.fromEntries(spaces.map((s) => [s.id, s.nombre])),
+    // Vacío = las cuatro de siempre (el motor usa `COLUMNAS_BASE`).
+    ...(columnasRenta.length ? { columnasRenta } : {}),
   } satisfies Catalog;
 }

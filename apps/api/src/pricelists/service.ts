@@ -1,5 +1,6 @@
 import { z } from 'zod';
-import { enTransaccionConActor, type PrismaClient } from '@hsa/database';
+import { enTransaccionConActor, type Prisma, type PrismaClient } from '@hsa/database';
+import { preciosDe } from '../catalog/loader.js';
 import { QuoteError } from '../quotes/service.js';
 import { contratosQueUsan, mensajeEnUso } from '../quotes/usos.js';
 import { INCLUDE_TITULAR, titularDeApartado } from '../banqueteros/titular.js';
@@ -36,6 +37,15 @@ export const clonarCatalogoSchema = z.object({
 // Un precio "no aplica" (null) se queda así en el catálogo clonado.
 const conIncremento = <T extends number | null>(v: T, pct: number): T =>
   (v == null ? v : Math.round(v * (1 + pct / 100))) as T;
+
+/** Copia las columnas de renta (y su regla) de un catálogo a otro. */
+async function copiarColumnas(tx: Prisma.TransactionClient, de: string, a: string): Promise<void> {
+  const columnas = await tx.columnaRenta.findMany({ where: { priceListId: de } });
+  if (columnas.length === 0) return; // sin columnas guardadas: las de siempre
+  await tx.columnaRenta.createMany({
+    data: columnas.map(({ id: _id, priceListId: _pl, ...c }) => ({ ...c, priceListId: a })),
+  });
+}
 
 /** "Precios 2028" → 2028; sin un año en el nombre, el año en curso. */
 export function anioDelNombre(nombre: string, hoy = new Date()): number {
@@ -110,13 +120,11 @@ export async function clonarCatalogo(db: PrismaClient, rawInput: unknown) {
             tipo: r.tipo,
             min: r.min,
             max: r.max,
-            viernes: null,
-            viernesEspecial: null,
-            sabado: null,
-            domAJue: null,
+            precios: {},
           })),
         });
       }
+      await copiarColumnas(tx, base.id, creado.id);
       return tx.priceList.update({
         where: { id: creado.id },
         data: {
@@ -140,13 +148,13 @@ export async function clonarCatalogo(db: PrismaClient, rawInput: unknown) {
           tipo: r.tipo,
           min: r.min,
           max: r.max,
-          viernes: conIncremento(r.viernes, pct),
-          viernesEspecial: conIncremento(r.viernesEspecial, pct),
-          sabado: conIncremento(r.sabado, pct),
-          domAJue: conIncremento(r.domAJue, pct),
+          precios: Object.fromEntries(
+            Object.entries(preciosDe(r.precios)).map(([k, v]) => [k, conIncremento(v, pct)]),
+          ),
         })),
       });
     }
+    await copiarColumnas(tx, origen.id, creado.id);
 
     // Servicios: se conserva `activo`. El catálogo tiene que RESOLVER lo que ya
     // no OFRECE, porque las cotizaciones viejas siguen referenciándolo.

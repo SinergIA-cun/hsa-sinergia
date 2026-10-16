@@ -14,117 +14,17 @@ import { registrarCambioCatalogo } from './audit.js';
  * abajo.
  */
 const precio = z.number().int().nonnegative();
-/** Un precio de renta: pesos enteros, o `null` = no aplica (ese día no se ofrece). */
-const precioRenta = precio.nullable();
 
 /**
  * Ningún precio entra a la base sin pasar por aquí, aunque Zod ya haya exigido
  * `int()`. Es la última red antes de Prisma, que trunca en silencio.
  */
 const aPesos = (n: number): number => Math.round(n);
-const aPesosONull = (n: number | null): number | null => (n == null ? null : Math.round(n));
 
 /** Existe el catálogo, o 404. Se hace dentro de la transacción del cambio. */
-async function assertCatalogo(tx: Prisma.TransactionClient, priceListId: string): Promise<void> {
+export async function assertCatalogo(tx: Prisma.TransactionClient, priceListId: string): Promise<void> {
   const existe = await tx.priceList.findUnique({ where: { id: priceListId }, select: { id: true } });
   if (!existe) throw new QuoteError(404, `El catálogo ${priceListId} no existe`);
-}
-
-/** Los cuatro precios de un renglón. NO se toca `min`/`max`: ver `editarRentas`. */
-const rentaCambioSchema = z.object({
-  id: z.string().min(1),
-  viernes: precioRenta,
-  viernesEspecial: precioRenta,
-  sabado: precioRenta,
-  domAJue: precioRenta,
-});
-
-export const editarRentasSchema = z.object({
-  cambios: z.array(rentaCambioSchema).min(1),
-});
-
-const CAMPOS_RENTA = ['viernes', 'viernesEspecial', 'sabado', 'domAJue'] as const;
-
-/**
- * Actualiza los precios de renglones de renta de UN catálogo.
- *
- * Solo precios. Los rangos de invitados (`min`/`max`) no se pueden agregar,
- * quitar ni mover: un hueco entre rangos hace que el motor lance "no tiene rango
- * de renta para N invitados" la primera vez que alguien capture ese número, meses
- * después. Esa puerta se queda cerrada por decisión del dueño.
- *
- * Editar los precios NO reescribe ninguna cotización: los `total` y `breakdown`
- * guardados quedan congelados. El represiado solo ocurre si alguien REEDITA la
- * cotización después, y de eso avisa la bitácora.
- *
- * Todo va en UNA transacción con su renglón de bitácora: media edición aplicada
- * sin rastro es exactamente lo que este tramo no puede permitirse.
- */
-export async function editarRentas(
-  db: PrismaClient,
-  priceListId: string,
-  rawInput: unknown,
-  actor: Actor | null,
-) {
-  const { cambios } = editarRentasSchema.parse(rawInput);
-
-  const repetidos = cambios.length !== new Set(cambios.map((c) => c.id)).size;
-  if (repetidos) throw new QuoteError(400, 'Un mismo renglón de renta viene dos veces');
-
-  return db.$transaction(async (tx) => {
-    await assertCatalogo(tx, priceListId);
-
-    const actuales = await tx.rentalPrice.findMany({
-      where: { id: { in: cambios.map((c) => c.id) } },
-      include: { space: { select: { nombre: true } } },
-    });
-    const porId = new Map(actuales.map((r) => [r.id, r]));
-
-    // Cada id tiene que ser DE ESTE catálogo. Sin esta guarda, un id de otro año
-    // editaría precios de otro catálogo desde la pantalla equivocada.
-    for (const c of cambios) {
-      const actual = porId.get(c.id);
-      if (!actual || actual.priceListId !== priceListId) {
-        throw new QuoteError(400, `El renglón de renta ${c.id} no pertenece a este catálogo`);
-      }
-    }
-
-    const renglones = [];
-    for (const c of cambios) {
-      const actual = porId.get(c.id)!;
-      const despues = {
-        viernes: aPesosONull(c.viernes),
-        viernesEspecial: aPesosONull(c.viernesEspecial),
-        sabado: aPesosONull(c.sabado),
-        domAJue: aPesosONull(c.domAJue),
-      };
-      await tx.rentalPrice.update({ where: { id: c.id }, data: despues });
-      renglones.push({
-        id: c.id,
-        espacio: actual.space.nombre,
-        rango: `${actual.min}–${actual.max ?? '∞'}`,
-        tipo: actual.tipo,
-        antes: Object.fromEntries(CAMPOS_RENTA.map((k) => [k, actual[k]])),
-        despues,
-      });
-    }
-
-    const resumen = renglones
-      .map((r) => `${r.espacio} ${r.rango}`)
-      .join(', ');
-    await registrarCambioCatalogo(
-      tx,
-      {
-        priceListId,
-        tipo: 'renta',
-        descripcion: `Renta: ${renglones.length} renglón(es) actualizados — ${resumen}`,
-        meta: { renglones },
-      },
-      actor,
-    );
-
-    return { actualizados: renglones.length, renglones };
-  });
 }
 
 // --- Servicios (add-ons) ---

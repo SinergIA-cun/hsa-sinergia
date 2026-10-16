@@ -42,7 +42,7 @@ describe.runIf(process.env.DATABASE_URL?.includes('_lab'))('purga', () => {
     });
     const space = await prisma.space.create({ data: { nombre: 'Salón Lab', capacidadMax: 400 } });
     await prisma.rentalPrice.create({
-      data: { priceListId: priceList.id, spaceId: space.id, min: 1, max: 400, viernes: 1000, viernesEspecial: 500, sabado: 1200, domAJue: 900 },
+      data: { priceListId: priceList.id, spaceId: space.id, min: 1, max: 400, precios: { viernes: 1000, viernesEspecial: 500, sabado: 1200, domAJue: 900 } },
     });
     const eventType = await prisma.eventType.create({ data: { nombre: 'Boda Lab', slug: 'boda-lab' } });
     const user = await prisma.user.create({

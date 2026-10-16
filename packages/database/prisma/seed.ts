@@ -49,7 +49,7 @@ async function seedCatalog() {
   ];
   for (const spaceId of [arcos.id, campos.id]) {
     await prisma.rentalPrice.createMany({
-      data: arcosCampos.map((r) => ({ ...r, priceListId: priceList.id, spaceId })),
+      data: arcosCampos.map(({ min, max, ...precios }) => ({ min, max, precios, priceListId: priceList.id, spaceId })),
     });
   }
 
@@ -60,7 +60,7 @@ async function seedCatalog() {
       { min: 301, max: 500, viernes: 170000, viernesEspecial: 85000, sabado: 194000, domAJue: 150000 },
       { min: 501, max: 650, viernes: 197500, viernesEspecial: 98750, sabado: 218500, domAJue: 170000 },
       { min: 651, max: 800, viernes: 210500, viernesEspecial: 105250, sabado: 233500, domAJue: 183000 },
-    ].map((r) => ({ ...r, priceListId: priceList.id, spaceId: cupula.id })),
+    ].map(({ min, max, ...precios }) => ({ min, max, precios, priceListId: priceList.id, spaceId: cupula.id })),
   });
 
   // Reglas de pago por espacio (sección H del contrato). Fuente única compartida

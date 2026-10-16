@@ -3,8 +3,8 @@ import { randomUUID } from 'node:crypto';
 import { prisma } from '@hsa/database';
 import { createQuote, type Actor } from '../quotes/service.js';
 import { clonarCatalogo } from './service.js';
-import { editarRentas } from './editar.js';
-import { borrarCatalogoDePrueba } from './testSupport.js';
+import { preciosDe } from '../catalog/loader.js';
+import { borrarCatalogoDePrueba, cambiarPreciosDePrueba } from './testSupport.js';
 
 /**
  * "Necesito poder desactivar cosas en la lista de precios: viernes especial a
@@ -40,8 +40,10 @@ afterAll(async () => {
 });
 
 /** El renglón de Arcos de 101–200 del catálogo de prueba. */
-const renglon = () =>
-  prisma.rentalPrice.findFirstOrThrow({ where: { priceListId: catalogoId, spaceId: arcosId, tipo: 'dia', min: 101 } });
+const renglon = async () => {
+  const r = await prisma.rentalPrice.findFirstOrThrow({ where: { priceListId: catalogoId, spaceId: arcosId, tipo: 'dia', min: 101 } });
+  return { id: r.id, ...preciosDe(r.precios) } as { id: string } & Record<string, number | null>;
+};
 
 const cotizar = async (fecha: string) => {
   const q = await createQuote(
@@ -58,12 +60,11 @@ const cotizar = async (fecha: string) => {
 describe('precio de renta "no aplica"', () => {
   it('se guarda en null y queda en la bitácora del catálogo', async () => {
     const r = await renglon();
-    await editarRentas(prisma, catalogoId, {
-      cambios: [{ id: r.id, viernes: r.viernes, viernesEspecial: null, sabado: null, domAJue: r.domAJue }],
-    }, admin);
+    await cambiarPreciosDePrueba(prisma, catalogoId, [{ id: r.id, precios: { viernesEspecial: null, sabado: null } }], admin);
     const despues = await renglon();
-    expect(despues.viernesEspecial).toBeNull();
-    expect(despues.sabado).toBeNull();
+    expect(despues.viernesEspecial ?? null).toBeNull();
+    expect(despues.sabado ?? null).toBeNull();
+    expect(despues.viernes).toBe(r.viernes);
   });
 
   it('un sábado que no aplica no se cotiza; el viernes especial se cobra como viernes normal', async () => {
@@ -78,9 +79,9 @@ describe('precio de renta "no aplica"', () => {
       nombre: `NO-APLICA-CLON-${SUF}`, anio: 2091, clonarDe: catalogoId, incrementoPct: 10,
     });
     catalogos.push(clon.id);
-    const r = await prisma.rentalPrice.findFirstOrThrow({ where: { priceListId: clon.id, spaceId: arcosId, tipo: 'dia', min: 101 } });
-    expect(r.sabado).toBeNull();
-    expect(r.viernesEspecial).toBeNull();
+    const r = preciosDe((await prisma.rentalPrice.findFirstOrThrow({ where: { priceListId: clon.id, spaceId: arcosId, tipo: 'dia', min: 101 } })).precios);
+    expect(r.sabado ?? null).toBeNull();
+    expect(r.viernesEspecial ?? null).toBeNull();
     expect(r.viernes).not.toBeNull();
   });
 });

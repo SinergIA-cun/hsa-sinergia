@@ -144,6 +144,7 @@ model PriceList {
   capillaSabado    Int   @default(5000)
 
   rentalPrices RentalPrice[]
+  columnasRenta ColumnaRenta[]
   addOns       AddOn[]
   foodPackages FoodPackage[]
   djPrices     DjHoraExtraPrice[]
@@ -192,12 +193,12 @@ model RentalPrice {
   spaceId         String
   min             Int
   max             Int?
-  /// Los cuatro precios con IVA. `null` = no aplica: ese día no se ofrece. El
-  /// viernes especial que no aplica se cobra como viernes normal (es promoción).
-  viernes         Int?
-  viernesEspecial Int?
-  sabado          Int?
-  domAJue         Int?
+  /// Precios con IVA por columna: `{ "<clave de ColumnaRenta>": pesos | null }`.
+  /// Ausente o `null` = sin precio en esa columna (ese día no se ofrece, o cae
+  /// al respaldo de la columna). Antes eran cuatro columnas fijas (viernes,
+  /// viernesEspecial, sabado, domAJue); desde el 16-oct-2026 las columnas las
+  /// define cada catálogo.
+  precios         Json      @default("{}")
   /// "dia" = renta por tipo de día · "plano" = renta plana (Team Building).
   /// Antes vivía en PriceList, lo que obligaba a tener DOS listas por año y
   /// dejaba la plana fuera del filtro `activa`.
@@ -205,6 +206,28 @@ model RentalPrice {
 
   @@index([priceListId, spaceId])
   @@index([priceListId, tipo])
+}
+
+/// Una columna de la tabla de renta de un catálogo (16-oct-2026) y su regla:
+/// qué días de la semana y en qué meses se cobra con ella. Ver
+/// `@hsa/shared` → `columnasRenta`. Un catálogo SIN columnas usa las cuatro de
+/// siempre, con las mismas claves.
+model ColumnaRenta {
+  id          String    @id @default(cuid())
+  priceList   PriceList @relation(fields: [priceListId], references: [id], onDelete: Cascade)
+  priceListId String
+  /// Llave de los precios en `RentalPrice.precios`. No cambia al renombrar.
+  clave       String
+  nombre      String
+  /// 0 = domingo … 6 = sábado.
+  dias        Int[]
+  /// 1–12. Vacío = todo el año.
+  meses       Int[]
+  /// Clave de la columna con cuyo precio se cobra si esta no tiene.
+  respaldo    String?
+  orden       Int
+
+  @@unique([priceListId, clave])
 }
 
 model EventType {

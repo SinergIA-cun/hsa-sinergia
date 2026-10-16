@@ -7,6 +7,7 @@ import { loadConfig } from '../config.js';
 import { hashPassword } from '../auth/password.js';
 import { clonarCatalogo, activarCatalogo, listarCatalogos } from './service.js';
 import { contenidoDeCatalogo } from './contenido.js';
+import { preciosDe } from '../catalog/loader.js';
 
 let app: FastifyInstance;
 let ventasId: string;
@@ -138,10 +139,10 @@ describe('catálogos', () => {
     const rc = await prisma.rentalPrice.findFirstOrThrow({
       where: { priceListId: clon.id, spaceId: rb.spaceId, min: rb.min, tipo: rb.tipo },
     });
-    expect(rc.sabado).toBe(Math.round(rb.sabado! * 1.1));
-    expect(rc.viernes).toBe(Math.round(rb.viernes! * 1.1));
-    expect(rc.viernesEspecial).toBe(Math.round(rb.viernesEspecial! * 1.1));
-    expect(rc.domAJue).toBe(Math.round(rb.domAJue! * 1.1));
+    const [pb_, pc_] = [preciosDe(rb.precios), preciosDe(rc.precios)];
+    for (const k of ['sabado', 'viernes', 'viernesEspecial', 'domAJue']) {
+      expect(pc_[k] ?? null).toBe(pb_[k] == null ? null : Math.round(pb_[k]! * 1.1));
+    }
 
     const ab = await prisma.addOn.findFirstOrThrow({ where: { priceListId: base.id }, orderBy: { nombre: 'asc' } });
     const ac = await prisma.addOn.findFirstOrThrow({ where: { priceListId: clon.id, nombre: ab.nombre } });
@@ -178,9 +179,11 @@ describe('catálogos', () => {
     expect(rentasClon).toHaveLength(rentasBase.length);
     for (const [i, rc] of rentasClon.entries()) {
       const rb = rentasBase[i]!;
-      for (const campo of ['viernes', 'viernesEspecial', 'sabado', 'domAJue'] as const) {
-        expect(Number.isInteger(rc[campo])).toBe(true);
-        expect(rc[campo]).toBe(Math.round(rb[campo]! * factor));
+      const [pb_, pc_] = [preciosDe(rb.precios), preciosDe(rc.precios)];
+      for (const campo of Object.keys(pb_)) {
+        if (pb_[campo] == null) continue;
+        expect(Number.isInteger(pc_[campo])).toBe(true);
+        expect(pc_[campo]).toBe(Math.round(pb_[campo]! * factor));
       }
     }
 
@@ -250,22 +253,14 @@ describe('catálogos', () => {
    */
   it('Prisma TRUNCA un flotante en una columna Int (no lo redondea a la mitad par)', async () => {
     const { clon } = await clonDelActivo('CLON-TRUNCA', 2079);
-    const espacio = await prisma.space.findFirstOrThrow();
-    const r = await prisma.rentalPrice.create({
-      data: {
-        priceListId: clon.id,
-        spaceId: espacio.id,
-        min: 0,
-        max: 10,
-        // Deliberadamente flotantes: es el escenario que el `Math.round` de
-        // `service.ts` y el `int()` de `editar.ts` existen para impedir.
-        viernes: 5.5,
-        viernesEspecial: 3.5,
-        sabado: 2.5,
-        domAJue: 1234.5,
-      },
-    });
-    expect([r.viernes, r.viernesEspecial, r.sabado, r.domAJue]).toEqual([5, 3, 2, 1234]);
+    // Deliberadamente flotantes: es el escenario que el `Math.round` de
+    // `service.ts` y el `int()` de `editar.ts` existen para impedir.
+    const precios = [5.5, 3.5, 2.5, 1234.5];
+    const creados_ = [];
+    for (const price of precios) {
+      creados_.push(await prisma.addOn.create({ data: { priceListId: clon.id, nombre: `Trunca ${price}`, kind: 'fijo', price } }));
+    }
+    expect(creados_.map((a) => a.price)).toEqual([5, 3, 2, 1234]);
 
     // Y para dejar constancia de con qué se confundía: el cast de Postgres, cuando
     // SÍ le toca hacerlo, redondea a la mitad par. Ese camino no ocurre vía Prisma.
@@ -384,7 +379,8 @@ describe('catálogos HTTP', () => {
     expect(res.statusCode).toBe(200);
     const c = res.json().contenido as {
       priceList: { id: string; nombre: string; ivaRate: number };
-      renta: { id: string; espacio: string; tipo: string; sabado: number; spaceId: string; min: number }[];
+      renta: { id: string; espacio: string; tipo: string; precios: Record<string, number | null>; spaceId: string; min: number }[];
+      columnasRenta: { clave: string }[];
       servicios: { id: string; activo: boolean }[];
       paquetes: { id: string; brackets: { min: number; pricePerPerson: number }[] }[];
       dj: { eventTypeId: string; price: number }[];
@@ -405,7 +401,8 @@ describe('catálogos HTTP', () => {
     // exactamente cómo se edita el catálogo equivocado.
     const rb = await prisma.rentalPrice.findFirstOrThrow({ where: { priceListId: base.id }, orderBy: { id: 'asc' } });
     const rc = c.renta.find((r) => r.spaceId === rb.spaceId && r.min === rb.min && r.tipo === rb.tipo);
-    expect(rc?.sabado).toBe(Math.round(rb.sabado! * 1.1));
+    expect(rc?.precios.sabado).toBe(Math.round(preciosDe(rb.precios).sabado! * 1.1));
+    expect(c.columnasRenta.map((x) => x.clave)).toEqual(['viernes', 'viernesEspecial', 'sabado', 'domAJue']);
 
     expect(c.paquetes.length).toBeGreaterThan(0);
     expect(c.paquetes.every((p) => p.brackets.length > 0)).toBe(true);
@@ -478,7 +475,7 @@ describe('empezar vacío (arreglo del 15-oct-2026)', () => {
     ]);
     expect(nuevas.length).toBe(base.length);
     expect(nuevas.length).toBeGreaterThan(0);
-    expect(nuevas.every((r) => r.viernes === null && r.viernesEspecial === null && r.sabado === null && r.domAJue === null)).toBe(true);
+    expect(nuevas.every((r) => Object.values(preciosDe(r.precios)).every((v) => v == null))).toBe(true);
     const clave = (r: { spaceId: string; tipo: string; min: number; max: number | null }) => `${r.spaceId}|${r.tipo}|${r.min}|${r.max}`;
     expect(new Set(nuevas.map(clave))).toEqual(new Set(base.map(clave)));
     expect(vacio).toMatchObject({ ivaRate: activo.ivaRate, capillaSabado: activo.capillaSabado });
