@@ -304,9 +304,8 @@ export function QuoteForm({
   const [esCortesia, setEsCortesia] = useState(initial?.esCortesia ?? false);
   const [esPromocion, setEsPromocion] = useState(initial?.esPromocion ?? false);
   const [usaDjHoraExtra, setUsaDjHoraExtra] = useState(initial?.usaDjHoraExtra ?? false);
-  // Solo los contratos que YA las traían siguen mostrando las horas extra: las
-  // nuevas se cargan en el punto de venta del evento (decisión del dueño).
-  const horasExtraCotizadas = (initial?.horasExtra ?? 0) > 0;
+  // El DJ por hora extra se sigue vendiendo en el punto de venta: aquí solo para
+  // los contratos que ya lo traían.
   const djCotizado = initial?.usaDjHoraExtra === true;
   const [addOns, setAddOns] = useState<Record<string, number>>(initial?.addOns ?? {});
   const [extras, setExtras] = useState<QuoteExtraInput[]>(initial?.extras ?? []);
@@ -808,13 +807,12 @@ export function QuoteForm({
             <Field label="Invitados">
               <TextInput type="number" min={1} value={invitados} onChange={(e) => setInvitados(Number(e.target.value))} />
             </Field>
-            {/* Las horas extra se venden en el PUNTO DE VENTA del evento, cuando
-                pasan ("durante el evento quieren extender"), no al cotizar. El
-                campo solo sigue aquí para los contratos que ya las traían
-                cotizadas: esas quedan en su precio y se pueden quitar. */}
-            {horasExtraCotizadas && (
-              <Field label="Horas extra (cotizadas)" hint="Ya venían en el contrato. Las nuevas se cargan en el punto de venta del evento.">
-                <TextInput type="number" min={0} value={horasExtra} onChange={(e) => setHorasExtra(Number(e.target.value))} />
+            {/* Horas extra al cotizar (Fernando, 16-oct-2026: "necesito
+                regresarlo"). Las que se piden durante el evento se siguen cargando
+                en el punto de venta. Con precio pactado no se recotiza: no van. */}
+            {!precioPactado && (
+              <Field label="Horas extra" hint="Las que se contratan desde ahora. Las que se piden durante el evento se cargan en el punto de venta.">
+                <TextInput type="number" min={0} value={horasExtra} onChange={(e) => setHorasExtra(Math.max(0, Math.trunc(Number(e.target.value) || 0)))} />
               </Field>
             )}
           </div>
@@ -1152,8 +1150,8 @@ export function QuoteForm({
         <Card className="space-y-3 p-6">
           <h2 className="font-display text-xl text-ink">Servicios adicionales</h2>
 
-          {/* DJ Hora extra: igual que las horas extra, ahora se vende en el punto de
-              venta. Solo sigue aquí para los contratos que ya lo traían. */}
+          {/* DJ Hora extra: se vende en el punto de venta. Solo sigue aquí para los
+              contratos que ya lo traían (Fernando, 16-oct-2026: "No DJ, solo Hora extra"). */}
           {djPrecio != null && djCotizado && (
             <label
               className={`flex cursor-pointer items-start gap-3 rounded-lg border px-4 py-3 text-sm transition-colors ${
