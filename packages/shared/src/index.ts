@@ -25,3 +25,4 @@ export * from './espacios/orden.js';
 export * from './pricing/precioDelDia.js';
 export * from './marca.js';
 export * from './profesionales.js';
+export * from './whatsapp.js';

@@ -6,6 +6,7 @@ import { PersonalSection } from '../components/admin/PersonalSection.tsx';
 import { CatalogosSection } from '../components/admin/CatalogosSection.tsx';
 import { FoliosSection } from '../components/admin/FoliosSection.tsx';
 import { ProveedoresSection } from '../components/admin/ProveedoresSection.tsx';
+import { WhatsappSection } from '../components/admin/WhatsappSection.tsx';
 
 export function AdminPage() {
   return (
@@ -39,6 +40,7 @@ export function AdminPage() {
           (IVA, hora extra, descuento, capilla), servicios, alimentos, renta y DJ.
           Las secciones viejas "Configuración" y "Extras" escribían sobre el
           catálogo activo y eran un segundo camino al mismo dato; se retiraron. */}
+      <WhatsappSection />
       <ProveedoresSection />
       <CatalogosSection />
     </div>

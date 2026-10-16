@@ -27,6 +27,7 @@ import { ConfirmarEmpalmeModal, type EspacioOcupado } from '../components/Confir
 import { MoverCatalogoModal } from '../components/MoverCatalogoModal.tsx';
 import { AjustarPrecioForm } from '../components/AjustarPrecio.tsx';
 import { AgenciaPaquete } from '../components/AgenciaPaquete.tsx';
+import { WhatsappMenu } from '../components/whatsapp/WhatsappMenu.tsx';
 import { CierreEvento } from '../components/ciclo/CierreEvento.tsx';
 import { OperativaSection } from '../components/OperativaSection.tsx';
 import { CodigoEvento } from '../components/CodigoEvento.tsx';
@@ -260,6 +261,18 @@ export function EditQuotePage() {
   // El botón de WhatsApp solo abre la conversación: el enlace al portal ya no se
   // le manda al cliente (el dueño, 6-oct-2026). Sus recibos le llegan por correo;
   // el enlace sigue en "QR / enlace cliente" por si alguna vez hace falta.
+  const ultimoRecibo = [...payments].filter((p) => !p.anuladoAt).sort((x, y) => y.fecha.localeCompare(x.fecha))[0];
+  const varsWhatsapp = {
+    cliente: quote.client?.nombre ?? 'cliente',
+    evento: (quote.eventType?.nombre ?? 'evento').toLowerCase(),
+    fecha: formatEventDate(quote.fechaEvento, 'long'),
+    salon: quote.spaceIds.map((sid) => catalog.spaces.find((x) => x.id === sid)?.nombre).filter(Boolean).join(' y '),
+    codigo: quote.etiqueta ?? '',
+    total: formatMXN(estadoCuenta.total),
+    pagado: formatMXN(estadoCuenta.pagado),
+    saldo: formatMXN(estadoCuenta.saldo),
+    enlaceRecibo: ultimoRecibo ? `${window.location.origin}/c/${quote.publicToken}/recibo/${ultimoRecibo.id}` : '',
+  };
   const waUrl =
     !enPapelera
       ? whatsappUrl(quote.client?.telefono, mensajeSaludo(quote.client?.nombre ?? 'cliente', quote.eventType?.nombre ?? 'evento'))
@@ -355,16 +368,8 @@ export function EditQuotePage() {
               <QrCode size={15} /> QR / enlace cliente
             </Button>
           )}
-          {waUrl && (
-            <a
-              href={waUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#25D366] px-4 py-2.5 text-sm font-medium tracking-wide text-white shadow-sm transition-colors hover:bg-[#1da851]"
-            >
-              <MessageCircle size={15} /> WhatsApp
-            </a>
-          )}
+          {/* Mensajes pre-redactados por etapa; los textos los edita el admin (15-oct-2026). */}
+          {waUrl && <WhatsappMenu telefono={quote.client?.telefono} vars={varsWhatsapp} hayRecibo={Boolean(ultimoRecibo)} />}
           {contratoDisponible && (
             <Link to={`/eventos/${quote.id}/contrato`}>
               <Button variant="gold">
