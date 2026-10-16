@@ -13,6 +13,7 @@ import {
 } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
 import { coincideTexto, computeQuote } from '@hsa/shared';
+import { useAuth } from '../auth/auth.tsx';
 import { api } from '../lib/api.ts';
 import { CabeceraCalendario, VistaAnio, VistaMes, VistaSemana, iso, useCalendario } from '../components/calendario/Calendario.tsx';
 import { MoverFechaModal } from '../components/MoverFechaModal.tsx';
@@ -77,6 +78,8 @@ function puntoDelDia(eventos: AgendaEvent[]): string | null {
 export function AgendaPage() {
   const navigate = useNavigate();
   const cal = useCalendario();
+  // Arrastrar es mover: después de formalizar, solo un admin (15-oct-2026).
+  const isAdmin = useAuth().user?.role === 'admin';
   const { vista, ancla, from, to } = cal;
 
   const agendaQ = useQuery({
@@ -280,7 +283,7 @@ export function AgendaPage() {
             <ChipArrastrable
               key={e.quoteId}
               id={e.quoteId}
-              movible={e.status !== 'liquidada'}
+              movible={isAdmin ? e.status !== 'liquidada' : e.status === 'borrador'}
               onClick={() => abrir(e.quoteId)}
               title={`${espacio || e.eventoNombre} · ${e.cliente} · ${e.eventoNombre} · ${estatus}${
                 empalmada ? ' · El espacio ya fue apartado por otro evento' : ''

@@ -1185,7 +1185,8 @@ enum EstadoApartadoRapido {
 model ApartadoRapido {
   id             String               @id @default(cuid())
   nombre         String
-  telefono       String
+  /// Opcional en el apartado; se exige al convertirlo en evento.
+  telefono       String?
   eventType      EventType            @relation(fields: [eventTypeId], references: [id])
   eventTypeId    String
   /// El día que pide (medianoche UTC, como `Quote.fechaEvento`).

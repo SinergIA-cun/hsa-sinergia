@@ -94,6 +94,7 @@ export function NewQuotePage() {
       <QuoteForm
         catalog={catalog}
         initial={initial}
+        telefonoObligatorio={Boolean(apartadoId)}
         catalogos={catalogos}
         priceListId={priceListId ?? catalogos.find((c) => c.activa)?.id}
         onPriceListChange={setPriceListId}

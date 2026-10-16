@@ -49,6 +49,10 @@ export function CicloEvento({
   const cancelado = quote.status === 'cancelada';
   // Con pagos solo cancela un admin (la API lo exige igual).
   const puedeCancelar = !cancelado && (pagado === 0 || isAdmin);
+  // Mover un evento formalizado (o regresarlo a su fecha como formalizado) es
+  // editarlo: solo un admin después de formalizar (15-oct-2026). La API lo exige igual.
+  const destino = enStandby ? quote.statusPrevio ?? 'borrador' : quote.status;
+  const puedeMover = isAdmin || destino === 'borrador';
 
   return (
     <>
@@ -91,7 +95,7 @@ export function CicloEvento({
       )}
 
       <div className="mb-6 flex flex-wrap items-center gap-2">
-        {enStandby && (
+        {enStandby && puedeMover && (
           <Button variant="gold" onClick={() => setAbierto('mover')}>
             <CalendarClock size={15} /> Reprogramar
           </Button>
@@ -103,9 +107,11 @@ export function CicloEvento({
         )}
         {!enStandby && !cancelado && (
           <>
-            <Button variant="outline" onClick={() => setAbierto('mover')}>
-              <CalendarClock size={15} /> Mover evento
-            </Button>
+            {puedeMover && (
+              <Button variant="outline" onClick={() => setAbierto('mover')}>
+                <CalendarClock size={15} /> Mover evento
+              </Button>
+            )}
             <Button variant="outline" onClick={() => setAbierto('standby')}>
               <CalendarOff size={15} /> Poner en standby
             </Button>
