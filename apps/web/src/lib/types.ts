@@ -919,6 +919,8 @@ export interface Availability {
 
 export interface AgendaEvent {
   quoteId: string;
+  /** Evento de otro vendedor: solo se sabe que ocupa el salón (15-oct-2026). */
+  ajeno?: boolean;
   cliente: string;
   eventoNombre: string;
   fechaEvento: string;

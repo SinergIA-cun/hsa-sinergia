@@ -74,17 +74,20 @@ type ConRels = Prisma.ApartadoRapidoGetPayload<{ include: typeof incluir }>;
 /** Lo que ve la pantalla: con su lugar en la fila del día y los días que le quedan. */
 function vista(a: ConRels, posicion: number, ahora: Date, actor: Actor) {
   const dias = diasRestantes(a.vence, ahora);
+  // El prospecto de otro vendedor no se ve: solo que ese lugar de la fila está
+  // tomado y por quién (privacidad entre vendedores, 15-oct-2026).
+  const ajeno = actor.role !== 'admin' && a.createdById !== actor.id;
   return {
     id: a.id,
-    nombre: a.nombre,
-    telefono: a.telefono,
+    nombre: ajeno ? 'Reservado' : a.nombre,
+    telefono: ajeno ? null : a.telefono,
     eventType: a.eventType,
     fecha: isoDe(a.fecha),
     vence: a.vence.toISOString(),
     diasRestantes: dias,
     porVencer: dias <= DIAS_AVISO,
     posicion,
-    nota: a.nota,
+    nota: ajeno ? null : a.nota,
     extensiones: a.extensiones,
     createdBy: a.createdBy,
     createdAt: a.createdAt.toISOString(),
@@ -136,13 +139,19 @@ export async function apartadosPorVencer(db: PrismaClient, actor: Actor, ahora =
 }
 
 /** Cuántos hay en fila ese día: lo usa el aviso de disponibilidad al cotizar. */
-export async function filaDelDia(db: PrismaClient, fecha: Date): Promise<{ total: number; primero: string | null }> {
+export async function filaDelDia(
+  db: PrismaClient,
+  fecha: Date,
+  actor?: { id: string; role: string },
+): Promise<{ total: number; primero: string | null }> {
   const lista = await db.apartadoRapido.findMany({
     where: { fecha, estado: 'activo' },
     orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
-    select: { nombre: true },
+    select: { nombre: true, createdById: true },
   });
-  return { total: lista.length, primero: lista[0]?.nombre ?? null };
+  const p = lista[0];
+  const visible = p && (!actor || actor.role === 'admin' || p.createdById === actor.id);
+  return { total: lista.length, primero: visible ? p.nombre : null };
 }
 
 export async function crearApartado(db: PrismaClient, raw: unknown, actor: Actor, ahora = new Date()) {

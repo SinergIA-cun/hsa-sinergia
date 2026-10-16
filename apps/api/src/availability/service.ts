@@ -73,7 +73,19 @@ function apartadosVivos(hoy: Date): Prisma.ApartadoFechaWhereInput {
 }
 
 /** Opciones que solo usan los caminos internos (conversión de apartado, pruebas). */
+/**
+ * Privacidad entre vendedores (reunión del 15-oct-2026): de un evento ajeno, un
+ * vendedor solo ve que el salón está ocupado —ni el cliente, ni el tipo, ni
+ * montos—. El admin ve todo. Sin `actor` (llamadas internas) no se oculta nada.
+ */
+export const OCUPADO = 'Ocupado';
+export function esAjeno(actor: { id: string; role: string } | undefined, createdById: string | null): boolean {
+  return Boolean(actor && actor.role !== 'admin' && createdById !== actor.id);
+}
+
 export interface AvailabilityOpts {
+  /** Quién pregunta: a un vendedor se le ocultan los datos de eventos ajenos. */
+  actor?: { id: string; role: string };
   /**
    * El apartado que se está convirtiendo. Su propia cotización no puede chocar
    * contra él: sin esta salida, convertir un apartado sería imposible porque el
@@ -142,9 +154,10 @@ export async function getAvailability(
     }),
   ]);
 
+  const ajeno = (createdById: string | null) => esAjeno(opts.actor, createdById);
   const capillaEventos: CapillaEvento[] = capillaQuotes.map((q) => ({
     quoteId: q.id,
-    cliente: q.client?.nombre ?? 'Cliente',
+    cliente: ajeno(q.createdById) ? 'Otro evento' : q.client?.nombre ?? 'Cliente',
     horario: q.capillaHorario ?? null,
   }));
 
@@ -170,14 +183,14 @@ export async function getAvailability(
       nombre: nombreById.get(spaceId) ?? spaceId,
       level,
       counts,
-      quotes: relevantes.map((q) => ({ id: q.id, cliente: q.client?.nombre ?? 'Cliente', status: q.status })),
+      quotes: relevantes.map((q) => ({ id: q.id, cliente: ajeno(q.createdById) ? OCUPADO : q.client?.nombre ?? 'Cliente', status: q.status })),
       apartados: apartadosDelEspacio.map((a) => ({
         apartadoId: a.id,
         banquetero: titularDeApartado(a),
         venceISO: a.vence.toISOString(),
         // Lo que lleva juntado esa fecha, no un depósito único: un apartado se
         // paga de a poco.
-        abonado: totalAbonado(a.abonos),
+        abonado: opts.actor && opts.actor.role !== 'admin' ? 0 : totalAbonado(a.abonos),
       })),
     };
   });
@@ -187,7 +200,7 @@ export async function getAvailability(
     spaces: result,
     blocked: result.some((s) => s.level === 'bloqueada'),
     capillaEventos,
-    filaEspera: await filaDelDia(db, range.gte),
+    filaEspera: await filaDelDia(db, range.gte, opts.actor),
   };
 }
 
@@ -201,6 +214,8 @@ export interface AgendaEvent {
   esCortesia: boolean;
   /** Para nombrar en la agenda un evento que no ocupa salón (solo capilla). */
   usaCapilla: boolean;
+  /** Evento de otro vendedor: solo se sabe que ocupa el salón. */
+  ajeno?: boolean;
 }
 
 /**
@@ -232,7 +247,7 @@ export async function getAgenda(
   db: PrismaClient,
   fromISO: string,
   toISO: string,
-  opts: { hoy?: Date } = {},
+  opts: { hoy?: Date; actor?: { id: string; role: string } } = {},
 ): Promise<{ events: AgendaEvent[]; apartados: AgendaApartado[] }> {
   const gte = new Date(`${fromISO}T00:00:00.000Z`);
   const lt = new Date(`${toISO}T00:00:00.000Z`);
@@ -255,8 +270,9 @@ export async function getAgenda(
   return {
     events: quotes.map((q) => ({
       quoteId: q.id,
-      cliente: q.client?.nombre ?? 'Cliente',
-      eventoNombre: q.eventType?.nombre ?? 'Evento',
+      ...(esAjeno(opts.actor, q.createdById)
+        ? { cliente: OCUPADO, eventoNombre: OCUPADO, ajeno: true }
+        : { cliente: q.client?.nombre ?? 'Cliente', eventoNombre: q.eventType?.nombre ?? 'Evento' }),
       fechaEvento: q.fechaEvento.toISOString(),
       spaceIds: q.spaceIds,
       status: q.status,
@@ -273,7 +289,8 @@ export async function getAgenda(
       fechaEvento: a.fechaEvento.toISOString(),
       spaceIds: a.spaceIds,
       venceISO: a.vence.toISOString(),
-      abonado: totalAbonado(a.abonos),
+      // El dinero de un apartado es dato del admin.
+      abonado: opts.actor && opts.actor.role !== 'admin' ? 0 : totalAbonado(a.abonos),
       nota: a.nota,
     })),
   };
