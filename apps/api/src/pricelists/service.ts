@@ -77,7 +77,45 @@ export async function clonarCatalogo(db: PrismaClient, rawInput: unknown) {
           : {}),
       },
     });
-    if (!origen) return creado;
+    if (!origen) {
+      // "Empezar vacío" (arreglo del 15-oct-2026): antes nacía SIN renglones de
+      // renta, y como los rangos no se agregan a mano (decisión del dueño: un
+      // hueco entre rangos rompe el cotizador meses después), no había forma de
+      // capturarle un solo precio. Ahora trae la ESTRUCTURA del catálogo activo
+      // —salones, rangos y tipo— con todos los precios en "no aplica", y los
+      // parámetros (IVA, porcentajes), que no son precios. Servicios y paquetes
+      // sí nacen vacíos: esos se dan de alta en su sección.
+      const base =
+        (await tx.priceList.findFirst({ where: { activa: true } })) ??
+        (await tx.priceList.findFirst({ where: { id: { not: creado.id } }, orderBy: { anio: 'desc' } }));
+      if (!base) return creado;
+      const estructura = await tx.rentalPrice.findMany({ where: { priceListId: base.id } });
+      if (estructura.length > 0) {
+        await tx.rentalPrice.createMany({
+          data: estructura.map((r) => ({
+            priceListId: creado.id,
+            spaceId: r.spaceId,
+            tipo: r.tipo,
+            min: r.min,
+            max: r.max,
+            viernes: null,
+            viernesEspecial: null,
+            sabado: null,
+            domAJue: null,
+          })),
+        });
+      }
+      return tx.priceList.update({
+        where: { id: creado.id },
+        data: {
+          ivaRate: base.ivaRate,
+          extraHourRate: base.extraHourRate,
+          foodDiscountRate: base.foodDiscountRate,
+          capillaSabado: base.capillaSabado,
+          toleranciaExtras: base.toleranciaExtras,
+        },
+      });
+    }
 
     // Renta: se conserva `tipo`. Aplanar la renta plana a "dia" dejaría al Team
     // Building sin precio en el catálogo nuevo.

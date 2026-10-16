@@ -466,3 +466,22 @@ describe('catálogos HTTP', () => {
     expect(await prisma.priceList.count({ where: { nombre: `CLON-VENTAS-${SUF}` } })).toBe(0);
   });
 });
+
+describe('empezar vacío (arreglo del 15-oct-2026)', () => {
+  it('trae los salones y rangos del activo con los precios en "no aplica", y los parámetros', async () => {
+    const activo = await prisma.priceList.findFirstOrThrow({ where: { activa: true } });
+    const vacio = await clonarCatalogo(prisma, { nombre: `VACIO-${SUF}`, anio: 2091 });
+    creados.push(vacio.id);
+    const [base, nuevas] = await Promise.all([
+      prisma.rentalPrice.findMany({ where: { priceListId: activo.id } }),
+      prisma.rentalPrice.findMany({ where: { priceListId: vacio.id } }),
+    ]);
+    expect(nuevas.length).toBe(base.length);
+    expect(nuevas.length).toBeGreaterThan(0);
+    expect(nuevas.every((r) => r.viernes === null && r.viernesEspecial === null && r.sabado === null && r.domAJue === null)).toBe(true);
+    const clave = (r: { spaceId: string; tipo: string; min: number; max: number | null }) => `${r.spaceId}|${r.tipo}|${r.min}|${r.max}`;
+    expect(new Set(nuevas.map(clave))).toEqual(new Set(base.map(clave)));
+    expect(vacio).toMatchObject({ ivaRate: activo.ivaRate, capillaSabado: activo.capillaSabado });
+    expect(await prisma.addOn.count({ where: { priceListId: vacio.id } })).toBe(0);
+  });
+});
