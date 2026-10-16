@@ -2,8 +2,17 @@ import type { Catalog, QuoteBreakdown, QuoteLine } from '../types.js';
 import type { QuoteSelection } from '../schemas.js';
 import { findBracket, nivelConExtras } from './brackets.js';
 import { bracketDeParte, capacidadTotal, repartirInvitados } from './reparto.js';
-import { dayType } from './day-type.js';
-import { precioDelDia, NOMBRE_DIA } from './precioDelDia.js';
+import { COLUMNAS_BASE, NOMBRE_DIA_SEMANA, columnaDeFecha, diaYMes, precioEnColumna, type ColumnaRenta } from './columnasRenta.js';
+
+/**
+ * La columna de la tabla de renta con la que se cobra una fecha, o `null` si no
+ * cae en ninguna (16-oct-2026: las columnas ya no son fijas; ver `columnasRenta`).
+ */
+function columnaDelEvento(catalog: Catalog, fecha: string): ColumnaRenta | null {
+  return columnaDeFecha(catalog.columnasRenta?.length ? catalog.columnasRenta : COLUMNAS_BASE, fecha);
+}
+const precioDe = (prices: Record<string, number | null>, col: ColumnaRenta | null): number | null =>
+  col ? precioEnColumna(prices, col) : null;
 
 function round2(n: number): number {
   return Math.round((n + Number.EPSILON) * 100) / 100;
@@ -49,7 +58,8 @@ export function computeQuote(
   if (sel.descuentoPct != null && (sel.descuentoPct < 0 || sel.descuentoPct > 100)) {
     throw new Error(`Descuento de cortesía inválido: ${sel.descuentoPct}% (debe estar entre 0 y 100)`);
   }
-  const dt = dayType(sel.fecha);
+  const col = columnaDelEvento(catalog, sel.fecha);
+  const diaSemana = diaYMes(sel.fecha).dia;
   const lines: QuoteLine[] = [];
 
   // 1. Renta de espacios de CATÁLOGO (con IVA) — suma de espacios. Todavía no es
@@ -82,10 +92,10 @@ export function computeQuote(
     }
     // "No aplica": ese día no se ofrece en este espacio (con esta tarifa). Antes
     // se marcaba con cero y se cotizaba una renta de $0.
-    const precioDia = precioDelDia(row.prices, dt);
+    const precioDia = precioDe(row.prices, col);
     if (precioDia == null) {
       const espacio = catalog.spaceNames?.[spaceId] ?? 'El espacio elegido';
-      const dia = dt === 'viernesEspecial' ? 'viernes' : NOMBRE_DIA[dt];
+      const dia = NOMBRE_DIA_SEMANA[diaSemana];
       throw new Error(`${espacio} no se ofrece en ${dia}${usaFlat ? ' con renta plana' : ''}.`);
     }
     // Personas extra: si se pasa del nivel anterior por poquito, se cobra ese
@@ -93,7 +103,7 @@ export function computeQuote(
     // $76,000 / 100 = $760). Va en el MISMO renglón del salón —con su `spaceId`—
     // para que el plan de pagos y los descuentos lo vean como renta de ese salón.
     const nivel = nivelConExtras(rows, row, tocan, catalog.toleranciaExtras ?? 0);
-    const precioNivel = precioDelDia(nivel.row.prices, dt);
+    const precioNivel = precioDe(nivel.row.prices, col);
     const usaExtras = nivel.extras > 0 && precioNivel != null && nivel.row.max != null;
     const porPersonaExtra = usaExtras ? Math.round(precioNivel! / nivel.row.max!) : 0;
     const monto = usaExtras ? precioNivel! + nivel.extras * porPersonaExtra : precioDia;
@@ -171,11 +181,12 @@ export function computeQuote(
   //     (rentaConIva) pero NUNCA se descuenta ni entra a la base de horas extra o
   //     del descuento por alimentos: "se cobra en los días que se cobra".
   if (sel.usaCapilla) {
-    const monto = dt === 'sabado' ? catalog.capillaSabado : 0;
+    // La capilla se cobra por el día real de la semana, no por la columna.
+    const monto = diaSemana === 6 ? catalog.capillaSabado : 0;
     rentaConIva += monto;
     lines.push({
       concepto: 'Capilla',
-      detalle: dt === 'sabado' ? undefined : 'cortesía',
+      detalle: diaSemana === 6 ? undefined : 'cortesía',
       monto: round2(monto),
       ivaIncluido: true,
       grupo: 'renta',
@@ -367,7 +378,7 @@ export function porPersonaDelNivel(
   catalog: Catalog,
   sel: QuoteSelection,
 ): { renta: number | null; alimentos: number | null } {
-  const dt = dayType(sel.fecha);
+  const col = columnaDelEvento(catalog, sel.fecha);
   const tol = catalog.toleranciaExtras ?? 0;
   const usaFlat = sel.eventTypeId != null && catalog.flatRentalEventTypeIds.includes(sel.eventTypeId);
   const rentalRows = usaFlat ? catalog.rentalPricesFlat : catalog.rentalPrices;
@@ -380,7 +391,7 @@ export function porPersonaDelNivel(
     const rango = sel.spaceIds.length > 1 ? bracketDeParte(rows, tocan) : findBracket(rows, tocan);
     if (!rango) return { renta: null, alimentos: null };
     const { row } = nivelConExtras(rows, rango, tocan, tol);
-    const p = precioDelDia(row.prices, dt);
+    const p = precioDe(row.prices, col);
     if (p == null) return { renta: null, alimentos: null };
     precio += p;
     topes += row.max ?? Math.max(row.min, tocan);

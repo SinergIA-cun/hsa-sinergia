@@ -14,7 +14,7 @@ import type { PriceList } from '../../../lib/types.ts';
 import { apiErrorMessage } from '../shared.tsx';
 import { AvisoImpacto } from './AvisoImpacto.tsx';
 import { BitacoraCatalogo } from './BitacoraCatalogo.tsx';
-import { RentaSeccion, type RentaCambio } from './RentaSeccion.tsx';
+import { RentaSeccion, type TablaRentaPayload } from './RentaSeccion.tsx';
 import {
   ServiciosSeccion,
   type ServicioNuevo,
@@ -122,7 +122,7 @@ export function CatalogoEditor({
             )}
           </h3>
           <p className="text-xs text-charcoal-soft">
-            Año {c.priceList.anio} · {c.renta.length} renglones de renta · {c.servicios.length}{' '}
+            {c.renta.length} renglones de renta · {c.servicios.length}{' '}
             servicios · {c.paquetes.length} paquetes
           </p>
         </div>
@@ -155,9 +155,10 @@ export function CatalogoEditor({
         {seccion === 'renta' && (
           <RentaSeccion
             renta={c.renta}
-            onGuardar={(cambios: RentaCambio[]) =>
-              conInvalidacion(() => api.patch(`${base}/rentas`, { cambios }))
-            }
+            columnas={c.columnasRenta}
+            espacios={c.espacios}
+            enUso={impactoQ.data?.impacto.total ?? 0}
+            onGuardar={(tabla: TablaRentaPayload) => conInvalidacion(() => api.put(`${base}/renta`, tabla))}
           />
         )}
         {seccion === 'servicios' && (

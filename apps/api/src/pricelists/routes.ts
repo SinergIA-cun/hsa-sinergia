@@ -13,11 +13,11 @@ import {
   editarDj,
   editarParametros,
   editarPaquete,
-  editarRentas,
   editarServicio,
 } from './editar.js';
 import { impactoDeCatalogo } from './impacto.js';
 import { contenidoDeCatalogo } from './contenido.js';
+import { guardarTablaRenta } from './tablaRenta.js';
 import { listarBitacoraCatalogo } from './audit.js';
 
 /**
@@ -108,11 +108,12 @@ export async function priceListRoutes(app: FastifyInstance): Promise<void> {
       }),
   );
 
-  app.patch<{ Params: { id: string } }>(
-    '/admin/price-lists/:id/rentas',
+  // La tabla de renta completa: columnas, rangos y precios (16-oct-2026).
+  app.put<{ Params: { id: string } }>(
+    '/admin/price-lists/:id/renta',
     { preHandler: requireAdmin },
     async (req, reply) =>
-      conErrores(reply, () => editarRentas(app.prisma, req.params.id, req.body, req.user as Actor)),
+      conErrores(reply, () => guardarTablaRenta(app.prisma, req.params.id, req.body, req.user as Actor)),
   );
 
   // --- Servicios ---

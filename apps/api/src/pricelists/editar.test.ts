@@ -16,10 +16,9 @@ import {
   editarDj,
   editarParametros,
   editarPaquete,
-  editarRentas,
   editarServicio,
 } from './editar.js';
-import { borrarCatalogoDePrueba } from './testSupport.js';
+import { borrarCatalogoDePrueba, cambiarPreciosDePrueba } from './testSupport.js';
 
 let app: FastifyInstance;
 let actor: Actor;
@@ -135,164 +134,6 @@ async function adminCookies() {
   const cookie = login.cookies[0]!;
   return { [cookie.name]: cookie.value };
 }
-
-/** Un renglón de renta del catálogo, el de menor `min` de un espacio con precio. */
-function primerRenglon(priceListId: string) {
-  return prisma.rentalPrice.findFirstOrThrow({
-    where: { priceListId, tipo: 'dia' },
-    orderBy: [{ spaceId: 'asc' }, { min: 'asc' }],
-  });
-}
-
-describe('editar precios de renta', () => {
-  it('actualiza los cuatro precios de un renglón y no toca los demás', async () => {
-    const cat = await catalogoDePrueba('EDIT-RENTA', 2078);
-    const r = await primerRenglon(cat.id);
-    const vecino = await prisma.rentalPrice.findFirstOrThrow({
-      where: { priceListId: cat.id, id: { not: r.id } },
-      orderBy: { id: 'asc' },
-    });
-
-    await editarRentas(
-      prisma,
-      cat.id,
-      { cambios: [{ id: r.id, viernes: 111, viernesEspecial: 222, sabado: 333, domAJue: 444 }] },
-      actor,
-    );
-
-    const despues = await prisma.rentalPrice.findUniqueOrThrow({ where: { id: r.id } });
-    expect(despues.viernes).toBe(111);
-    expect(despues.viernesEspecial).toBe(222);
-    expect(despues.sabado).toBe(333);
-    expect(despues.domAJue).toBe(444);
-    // El rango de invitados no se toca: agregar o quitar rangos deja huecos y el
-    // motor lanza "no tiene rango de renta para N invitados".
-    expect(despues.min).toBe(r.min);
-    expect(despues.max).toBe(r.max);
-
-    const vecinoDespues = await prisma.rentalPrice.findUniqueOrThrow({ where: { id: vecino.id } });
-    expect(vecinoDespues.sabado).toBe(vecino.sabado);
-    expect(vecinoDespues.viernes).toBe(vecino.viernes);
-  });
-
-  it('rechaza precios negativos o no enteros', async () => {
-    const cat = await catalogoDePrueba('EDIT-RENTA-MAL', 2077);
-    const r = await primerRenglon(cat.id);
-    const base = { id: r.id, viernes: 1000, viernesEspecial: 1000, sabado: 1000, domAJue: 1000 };
-
-    await expect(
-      editarRentas(prisma, cat.id, { cambios: [{ ...base, sabado: -1 }] }, actor),
-    ).rejects.toThrow();
-    // Prisma TRUNCA los flotantes en columnas Int sin avisar: 1234.5 → 1234.
-    await expect(
-      editarRentas(prisma, cat.id, { cambios: [{ ...base, sabado: 1234.5 }] }, actor),
-    ).rejects.toThrow();
-
-    const intacto = await prisma.rentalPrice.findUniqueOrThrow({ where: { id: r.id } });
-    expect(intacto.sabado).toBe(r.sabado);
-  });
-
-  it('rechaza un renglón que no pertenece al catálogo', async () => {
-    const cat = await catalogoDePrueba('EDIT-RENTA-AJENA', 2076);
-    const ajeno = await primerRenglon(activoOriginalId);
-
-    await expect(
-      editarRentas(
-        prisma,
-        cat.id,
-        { cambios: [{ id: ajeno.id, viernes: 1, viernesEspecial: 1, sabado: 1, domAJue: 1 }] },
-        actor,
-      ),
-    ).rejects.toMatchObject({ status: 400 });
-
-    // Y el renglón del catálogo de producción quedó intacto.
-    const despues = await prisma.rentalPrice.findUniqueOrThrow({ where: { id: ajeno.id } });
-    expect(despues.sabado).toBe(ajeno.sabado);
-    expect(despues.viernes).toBe(ajeno.viernes);
-  });
-
-  it('NO reescribe el total ni el breakdown de las cotizaciones existentes', async () => {
-    // El guardián del invariante del tramo 1: una cotización nunca cambia de
-    // precio sola. Editar el catálogo deja congelados `total` y `breakdown`; el
-    // represiado solo ocurre si alguien REEDITA la cotización después.
-    const cat = await catalogoDePrueba('EDIT-INVARIANTE', 2075);
-    const q = await cotizacionEn(cat.id, '2032-03-06');
-    const totalAntes = q.total;
-    const breakdownAntes = JSON.stringify(q.breakdown);
-    expect(totalAntes).toBeGreaterThan(0);
-
-    const rentas = await prisma.rentalPrice.findMany({ where: { priceListId: cat.id, tipo: 'dia' } });
-    await editarRentas(
-      prisma,
-      cat.id,
-      {
-        cambios: rentas.map((r) => ({
-          id: r.id,
-          viernes: r.viernes! * 2,
-          viernesEspecial: r.viernesEspecial! * 2,
-          sabado: r.sabado! * 2,
-          domAJue: r.domAJue! * 2,
-        })),
-      },
-      actor,
-    );
-
-    const guardada = await prisma.quote.findUniqueOrThrow({ where: { id: q.id } });
-    expect(guardada.total).toBe(totalAntes);
-    expect(JSON.stringify(guardada.breakdown)).toBe(breakdownAntes);
-    expect(guardada.rentaTotal).toBe(q.rentaTotal);
-    // Y el catálogo sí subió: el test no pasa por no haber cambiado nada.
-    const unaRenta = await prisma.rentalPrice.findUniqueOrThrow({ where: { id: rentas[0]!.id } });
-    expect(unaRenta.sabado).toBe(rentas[0]!.sabado! * 2);
-  });
-
-  it('queda en la bitácora con el impacto del momento', async () => {
-    const cat = await catalogoDePrueba('EDIT-RENTA-LOG', 2074);
-    await cotizacionEn(cat.id, '2032-03-13');
-    const r = await primerRenglon(cat.id);
-
-    await editarRentas(
-      prisma,
-      cat.id,
-      { cambios: [{ id: r.id, viernes: 10, viernesEspecial: 20, sabado: 30, domAJue: 40 }] },
-      actor,
-    );
-
-    const log = await prisma.priceListAudit.findMany({ where: { priceListId: cat.id } });
-    expect(log).toHaveLength(1);
-    expect(log[0]!.tipo).toBe('renta');
-    expect(log[0]!.cotizacionesEnRiesgo).toBeGreaterThan(0);
-    expect(log[0]!.actorId).toBe(actor.id);
-    // El antes/después es lo que permite reconstruir el cambio meses después.
-    expect(log[0]!.meta).toMatchObject({
-      renglones: [{ id: r.id, antes: { sabado: r.sabado }, despues: { sabado: 30 } }],
-    });
-  });
-
-  it('solo admin', async () => {
-    const cat = await catalogoDePrueba('EDIT-RENTA-403', 2073);
-    const r = await primerRenglon(cat.id);
-    const payload = { cambios: [{ id: r.id, viernes: 1, viernesEspecial: 1, sabado: 1, domAJue: 1 }] };
-
-    const res = await app.inject({
-      method: 'PATCH',
-      url: `/api/admin/price-lists/${cat.id}/rentas`,
-      cookies: await ventasCookies(),
-      payload,
-    });
-    expect(res.statusCode).toBe(403);
-    expect((await prisma.rentalPrice.findUniqueOrThrow({ where: { id: r.id } })).sabado).toBe(r.sabado);
-
-    const ok = await app.inject({
-      method: 'PATCH',
-      url: `/api/admin/price-lists/${cat.id}/rentas`,
-      cookies: await adminCookies(),
-      payload,
-    });
-    expect(ok.statusCode).toBe(200);
-    expect((await prisma.rentalPrice.findUniqueOrThrow({ where: { id: r.id } })).sabado).toBe(1);
-  });
-});
 
 describe('servicios del catálogo', () => {
   it('agrega un servicio al catálogo, no a los demás', async () => {
@@ -884,13 +725,8 @@ describe('impacto y bitácora por HTTP', () => {
   it('el admin lee el impacto y la bitácora; ventas no', async () => {
     const cat = await catalogoDePrueba('HTTP-IMPACTO', 2045);
     await cotizacionEn(cat.id, '2032-07-03');
-    const r = await primerRenglon(cat.id);
-    await editarRentas(
-      prisma,
-      cat.id,
-      { cambios: [{ id: r.id, viernes: 7, viernesEspecial: 7, sabado: 7, domAJue: 7 }] },
-      actor,
-    );
+    const r = await prisma.rentalPrice.findFirstOrThrow({ where: { priceListId: cat.id, tipo: 'dia' } });
+    await cambiarPreciosDePrueba(prisma, cat.id, [{ id: r.id, precios: { viernes: 7, viernesEspecial: 7, sabado: 7, domAJue: 7 } }], actor);
 
     const admin = await adminCookies();
     const imp = await app.inject({ method: 'GET', url: `/api/admin/price-lists/${cat.id}/impacto`, cookies: admin });

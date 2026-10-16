@@ -1,3 +1,4 @@
+import type { ColumnaRenta } from '@hsa/shared';
 import type { ProductoInfo } from '@hsa/shared';
 import type { TipoProfesional } from '@hsa/shared';
 import type { QuoteBreakdown, Catalog as EngineCatalog } from '@hsa/shared';
@@ -138,11 +139,8 @@ export interface RentaRenglon {
   tipo: string;
   min: number;
   max: number | null;
-  /** `null` = no aplica: ese día no se ofrece (el viernes especial cae a viernes). */
-  viernes: number | null;
-  viernesEspecial: number | null;
-  sabado: number | null;
-  domAJue: number | null;
+  /** Pesos por clave de columna; ausente o `null` = sin precio en esa columna. */
+  precios: Record<string, number | null>;
 }
 
 export interface PaqueteCatalogo {
@@ -171,6 +169,10 @@ export interface CatalogoContenido {
     toleranciaExtras: number;
   };
   renta: RentaRenglon[];
+  /** Las columnas de la tabla de renta y su regla (días y meses). */
+  columnasRenta: ColumnaRenta[];
+  /** Todos los salones, para agregar uno a la tabla. */
+  espacios: { id: string; nombre: string; activo: boolean }[];
   servicios: AddOn[];
   paquetes: PaqueteCatalogo[];
   /** Un renglón por tipo de evento que SÍ ofrece DJ por hora extra. */
