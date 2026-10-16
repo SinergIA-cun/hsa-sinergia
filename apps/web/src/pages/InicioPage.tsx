@@ -150,11 +150,6 @@ export function InicioPage() {
         </div>
         {data && (
           <div className="flex items-center gap-3 dash-noprint">
-            {data.fichasSemana.length > 0 && (
-              <Button variant="outline" onClick={() => window.print()}>
-                <Printer size={15} /> Imprimir fichas
-              </Button>
-            )}
             <Card className="flex items-center gap-3 px-5 py-3">
               <CalendarDays size={18} className="text-gold" />
               <div>
@@ -175,6 +170,101 @@ export function InicioPage() {
 
       {data && (
         <div className="space-y-8">
+          {/* Las fichas de la semana van primero (reunión del 15-oct-2026): es lo que se
+              usa a diario; lo demás son alertas. */}
+          {/* Fichas operativas de la semana */}
+          <section className="dash-fichas">
+            <div className="mb-3 flex items-end justify-between gap-3 print:hidden">
+              <div>
+                <h2 className="flex items-center gap-2 font-display text-2xl text-ink">
+                  <ClipboardList size={18} className="text-gold" /> Fichas de la semana
+                </h2>
+                <p className="mt-0.5 text-xs text-charcoal-soft dash-noprint">
+                  Una ficha operativa por evento de esta semana. El semáforo combina la hoja operativa y el finiquito.
+                </p>
+              </div>
+              {/* Arriba y a la mano (reunión del 15-oct-2026): se imprime y se reparte
+                  a Valet, Operaciones y Administración. */}
+              {data.fichasSemana.length > 0 && (
+                <Button variant="gold" onClick={() => window.print()} className="dash-noprint">
+                  <Printer size={15} /> Imprimir / PDF
+                </Button>
+              )}
+            </div>
+            {data.fichasSemana.length === 0 ? (
+              <Card className="p-6 text-sm text-charcoal-soft">No hay eventos esta semana.</Card>
+            ) : (
+              <div className="space-y-6">
+                {agruparPorDia(data.fichasSemana).map((g) => (
+                  <div key={g.key} className="ficha-dia">
+                    <h3 className="ficha-dia-title mb-2 border-b border-cream-300 pb-1 font-display text-lg text-ink">
+                      {g.label}
+                    </h3>
+                    {/* Pantalla: tarjetas. */}
+                    <div className="ficha-dia-grid grid gap-4 xl:grid-cols-2 print:hidden">
+                      {g.fichas.map((f) => (
+                        <FichaOperativaCard key={f.quoteId} f={f} onOpen={() => abrir(f.quoteId)} />
+                      ))}
+                    </div>
+                    {/* Impresión: hoja operativa compacta (3 por hoja). */}
+                    <div className="hidden print:block">
+                      {g.fichas.map((f) => (
+                        <FichaOperativaPrint key={f.quoteId} f={f} />
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+
+          {/* Próxima semana */}
+          <section className="dash-noprint">
+            <h2 className="mb-3 flex items-center gap-2 font-display text-2xl text-ink">
+              <CalendarClock size={18} className="text-gold" /> Próxima semana
+            </h2>
+            <Card className="p-4">
+              {data.proximaSemana.length === 0 ? (
+                <p className="p-2 text-sm text-charcoal-soft">Sin eventos el próximo fin de semana.</p>
+              ) : (
+                <div className="grid gap-4 sm:grid-cols-3">
+                  {DIAS.map(({ key, label }) => {
+                    const dia = data.proximaSemana.filter((e) => e.dia === key);
+                    return (
+                      <div key={key}>
+                        <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-charcoal-soft">
+                          {label}
+                        </p>
+                        {dia.length === 0 ? (
+                          <p className="text-xs text-charcoal-soft/60">—</p>
+                        ) : (
+                          <div className="space-y-1.5">
+                            {dia.map((e) => (
+                              <button
+                                key={e.quoteId}
+                                onClick={() => abrir(e.quoteId)}
+                                className="flex w-full items-center justify-between gap-2 rounded-lg border border-cream-300 bg-white/60 px-3 py-2 text-left text-sm transition-colors hover:border-ink/25"
+                              >
+                                <span className="min-w-0">
+                                  <span className="block truncate font-medium text-ink">{e.cliente}</span>
+                                  <span className="block truncate text-xs text-charcoal-soft">{e.espacio}</span>
+                                </span>
+                                <span
+                                  className={`shrink-0 rounded-full px-2 py-0.5 text-[0.6rem] font-semibold uppercase tracking-wide ${STATUS_STYLE[e.status]}`}
+                                >
+                                  {STATUS_LABEL[e.status]}
+                                </span>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </Card>
+          </section>
           {/*
             Eventos pasados sin liquidar — LO PRIMERO.
             Por la regla del negocio ("no hay forma de hacer el evento si no está
@@ -218,10 +308,12 @@ export function InicioPage() {
             GLOBAL a propósito: el saldo de una contraparte es uno solo.
           */}
           {(data.banqueteros.saldos.length > 0 || data.banqueteros.apartados.length > 0) && (
-            <section className="dash-noprint">
-              <h2 className="mb-3 flex items-center gap-2 font-display text-2xl text-ink">
+            <details className="dash-noprint group">
+              {/* Plegado: es consulta, no algo que haya que ver diario (menos ruido). */}
+              <summary className="mb-3 flex cursor-pointer list-none items-center gap-2 font-display text-2xl text-ink">
                 <Coins size={18} className="text-gold" /> Banqueteros
-              </h2>
+                <span className="font-sans text-xs text-charcoal-soft group-open:hidden">· toca para ver saldos y apartados</span>
+              </summary>
               <div className="grid gap-4 lg:grid-cols-2">
                 {data.banqueteros.saldos.length > 0 && (
                   <Card className="p-5">
@@ -313,7 +405,7 @@ export function InicioPage() {
                   </Card>
                 )}
               </div>
-            </section>
+            </details>
           )}
 
           {/* Alertas de finiquito — sin los que ya salieron arriba como evento pasado:
@@ -343,92 +435,6 @@ export function InicioPage() {
             </section>
           )}
 
-          {/* Fichas operativas de la semana */}
-          <section className="dash-fichas">
-            <div className="mb-3 flex items-end justify-between gap-3 print:hidden">
-              <div>
-                <h2 className="flex items-center gap-2 font-display text-2xl text-ink">
-                  <ClipboardList size={18} className="text-gold" /> Fichas de la semana
-                </h2>
-                <p className="mt-0.5 text-xs text-charcoal-soft dash-noprint">
-                  Una ficha operativa por evento de esta semana. El semáforo combina la hoja operativa y el finiquito.
-                </p>
-              </div>
-            </div>
-            {data.fichasSemana.length === 0 ? (
-              <Card className="p-6 text-sm text-charcoal-soft">No hay eventos esta semana.</Card>
-            ) : (
-              <div className="space-y-6">
-                {agruparPorDia(data.fichasSemana).map((g) => (
-                  <div key={g.key} className="ficha-dia">
-                    <h3 className="ficha-dia-title mb-2 border-b border-cream-300 pb-1 font-display text-lg text-ink">
-                      {g.label}
-                    </h3>
-                    {/* Pantalla: tarjetas. */}
-                    <div className="ficha-dia-grid grid gap-4 xl:grid-cols-2 print:hidden">
-                      {g.fichas.map((f) => (
-                        <FichaOperativaCard key={f.quoteId} f={f} onOpen={() => abrir(f.quoteId)} />
-                      ))}
-                    </div>
-                    {/* Impresión: hoja operativa compacta (3 por hoja). */}
-                    <div className="hidden print:block">
-                      {g.fichas.map((f) => (
-                        <FichaOperativaPrint key={f.quoteId} f={f} />
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </section>
-
-          {/* Próxima semana */}
-          <section className="dash-noprint">
-            <h2 className="mb-3 flex items-center gap-2 font-display text-2xl text-ink">
-              <CalendarClock size={18} className="text-gold" /> Próxima semana
-            </h2>
-            <Card className="p-4">
-              {data.proximaSemana.length === 0 ? (
-                <p className="p-2 text-sm text-charcoal-soft">Sin eventos el próximo fin de semana.</p>
-              ) : (
-                <div className="grid gap-4 sm:grid-cols-3">
-                  {DIAS.map(({ key, label }) => {
-                    const dia = data.proximaSemana.filter((e) => e.dia === key);
-                    return (
-                      <div key={key}>
-                        <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-charcoal-soft">
-                          {label}
-                        </p>
-                        {dia.length === 0 ? (
-                          <p className="text-xs text-charcoal-soft/60">—</p>
-                        ) : (
-                          <div className="space-y-1.5">
-                            {dia.map((e) => (
-                              <button
-                                key={e.quoteId}
-                                onClick={() => abrir(e.quoteId)}
-                                className="flex w-full items-center justify-between gap-2 rounded-lg border border-cream-300 bg-white/60 px-3 py-2 text-left text-sm transition-colors hover:border-ink/25"
-                              >
-                                <span className="min-w-0">
-                                  <span className="block truncate font-medium text-ink">{e.cliente}</span>
-                                  <span className="block truncate text-xs text-charcoal-soft">{e.espacio}</span>
-                                </span>
-                                <span
-                                  className={`shrink-0 rounded-full px-2 py-0.5 text-[0.6rem] font-semibold uppercase tracking-wide ${STATUS_STYLE[e.status]}`}
-                                >
-                                  {STATUS_LABEL[e.status]}
-                                </span>
-                              </button>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </Card>
-          </section>
         </div>
       )}
     </div>
