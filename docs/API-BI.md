@@ -279,7 +279,11 @@ Incluye los pagos anulados, marcados como tales — el BI decide si los descuent
   demás `aCuenta`.
 - **`concepto`** (etiquetas del BI desde el 5-oct-2026): `anticipo` = el primer pago; `finiquito` =
   el que deja lo que se debe del contrato en \$1,000 o menos por primera vez (si un solo pago lo
-  cubre todo, es finiquito); `aCuenta` = los demás. Se recalcula con cada cambio de dinero (y
+  cubre todo, es finiquito); `aCuenta` = los demás. **El finiquito se queda** (desde el
+  16-oct-2026): si el contrato sube después de liquidarse (horas extra, PAX extra), el pago que lo
+  liquidó sigue siendo `finiquito` y los que lleguen después son `aCuenta`; nunca hay dos. Deja de
+  serlo solo si lo pagado hasta él ya no completa lo que completó (se anuló o corrigió uno
+  anterior). Se recalcula con cada cambio de dinero (y
   cada reclasificación queda en `/cambios`). `complemento` ya no se usa; los hitos del plan de
   pagos (`/pagos-esperados`) sí conservan el suyo.
 - **`idBI`**: el `idBI` con el que el pago llegó del BI (un pago de evento importado, o el abono de

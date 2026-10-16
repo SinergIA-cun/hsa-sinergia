@@ -78,4 +78,41 @@ describe('deducirConceptos', () => {
     const r = deducirConceptos([pago('a', 20_000, { concepto: 'anticipo' })], null);
     expect(r.get('a')).toBe('anticipo');
   });
+
+  describe('el finiquito se queda (16-oct-2026)', () => {
+    it('si el contrato sube después de liquidar, el finiquito sigue y lo que llega es a cuenta', () => {
+      // Se liquidó un contrato de 100,000 y luego se cargaron 6,000 de horas extra.
+      const r = deducirConceptos(
+        [pago('a', 20_000, { concepto: 'anticipo' }), pago('b', 80_000, { concepto: 'finiquito', finiquitoDe: 100_000 }), pago('c', 6_000)],
+        106_000,
+      );
+      expect([r.get('a'), r.get('b'), r.get('c')]).toEqual(['anticipo', 'finiquito', 'aCuenta']);
+    });
+
+    it('sin finiquito guardado, el contrato nuevo decide como siempre', () => {
+      const r = deducirConceptos([pago('a', 20_000), pago('b', 80_000), pago('c', 6_000)], 106_000);
+      expect([r.get('b'), r.get('c')]).toEqual(['aCuenta', 'finiquito']);
+    });
+
+    it('si se anula un pago anterior, el que era finiquito ya no completa y deja de serlo', () => {
+      const r = deducirConceptos(
+        [
+          pago('a', 20_000, { anuladoAt: new Date(), concepto: 'anticipo' }),
+          pago('b', 80_000, { concepto: 'finiquito', finiquitoDe: 100_000 }),
+          pago('c', 20_000),
+        ],
+        100_000,
+      );
+      expect([r.get('b'), r.get('c')]).toEqual(['anticipo', 'finiquito']);
+    });
+
+    it('nunca hay dos finiquitos', () => {
+      // El contrato bajó: el primer pago ya completa, y el finiquito guardado pasa a cuenta.
+      const r = deducirConceptos(
+        [pago('a', 60_000), pago('b', 40_000, { concepto: 'finiquito', finiquitoDe: 100_000 })],
+        60_000,
+      );
+      expect([r.get('a'), r.get('b')]).toEqual(['finiquito', 'aCuenta']);
+    });
+  });
 });

@@ -322,8 +322,6 @@ describe('BI', () => {
 });
 
 describe('cargos que suben el contrato (horas extra de salón, PAX extra)', () => {
-  // "Aumenta el valor del contrato: PAX extras y Horas extras. Debe reflejarse en
-  // ambos lados, punto de venta y BI." (el dueño, 5-oct-2026)
   it('se suman al desglose y al total, no a la cuenta aparte; el BI los ve en el total', async () => {
     const q = await nuevoEvento();
     const { cuenta } = await registrarCargo(
@@ -345,7 +343,7 @@ describe('cargos que suben el contrato (horas extra de salón, PAX extra)', () =
     expect(cargos.every((c) => c.afectaContrato)).toBe(true);
   });
 
-  it('un evento liquidado regresa a su estatus por pagos; el pago que las cubre es el finiquito y vuelve a liquidado', async () => {
+  it('un evento liquidado regresa a su estatus por pagos; el finiquito se queda y el pago que las cubre es a cuenta', async () => {
     const q = await nuevoEvento();
     // Liquida la renta (108,500 en Arcos sábado, 250 pax): 20,000 ya + 88,500.
     await registerPayment(prisma, storage, q.id, { monto: q.rentaTotal - 20_000, metodo: 'transferencia', fecha: '2026-09-20' }, admin);
@@ -354,8 +352,14 @@ describe('cargos que suben el contrato (horas extra de salón, PAX extra)', () =
     await registrarCargo(prisma, q.id, { producto: 'horaExtra', cantidad: 2, precioUnitario: 5_425, fecha: '2026-10-01' }, admin);
     expect((await prisma.quote.findUniqueOrThrow({ where: { id: q.id } })).status).toBe('complementada');
 
+    // "Que el finiquito se quede" (Fernando, 16-oct-2026): el que liquidó sigue
+    // siendo el finiquito y el de las horas extra es a cuenta.
+    const conceptos = async () =>
+      (await prisma.payment.findMany({ where: { quoteId: q.id, anuladoAt: null }, orderBy: { createdAt: 'asc' } })).map((p) => p.concepto);
+    expect(await conceptos()).toEqual(['anticipo', 'finiquito']);
     const { payment } = await registerPayment(prisma, storage, q.id, { monto: 10_850, metodo: 'efectivo', fecha: '2026-10-02' }, admin);
-    expect(payment.concepto).toBe('finiquito');
+    expect(payment.concepto).toBe('aCuenta');
+    expect(await conceptos()).toEqual(['anticipo', 'finiquito', 'aCuenta']);
     expect(payment.destino).toBe('evento');
     expect((await prisma.quote.findUniqueOrThrow({ where: { id: q.id } })).status).toBe('liquidada');
   });

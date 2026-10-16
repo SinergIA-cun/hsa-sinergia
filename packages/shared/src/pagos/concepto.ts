@@ -29,6 +29,12 @@ export interface PagoParaConcepto {
   conceptoManual?: PaymentConcept | null;
   /** El concepto que hoy está guardado. Es el que se respeta cuando no hay precio. */
   concepto: PaymentConcept;
+  /**
+   * Si es el finiquito: el total del contrato que completó. Con él, el finiquito
+   * se queda aunque el contrato suba después (horas extra, PAX extra): lo que
+   * llegue luego es a cuenta (Fernando, 16-oct-2026: "que el finiquito se quede").
+   */
+  finiquitoDe?: number | null;
 }
 
 /**
@@ -65,6 +71,11 @@ export function deducirConcepto(antes: number, monto: number, total: number, esP
  * - **El finiquito lo dicta el saldo**, en los dos sentidos: el pago que completa
  *   el contrato es finiquito aunque lo hayan capturado como otra cosa, y uno
  *   marcado "finiquito" a mano que no lo completa no lo es.
+ * - **El finiquito se queda** (16-oct-2026): uno que ya completó el contrato
+ *   (`finiquitoDe`) lo sigue siendo aunque el contrato suba después; los pagos
+ *   que lleguen luego son a cuenta. Hay un solo finiquito. Deja de serlo solo si
+ *   lo pagado hasta él ya no completa el total que completó (se anuló uno
+ *   anterior, o se corrigió a menos).
  * - Un ajuste a mano se respeta en los que no son finiquito.
  * - Los pagos anulados conservan el concepto con el que quedaron: son evidencia,
  *   no suman y no se reescriben.
@@ -75,6 +86,7 @@ export function deducirConceptos(pagos: PagoParaConcepto[], total: number | null
   const out = new Map<string, PaymentConcept>();
   let acumulado = 0;
   let vivos = 0;
+  let hayFiniquito = false;
 
   for (const p of pagos) {
     if (p.anuladoAt != null) {
@@ -85,7 +97,14 @@ export function deducirConceptos(pagos: PagoParaConcepto[], total: number | null
       out.set(p.id, p.conceptoManual ?? p.concepto);
       continue;
     }
-    const deducido = deducirConcepto(acumulado, p.monto, total, vivos === 0);
+    const sigue =
+      p.concepto === 'finiquito' &&
+      p.finiquitoDe != null &&
+      !hayFiniquito &&
+      acumulado + p.monto >= restarDinero(p.finiquitoDe, TOLERANCIA_FINIQUITO);
+    let deducido = sigue ? 'finiquito' : deducirConcepto(acumulado, p.monto, total, vivos === 0);
+    if (deducido === 'finiquito' && hayFiniquito && !sigue) deducido = 'aCuenta';
+    if (deducido === 'finiquito') hayFiniquito = true;
     acumulado += p.monto;
     vivos++;
     const manual = p.conceptoManual;
