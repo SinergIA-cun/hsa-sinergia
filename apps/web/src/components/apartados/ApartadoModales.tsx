@@ -5,7 +5,7 @@ import { CheckCircle2, MessageCircle, PartyPopper, Phone, Unlock, X } from 'luci
 import { api } from '../../lib/api.ts';
 import { apiErrorMessage } from '../admin/shared.tsx';
 import { formatEventDate } from '../../lib/date.ts';
-import { whatsappUrl } from '../../lib/share.ts';
+import { enlaceWhatsapp, usePlantillasWhatsapp } from '../whatsapp/plantillas.ts';
 import { Button, Card, Field, SelectInput, TextInput } from '../ui.tsx';
 import type { ApartadoRapido } from '../../lib/types.ts';
 
@@ -161,7 +161,15 @@ export function ApartadoDetalleModal({
   const [busy, setBusy] = useState(false);
   const [liberando, setLiberando] = useState(false);
   const [motivo, setMotivo] = useState('');
-  const wa = whatsappUrl(a.telefono, `Hola ${a.nombre}, le escribimos de Hacienda San Andrés sobre la fecha del ${formatEventDate(a.fecha, 'long')} que nos pidió.`);
+  const { texto } = usePlantillasWhatsapp();
+  // El texto lo edita el admin (Admin → Mensajes de WhatsApp).
+  const wa = a.telefono
+    ? enlaceWhatsapp(texto('apartadoSeguimiento'), a.telefono, {
+        cliente: a.nombre,
+        evento: a.eventType.nombre.toLowerCase(),
+        fecha: formatEventDate(a.fecha, 'long'),
+      })
+    : null;
 
   async function accion(url: string, body: unknown, mensaje: string) {
     setError('');

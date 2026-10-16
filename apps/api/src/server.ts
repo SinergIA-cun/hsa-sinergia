@@ -29,6 +29,7 @@ import { historicoRoutes } from './historico/routes.js';
 import { proveedorRoutes } from './proveedores/routes.js';
 import { correoRoutes } from './correos/routes.js';
 import { apartadoRapidoRoutes } from './apartadosRapidos/routes.js';
+import { whatsappRoutes } from './whatsapp/routes.js';
 import { candadoDeEventoCerrado } from './quotes/cierre.js';
 
 declare module 'fastify' {
@@ -97,6 +98,7 @@ export async function buildServer(opts: BuildOptions = {}): Promise<FastifyInsta
   await app.register(userRoutes, { prefix: '/api' });
   await app.register(availabilityRoutes, { prefix: '/api' });
   await app.register(apartadoRapidoRoutes, { prefix: '/api' });
+  await app.register(whatsappRoutes, { prefix: '/api' });
   await app.register(paymentRoutes, { prefix: '/api' });
   await app.register(cargoRoutes, { prefix: '/api' });
   await app.register(devolucionRoutes, { prefix: '/api' });
