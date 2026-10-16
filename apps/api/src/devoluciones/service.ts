@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { assertAbierto } from '../quotes/cierre.js';
 import type { PrismaClient } from '@hsa/database';
 import { formasPagoSchema, metodoCapturaSchema, describirFormasPago, hoyCivilMexico, montoSchema, restarDinero } from '@hsa/shared';
 import { QuoteError, assertNotTrashed, loadEstadoCuenta, type Actor } from '../quotes/service.js';
@@ -170,6 +171,7 @@ export async function anularDevolucion(db: PrismaClient, devolucionId: string, r
   const dev = await db.devolucion.findUnique({ where: { id: devolucionId } });
   if (!dev) throw new QuoteError(404, 'Devolución no encontrada');
   if (dev.anuladoAt) throw new QuoteError(409, 'Esa devolución ya está anulada.');
+  if (dev.quoteId) await assertAbierto(db, dev.quoteId);
   const anulada = await db.devolucion.update({
     where: { id: devolucionId },
     data: { anuladoAt: new Date(), anuladoById: actor.id, motivoAnulacion: motivo },

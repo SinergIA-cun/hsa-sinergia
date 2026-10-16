@@ -216,6 +216,8 @@ export interface AgendaEvent {
   usaCapilla: boolean;
   /** Evento de otro vendedor: solo se sabe que ocupa el salón. */
   ajeno?: boolean;
+  /** "Cerrar evento": no se arrastra. */
+  cerrado?: boolean;
 }
 
 /**
@@ -278,6 +280,7 @@ export async function getAgenda(
       status: q.status,
       esCortesia: q.esCortesia,
       usaCapilla: q.usaCapilla,
+      cerrado: Boolean(q.cerradoAt),
     })),
     apartados: apartados.map((a) => ({
       apartadoId: a.id,

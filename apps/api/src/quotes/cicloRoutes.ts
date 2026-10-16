@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { requireAuth } from '../auth/plugin.js';
 import { QuoteError, simularMovimiento, type Actor } from './service.js';
 import { cancelarEvento, eventosSinFecha, ponerEnStandby, reprogramarEvento } from './ciclo.js';
+import { cerrarEvento, reabrirEvento } from './cierre.js';
 
 /** Cancelar, standby, reprogramar y la lista de eventos sin fecha. */
 export async function cicloRoutes(app: FastifyInstance): Promise<void> {
@@ -14,6 +15,24 @@ export async function cicloRoutes(app: FastifyInstance): Promise<void> {
       throw e;
     }
   };
+
+  // Cerrar y reabrir un evento (admin). Ver cierre.ts.
+  app.post<{ Params: { id: string } }>('/quotes/:id/cerrar', { preHandler: requireAuth }, async (req, reply) => {
+    try {
+      return await cerrarEvento(app.prisma, req.params.id, req.body, req.user as Actor);
+    } catch (e) {
+      if (e instanceof QuoteError) return reply.code(e.status).send({ error: e.message });
+      throw e;
+    }
+  });
+  app.post<{ Params: { id: string } }>('/quotes/:id/reabrir', { preHandler: requireAuth }, async (req, reply) => {
+    try {
+      return await reabrirEvento(app.prisma, req.params.id, req.body, req.user as Actor);
+    } catch (e) {
+      if (e instanceof QuoteError) return reply.code(e.status).send({ error: e.message });
+      throw e;
+    }
+  });
 
   app.get('/quotes/sin-fecha', { preHandler: requireAuth }, async (req) => ({
     eventos: await eventosSinFecha(app.prisma, req.user as Actor),

@@ -138,6 +138,8 @@ export const includeRels = {
   banquetero: { select: { id: true, nombre: true, telefono: true } },
   // La agencia del paquete (BI #4): aparte del banquetero-cliente.
   agencia: { select: { id: true, nombre: true } },
+  // Quién cerró el evento ("Cerrar evento", 15-oct-2026).
+  cerradoBy: { select: { nombre: true } },
   // Los servicios sueltos del evento: no viven en el catálogo, así que la única
   // forma de recuperarlos para reeditar (y para recalcular) es leerlos de aquí.
   extras: { select: { nombre: true, kind: true, monto: true, cantidad: true } },
