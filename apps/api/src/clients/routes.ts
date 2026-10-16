@@ -58,6 +58,7 @@ export async function clientRoutes(app: FastifyInstance): Promise<void> {
       select: {
         id: true,
         nombre: true,
+        tipo: true,
         telefono: true,
         correo: true,
         empresa: true,

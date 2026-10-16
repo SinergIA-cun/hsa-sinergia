@@ -65,7 +65,8 @@ Todos los endpoints devuelven la misma envoltura. Ejemplo real de
             "cliente": {
                 "id": "cmsj6fu630000cbraxw735e3m",
                 "nombre": "Ejemplo Docs BI",
-                "referencia": 3712
+                "referencia": 3712,
+                "tipo": "persona"
             },
             "vendedora": {
                 "id": "cmrc3csxf0000cb9e5uc63ljz",
@@ -185,6 +186,7 @@ fecha: `fechaEvento` es la que TENÍA) o `cancelada`. Los dos sueltan la fecha: 
 |---|---|
 | `standby` | `null`, o `{ desde, motivo, estatusPrevio }`: desde cuándo está sin fecha y a qué estatus vuelve al reprogramarse. |
 | `cancelacion` | `null`, o `{ fecha, motivo, porcentaje, pagado, devolver, retenido, devuelto, pendiente }`: lo pagado al cancelar, el porcentaje que se acordó devolver, cuánto es, lo que se retiene, lo ya devuelto desde la cancelación y lo que falta. Las devoluciones en sí salen en `/devoluciones`. |
+| `cliente` | `{ id, nombre, referencia, tipo }`. `tipo` (desde el 16-oct-2026): `persona` o `empresa`, lo que se eligió en "Cliente o empresa"; `null` en los clientes de antes, hasta que alguien edite su evento, y en los eventos de un profesional. |
 | `banquetero` | `null`, o `{ id, nombre, tipo }`: el profesional de eventos que es el cliente del evento. `tipo` (desde el 15-oct-2026): `B` banquetero, `BG` banquete de graduación, `A` agencia, `WP` wedding planner. Los que ya existían quedaron como `B`. |
 | `cerradoAt` | `null`, o cuándo se **cerró** el evento (conciliado). Cerrado no cambia nada —datos, pagos, cargos, devoluciones— hasta que un admin lo reabre con motivo; facturar sí se puede. Cerrar y reabrir salen en `/cambios` como `estatus`. |
 | `descuento` | `null`, o `{ porcentaje, monto, motivo }`: el descuento sobre la renta, en **porcentaje o en monto fijo** (pesos con IVA); uno de los dos viene en `null`. `esCortesia` / `esPromocion` dicen de qué tipo es. Ya está aplicado en `renta.total` y `total`. |

@@ -286,7 +286,7 @@ export async function biEventos(db: PrismaClient, r: RangoBI) {
         ? { porcentaje: q.descuentoPct || null, monto: q.descuentoMonto ?? null, motivo: q.descuentoMotivo }
         : null,
     requiereFactura: q.requiereFactura,
-    cliente: { id: q.clientId, nombre: q.client?.nombre ?? null, referencia: q.client?.numeroReferencia ?? null },
+    cliente: { id: q.clientId, nombre: q.client?.nombre ?? null, referencia: q.client?.numeroReferencia ?? null, tipo: q.client?.tipo ?? null },
     vendedora: q.createdBy ? { id: q.createdBy.id, nombre: q.createdBy.nombre } : null,
     // `tipo`: B, BG, A o WP (reunión del 15-oct-2026).
     banquetero: q.banquetero ? { id: q.banquetero.id, nombre: q.banquetero.nombre, tipo: TIPO_PROFESIONAL[q.banquetero.tipo].codigo } : null,

@@ -213,7 +213,9 @@ export function ConvertirApartadoPage() {
           spaceIds: apartado.spaceIds,
           banqueteroId: apartado.banqueteroId ?? undefined,
           nombre: apartado.banquetero?.nombre ?? apartado.client?.nombre ?? '',
-          ...(deCliente ? { telefono: apartado.client?.telefono ?? '', correo: apartado.client?.correo ?? '' } : {}),
+          ...(deCliente
+            ? { telefono: apartado.client?.telefono ?? '', correo: apartado.client?.correo ?? '', tipoCliente: apartado.client?.tipo ?? '' }
+            : {}),
           ...(apartado.eventTypeId ? { eventTypeId: apartado.eventTypeId } : {}),
           ...(apartado.usaCapilla ? { usaCapilla: true } : {}),
         }}

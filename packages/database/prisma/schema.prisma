@@ -276,6 +276,12 @@ enum TipoProfesional {
   weddingPlanner
 }
 
+/// Un cliente directo es una persona o una empresa (16-oct-2026).
+enum TipoCliente {
+  persona
+  empresa
+}
+
 model Banquetero {
   id           String           @id @default(cuid())
   nombre       String
@@ -531,6 +537,8 @@ model CuadrillaMiembro {
 model Client {
   id                String          @id @default(cuid())
   nombre            String
+  /// Persona o empresa. `null` = cliente de antes de preguntarlo.
+  tipo              TipoCliente?
   telefono          String?
   correo            String?
   empresa           String?

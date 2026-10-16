@@ -18,6 +18,7 @@ import {
   type QuoteExtra,
   type QuoteSelection,
   formasSinNotas,
+  TIPOS_CLIENTE,
 } from '@hsa/shared';
 import { loadCatalog } from '../catalog/loader.js';
 import { getAvailability } from '../availability/service.js';
@@ -45,6 +46,8 @@ export const QUOTE_STATUSES = ['borrador', 'formalizada', 'complementada', 'liqu
 
 const clientSchema = z.object({
   nombre: z.string().min(1),
+  /** Persona o empresa. Omitido deja el que tenía; null lo borra. */
+  tipo: z.enum(TIPOS_CLIENTE).nullish(),
   telefono: z.string().optional(),
   correo: z.string().email().optional(),
   empresa: z.string().optional(),

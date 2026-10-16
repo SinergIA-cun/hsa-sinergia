@@ -11,6 +11,8 @@ import {
   type PartePago,
   conRentaAcordada,
   type QuoteBreakdown,
+  TIPOS_CLIENTE,
+  type TipoCliente,
 } from '@hsa/shared';
 import { INCLUDE_ABONOS, totalAbonado } from './abonos.js';
 import { QuoteError, createQuote, type Actor } from '../quotes/service.js';
@@ -82,7 +84,7 @@ const dia = (iso: string) => new Date(`${iso}T00:00:00.000Z`);
 
 const INCLUDE = {
   banquetero: { select: { id: true, nombre: true, telefono: true } },
-  client: { select: { id: true, nombre: true, telefono: true, correo: true } },
+  client: { select: { id: true, nombre: true, tipo: true, telefono: true, correo: true } },
   eventType: { select: { id: true, nombre: true } },
   priceList: { select: { id: true, nombre: true, anio: true } },
   quote: { select: { id: true, folio: true, etiqueta: true, total: true, status: true } },
@@ -345,12 +347,14 @@ async function clienteBanquetero(db: PrismaClient, banqueteroId: string) {
 async function clienteDirecto(
   db: PrismaClient,
   clientId: string,
-  capturado: { telefono?: unknown; correo?: unknown } | undefined,
+  capturado: { telefono?: unknown; correo?: unknown; tipo?: unknown } | undefined,
 ) {
   const cliente = await db.client.findUniqueOrThrow({ where: { id: clientId }, select: { nombre: true } });
   const telefono = typeof capturado?.telefono === 'string' ? capturado.telefono.trim() : '';
   const correo = typeof capturado?.correo === 'string' ? capturado.correo.trim() : '';
-  const contacto = { ...(telefono ? { telefono } : {}), ...(correo ? { correo } : {}) };
+  // Persona o empresa: lo único del cliente que se termina de elegir al convertir.
+  const tipo = (TIPOS_CLIENTE as readonly unknown[]).includes(capturado?.tipo) ? (capturado!.tipo as TipoCliente) : null;
+  const contacto = { ...(telefono ? { telefono } : {}), ...(correo ? { correo } : {}), ...(tipo ? { tipo } : {}) };
   return {
     clientId,
     ...(Object.keys(contacto).length > 0 ? { client: { nombre: cliente.nombre, ...contacto } } : {}),
@@ -388,7 +392,7 @@ export async function convertirApartado(
   // Se quitan del cuerpo: lo que el servidor impone no puede llegar de afuera, o
   // un cliente tecleado le ganaría al titular del apartado sin que nadie lo note.
   const resto: Record<string, unknown> = { ...((rawInput ?? {}) as Record<string, unknown>) };
-  const contactoCapturado = resto.client as { telefono?: unknown; correo?: unknown } | undefined;
+  const contactoCapturado = resto.client as { telefono?: unknown; correo?: unknown; tipo?: unknown } | undefined;
   delete resto.client;
   delete resto.clientId;
 

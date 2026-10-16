@@ -1,11 +1,13 @@
 import { useId, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Search, UserPlus } from 'lucide-react';
+import type { TipoCliente } from '@hsa/shared';
 import { api } from '../lib/api.ts';
 
 export interface ClienteLite {
   id: string;
   nombre: string;
+  tipo?: TipoCliente | null;
   telefono: string | null;
   correo: string | null;
   empresa: string | null;
