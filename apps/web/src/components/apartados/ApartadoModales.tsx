@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { CheckCircle2, MessageCircle, PartyPopper, Phone, Unlock, X } from 'lucide-react';
 import { api } from '../../lib/api.ts';
@@ -50,6 +51,7 @@ export function NuevoApartadoModal({
   tipos,
   onCerrar,
   onListo,
+  onCambiarFecha,
 }: {
   fecha: string;
   enFila: number;
@@ -57,6 +59,8 @@ export function NuevoApartadoModal({
   tipos: { id: string; nombre: string }[];
   onCerrar: () => void;
   onListo: () => Promise<void> | void;
+  /** La fila está llena: cambiar a otro día con lugar. */
+  onCambiarFecha?: (fecha: string) => void;
 }) {
   const [nombre, setNombre] = useState('');
   const [telefono, setTelefono] = useState('');
@@ -64,6 +68,12 @@ export function NuevoApartadoModal({
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const llena = enFila >= tope;
+  // Llena: el mismo día de la semana con lugar, en las semanas de alrededor.
+  const { data: conLugar } = useQuery({
+    queryKey: ['apartados-sugerencias', fecha],
+    queryFn: () => api.get<{ dias: { fecha: string; enFila: number }[] }>(`/api/apartados-rapidos/sugerencias?fecha=${fecha}`),
+    enabled: llena,
+  });
 
   async function guardar(e: React.FormEvent) {
     e.preventDefault();
@@ -86,7 +96,26 @@ export function NuevoApartadoModal({
         {enFila > 0 ? ` · ya hay ${enFila} en fila (tope ${tope})` : ' · nadie en fila todavía'}
       </p>
       {llena ? (
-        <p className="rounded-lg bg-wine/10 px-3 py-2 text-sm text-wine">La fila de ese día está llena ({tope} de {tope}).</p>
+        <div className="space-y-3">
+          <p className="rounded-lg bg-wine/10 px-3 py-2 text-sm text-wine">La fila de ese día está llena ({tope} de {tope}).</p>
+          {(conLugar?.dias.length ?? 0) > 0 && onCambiarFecha && (
+            <div>
+              <p className="mb-2 text-xs font-medium uppercase tracking-wide text-charcoal-soft">Días con lugar</p>
+              <div className="flex flex-wrap gap-1.5">
+                {conLugar!.dias.map((d) => (
+                  <button
+                    key={d.fecha}
+                    type="button"
+                    onClick={() => onCambiarFecha(d.fecha)}
+                    className="rounded-full border border-gold/50 bg-gold/10 px-3 py-1 text-xs font-medium text-ink hover:bg-gold/25"
+                  >
+                    {formatEventDate(d.fecha)} · {d.enFila === 0 ? 'nadie' : `${d.enFila} en fila`}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
       ) : (
         <form onSubmit={guardar} className="space-y-3">
           <Field label="Nombre">

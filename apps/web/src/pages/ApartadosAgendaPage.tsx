@@ -164,6 +164,7 @@ export function ApartadosAgendaPage() {
           tope={tope}
           tipos={catalogQ.data?.eventTypes ?? []}
           onCerrar={() => setNuevo(null)}
+          onCambiarFecha={setNuevo}
           onListo={async () => {
             setNuevo(null);
             await refrescar('Apartado guardado. Corre su contador de 15 días.');

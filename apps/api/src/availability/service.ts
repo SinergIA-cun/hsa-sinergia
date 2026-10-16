@@ -298,3 +298,55 @@ export async function getAgenda(
     })),
   };
 }
+
+/**
+ * Fechas libres cercanas (reunión del 15-oct-2026: "sugerencias de fechas
+ * disponibles"). Cuando el salón que piden ya está ocupado ese día, se proponen
+ * el MISMO día de la semana —quien pide un sábado quiere otro sábado— en las
+ * semanas de alrededor: hasta 2 antes (si no han pasado) y las siguientes, hasta
+ * juntar `cuantas`. Libre = ningún evento comprometido ni apartado con abono en
+ * ninguno de esos salones. Un borrador no ocupa.
+ */
+export async function fechasLibres(
+  db: PrismaClient,
+  fechaISO: string,
+  spaceIds: string[],
+  opts: { cuantas?: number; excludeQuoteId?: string; hoy?: Date } = {},
+): Promise<string[]> {
+  const cuantas = opts.cuantas ?? 6;
+  const hoy = opts.hoy ?? hoyCivilMexico();
+  const base = new Date(`${fechaISO}T00:00:00.000Z`);
+  const semana = 7 * 24 * 60 * 60 * 1000;
+  const candidatas: Date[] = [];
+  for (let k = -2; k <= 26; k++) {
+    if (k === 0) continue;
+    const d = new Date(base.getTime() + k * semana);
+    if (d.getTime() > hoy.getTime()) candidatas.push(d);
+  }
+  if (candidatas.length === 0 || spaceIds.length === 0) return [];
+  const desde = candidatas[0]!;
+  const hasta = new Date(candidatas[candidatas.length - 1]!.getTime() + 24 * 60 * 60 * 1000);
+  const [quotes, apartados] = await Promise.all([
+    db.quote.findMany({
+      where: {
+        fechaEvento: { gte: desde, lt: hasta },
+        spaceIds: { hasSome: spaceIds },
+        deletedAt: null,
+        status: { in: [...BLOQUEO] as ('formalizada' | 'complementada' | 'liquidada')[] },
+        ...(opts.excludeQuoteId ? { id: { not: opts.excludeQuoteId } } : {}),
+      },
+      select: { fechaEvento: true },
+    }),
+    db.apartadoFecha.findMany({
+      where: { fechaEvento: { gte: desde, lt: hasta }, spaceIds: { hasSome: spaceIds }, ...apartadosVivos(hoy) },
+      select: { fechaEvento: true },
+    }),
+  ]);
+  const ocupadas = new Set([...quotes, ...apartados].map((x) => x.fechaEvento.toISOString().slice(0, 10)));
+  const libres = candidatas.map((d) => d.toISOString().slice(0, 10)).filter((f) => !ocupadas.has(f));
+  // Las más cercanas a la que pidieron primero, y luego en orden de fecha.
+  return libres
+    .sort((a, b) => Math.abs(Date.parse(a) - base.getTime()) - Math.abs(Date.parse(b) - base.getTime()))
+    .slice(0, cuantas)
+    .sort();
+}

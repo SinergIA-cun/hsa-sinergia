@@ -11,6 +11,7 @@ import {
   type QuoteLine,
 } from '@hsa/shared';
 import { Sparkles, AlertTriangle, CheckCircle2, Ban, UserCheck, X, Plus, Trash2 } from 'lucide-react';
+import { FechasLibres } from './FechasLibres.tsx';
 import { api } from '../lib/api.ts';
 import { formatMXN } from '../lib/money.ts';
 import { Button, Card, Field, MoneyInput, TextInput, SelectInput } from './ui.tsx';
@@ -490,6 +491,7 @@ export function QuoteForm({
   // `blocked` global de la respuesta, cualquier fecha con un evento en cualquier
   // salón impediría guardar.
   const blocked = spaceIds.some((id) => availBySpace.get(id)?.level === 'bloqueada');
+
   // La capilla la pueden usar varios eventos el mismo día: solo se informa quién más.
   const capillaEventos = availability?.capillaEventos ?? [];
 
@@ -890,6 +892,24 @@ export function QuoteForm({
           {spaceIds.map((id) => (
             <AvailabilityBanner key={id} avail={availBySpace.get(id)} fecha={fecha} />
           ))}
+
+          {/* Salones ocupados ese día: sus fechas libres, a un clic (15-oct-2026). */}
+          {fecha && !bloqueado?.fecha && !precioPactado && (
+            <div className="space-y-1.5">
+              {espaciosVisibles
+                .filter((s) => availBySpace.get(s.id)?.level === 'bloqueada')
+                .map((s) => (
+                  <FechasLibres
+                    key={s.id}
+                    fecha={fecha}
+                    spaceIds={[s.id]}
+                    etiqueta={s.nombre}
+                    excludeQuoteId={excludeQuoteId}
+                    onElegir={setFecha}
+                  />
+                ))}
+            </div>
+          )}
 
           {/* Apartados rápidos en fila ese día: solo avisan, no bloquean (15-oct-2026). */}
           {fecha && (availability?.filaEspera?.total ?? 0) > 0 && (
