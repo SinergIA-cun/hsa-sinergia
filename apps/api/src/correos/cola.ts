@@ -1,8 +1,9 @@
+import { z } from 'zod';
 import type { PrismaClient, Payment } from '@hsa/database';
 import { afectaContrato, formatFolio, partesDePago, FORMA_PAGO_LABEL, hoyCivilMexico, type Marca, type MetodoPago, sumarDinero, restarDinero } from '@hsa/shared';
 import { loadEstadoCuenta, loadEstadoCuentaBulk, ownershipWhere, QuoteError, type Actor } from '../quotes/service.js';
 import type { Mailer } from './mailer.js';
-import { correoBienvenida, correoCierre, correoLiquidacion, correoRecibo, type EventoCorreo, type PagoCorreo } from './plantillas.js';
+import { correoBienvenida, correoCierre, correoDeTexto, correoLiquidacion, correoRecibo, type EventoCorreo, type PagoCorreo } from './plantillas.js';
 import { reciboPdf } from './reciboPdf.js';
 import { sumarHabiles } from './habiles.js';
 
@@ -298,6 +299,77 @@ export async function encolarLiquidaciones(db: PrismaClient, hoy = hoyCivilMexic
   return encolados;
 }
 
+/**
+ * Correos MANUALES (21-oct-2026): ya no sale nada solo. Los correos se siguen
+ * preparando (al formalizar, con cada pago, el recordatorio y el cierre) y se
+ * quedan "listos para mandar"; desde el evento se revisan, se edita el texto si
+ * hace falta y se presiona Enviar.
+ */
+export async function vistaCorreo(db: PrismaClient, marca: Marca, quoteId: string, correoId: string) {
+  const c = await db.correoCliente.findFirst({ where: { id: correoId, quoteId } });
+  if (!c) throw new QuoteError(404, 'Correo no encontrado');
+  const armado = await armarCorreo(db, marca, c);
+  return {
+    para: armado.para ?? null,
+    asunto: armado.mensaje?.subject ?? null,
+    texto: armado.mensaje?.text ?? null,
+    html: armado.mensaje?.html ?? null,
+    adjuntos: armado.mensaje?.attachments.map((a) => a.filename) ?? [],
+    motivo: armado.mensaje ? null : (armado.motivo ?? 'No hay nada que mandar.'),
+  };
+}
+
+export const envioManualSchema = z.object({
+  para: z.string().trim().max(200).optional(),
+  asunto: z.string().trim().min(1, 'Escribe el asunto.').max(200).optional(),
+  texto: z.string().max(20_000).optional(),
+});
+
+/** Manda UN correo de la cola, con lo que se haya editado (para, asunto, texto). */
+export async function enviarCorreoManual(
+  db: PrismaClient,
+  mailer: Mailer | null,
+  marca: Marca,
+  quoteId: string,
+  correoId: string,
+  rawInput: unknown,
+) {
+  if (!mailer) throw new QuoteError(409, 'El correo de salida no está configurado.');
+  const input = envioManualSchema.parse(rawInput ?? {});
+  const c = await db.correoCliente.findFirst({ where: { id: correoId, quoteId } });
+  if (!c) throw new QuoteError(404, 'Correo no encontrado');
+  if (c.estado === 'enviado') throw new QuoteError(409, 'Este correo ya se mandó. Usa "Reenviar" para mandarlo otra vez.');
+  const armado = await armarCorreo(db, marca, c);
+  if (!armado.mensaje) throw new QuoteError(409, armado.motivo ?? 'No hay nada que mandar.');
+  const para = (input.para || armado.para || '').trim();
+  if (!tieneCorreo(para)) throw new QuoteError(400, 'Escribe un correo válido para el cliente.');
+  const asunto = input.asunto || armado.mensaje.subject;
+  // Si el texto se editó, va ese texto en el marco de la hacienda; si no, el
+  // correo original con sus tablas.
+  const editado = input.texto != null && input.texto.trim() !== armado.mensaje.text.trim();
+  const html = editado ? correoDeTexto(marca, asunto, input.texto!) : armado.mensaje.html;
+  const text = editado ? input.texto!.trim() : armado.mensaje.text;
+  try {
+    await mailer.send({ to: para, subject: asunto, html, text, attachments: armado.mensaje.attachments });
+  } catch (e) {
+    const error = (e instanceof Error ? e.message : String(e)).slice(0, 500);
+    await db.correoCliente.update({ where: { id: c.id }, data: { estado: 'error', intentos: { increment: 1 }, error } });
+    throw new QuoteError(502, `No se pudo mandar: ${error}`);
+  }
+  return db.correoCliente.update({
+    where: { id: c.id },
+    data: { estado: 'enviado', para, enviadoAt: new Date(), intentos: { increment: 1 }, error: editado ? 'Texto editado a mano.' : null },
+  });
+}
+
+/** Un correo que no se va a mandar. */
+export async function descartarCorreo(db: PrismaClient, quoteId: string, correoId: string) {
+  const c = await db.correoCliente.findFirst({ where: { id: correoId, quoteId } });
+  if (!c) throw new QuoteError(404, 'Correo no encontrado');
+  if (c.estado === 'enviado') throw new QuoteError(409, 'Este correo ya se mandó.');
+  return db.correoCliente.update({ where: { id: c.id }, data: { estado: 'omitido', error: 'Descartado a mano.' } });
+}
+
 /** Vuelve a mandar un correo (desde el evento, admin). */
 export async function reenviarCorreo(db: PrismaClient, quoteId: string, correoId: string) {
   const c = await db.correoCliente.findFirst({ where: { id: correoId, quoteId } });
@@ -312,7 +384,7 @@ export async function reenviarCorreo(db: PrismaClient, quoteId: string, correoId
  * El proceso del servidor: cada minuto encola los cierres del día y manda lo
  * pendiente. Un tropiezo se registra y se reintenta en la siguiente vuelta.
  */
-export function iniciarCorreos(db: PrismaClient, mailer: Mailer | null, marca: Marca, cadaMs = 60_000) {
+export function iniciarCorreos(db: PrismaClient, cadaMs = 60_000) {
   let corriendo = false;
   const vuelta = async () => {
     if (corriendo) return;
@@ -320,8 +392,8 @@ export function iniciarCorreos(db: PrismaClient, mailer: Mailer | null, marca: M
     try {
       await encolarCierres(db);
       await encolarLiquidaciones(db);
-      const r = await procesarCola(db, mailer, marca);
-      if (r.enviados || r.fallidos) console.log(`Correos: ${r.enviados} enviados, ${r.fallidos} con error, ${r.omitidos} omitidos.`);
+      // Ya no se manda nada solo (21-oct-2026): lo encolado espera a que alguien
+      // lo revise y lo mande desde el evento. `procesarCola` queda para pruebas.
     } catch (e) {
       console.error('Correos: falló la vuelta.', e);
     } finally {

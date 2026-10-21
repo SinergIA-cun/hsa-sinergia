@@ -109,7 +109,24 @@ function filasPago(p: PagoCorreo): [string, string][] {
   ];
 }
 
-function planHtml(e: EventoCorreo): string {
+/**
+ * Un correo cuyo texto se editó a mano antes de mandarlo (21-oct-2026): el
+ * mismo marco de la hacienda, con el texto tal cual se escribió (cada línea en
+ * blanco separa párrafos).
+ */
+export function correoDeTexto(marca: Marca, titulo: string, texto: string): string {
+  const cuerpo = texto
+    .replace(/\r/g, '')
+    .split(/\n{2,}/)
+    .map((p) => p.trim())
+    .filter(Boolean)
+    .map((p) => parrafo(esc(p).replace(/\n/g, '<br>')))
+    .join('');
+  return layout(marca, titulo, cuerpo);
+}
+
+/** Ya no va en la confirmación (sin hitos, 21-oct-2026); queda por si regresa. */
+export function planHtml(e: EventoCorreo): string {
   if (!e.plan?.length) return '';
   const filas = e.plan.map((m): [string, string] => [
     m.venceISO ? `${m.label} (a más tardar el ${fechaLarga(m.venceISO)})` : m.label,
@@ -133,7 +150,6 @@ export function correoBienvenida(marca: Marca, e: EventoCorreo, pago: PagoCorreo
       ['Pagado', pesos(e.pagado)],
       ['Saldo', pesos(e.saldo)],
     ]) +
-    planHtml(e) +
     (pago ? parrafo(`Adjuntamos el recibo de su pago <strong>${esc(pago.folio)}</strong> por ${pesos(pago.monto)}.`) : '') +
     parrafo('Cada pago que haga le llegará a este correo con su recibo. Guárdelos: son su comprobante.') +
     parrafo(`Para cualquier duda, llámenos al ${esc(marca.telefono)} o responda este correo.`);
@@ -149,7 +165,6 @@ export function correoBienvenida(marca: Marca, e: EventoCorreo, pago: PagoCorreo
       `Renta del evento: ${pesos(e.renta)}`,
       `Pagado: ${pesos(e.pagado)}`,
       `Saldo: ${pesos(e.saldo)}`,
-      ...(e.plan ?? []).map((m) => `${m.label}: ${pesos(m.objetivo)}${m.venceISO ? ` a más tardar el ${fechaLarga(m.venceISO)}` : ''}${m.completo ? ' (cubierto)' : ''}`),
       pago && `\nAdjuntamos el recibo de su pago ${pago.folio} por ${pesos(pago.monto)}.`,
       '',
       'Cada pago que haga le llegará a este correo con su recibo.',

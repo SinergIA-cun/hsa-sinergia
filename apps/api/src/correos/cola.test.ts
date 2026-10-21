@@ -241,3 +241,59 @@ describe('recordatorio de liquidación (reunión del 15-oct-2026)', () => {
     expect((await correosDe(pagado.id)).find((c) => c.tipo === 'liquidacion')).toMatchObject({ estado: 'omitido', error: 'Ya liquidó.' });
   });
 });
+
+describe('correos manuales (21-oct-2026)', () => {
+  it('se revisan, se edita el texto y se mandan con un botón; también se descartan', async () => {
+    const enviados = buzon();
+    const manual = await buildServer({ config: loadConfig(), mailer: enviados });
+    await manual.ready();
+    try {
+      const q = await evento('manual@example.com');
+      await pagar(q.id, 20_000); // formaliza: la bienvenida (con su recibo), sin mandarse
+      await pagar(q.id, 5_000); // un recibo, sin mandarse
+      const lista = await manual.inject({ method: 'GET', url: `/api/quotes/${q.id}/correos`, cookies: cookie });
+      const correos = lista.json().correos as { id: string; tipo: string; estado: string }[];
+      expect(correos.every((c) => c.estado === 'pendiente')).toBe(true);
+      const bienvenida = correos.find((c) => c.tipo === 'bienvenida')!;
+      const recibo = correos.find((c) => c.tipo === 'recibo')!;
+
+      const vista = (await manual.inject({ method: 'GET', url: `/api/quotes/${q.id}/correos/${bienvenida.id}/vista`, cookies: cookie })).json().vista;
+      expect(vista).toMatchObject({ para: 'manual@example.com', motivo: null });
+      expect(vista.texto).toContain('confirmado');
+
+      const r = await manual.inject({
+        method: 'POST',
+        url: `/api/quotes/${q.id}/correos/${bienvenida.id}/enviar`,
+        cookies: cookie,
+        payload: { asunto: 'Su fecha quedó', texto: 'Hola:\n\nTexto escrito a mano.' },
+      });
+      expect(r.statusCode).toBe(200);
+      expect(enviados.enviados).toHaveLength(1);
+      expect(enviados.enviados[0]).toMatchObject({ to: 'manual@example.com', subject: 'Su fecha quedó', text: 'Hola:\n\nTexto escrito a mano.' });
+      expect(enviados.enviados[0]!.html).toContain('Texto escrito a mano.');
+      expect(enviados.enviados[0]!.attachments).toHaveLength(1); // el recibo del pago que formalizó
+
+      const otraVez = await manual.inject({ method: 'POST', url: `/api/quotes/${q.id}/correos/${bienvenida.id}/enviar`, cookies: cookie, payload: {} });
+      expect(otraVez.statusCode).toBe(409);
+
+      const fuera = await manual.inject({ method: 'POST', url: `/api/quotes/${q.id}/correos/${recibo.id}/descartar`, cookies: cookie });
+      expect(fuera.json().correo).toMatchObject({ estado: 'omitido', error: 'Descartado a mano.' });
+    } finally {
+      await manual.close();
+    }
+  });
+
+  it('sin SMTP no se puede mandar', async () => {
+    const sinSmtp = await buildServer({ config: loadConfig(), mailer: null });
+    await sinSmtp.ready();
+    try {
+      const q = await evento('nosmtp@example.com');
+      await pagar(q.id, 20_000);
+      const [c] = (await prisma.correoCliente.findMany({ where: { quoteId: q.id } }));
+      const r = await sinSmtp.inject({ method: 'POST', url: `/api/quotes/${q.id}/correos/${c!.id}/enviar`, cookies: cookie, payload: {} });
+      expect(r.statusCode).toBe(409);
+    } finally {
+      await sinSmtp.close();
+    }
+  });
+});
