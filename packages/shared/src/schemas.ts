@@ -1,4 +1,4 @@
-import { montoSchema, montoNoNegativoSchema } from './dinero.js';
+import { montoSchema, montoNoNegativoSchema, tieneCentavosValidos } from './dinero.js';
 import { z } from 'zod';
 
 /**
@@ -34,6 +34,9 @@ export const servicioBanqueteroSchema = z.object({
 });
 
 export type ServicioBanqueteroInput = z.infer<typeof servicioBanqueteroSchema>;
+
+/** Hasta cuánto se puede SUBIR la renta en porcentaje con el ajuste de precio. */
+export const AUMENTO_PCT_MAXIMO = 500;
 
 export const quoteSelectionSchema = z.object({
   fecha: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
@@ -73,19 +76,29 @@ export const quoteSelectionSchema = z.object({
   /** Servicios sueltos de ESTE evento (ver `quoteExtraSchema`). */
   extras: z.array(quoteExtraSchema).default([]),
   /**
-   * Descuento de cortesía, en por ciento (0..100). Pega SOLO sobre la renta:
+   * Ajuste de la renta en por ciento: positivo BAJA (descuento, hasta 100) y
+   * negativo SUBE (hasta `AUMENTO_PCT_MAXIMO`; "Ajuste en precio / promoción",
+   * 21-oct-2026). Pega SOLO sobre la renta:
    * CAMBIA EL PRECIO de la renta, y lo que se deriva de ese precio —las horas
    * extra y el descuento del 5% por alimentos— se calcula sobre el precio ya
    * descontado. La capilla NO se descuenta nunca. Alimentos y servicios se cobran
    * completos. Con 100% la renta queda en cero (más la capilla si la hay).
    */
-  descuentoPct: z.number().min(0).max(100).optional(),
+  descuentoPct: z
+    .number()
+    .min(-AUMENTO_PCT_MAXIMO, `El ajuste sube la renta hasta ${AUMENTO_PCT_MAXIMO}%.`)
+    .max(100)
+    .optional(),
   /**
    * El mismo descuento, en MONTO FIJO con IVA (pesos enteros): "$5,000 de
-   * descuento". Es uno u otro: porcentaje o monto (el dueño, 5-oct-2026). No
-   * puede pasar de la renta de los salones.
+   * descuento". Es uno u otro: porcentaje o monto (el dueño, 5-oct-2026). Como
+   * el porcentaje: positivo baja (nunca más que la renta de los salones) y
+   * negativo sube.
    */
-  descuentoMonto: montoSchema.optional(),
+  descuentoMonto: z
+    .number()
+    .refine((n) => n !== 0 && tieneCentavosValidos(n), 'El ajuste es un monto distinto de cero, con hasta dos decimales.')
+    .optional(),
   /** Motivo del descuento. Obligatorio si hay descuento: sin él no es auditable. */
   descuentoMotivo: z.string().min(1).max(300).optional(),
   /**
@@ -106,7 +119,7 @@ export const quoteSelectionSchema = z.object({
  */
 export const motivoObligatorio = {
   check: (d: { descuentoPct?: number | null; descuentoMonto?: number | null; descuentoMotivo?: string | null }): boolean =>
-    !((d.descuentoPct != null && d.descuentoPct > 0) || (d.descuentoMonto != null && d.descuentoMonto > 0)) ||
+    !((d.descuentoPct != null && d.descuentoPct !== 0) || (d.descuentoMonto != null && d.descuentoMonto !== 0)) ||
     Boolean(d.descuentoMotivo?.trim()),
   opts: { message: 'Un descuento requiere motivo', path: ['descuentoMotivo'] },
 };
@@ -121,7 +134,7 @@ export const unModoHoraExtra = {
 
 export const unSoloDescuento = {
   check: (d: { descuentoPct?: number | null; descuentoMonto?: number | null }): boolean =>
-    !(d.descuentoPct != null && d.descuentoPct > 0 && d.descuentoMonto != null && d.descuentoMonto > 0),
+    !(d.descuentoPct != null && d.descuentoPct !== 0 && d.descuentoMonto != null && d.descuentoMonto !== 0),
   opts: { message: 'El descuento es en porcentaje o en monto fijo, no los dos.', path: ['descuentoMonto'] },
 };
 

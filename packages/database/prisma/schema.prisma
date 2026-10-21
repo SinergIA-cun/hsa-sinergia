@@ -632,6 +632,8 @@ model Quote {
   /// esquema de crear/editar—, pero la columna es nullable porque la enorme
   /// mayoría de las cotizaciones no lleva descuento.
   /// El descuento en MONTO FIJO (pesos con IVA), en lugar de `descuentoPct`. Uno u otro.
+  /// Los dos van con signo desde el 21-oct-2026: positivo baja la renta, negativo
+  /// la sube ("Ajuste en precio / promoción").
   descuentoMonto      Float?
   /// Hora extra de ESTE evento: % de la renta por hora o monto fijo por hora
   /// (con IVA). Uno u otro; sin ninguno, el % del catálogo (16-oct-2026).
