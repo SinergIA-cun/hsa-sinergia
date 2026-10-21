@@ -78,6 +78,7 @@ function toInitial(q: Quote): Partial<QuoteFormInitial> {
     descuentoMonto: q.descuentoMonto ?? null,
     horaExtraPct: q.horaExtraPct ?? null,
     horaExtraMonto: q.horaExtraMonto ?? null,
+    descuentoAlimentosPct: q.descuentoAlimentosPct ?? null,
     descuentoMotivo: q.descuentoMotivo ?? '',
     requiereFactura: q.requiereFactura ?? false,
     // El banquetero y el festejado viajan de vuelta por la misma razón que los

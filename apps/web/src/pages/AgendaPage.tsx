@@ -213,6 +213,7 @@ export function AgendaPage() {
             horasExtra: detalle.quote.horasExtra,
             horaExtraPct: detalle.quote.horaExtraPct ?? undefined,
             horaExtraMonto: detalle.quote.horaExtraMonto ?? undefined,
+            descuentoAlimentosPct: detalle.quote.descuentoAlimentosPct ?? undefined,
             usaCapilla: detalle.quote.usaCapilla ?? false,
             usaDjHoraExtra: detalle.quote.usaDjHoraExtra ?? false,
             eventTypeId: detalle.quote.eventTypeId,

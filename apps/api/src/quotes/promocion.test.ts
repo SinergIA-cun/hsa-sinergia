@@ -113,3 +113,24 @@ describe('ajuste en precio que SUBE (21-oct-2026)', () => {
     await expect(evento({ esPromocion: true, descuentoMonto: 0, descuentoMotivo: 'Nada' })).rejects.toThrow();
   });
 });
+
+describe('promoción por alimentos opcional (21-oct-2026)', () => {
+  it('sin palomear no descuenta; con 3% descuenta 3% y se conserva al mover la fecha', async () => {
+    const activo = await prisma.priceList.findFirstOrThrow({ where: { activa: true } });
+    const paquete = await prisma.foodPackage.findFirstOrThrow({ where: { priceListId: activo.id, eventTypeId } });
+    const linea = (q: { breakdown: unknown }) =>
+      (q.breakdown as { lines: { ref?: { tipo?: string }; concepto: string }[] }).lines.find((l) => l.ref?.tipo === 'descuentoAlimentos');
+
+    const sinPromo = await evento({ foodPackageId: paquete.id, descuentoAlimentosPct: 0 });
+    expect(sinPromo.descuentoAlimentosPct).toBe(0);
+    expect(linea(sinPromo)).toBeUndefined();
+
+    const conPromo = await evento({ foodPackageId: paquete.id, descuentoAlimentosPct: 3 });
+    expect(linea(conPromo)?.concepto).toBe('Descuento por alimentos (3% renta)');
+    const movido = await moveQuoteDate(prisma, conPromo.id, sabado(), admin);
+    expect(movido.descuentoAlimentosPct).toBe(3);
+    expect(linea(movido)?.concepto).toBe('Descuento por alimentos (3% renta)');
+
+    await expect(evento({ foodPackageId: paquete.id, descuentoAlimentosPct: 6 })).rejects.toThrow();
+  });
+});

@@ -247,17 +247,23 @@ export function computeQuote(
       },
     });
 
-    // El descuento del 5% aplica SOLO a la renta => va en el grupo de renta, y se
-    // calcula sobre el precio YA descontado: con 100% de cortesía sale en $0.
-    const descuento = rentaBase * catalog.foodDiscountRate;
-    rentaConIva -= descuento;
-    lines.push({
-      concepto: 'Descuento por alimentos (5% renta)',
-      monto: round2(-descuento),
-      ivaIncluido: true,
-      grupo: 'renta',
-      ref: { tipo: 'descuentoAlimentos', cantidad: 1, unidad: 'evento', precioUnitario: round2(-descuento) },
-    });
+    // El descuento por alimentos aplica SOLO a la renta => va en el grupo de
+    // renta, y se calcula sobre el precio YA descontado: con 100% de cortesía sale
+    // en $0. Desde el 21-oct-2026 es una promoción opcional de hasta 5%; sin
+    // decirlo (eventos de antes), el % del catálogo.
+    const pctAlimentos =
+      sel.descuentoAlimentosPct != null ? sel.descuentoAlimentosPct / 100 : catalog.foodDiscountRate;
+    if (pctAlimentos > 0) {
+      const descuento = rentaBase * pctAlimentos;
+      rentaConIva -= descuento;
+      lines.push({
+        concepto: `Descuento por alimentos (${round2(pctAlimentos * 100)}% renta)`,
+        monto: round2(-descuento),
+        ivaIncluido: true,
+        grupo: 'renta',
+        ref: { tipo: 'descuentoAlimentos', cantidad: 1, unidad: 'evento', precioUnitario: round2(-descuento) },
+      });
+    }
   }
 
   // 5. Add-ons (sin IVA => se agrega).

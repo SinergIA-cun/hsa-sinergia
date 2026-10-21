@@ -323,6 +323,7 @@ export interface Quote {
   /** Hora extra de este evento: % de la renta o monto fijo por hora. Sin ninguno, el del catálogo. */
   horaExtraPct?: number | null;
   horaExtraMonto?: number | null;
+  descuentoAlimentosPct?: number | null;
   descuentoMotivo?: string | null;
   breakdown: QuoteBreakdown;
   total: number;

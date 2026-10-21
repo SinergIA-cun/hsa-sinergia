@@ -35,6 +35,9 @@ export const servicioBanqueteroSchema = z.object({
 
 export type ServicioBanqueteroInput = z.infer<typeof servicioBanqueteroSchema>;
 
+/** Tope de la promoción por contratar alimentos, en % de la renta. */
+export const DESCUENTO_ALIMENTOS_MAXIMO = 5;
+
 /** Hasta cuánto se puede SUBIR la renta en porcentaje con el ajuste de precio. */
 export const AUMENTO_PCT_MAXIMO = 500;
 
@@ -56,6 +59,12 @@ export const quoteSelectionSchema = z.object({
    */
   horaExtraPct: z.number().min(0).max(100).optional(),
   horaExtraMonto: montoSchema.optional(),
+  /**
+   * "Aplicar promoción" por contratar alimentos (21-oct-2026): ya no siempre se
+   * descuenta. % de la renta ya descontada, de 0 a `DESCUENTO_ALIMENTOS_MAXIMO`;
+   * 0 = sin promoción. Omitido = el % del catálogo (eventos de antes).
+   */
+  descuentoAlimentosPct: z.number().min(0).max(DESCUENTO_ALIMENTOS_MAXIMO, `La promoción por alimentos es de hasta ${DESCUENTO_ALIMENTOS_MAXIMO}%.`).optional(),
   usaCapilla: z.boolean().default(false),
   usaDjHoraExtra: z.boolean().default(false),
   // Tipo de evento: necesario para el precio del DJ por hora extra. Opcional en el

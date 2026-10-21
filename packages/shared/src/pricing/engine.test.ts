@@ -736,3 +736,21 @@ describe('computeQuote · el renglón congela proveedor, comisión y quién cobr
     expect(r.lines.find((l) => l.ref?.tipo === 'servicioCatalogo')!.ref).toMatchObject({ proveedorId: null, comisionPct: null });
   });
 });
+
+describe('computeQuote · promoción por alimentos opcional (21-oct-2026)', () => {
+  const alimentos = (b: ReturnType<typeof computeQuote>) => b.lines.find((l) => l.ref?.tipo === 'descuentoAlimentos');
+
+  it('sin decirlo (eventos de antes) descuenta el % del catálogo', () => {
+    const r = computeQuote(catalog, mk({ foodPackageId: 'boda-supreme' }));
+    expect(alimentos(r)?.concepto).toBe('Descuento por alimentos (5% renta)');
+  });
+
+  it('en 0 no descuenta nada; en 3 descuenta 3% de la renta', () => {
+    const sin = computeQuote(catalog, mk({ foodPackageId: 'boda-supreme', descuentoAlimentosPct: 0 }));
+    expect(alimentos(sin)).toBeUndefined();
+    const tres = computeQuote(catalog, mk({ foodPackageId: 'boda-supreme', descuentoAlimentosPct: 3 }));
+    expect(alimentos(tres)?.concepto).toBe('Descuento por alimentos (3% renta)');
+    expect(tres.rentaTotal).toBeGreaterThan(computeQuote(catalog, mk({ foodPackageId: 'boda-supreme' })).rentaTotal);
+    expect(sin.rentaTotal).toBeGreaterThan(tres.rentaTotal);
+  });
+});
