@@ -31,13 +31,14 @@ describe('días hábiles', () => {
 });
 
 describe('plantillas', () => {
-  it('bienvenida: datos del evento, plan, recibo adjunto; sin enlaces y con el nombre escapado', () => {
+  it('bienvenida: datos del evento, recibo adjunto, sin plan de pagos; sin enlaces y con el nombre escapado', () => {
     const c = correoBienvenida(MARCA_POR_OMISION, evento, pago);
     expect(c.subject).toContain('confirmado');
     expect(c.html).toContain('Ana &lt;López&gt;');
     expect(c.html).not.toContain('<López>');
     expect(c.html).toContain('14NOV26-ALOPEZ-ARCOS');
-    expect(c.html).toContain('A cuenta');
+    // Sin hitos (21-oct-2026): ya no lleva el plan de pagos.
+    expect(c.html).not.toContain('A cuenta');
     expect(c.html).toContain('I 5341');
     expect(c.html).not.toMatch(/href=/);
     expect(c.text).toContain('Saldo: $78,500');

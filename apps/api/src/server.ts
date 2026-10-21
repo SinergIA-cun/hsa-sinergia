@@ -28,6 +28,7 @@ import { auditoriaRoutes } from './auditoria/routes.js';
 import { historicoRoutes } from './historico/routes.js';
 import { proveedorRoutes } from './proveedores/routes.js';
 import { correoRoutes } from './correos/routes.js';
+import { crearMailer, type Mailer } from './correos/mailer.js';
 import { apartadoRapidoRoutes } from './apartadosRapidos/routes.js';
 import { whatsappRoutes } from './whatsapp/routes.js';
 import { candadoDeEventoCerrado } from './quotes/cierre.js';
@@ -36,6 +37,8 @@ declare module 'fastify' {
   interface FastifyInstance {
     config: AppConfig;
     prisma: PrismaClient;
+    /** Quien manda los correos al cliente; `null` sin SMTP. */
+    mailer: Mailer | null;
   }
   interface FastifyRequest {
     user?: { id: string; role: 'ventas' | 'admin' };
@@ -45,6 +48,8 @@ declare module 'fastify' {
 export interface BuildOptions {
   config?: AppConfig;
   db?: PrismaClient;
+  /** En pruebas, un correo de mentiras. Omitido = el SMTP de la configuración. */
+  mailer?: Mailer | null;
 }
 
 export async function buildServer(opts: BuildOptions = {}): Promise<FastifyInstance> {
@@ -54,6 +59,7 @@ export async function buildServer(opts: BuildOptions = {}): Promise<FastifyInsta
   const app = Fastify({ logger: false });
   app.decorate('config', config);
   app.decorate('prisma', db);
+  app.decorate('mailer', opts.mailer !== undefined ? opts.mailer : crearMailer(config));
 
   await app.register(helmet, { contentSecurityPolicy: false });
   await app.register(cors, { origin: [config.PUBLIC_WEB_URL], credentials: true });

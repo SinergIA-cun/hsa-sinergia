@@ -50,11 +50,11 @@ async function main(): Promise<void> {
   await app.listen({ port: config.PORT, host: config.HOST });
   console.log(`API HSA escuchando en http://${config.HOST}:${config.PORT}`);
 
-  // Los correos al cliente (bienvenida, recibos, cierre). Sin SMTP configurado no
-  // manda nada; los pendientes se marcan omitidos a los 3 días.
+  // Los correos al cliente (bienvenida, recibos, cierre) se preparan solos y se
+  // mandan A MANO desde el evento (21-oct-2026). Sin SMTP no se puede mandar.
   const mailer = crearMailer(config);
   console.log(mailer ? 'Correos al cliente: activos.' : 'Correos al cliente: sin SMTP configurado, no se mandan.');
-  iniciarCorreos(prisma, mailer, marcaDe(config));
+  iniciarCorreos(prisma);
   // Apartados rápidos: libera los vencidos y avisa los que vencen en 3 días.
   iniciarApartados(prisma, mailer, marcaDe(config), config.PUBLIC_WEB_URL);
 
