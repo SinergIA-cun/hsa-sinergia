@@ -34,10 +34,10 @@ describe('computeEstadoCuenta', () => {
     expect(ec.saldo).toBe(80000);
   });
 
-  it('umbrales: anticipo→formalizada, +complemento→complementada, total→liquidada', () => {
+  it('umbrales: anticipo→formalizada, total→liquidada; sin hito intermedio (21-oct-2026)', () => {
     expect(computeEstadoCuenta({ ...base, rules: soloArcos, payments: [{ monto: 20000, anuladoAt: null }] }).sugerido).toBe('formalizada');
-    // anticipo 20000 + 10% de 100000 = 30000
-    expect(computeEstadoCuenta({ ...base, rules: soloArcos, payments: [{ monto: 30000, anuladoAt: null }] }).sugerido).toBe('complementada');
+    // Lo que antes cubría el complemento (anticipo + 10%) ya no sube a "complementada".
+    expect(computeEstadoCuenta({ ...base, rules: soloArcos, payments: [{ monto: 30000, anuladoAt: null }] }).sugerido).toBe('formalizada');
     expect(computeEstadoCuenta({ ...base, rules: soloArcos, payments: [{ monto: 100000, anuladoAt: null }] }).sugerido).toBe('liquidada');
     expect(computeEstadoCuenta({ ...base, rules: soloArcos, payments: [{ monto: 1000, anuladoAt: null }] }).sugerido).toBeNull();
   });
@@ -49,8 +49,8 @@ describe('computeEstadoCuenta', () => {
     expect(ec.plan!.find((m) => m.key === 'apartar')!.label).toBe('Apartar fecha');
   });
 
-  it('desfase: estatus complementada pero pagado no cubre el complemento', () => {
-    const ec = computeEstadoCuenta({ ...base, status: 'complementada', rules: soloArcos, payments: [{ monto: 20000, anuladoAt: null }] });
+  it('desfase: estatus liquidada pero lo pagado no cubre el total', () => {
+    const ec = computeEstadoCuenta({ ...base, status: 'liquidada', rules: soloArcos, payments: [{ monto: 20000, anuladoAt: null }] });
     expect(ec.desfase).toBe(true);
   });
 

@@ -279,11 +279,10 @@ Incluye los pagos anulados, marcados como tales — el BI decide si los descuent
   demás `aCuenta`.
 - **`concepto`** (etiquetas del BI desde el 5-oct-2026): `anticipo` = el primer pago; `finiquito` =
   el que deja lo que se debe del contrato en \$1,000 o menos por primera vez (si un solo pago lo
-  cubre todo, es finiquito); `aCuenta` = los demás. **El finiquito se queda** (desde el
-  16-oct-2026): si el contrato sube después de liquidarse (horas extra, PAX extra), el pago que lo
-  liquidó sigue siendo `finiquito` y los que lleguen después son `aCuenta`; nunca hay dos. Deja de
-  serlo solo si lo pagado hasta él ya no completa lo que completó (se anuló o corrigió uno
-  anterior). Se recalcula con cada cambio de dinero (y
+  cubre todo, es finiquito); `aCuenta` = los demás. **El finiquito es el pago que cierra el
+  total vigente** (21-oct-2026; reemplaza la regla del 16-oct de que "el finiquito se queda"): si el
+  contrato sube después de liquidarse (horas extra, PAX extra), el pago que lo liquidaba pasa a
+  `aCuenta` y el que cierra el total nuevo es el `finiquito`; nunca hay dos. Se recalcula con cada cambio de dinero (y
   cada reclasificación queda en `/cambios`). `complemento` ya no se usa; los hitos del plan de
   pagos (`/pagos-esperados`) sí conservan el suyo.
 - **`idBI`**: el `idBI` con el que el pago llegó del BI (un pago de evento importado, o el abono de
@@ -499,6 +498,11 @@ Real, de `GET /api/bi/pagos-esperados?desde=2026-10-01&hasta=2026-12-31`:
     ]
 }
 ```
+
+**Sin hito intermedio en el estatus (21-oct-2026):** el estatus `complementada` ya no se usa —un
+evento pasa de `formalizada` a `liquidada`— y los que lo tenían quedaron `formalizada` (con su
+renglón en la bitácora). El hito `complemento` sigue aquí solo como referencia; la pantalla ya no
+muestra hitos.
 
 `hito` es `apartar`, `complemento` o `finiquito`. La **llave** `complemento` se queda por
 compatibilidad; su `etiqueta` dice "A cuenta" desde el 6-oct-2026 (el dueño quitó "complemento" de

@@ -119,24 +119,11 @@ export function PagosPanel({
           <div><p className="text-xs uppercase tracking-wide text-charcoal-soft">Pagado</p><p className="font-display text-2xl text-ink">{formatMXN(estadoCuenta.pagado)}</p></div>
           <div><p className="text-xs uppercase tracking-wide text-charcoal-soft">Saldo</p><p className="font-display text-2xl text-gold">{formatMXN(estadoCuenta.saldo)}</p></div>
         </div>
+        {/* Sin hitos (21-oct-2026): total, pagado, saldo y abajo los pagos. */}
         {estadoCuenta.desfase && (
           <p className="mt-4 rounded-lg bg-wine/10 px-3 py-2 text-sm text-wine">
-            Aviso: el acumulado ya no cubre el hito de este estatus. Revisa si corresponde ajustar el estatus.
+            Aviso: lo pagado ya no alcanza para el estatus que tiene. Revisa si corresponde ajustarlo.
           </p>
-        )}
-        {estadoCuenta.planPendiente ? (
-          <p className="mt-4 text-sm text-charcoal-soft">Plan de pagos pendiente de configurar para este espacio.</p>
-        ) : (
-          <ul className="mt-4 space-y-2">
-            {estadoCuenta.plan?.map((m) => (
-              <li key={m.key} className="flex items-center justify-between text-sm">
-                <span className={m.completo ? 'text-ink' : 'text-charcoal-soft'}>
-                  {m.completo ? '✓' : '○'} {m.label} {m.venceISO && <span className="text-xs text-charcoal-soft/70">· vence {formatEventDate(m.venceISO)}</span>}
-                </span>
-                <span className="tabular-nums">{formatMXN(m.cubierto)} / {formatMXN(m.objetivo)}</span>
-              </li>
-            ))}
-          </ul>
         )}
       </Card>
 

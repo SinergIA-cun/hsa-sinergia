@@ -104,7 +104,7 @@ describe('standby: el evento sin fecha', () => {
     const nueva = sabado();
     const r = await reprogramarEvento(prisma, q.id, { fecha: nueva }, admin);
     expect(r.fechaEvento.toISOString().slice(0, 10)).toBe(nueva);
-    expect(r.status).toBe('complementada');
+    expect(r.status).toBe('formalizada'); // sin hito intermedio (21-oct-2026)
     expect(r.standbyDesde).toBeNull();
     expect(r.etiqueta).not.toBe(q.etiqueta);
     const codigos = await prisma.codigoEvento.findMany({ where: { quoteId: q.id }, orderBy: { createdAt: 'asc' } });
