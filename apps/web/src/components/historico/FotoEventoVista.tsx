@@ -91,11 +91,16 @@ export function FotoEventoVista({ id }: { id: string }) {
         <Dato label="Capilla" valor={f.evento.usaCapilla ? (f.evento.capillaHorario ?? 'Sí') : null} />
         <Dato label="Catálogo" valor={f.evento.catalogo} />
         <Dato
-          label="Descuento"
+          label="Ajuste de precio"
           valor={
             f.evento.descuentoPct || f.evento.descuentoMonto
               ? `${f.evento.esPromocion ? 'Promoción' : f.evento.esCortesia ? 'Cortesía' : ''} ${
-                  f.evento.descuentoMonto ? formatMXN(f.evento.descuentoMonto) : `${f.evento.descuentoPct}%`
+                  // Con signo: positivo bajó la renta, negativo la subió (21-oct-2026).
+                  (f.evento.descuentoMonto ?? f.evento.descuentoPct ?? 0) < 0 ? 'sube' : 'baja'
+                } ${
+                  f.evento.descuentoMonto
+                    ? formatMXN(Math.abs(f.evento.descuentoMonto))
+                    : `${Math.abs(f.evento.descuentoPct ?? 0)}%`
                 } · ${f.evento.descuentoMotivo ?? ''}`.trim()
               : null
           }

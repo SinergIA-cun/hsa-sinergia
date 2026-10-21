@@ -1,5 +1,5 @@
 import type { Catalog, QuoteBreakdown, QuoteLine, RentalPriceRow } from '../types.js';
-import type { QuoteSelection } from '../schemas.js';
+import { AUMENTO_PCT_MAXIMO, type QuoteSelection } from '../schemas.js';
 import { findBracket, nivelConExtras } from './brackets.js';
 import { bracketDeParte, capacidadTotal, repartirInvitados } from './reparto.js';
 import { tablaDeRenta } from './tablasRenta.js';
@@ -56,8 +56,10 @@ export function computeQuote(
   catalog: Catalog,
   sel: QuoteSelection,
 ): QuoteBreakdown {
-  if (sel.descuentoPct != null && (sel.descuentoPct < 0 || sel.descuentoPct > 100)) {
-    throw new Error(`Descuento de cortesía inválido: ${sel.descuentoPct}% (debe estar entre 0 y 100)`);
+  if (sel.descuentoPct != null && (sel.descuentoPct < -AUMENTO_PCT_MAXIMO || sel.descuentoPct > 100)) {
+    throw new Error(
+      `Ajuste de precio inválido: ${sel.descuentoPct}% (baja hasta 100% o sube hasta ${AUMENTO_PCT_MAXIMO}%)`,
+    );
   }
   const col = columnaDelEvento(catalog, sel.fecha);
   const diaSemana = diaYMes(sel.fecha).dia;
@@ -134,25 +136,32 @@ export function computeQuote(
   //    El renglón va pegado a la renta y ANTES de lo que se deriva de ella: así el
   //    contrato se lee de arriba abajo (108,500 · −54,250 · horas extra sobre
   //    54,250) y cuadra a ojo.
+  //
+  //    Desde el 21-oct-2026 también SUBE: un valor negativo es un aumento ("Ajuste
+  //    en precio / promoción"). Se guarda con signo en los mismos campos, así lo
+  //    ya guardado (siempre positivo) sigue siendo un descuento.
   let rentaBase = rentaEspacios;
-  const tipoDescuento = sel.esPromocion ? 'Descuento / promoción' : 'Descuento de cortesía';
-  if (sel.descuentoPct != null && sel.descuentoPct > 0) {
+  // El descuento conserva su etiqueta de siempre; el aumento dice que es ajuste.
+  const etiqueta = (n: number) =>
+    n < 0 ? 'Ajuste en precio / promoción' : sel.esPromocion ? 'Descuento / promoción' : 'Descuento de cortesía';
+  if (sel.descuentoPct != null && sel.descuentoPct !== 0) {
     const monto = rentaEspacios * (sel.descuentoPct / 100);
     rentaBase -= monto;
     lines.push({
-      concepto: `${tipoDescuento} (${sel.descuentoPct}% renta)`,
+      concepto: `${etiqueta(sel.descuentoPct)} (${sel.descuentoPct < 0 ? '+' : ''}${Math.abs(sel.descuentoPct)}% renta)`,
       detalle: sel.descuentoMotivo,
       monto: round2(-monto),
       ivaIncluido: true,
       grupo: 'renta',
       ref: { tipo: 'descuento', cantidad: 1, unidad: 'evento', precioUnitario: round2(-monto) },
     });
-  } else if (sel.descuentoMonto != null && sel.descuentoMonto > 0) {
-    // En monto fijo: nunca más que la renta de los salones (la renta no queda negativa).
+  } else if (sel.descuentoMonto != null && sel.descuentoMonto !== 0) {
+    // En monto fijo: bajar nunca más que la renta de los salones (la renta no
+    // queda negativa); subir, lo que se capture.
     const monto = Math.min(sel.descuentoMonto, rentaEspacios);
     rentaBase -= monto;
     lines.push({
-      concepto: `${tipoDescuento} ($${monto.toLocaleString('es-MX')} renta)`,
+      concepto: `${etiqueta(monto)} (${monto < 0 ? '+' : ''}$${Math.abs(monto).toLocaleString('es-MX')} renta)`,
       detalle: sel.descuentoMotivo,
       monto: round2(-monto),
       ivaIncluido: true,

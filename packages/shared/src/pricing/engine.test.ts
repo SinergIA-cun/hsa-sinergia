@@ -426,6 +426,29 @@ describe('computeQuote · descuento en monto fijo', () => {
   });
 });
 
+describe('computeQuote · ajuste en precio que SUBE (21-oct-2026)', () => {
+  it('un porcentaje negativo sube la renta y las horas extra salen del precio ya subido', () => {
+    const sin = computeQuote(catalog, mk({ horasExtra: 1 }));
+    const con = computeQuote(catalog, mk({ horasExtra: 1, descuentoPct: -10, descuentoMotivo: 'Temporada alta', esPromocion: true }));
+    const linea = con.lines.find((l) => l.ref?.tipo === 'descuento')!;
+    expect(linea.concepto).toBe('Ajuste en precio / promoción (+10% renta)');
+    expect(linea.monto).toBeGreaterThan(0);
+    const extraSin = sin.lines.find((l) => l.concepto === 'Horas extra')!.monto;
+    const extraCon = con.lines.find((l) => l.concepto === 'Horas extra')!.monto;
+    expect(extraCon).toBeCloseTo(extraSin * 1.1, 2);
+    expect(con.rentaTotal).toBeGreaterThan(sin.rentaTotal);
+  });
+
+  it('un monto negativo suma ese monto a la renta, sin tope', () => {
+    const sin = computeQuote(catalog, mk({}));
+    const con = computeQuote(catalog, mk({ descuentoMonto: -7_500, descuentoMotivo: 'Montaje especial', esPromocion: true }));
+    const linea = con.lines.find((l) => l.ref?.tipo === 'descuento')!;
+    expect(linea.concepto).toBe('Ajuste en precio / promoción (+$7,500 renta)');
+    expect(linea.monto).toBe(7_500);
+    expect(con.rentaTotal).toBeCloseTo(sin.rentaTotal + 7_500, 2);
+  });
+});
+
 describe('computeQuote · descuento de cortesía', () => {
   it('100% deja rentaTotal en cero y otrosTotal intacto', () => {
     const r = computeQuote(
@@ -587,9 +610,9 @@ describe('computeQuote · descuento de cortesía', () => {
     expect(cero.rentaTotal).toBe(sin.rentaTotal);
   });
 
-  it('un descuentoPct fuera de 0..100 se rechaza', () => {
-    expect(() => computeQuote(catalog, mk({ descuentoPct: 101 }))).toThrow(/descuento/i);
-    expect(() => computeQuote(catalog, mk({ descuentoPct: -1 }))).toThrow(/descuento/i);
+  it('un ajuste que baja más de 100% o sube más de 500% se rechaza', () => {
+    expect(() => computeQuote(catalog, mk({ descuentoPct: 101 }))).toThrow(/ajuste de precio/i);
+    expect(() => computeQuote(catalog, mk({ descuentoPct: -501 }))).toThrow(/ajuste de precio/i);
   });
 });
 

@@ -95,3 +95,21 @@ describe('descuento en monto fijo', () => {
     await expect(evento({ esPromocion: true, descuentoMonto: 5_000 })).rejects.toThrow(/requiere motivo/);
   });
 });
+
+describe('ajuste en precio que SUBE (21-oct-2026)', () => {
+  it('un monto o un porcentaje negativos suben la renta y se guardan con su signo', async () => {
+    const sin = await evento();
+    const porMonto = await evento({ esPromocion: true, descuentoMonto: -6_000, descuentoMotivo: 'Montaje especial' });
+    expect(porMonto.descuentoMonto).toBe(-6_000);
+    expect(porMonto.rentaTotal).toBe(sin.rentaTotal + 6_000);
+
+    const porPct = await evento({ esPromocion: true, descuentoPct: -10, descuentoMotivo: 'Temporada alta' });
+    expect(porPct.descuentoPct).toBe(-10);
+    expect(porPct.rentaTotal).toBeGreaterThan(sin.rentaTotal);
+  });
+
+  it('subirlo también pide motivo, y un monto en cero no es ajuste', async () => {
+    await expect(evento({ esPromocion: true, descuentoMonto: -5_000 })).rejects.toThrow(/requiere motivo/);
+    await expect(evento({ esPromocion: true, descuentoMonto: 0, descuentoMotivo: 'Nada' })).rejects.toThrow();
+  });
+});
