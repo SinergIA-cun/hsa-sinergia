@@ -275,6 +275,7 @@ export function toSelection(input: {
   horasExtra: number;
   horaExtraPct?: number | null;
   horaExtraMonto?: number | null;
+  descuentoAlimentosPct?: number | null;
   usaCapilla?: boolean;
   usaDjHoraExtra?: boolean;
   eventTypeId?: string;
@@ -293,6 +294,7 @@ export function toSelection(input: {
     horasExtra: input.horasExtra,
     horaExtraPct: input.horaExtraPct ?? undefined,
     horaExtraMonto: input.horaExtraMonto ?? undefined,
+    descuentoAlimentosPct: input.descuentoAlimentosPct ?? undefined,
     usaCapilla: input.usaCapilla ?? false,
     usaDjHoraExtra: input.usaDjHoraExtra ?? false,
     eventTypeId: input.eventTypeId,
@@ -352,6 +354,7 @@ interface SeleccionGuardadaInput {
   descuentoMotivo: string | null;
   horaExtraPct: number | null;
   horaExtraMonto: number | null;
+  descuentoAlimentosPct: number | null;
   // No entran al precio, pero SÍ al guardado: `updateQuote` los reescribe, así que
   // dejarlos fuera de aquí haría que arrastrar la fecha borrara al banquetero y al
   // festejado — el mismo bug que este armador existe para prevenir.
@@ -385,6 +388,7 @@ export interface SeleccionGuardada {
   descuentoMotivo: string | undefined;
   horaExtraPct: number | undefined;
   horaExtraMonto: number | undefined;
+  descuentoAlimentosPct: number | undefined;
   banqueteroId: string | null;
   festejado: string | null;
   festejadoTelefono: string | null;
@@ -419,6 +423,7 @@ export function seleccionGuardada(q: SeleccionGuardadaInput): SeleccionGuardada 
     descuentoMotivo: q.descuentoMotivo ?? undefined,
     horaExtraPct: q.horaExtraPct ?? undefined,
     horaExtraMonto: q.horaExtraMonto ?? undefined,
+    descuentoAlimentosPct: q.descuentoAlimentosPct ?? undefined,
     banqueteroId: q.banqueteroId,
     festejado: q.festejado,
     festejadoTelefono: q.festejadoTelefono,
@@ -779,6 +784,7 @@ export async function createQuote(
           descuentoMotivo: input.descuentoMotivo ?? null,
           horaExtraPct: input.horaExtraPct ?? null,
           horaExtraMonto: input.horaExtraMonto ?? null,
+          descuentoAlimentosPct: input.descuentoAlimentosPct ?? null,
           // Con banquetero, él es el cliente de la hacienda; el festejado es dato
           // operativo y no entra al contrato.
           banqueteroId: input.banqueteroId ?? null,
@@ -850,6 +856,7 @@ export async function duplicateQuote(db: PrismaClient, id: string, actor: Actor)
           descuentoMotivo: src.descuentoMotivo,
           horaExtraPct: src.horaExtraPct,
           horaExtraMonto: src.horaExtraMonto,
+          descuentoAlimentosPct: src.descuentoAlimentosPct,
           // La copia es OTRO evento del mismo comprador: el banquetero y el
           // festejado viajan con ella (justo el caso del banquetero que compra
           // tres fechas y las duplica para no recapturar).
@@ -1081,6 +1088,7 @@ export async function updateQuote(db: PrismaClient, id: string, rawInput: unknow
         descuentoMotivo: input.descuentoMotivo ?? null,
         horaExtraPct: input.horaExtraPct ?? null,
         horaExtraMonto: input.horaExtraMonto ?? null,
+        descuentoAlimentosPct: input.descuentoAlimentosPct ?? null,
         banqueteroId: input.banqueteroId ?? null,
         festejado: input.festejado ?? null,
         festejadoTelefono: input.festejadoTelefono ?? null,

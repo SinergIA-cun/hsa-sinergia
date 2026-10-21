@@ -638,6 +638,9 @@ model Quote {
   /// Hora extra de ESTE evento: % de la renta por hora o monto fijo por hora
   /// (con IVA). Uno u otro; sin ninguno, el % del catálogo (16-oct-2026).
   horaExtraPct        Float?
+  /// "Aplicar promoción" por contratar alimentos (21-oct-2026): % de descuento en
+  /// la renta, de 0 a 5. `null` = evento anterior a la casilla: el % del catálogo.
+  descuentoAlimentosPct Float?
   horaExtraMonto      Float?
   descuentoMotivo     String?
   /// El estatus que tenía antes de ponerse en standby o cancelarse. Es al que

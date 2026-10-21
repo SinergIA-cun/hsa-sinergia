@@ -7,6 +7,7 @@ import {
   conCargosDelContrato,
   tablaDeRenta,
   AUMENTO_PCT_MAXIMO,
+  DESCUENTO_ALIMENTOS_MAXIMO,
   tieneContacto,
   MENSAJE_SIN_CONTACTO,
   type DatosFiscales,
@@ -67,6 +68,8 @@ export interface QuoteFormInitial {
   /** Cómo se cobra la hora extra en este evento (uno u otro; sin ninguno, el % del catálogo). */
   horaExtraPct: number | null;
   horaExtraMonto: number | null;
+  /** Promoción por alimentos (0–5%); `null` = evento de antes: el % del catálogo. */
+  descuentoAlimentosPct: number | null;
   usaCapilla: boolean;
   capillaHorario: string;
   esCortesia: boolean;
@@ -103,6 +106,7 @@ export interface QuotePayload {
   horasExtra: number;
   horaExtraPct?: number;
   horaExtraMonto?: number;
+  descuentoAlimentosPct?: number;
   usaCapilla: boolean;
   capillaHorario?: string | null;
   esCortesia: boolean;
@@ -367,6 +371,20 @@ export function QuoteForm({
     if (v === '' || !tieneCentavosValidos(n) || n <= 0) return { invalida: 'Escribe cuánto se cobra por hora extra.' };
     return { horaExtraMonto: n };
   }, [horasExtra, horaExtraTipo, horaExtraValor, pctCatalogo]);
+  // "Aplicar promoción" por contratar alimentos (21-oct-2026): ya no siempre hay
+  // descuento. Un evento de antes (`null`) con alimentos traía el % del catálogo:
+  // arranca palomeado con ese %, para que guardar no le cambie el precio.
+  const pctAlimentosCatalogo = Math.round(catalog.engine.foodDiscountRate * 10_000) / 100;
+  const promoAlimentosInicial =
+    initial?.descuentoAlimentosPct != null
+      ? initial.descuentoAlimentosPct
+      : initial?.foodPackageId
+        ? Math.min(pctAlimentosCatalogo, DESCUENTO_ALIMENTOS_MAXIMO)
+        : 0;
+  const [promoAlimentos, setPromoAlimentos] = useState(promoAlimentosInicial > 0);
+  const [promoAlimentosValor, setPromoAlimentosValor] = useState(
+    String(promoAlimentosInicial > 0 ? promoAlimentosInicial : DESCUENTO_ALIMENTOS_MAXIMO),
+  );
   const [usaCapilla, setUsaCapilla] = useState(initial?.usaCapilla ?? false);
   const [capillaHorario, setCapillaHorario] = useState(initial?.capillaHorario ?? '');
   const [esCortesia, setEsCortesia] = useState(initial?.esCortesia ?? false);
@@ -467,6 +485,15 @@ export function QuoteForm({
     [extras],
   );
 
+  /** La promoción por alimentos que se manda: 0 sin palomear; `invalida` si no es 0–5. */
+  const promoAlimentosPct = useMemo((): { pct?: number; invalida?: boolean } => {
+    if (!foodPackageId) return {};
+    if (!promoAlimentos) return { pct: 0 };
+    const n = Number(promoAlimentosValor);
+    if (promoAlimentosValor.trim() === '' || !Number.isFinite(n) || n <= 0 || n > DESCUENTO_ALIMENTOS_MAXIMO) return { invalida: true };
+    return { pct: Math.round(n * 100) / 100 };
+  }, [foodPackageId, promoAlimentos, promoAlimentosValor]);
+
   const selection = useMemo(
     () => ({
       fecha: fecha || '2027-01-01',
@@ -475,6 +502,7 @@ export function QuoteForm({
       horasExtra,
       horaExtraPct: horaExtra.horaExtraPct,
       horaExtraMonto: horaExtra.horaExtraMonto,
+      descuentoAlimentosPct: promoAlimentosPct.pct,
       usaCapilla,
       usaDjHoraExtra,
       eventTypeId: eventTypeId || undefined,
@@ -486,7 +514,7 @@ export function QuoteForm({
       descuentoMotivo: descuentoMotivo.trim() || undefined,
       esPromocion,
     }),
-    [fecha, invitados, spaceIds, horasExtra, horaExtra, usaCapilla, usaDjHoraExtra, eventTypeId, foodPackageId, addOns, extrasValidos, pctValido, montoValido, descuentoMotivo, esPromocion],
+    [fecha, invitados, spaceIds, horasExtra, horaExtra, promoAlimentosPct, usaCapilla, usaDjHoraExtra, eventTypeId, foodPackageId, addOns, extrasValidos, pctValido, montoValido, descuentoMotivo, esPromocion],
   );
 
   const { breakdown, calcError } = useMemo(() => {
@@ -563,7 +591,7 @@ export function QuoteForm({
   const faltaTipoCliente = tipoClienteObligatorio && !esDeBanquetero && tipoCliente === '';
   const canSave = Boolean(
     nombre && !faltaContacto && !faltaTipoCliente && eventTypeId && fecha && spaceIds.length >= 1 && spaceIds.length <= MAX_ESPACIOS &&
-    breakdown && !calcError && !blocked && !faltaMotivo && !horaExtra.invalida,
+    breakdown && !calcError && !blocked && !faltaMotivo && !horaExtra.invalida && !promoAlimentosPct.invalida,
   );
 
   const faltantes = [
@@ -576,6 +604,7 @@ export function QuoteForm({
     blocked && 'un espacio libre ese día',
     faltaMotivo && (esPromocion ? 'el motivo del ajuste' : 'el motivo del descuento'),
     horaExtra.invalida && 'el cobro de la hora extra',
+    promoAlimentosPct.invalida && `la promoción por alimentos (de 1 a ${DESCUENTO_ALIMENTOS_MAXIMO}%)`,
     calcError && 'corregir el desglose',
   ].filter((x): x is string => Boolean(x));
 
@@ -613,6 +642,7 @@ export function QuoteForm({
         horasExtra,
         horaExtraPct: horaExtra.horaExtraPct,
         horaExtraMonto: horaExtra.horaExtraMonto,
+        descuentoAlimentosPct: promoAlimentosPct.pct,
         usaCapilla,
         capillaHorario: usaCapilla ? capillaHorario || null : null,
         esCortesia,
@@ -1299,10 +1329,51 @@ export function QuoteForm({
             ))}
           </SelectInput>
           {!eventType && <p className="text-xs text-charcoal-soft">Selecciona un tipo de evento primero.</p>}
+          {/* Contratar alimentos YA NO da siempre el descuento (21-oct-2026): es una
+              promoción que se palomea, de hasta 5% de la renta. */}
           {foodPackageId && (
-            <p className="inline-flex items-center gap-1.5 text-xs text-gold">
-              <Sparkles size={13} /> Contratar alimentos da 5% de descuento en la renta.
-            </p>
+            <div className="space-y-2">
+              <label
+                className={`flex cursor-pointer items-start gap-3 rounded-lg border px-4 py-3 text-sm transition-colors ${
+                  promoAlimentos ? 'border-gold bg-gold/10' : 'border-ink/12 bg-white/50 hover:border-ink/30'
+                }`}
+              >
+                <input
+                  type="checkbox"
+                  checked={promoAlimentos}
+                  onChange={(e) => setPromoAlimentos(e.target.checked)}
+                  className="mt-0.5 h-4 w-4 accent-[var(--color-gold)]"
+                />
+                <span className="flex-1">
+                  <span className="inline-flex items-center gap-1.5 font-medium text-ink">
+                    <Sparkles size={13} className="text-gold" /> Aplicar promoción
+                  </span>
+                  <span className="block text-xs text-charcoal-soft">
+                    Descuento en la renta por contratar alimentos, de hasta {DESCUENTO_ALIMENTOS_MAXIMO}%.
+                  </span>
+                </span>
+              </label>
+              {promoAlimentos && (
+                <div className="flex flex-wrap items-end gap-3 pl-1">
+                  <Field label="Descuento en la renta (%)">
+                    <TextInput
+                      type="number"
+                      min={0}
+                      max={DESCUENTO_ALIMENTOS_MAXIMO}
+                      step={0.5}
+                      value={promoAlimentosValor}
+                      onChange={(e) => setPromoAlimentosValor(e.target.value)}
+                      className="w-32"
+                    />
+                  </Field>
+                  {promoAlimentosPct.invalida && (
+                    <p className="inline-flex items-center gap-1.5 pb-2 text-xs font-medium text-wine">
+                      <AlertTriangle size={13} /> Entre 1 y {DESCUENTO_ALIMENTOS_MAXIMO}%.
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
           )}
         </Card>
 
