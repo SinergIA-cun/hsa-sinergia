@@ -126,7 +126,11 @@ export const updateQuoteSchema = quoteSelectionSchema
   .refine(unSoloDescuento.check, unSoloDescuento.opts)
   .refine(unModoHoraExtra.check, unModoHoraExtra.opts);
 
-export const statusSchema = z.object({ status: z.enum(QUOTE_STATUSES) });
+export const statusSchema = z.object({
+  status: z.enum(QUOTE_STATUSES),
+  /** El correo tecleado en el evento y aún sin guardar (ver `completarCorreoDelCliente`). */
+  correo: z.string().trim().max(200).optional(),
+});
 
 /** Los seis campos del cliente que congela el candado de facturación. */
 const CAMPOS_FISCALES = ['rfc', 'razonSocial', 'regimenFiscal', 'cpFiscal', 'usoCfdi', 'correoFacturacion'] as const;

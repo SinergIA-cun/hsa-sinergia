@@ -7,7 +7,6 @@ import {
   ExternalLink,
   Printer,
   FileText,
-  MessageCircle,
   QrCode,
   Check,
 } from 'lucide-react';
@@ -122,6 +121,10 @@ export function EditQuotePage() {
   const [empalmeBusy, setEmpalmeBusy] = useState(false);
   const [empalmeError, setEmpalmeError] = useState('');
   const [errorEstatus, setErrorEstatus] = useState('');
+  // El correo tal como está tecleado en el formulario, guardado o no: formalizar
+  // lo pide, y antes se exigía el de la base aunque ya estuviera escrito
+  // (21-oct-2026).
+  const [correoTecleado, setCorreoTecleado] = useState('');
   // Al recién crearlo llegamos con ?creado=1 para confirmar sin sacar del contrato.
   const recienCreado = sp.get('creado') === '1';
 
@@ -153,7 +156,10 @@ export function EditQuotePage() {
     if (!quote) return;
     setErrorEstatus('');
     try {
-      await api.patch(`/api/quotes/${quote.id}/status`, { status });
+      await api.patch(`/api/quotes/${quote.id}/status`, {
+        status,
+        ...(correoTecleado.trim() ? { correo: correoTecleado.trim() } : {}),
+      });
     } catch (e) {
       // P. ej. formalizar sin el correo del cliente.
       setErrorEstatus(apiErrorMessage(e, 'No se pudo cambiar el estatus.'));
@@ -228,8 +234,8 @@ export function EditQuotePage() {
       await qc.invalidateQueries({ queryKey: ['quotes'] });
       setSaved(true);
       setTimeout(() => setSaved(false), 2500);
-    } catch {
-      setError('No se pudo guardar. Revisa los datos o el estatus.');
+    } catch (e) {
+      setError(apiErrorMessage(e, 'No se pudo guardar. Revisa los datos o el estatus.'));
     }
   }
 
@@ -457,6 +463,8 @@ export function EditQuotePage() {
             excludeQuoteId={quote.id}
             fiscalEditable={quoteQ.data?.fiscalEditable}
             isAdmin={isAdmin}
+            tipoClienteObligatorio={false}
+            onCorreoChange={setCorreoTecleado}
           />
           <PagosPanel
             quoteId={quote.id}

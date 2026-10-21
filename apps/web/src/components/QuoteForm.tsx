@@ -189,6 +189,14 @@ interface Props {
    * rápido en evento: en el apartado fue opcional (reunión del 15-oct-2026).
    */
   telefonoObligatorio?: boolean;
+  /**
+   * Hay que elegir Cliente o Empresa para guardar. Sí al crear y al convertir un
+   * apartado; no al editar un evento viejo que nunca lo tuvo: ahí el botón se
+   * quedaba apagado sin decir por qué y no se podía cambiar nada (21-oct-2026).
+   */
+  tipoClienteObligatorio?: boolean;
+  /** Avisa el correo tecleado (aún sin guardar): cambiar el estatus lo necesita. */
+  onCorreoChange?: (correo: string) => void;
 }
 
 export function QuoteForm({
@@ -208,6 +216,8 @@ export function QuoteForm({
   isAdmin = false,
   precioPactado,
   telefonoObligatorio = false,
+  tipoClienteObligatorio = true,
+  onCorreoChange,
 }: Props) {
   const [nombre, setNombre] = useState(initial?.nombre ?? '');
   const [tipoCliente, setTipoCliente] = useState<TipoCliente | ''>(initial?.tipoCliente ?? '');
@@ -246,6 +256,22 @@ export function QuoteForm({
     if (!suyo || activos.some((b) => b.id === suyo)) return activos;
     return [{ id: suyo, nombre: `${initial?.banqueteroNombre ?? 'Banquetero'} (inactivo)`, telefono: null }, ...activos];
   }, [banqData, initial?.banqueteroId, initial?.banqueteroNombre]);
+
+  // Un evento de profesional que se guardó sin su correo (antes solo se traían
+  // nombre y teléfono): se completa con el de su ficha en cuanto llega la lista.
+  // Una sola vez: si luego lo borran a mano, no se vuelve a poner.
+  const correoDeFichaPuesto = useRef(false);
+  useEffect(() => {
+    if (correoDeFichaPuesto.current || !esDeBanquetero || correo.trim() !== '') return;
+    const b = banqueteros.find((x) => x.id === banqueteroId);
+    if (!b) return;
+    correoDeFichaPuesto.current = true;
+    if (b.correo) setCorreo(b.correo);
+  }, [banqueteros, banqueteroId, esDeBanquetero, correo]);
+
+  useEffect(() => {
+    onCorreoChange?.(correo);
+  }, [correo, onCorreoChange]);
 
   function pickCliente(c: ClienteLite) {
     setNombre(c.nombre);
@@ -293,6 +319,9 @@ export function QuoteForm({
     if (!b) return;
     setNombre(b.nombre);
     setTelefono(b.telefono ?? '');
+    // Su correo también: ahí le llegan su confirmación y sus recibos, y sin él no
+    // se formaliza (21-oct-2026: solo se traían nombre y teléfono).
+    setCorreo(b.correo ?? '');
     // Es otro cliente: se desvincula del que estuviera elegido para no guardarle
     // los datos fiscales del anterior.
     desvincular();
@@ -536,11 +565,24 @@ export function QuoteForm({
   const faltaTelefono = telefonoObligatorio && telefono.replace(/\D/g, '').length < 10;
   const faltaContacto = !tieneContacto({ telefono, correo }) || faltaTelefono;
   // Cliente directo: termina de elegir si es cliente o empresa (como el tipo del profesional).
-  const faltaTipoCliente = !esDeBanquetero && tipoCliente === '';
+  const faltaTipoCliente = tipoClienteObligatorio && !esDeBanquetero && tipoCliente === '';
   const canSave = Boolean(
     nombre && !faltaContacto && !faltaTipoCliente && eventTypeId && fecha && spaceIds.length >= 1 && spaceIds.length <= MAX_ESPACIOS &&
     breakdown && !calcError && !blocked && !faltaMotivo && !horaExtra.invalida,
   );
+
+  const faltantes = [
+    !nombre && 'el nombre',
+    faltaTipoCliente && 'elegir Cliente o Empresa',
+    faltaContacto && (faltaTelefono ? 'el teléfono' : 'un teléfono o un correo'),
+    !eventTypeId && 'el tipo de evento',
+    !fecha && 'la fecha',
+    spaceIds.length === 0 && 'el espacio',
+    blocked && 'un espacio libre ese día',
+    faltaMotivo && 'el motivo del descuento',
+    horaExtra.invalida && 'el cobro de la hora extra',
+    calcError && 'corregir el desglose',
+  ].filter((x): x is string => Boolean(x));
 
   // Hasta 3 espacios por evento (hay graduaciones que juntan salones).
   function toggleSpace(id: string) {
@@ -1419,6 +1461,10 @@ export function QuoteForm({
             <Button variant="gold" disabled={!canSave || busy} onClick={handleSubmit} className="mt-6 w-full py-3">
               {busy ? 'Guardando…' : submitLabel}
             </Button>
+            {/* Un botón apagado sin decir por qué parece un error de la app. */}
+            {!canSave && !busy && faltantes.length > 0 && (
+              <p className="mt-2 text-center text-xs text-charcoal-soft">Para guardar falta: {faltantes.join(' · ')}.</p>
+            )}
             {errorMsg && <p className="mt-2 text-center text-xs text-wine">{errorMsg}</p>}
           </div>
         </Card>

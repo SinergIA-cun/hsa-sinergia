@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { cambiarAgencia } from './agencia.js';
 import { z } from 'zod';
 import { requireAdmin, requireAuth } from '../auth/plugin.js';
-import { encolarCorreo, exigirCorreoParaFormalizar } from '../correos/cola.js';
+import { completarCorreoDelCliente, encolarCorreo, exigirCorreoParaFormalizar } from '../correos/cola.js';
 import { cotizacionesDesplazadas } from './empalmes.js';
 import { ajustarPrecioPactado } from './precioPactado.js';
 import {
@@ -154,6 +154,9 @@ export async function quoteRoutes(app: FastifyInstance): Promise<void> {
         const COMPROMETIDO = ['formalizada', 'complementada', 'liquidada'];
         const antes = await app.prisma.quote.findUnique({ where: { id: req.params.id }, select: { status: true } });
         const formaliza = antes?.status === 'borrador' && COMPROMETIDO.includes(parsed.data.status);
+        if (formaliza && parsed.data.correo) {
+          await completarCorreoDelCliente(app.prisma, req.params.id, parsed.data.correo, req.user as Actor);
+        }
         if (formaliza) await exigirCorreoParaFormalizar(app.prisma, req.params.id);
         const quote = await updateStatus(
           app.prisma,

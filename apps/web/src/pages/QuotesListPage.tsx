@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Plus, ExternalLink, CalendarDays, Users, UserCircle, Trash2, Search, AlertTriangle, Archive } from 'lucide-react';
-import { faltanDatosFactura, hoyCivilMexico } from '@hsa/shared';
+import { coincideTexto, faltanDatosFactura, hoyCivilMexico } from '@hsa/shared';
 import { api } from '../lib/api.ts';
 import { formatMXN } from '../lib/money.ts';
 import { Button, Card, ArrowDivider } from '../components/ui.tsx';
@@ -185,7 +185,7 @@ function Section({
 
 function matchesQuery(q: Quote, needle: string, spaceNameById: Map<string, string>): boolean {
   const espacios = (q.spaceIds ?? []).map((id) => spaceNameById.get(id)).filter(Boolean);
-  const hay = [
+  return coincideTexto([
     q.client?.nombre,
     q.client?.telefono,
     q.client?.correo,
@@ -197,12 +197,9 @@ function matchesQuery(q: Quote, needle: string, spaceNameById: Map<string, strin
     q.etiqueta,
     ...(q.codigosAnteriores ?? []),
     q.folio,
+    q.festejado,
     ...espacios,
-  ]
-    .filter(Boolean)
-    .join(' ')
-    .toLowerCase();
-  return hay.includes(needle);
+  ], needle);
 }
 
 export function QuotesListPage() {
@@ -238,7 +235,10 @@ export function QuotesListPage() {
   const allQuotes = todas.filter((q) => q.status === 'standby' || new Date(q.fechaEvento) >= hoy);
   const pasados = todas.length - allQuotes.length;
   const needle = query.trim().toLowerCase();
-  const quotes = needle ? allQuotes.filter((q) => matchesQuery(q, needle, spaceNameById)) : allQuotes;
+  // Al buscar se busca en TODOS, también los que ya pasaron: un código se teclea
+  // justo para encontrar un evento de este mes que ya pasó, y la agenda sí lo
+  // encontraba (21-oct-2026).
+  const quotes = needle ? todas.filter((q) => matchesQuery(q, needle, spaceNameById)) : allQuotes;
 
   // Filtro por vendedora (solo admin)
   const perSeller = new Map<string, number>();
