@@ -79,14 +79,14 @@ describe('deducirConceptos', () => {
     expect(r.get('a')).toBe('anticipo');
   });
 
-  describe('el finiquito se queda (16-oct-2026)', () => {
-    it('si el contrato sube después de liquidar, el finiquito sigue y lo que llega es a cuenta', () => {
+  describe('el finiquito es el pago que cierra el total vigente (21-oct-2026)', () => {
+    it('si el contrato sube después de liquidar, el que cierra el total nuevo es el finiquito', () => {
       // Se liquidó un contrato de 100,000 y luego se cargaron 6,000 de horas extra.
       const r = deducirConceptos(
         [pago('a', 20_000, { concepto: 'anticipo' }), pago('b', 80_000, { concepto: 'finiquito', finiquitoDe: 100_000 }), pago('c', 6_000)],
         106_000,
       );
-      expect([r.get('a'), r.get('b'), r.get('c')]).toEqual(['anticipo', 'finiquito', 'aCuenta']);
+      expect([r.get('a'), r.get('b'), r.get('c')]).toEqual(['anticipo', 'aCuenta', 'finiquito']);
     });
 
     it('sin finiquito guardado, el contrato nuevo decide como siempre', () => {

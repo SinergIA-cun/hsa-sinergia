@@ -161,9 +161,11 @@ export function computeEstadoCuenta(args: {
     hito('finiquito', 'Finiquito', objFiniquito, finiquitoVence.toISOString()),
   ];
 
+  // Sin hitos intermedios (21-oct-2026: "no existen, no se enforzan"): un evento
+  // pasa de formalizado a liquidado. `complementada` ya no se sugiere; el hito
+  // `complemento` sigue en el plan solo porque lo lee el BI.
   let sugerido: PaymentStatus | null = null;
   if (pagado >= objFiniquito) sugerido = 'liquidada';
-  else if (pagado >= objComplemento) sugerido = 'complementada';
   else if (pagado >= objApartar) sugerido = 'formalizada';
 
   // Desfase: el estatus actual exige un umbral que el pagado ya no cubre.
@@ -171,7 +173,6 @@ export function computeEstadoCuenta(args: {
   if (status in RANK) {
     const req = RANK[status as PaymentStatus];
     if (req >= RANK.formalizada && pagado < objApartar) desfase = true;
-    if (req >= RANK.complementada && pagado < objComplemento) desfase = true;
     if (req >= RANK.liquidada && pagado < objFiniquito) desfase = true;
   }
 

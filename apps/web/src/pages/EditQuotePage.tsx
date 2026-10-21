@@ -263,6 +263,7 @@ export function EditQuotePage() {
   // La vendedora edita los datos de su evento también formalizado (Jorge,
   // 16-oct-2026); los pagos siguen con sus candados de admin.
   const editable = EDITABLE_STATUSES.includes(quote.status) && !congelado;
+  const cargosContrato = (quote.breakdown?.lines ?? []).filter((l) => l.cargoId);
   const contratoDisponible =
     !enPapelera && ['formalizada', 'complementada', 'liquidada'].includes(quote.status);
   const publicUrl = `${window.location.origin}/c/${quote.publicToken}`;
@@ -351,7 +352,8 @@ export function EditQuotePage() {
               onChange={(e) => void changeStatus(e.target.value as QuoteStatus)}
               className="w-auto py-2"
             >
-              {QUOTE_STATUSES.map((s) => (
+              {/* "Pago a cuenta cubierto" ya no se elige (sin hitos, 21-oct-2026). */}
+              {QUOTE_STATUSES.filter((s) => s !== 'complementada' || quote.status === s).map((s) => (
                 <option key={s} value={s}>
                   {STATUS_LABEL[s]}
                 </option>
@@ -464,6 +466,7 @@ export function EditQuotePage() {
             fiscalEditable={quoteQ.data?.fiscalEditable}
             isAdmin={isAdmin}
             tipoClienteObligatorio={false}
+            cargosContrato={cargosContrato}
             onCorreoChange={setCorreoTecleado}
           />
           <PagosPanel

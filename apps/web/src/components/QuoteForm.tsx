@@ -4,6 +4,7 @@ import {
   tieneCentavosValidos,
   capacidadTotal,
   computeQuote,
+  conCargosDelContrato,
   tablaDeRenta,
   AUMENTO_PCT_MAXIMO,
   tieneContacto,
@@ -197,9 +198,16 @@ interface Props {
    * quedaba apagado sin decir por qué y no se podía cambiar nada (21-oct-2026).
    */
   tipoClienteObligatorio?: boolean;
+  /**
+   * Los renglones de cargos del punto de venta que suben el contrato, tal como
+   * están en el desglose guardado. El motor no los conoce: se suman encima.
+   */
+  cargosContrato?: QuoteLine[];
   /** Avisa el correo tecleado (aún sin guardar): cambiar el estatus lo necesita. */
   onCorreoChange?: (correo: string) => void;
 }
+
+const SIN_CARGOS: QuoteLine[] = [];
 
 export function QuoteForm({
   catalog,
@@ -219,6 +227,7 @@ export function QuoteForm({
   precioPactado,
   telefonoObligatorio = false,
   tipoClienteObligatorio = true,
+  cargosContrato = SIN_CARGOS,
   onCorreoChange,
 }: Props) {
   const [nombre, setNombre] = useState(initial?.nombre ?? '');
@@ -484,40 +493,18 @@ export function QuoteForm({
     if (precioPactado) return { breakdown: precioPactado, calcError: '' };
     if (spaceIds.length === 0) return { breakdown: null as QuoteBreakdown | null, calcError: '' };
     try {
-      return { breakdown: computeQuote(catalog.engine, selection), calcError: '' };
+      const calculado = computeQuote(catalog.engine, selection);
+      // Los cargos del punto de venta que suben el contrato (horas extra, PAX
+      // extra) van en el total del evento: sin ellos el desglose en vivo decía
+      // menos que el estado de cuenta (21-oct-2026).
+      const conCargos = cargosContrato.length
+        ? conCargosDelContrato(calculado, cargosContrato, catalog.engine.ivaRate)
+        : calculado;
+      return { breakdown: conCargos, calcError: '' };
     } catch (e) {
       return { breakdown: null, calcError: e instanceof Error ? e.message : 'No se pudo calcular' };
     }
-  }, [catalog, selection, spaceIds.length, precioPactado]);
-
-  // Preview del plan de pago. Se calcula sobre la RENTA (lo único que cobra y
-  // rastrea HSA) y replica la fórmula del servidor: los anticipos se suman y el
-  // porcentaje del complemento pesa según la renta que aporta cada espacio.
-  const plan = useMemo(() => {
-    if (precioPactado || !breakdown || spaceIds.length === 0) return null;
-    const reglas = spaceIds.map((id) => catalog.spaces.find((s) => s.id === id)?.paymentRule ?? null);
-    if (reglas.some((r) => !r)) return null; // un espacio sin regla ⇒ plan pendiente
-
-    const rentaPorEspacio = new Map<string, number>();
-    for (const l of breakdown.lines) {
-      if (l.spaceId) rentaPorEspacio.set(l.spaceId, (rentaPorEspacio.get(l.spaceId) ?? 0) + l.monto);
-    }
-    const sumRenta = [...rentaPorEspacio.values()].reduce((s, v) => s + v, 0);
-
-    const base = Math.round(breakdown.rentaTotal);
-    const apartar = reglas.reduce((s, r) => s + r!.anticipo, 0);
-    const pct =
-      sumRenta > 0
-        ? spaceIds.reduce((s, id, i) => s + reglas[i]!.complementoPct * ((rentaPorEspacio.get(id) ?? 0) / sumRenta), 0)
-        : Math.max(...reglas.map((r) => r!.complementoPct));
-    const formalizar = Math.round(pct * base);
-    const liquidacion = base - apartar - formalizar;
-
-    const dias = Math.max(...reglas.map((r) => r!.liquidarDiasAntes));
-    const liqFecha = fecha ? new Date(`${fecha}T00:00:00.000Z`) : null;
-    if (liqFecha) liqFecha.setUTCDate(liqFecha.getUTCDate() - dias);
-    return { apartar, formalizar, liquidacion, liqFecha, dias };
-  }, [breakdown, spaceIds, catalog.spaces, fecha]);
+  }, [catalog, selection, spaceIds.length, precioPactado, cargosContrato]);
 
   // El selector solo OFRECE los add-ons vigentes. Uno dado de baja aparece SOLO
   // si esta cotización ya lo trae seleccionado: el motor lo sigue cobrando, así
@@ -1469,32 +1456,6 @@ export function QuoteForm({
             {breakdown && (
               <>
                 <BreakdownGrouped breakdown={breakdown} lineLabel={lineLabel} />
-                {plan && (
-                  <div className="mt-5 rounded-lg bg-cream-200/70 p-4">
-                    <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-500">
-                      Plan de pagos sugerido
-                    </p>
-                    <div className="space-y-1 text-sm">
-                      <div className="flex justify-between">
-                        <span className="text-charcoal-soft">Apartar fecha</span>
-                        <span className="tabular-nums">{formatMXN(plan.apartar)}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-charcoal-soft">A cuenta</span>
-                        <span className="tabular-nums">{formatMXN(plan.formalizar)}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-charcoal-soft">
-                          Liquidación{' '}
-                          {plan.liqFecha
-                            ? `(${plan.liqFecha.toLocaleDateString('es-MX', { day: '2-digit', month: 'short', timeZone: 'UTC' })})`
-                            : `(${plan.dias}d antes)`}
-                        </span>
-                        <span className="tabular-nums">{formatMXN(plan.liquidacion)}</span>
-                      </div>
-                    </div>
-                  </div>
-                )}
               </>
             )}
 

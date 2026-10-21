@@ -71,11 +71,11 @@ export function deducirConcepto(antes: number, monto: number, total: number, esP
  * - **El finiquito lo dicta el saldo**, en los dos sentidos: el pago que completa
  *   el contrato es finiquito aunque lo hayan capturado como otra cosa, y uno
  *   marcado "finiquito" a mano que no lo completa no lo es.
- * - **El finiquito se queda** (16-oct-2026): uno que ya completó el contrato
- *   (`finiquitoDe`) lo sigue siendo aunque el contrato suba después; los pagos
- *   que lleguen luego son a cuenta. Hay un solo finiquito. Deja de serlo solo si
- *   lo pagado hasta él ya no completa el total que completó (se anuló uno
- *   anterior, o se corrigió a menos).
+ * - **El finiquito es el pago que cierra el total VIGENTE** (21-oct-2026, revierte
+ *   la regla del 16-oct de que "el finiquito se queda"): si después de liquidar
+ *   se cargan horas extra o PAX extra, el pago que liquidaba pasa a "a cuenta" y
+ *   el que cierra el total nuevo es el finiquito. Hay un solo finiquito.
+ *   `finiquitoDe` se sigue guardando (el total que completó), pero ya no lo retiene.
  * - Un ajuste a mano se respeta en los que no son finiquito.
  * - Los pagos anulados conservan el concepto con el que quedaron: son evidencia,
  *   no suman y no se reescriben.
@@ -97,13 +97,8 @@ export function deducirConceptos(pagos: PagoParaConcepto[], total: number | null
       out.set(p.id, p.conceptoManual ?? p.concepto);
       continue;
     }
-    const sigue =
-      p.concepto === 'finiquito' &&
-      p.finiquitoDe != null &&
-      !hayFiniquito &&
-      acumulado + p.monto >= restarDinero(p.finiquitoDe, TOLERANCIA_FINIQUITO);
-    let deducido = sigue ? 'finiquito' : deducirConcepto(acumulado, p.monto, total, vivos === 0);
-    if (deducido === 'finiquito' && hayFiniquito && !sigue) deducido = 'aCuenta';
+    let deducido = deducirConcepto(acumulado, p.monto, total, vivos === 0);
+    if (deducido === 'finiquito' && hayFiniquito) deducido = 'aCuenta';
     if (deducido === 'finiquito') hayFiniquito = true;
     acumulado += p.monto;
     vivos++;

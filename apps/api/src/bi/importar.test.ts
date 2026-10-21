@@ -97,9 +97,9 @@ describe('importar un evento nuevo', () => {
     expect(q.rentaTotal).toBe(95_000);
     expect(q.total).toBe(215_000);
     expect(q.spaceIds).toEqual([arcosId]);
-    // 30,000 pagados cruzan el anticipo de Arcos (20,000) y su complemento (10% de
-    // 95,000 = 9,500; acumulado 29,500): el estatus sube solo a complementada.
-    expect(q.status).toBe('complementada');
+    // 30,000 pagados cruzan el anticipo de Arcos (20,000): formalizado. Ya no
+    // hay hito intermedio (21-oct-2026).
+    expect(q.status).toBe('formalizada');
     const pagos = [...q.payments].sort((a, b) => a.folio - b.folio);
     expect(pagos.map((p) => p.folio)).toEqual([5101, 5190]);
     expect(pagos[1]!.metodo).toBe('mixto');
@@ -187,7 +187,7 @@ describe('eventos ya cerrados (agosto y septiembre de 2026)', () => {
     // estaba liquidado, vuelve a deber esas dos horas.
     expect(foto.totales.rentaTotal).toBe(104_500);
     expect(foto.totales.saldoRenta).toBe(9_500);
-    expect((await prisma.quote.findUniqueOrThrow({ where: { id: q.id } })).status).toBe('complementada');
+    expect((await prisma.quote.findUniqueOrThrow({ where: { id: q.id } })).status).toBe('formalizada');
   });
 
   it('un evento sin cargos no gana una versión nueva por el campo de cargos', async () => {
