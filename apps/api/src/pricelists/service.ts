@@ -43,7 +43,24 @@ async function copiarColumnas(tx: Prisma.TransactionClient, de: string, a: strin
   const columnas = await tx.columnaRenta.findMany({ where: { priceListId: de } });
   if (columnas.length === 0) return; // sin columnas guardadas: las de siempre
   await tx.columnaRenta.createMany({
-    data: columnas.map(({ id: _id, priceListId: _pl, ...c }) => ({ ...c, priceListId: a })),
+    data: columnas.map((c) => ({
+      priceListId: a,
+      clave: c.clave,
+      nombre: c.nombre,
+      dias: c.dias,
+      meses: c.meses,
+      respaldo: c.respaldo,
+      orden: c.orden,
+    })),
+  });
+}
+
+/** Copia las tablas de renta (nombre y tipos de evento) de un catálogo a otro. */
+async function copiarTablas(tx: Prisma.TransactionClient, de: string, a: string): Promise<void> {
+  const tablas = await tx.tablaRenta.findMany({ where: { priceListId: de } });
+  if (tablas.length === 0) return; // sin tablas guardadas: las de siempre
+  await tx.tablaRenta.createMany({
+    data: tablas.map((t) => ({ priceListId: a, clave: t.clave, nombre: t.nombre, eventTypeIds: t.eventTypeIds, orden: t.orden })),
   });
 }
 
@@ -125,6 +142,7 @@ export async function clonarCatalogo(db: PrismaClient, rawInput: unknown) {
         });
       }
       await copiarColumnas(tx, base.id, creado.id);
+      await copiarTablas(tx, base.id, creado.id);
       return tx.priceList.update({
         where: { id: creado.id },
         data: {
@@ -155,6 +173,7 @@ export async function clonarCatalogo(db: PrismaClient, rawInput: unknown) {
       });
     }
     await copiarColumnas(tx, origen.id, creado.id);
+    await copiarTablas(tx, origen.id, creado.id);
 
     // Servicios: se conserva `activo`. El catálogo tiene que RESOLVER lo que ya
     // no OFRECE, porque las cotizaciones viejas siguen referenciándolo.

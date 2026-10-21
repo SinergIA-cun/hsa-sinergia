@@ -4,6 +4,7 @@ import {
   tieneCentavosValidos,
   capacidadTotal,
   computeQuote,
+  tablaDeRenta,
   tieneContacto,
   MENSAJE_SIN_CONTACTO,
   type DatosFiscales,
@@ -423,7 +424,15 @@ export function QuoteForm({
   // Cuánta gente cabe entre los espacios elegidos. Sale del catálogo del motor,
   // que es el mismo que decide el precio: un cupo calculado aparte podría decir
   // que sí y el motor que no.
-  const cupoElegido = capacidadTotal(spaceIds, catalog.engine.rentalPrices);
+  // Con la tabla de renta del tipo de evento (21-oct-2026): un tipo sin tabla no
+  // tiene cupo que decir; el desglose ya explica por qué no se puede cotizar.
+  const cupoElegido = useMemo(() => {
+    try {
+      return capacidadTotal(spaceIds, tablaDeRenta(catalog.engine, eventTypeId || null).rows);
+    } catch {
+      return 0;
+    }
+  }, [spaceIds, catalog.engine, eventTypeId]);
 
   /**
    * El descuento capturado, ya validado, o `undefined` si no hay. Solo cuenta con

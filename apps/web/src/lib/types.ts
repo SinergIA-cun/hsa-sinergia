@@ -131,11 +131,17 @@ export interface PriceList {
  * se agregan ni se quitan —un hueco hace que el motor lance "no tiene rango de
  * renta para N invitados" meses después—, solo se editan los cuatro precios.
  */
+export interface TablaRentaCatalogo {
+  clave: string;
+  nombre: string;
+  eventTypeIds: string[];
+}
+
 export interface RentaRenglon {
   id: string;
   spaceId: string;
   espacio: string;
-  /** `dia` = renta por tipo de día · `plano` = renta plana (Team Building). */
+  /** La clave de su tabla de renta (`dia`, `plano` o una creada después). */
   tipo: string;
   min: number;
   max: number | null;
@@ -171,6 +177,8 @@ export interface CatalogoContenido {
   renta: RentaRenglon[];
   /** Las columnas de la tabla de renta y su regla (días y meses). */
   columnasRenta: ColumnaRenta[];
+  /** Las hojas de renta y a qué tipos de evento se le cobra con cada una. */
+  tablasRenta: TablaRentaCatalogo[];
   /** Todos los salones, para agregar uno a la tabla. */
   espacios: { id: string; nombre: string; activo: boolean }[];
   servicios: AddOn[];

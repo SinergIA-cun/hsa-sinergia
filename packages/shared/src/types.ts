@@ -55,6 +55,14 @@ export interface AddOn {
 /** Quién le cobra un servicio al cliente: el proveedor directo o la hacienda. */
 export type CobraServicio = 'proveedor' | 'hacienda';
 
+/** Una tabla de renta del catálogo: sus renglones y los tipos de evento que la usan. */
+export interface TablaRentaMotor {
+  clave: string;
+  nombre: string;
+  eventTypeIds: string[];
+  rows: RentalPriceRow[];
+}
+
 export interface Catalog {
   ivaRate: number;              // 0.16
   extraHourRate: number;        // 0.05 de la renta por hora
@@ -67,6 +75,12 @@ export interface Catalog {
   rentalPrices: RentalPriceRow[];      // renta por tipo de día (eventos normales)
   rentalPricesFlat: RentalPriceRow[];  // renta plana (Team Building): mismo precio todos los días
   flatRentalEventTypeIds: string[];    // tipos de evento que usan la renta plana
+  /**
+   * Las tablas de renta del catálogo y a qué tipos de evento aplica cada una
+   * (21-oct-2026). Con ellas, los tres campos de arriba ya no se leen. Sin
+   * ellas (catálogos armados a mano en pruebas), manda lo de arriba.
+   */
+  tablasRenta?: TablaRentaMotor[];
   foodPackages: FoodPackage[];
   addOns: AddOn[];
   /** Nombre de cada espacio por id, para que un error diga "Arcos" y no un id. */

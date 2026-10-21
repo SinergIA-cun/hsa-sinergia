@@ -1,6 +1,13 @@
 import type { Prisma, PrismaClient } from '@hsa/database';
 import type { Catalog, ColumnaRenta, RentalPriceRow } from '@hsa/shared';
 
+/** Una tabla de renta del catálogo, sin sus renglones. */
+export interface TablaRentaDef {
+  clave: string;
+  nombre: string;
+  eventTypeIds: string[];
+}
+
 /**
  * Lee `RentalPrice.precios` (JSON) como mapa clave → pesos | null. Lo que no sea
  * un número entero se lee como "sin precio": un JSON torcido no debe cobrar.
@@ -16,6 +23,30 @@ export function preciosDe(json: Prisma.JsonValue): Record<string, number | null>
 export async function columnasDe(db: Pick<PrismaClient, 'columnaRenta'>, priceListId: string): Promise<ColumnaRenta[]> {
   const cols = await db.columnaRenta.findMany({ where: { priceListId }, orderBy: { orden: 'asc' } });
   return cols.map((c) => ({ clave: c.clave, nombre: c.nombre, dias: c.dias, meses: c.meses, respaldo: c.respaldo }));
+}
+
+/**
+ * Las tablas de renta de un catálogo, en su orden (21-oct-2026). Un catálogo sin
+ * tablas guardadas usa las dos de siempre: "Renta" para los tipos de evento
+ * normales y, si tiene renglones planos, "Renta plana (Team Building)" para los
+ * de `rentaPlana`. Es lo mismo que cobraba el motor antes de que existieran.
+ */
+export async function tablasDe(
+  db: Pick<PrismaClient, 'tablaRenta' | 'eventType' | 'rentalPrice'>,
+  priceListId: string,
+): Promise<TablaRentaDef[]> {
+  const guardadas = await db.tablaRenta.findMany({ where: { priceListId }, orderBy: { orden: 'asc' } });
+  if (guardadas.length) return guardadas.map((t) => ({ clave: t.clave, nombre: t.nombre, eventTypeIds: t.eventTypeIds }));
+  const [tipos, planos] = await Promise.all([
+    db.eventType.findMany({ orderBy: { nombre: 'asc' }, select: { id: true, rentaPlana: true } }),
+    db.rentalPrice.count({ where: { priceListId, tipo: 'plano' } }),
+  ]);
+  return [
+    { clave: 'dia', nombre: 'Renta', eventTypeIds: tipos.filter((t) => !t.rentaPlana).map((t) => t.id) },
+    ...(planos > 0
+      ? [{ clave: 'plano', nombre: 'Renta plana (Team Building)', eventTypeIds: tipos.filter((t) => t.rentaPlana).map((t) => t.id) }]
+      : []),
+  ];
 }
 
 /** Mapea filas de RentalPrice de Prisma al shape del motor. */
@@ -49,9 +80,10 @@ export async function loadCatalog(
     );
   }
 
-  const [rentals, columnasRenta, packages, addOns, djPrices, eventTypes, spaces] = await Promise.all([
+  const [rentals, columnasRenta, tablas, packages, addOns, djPrices, eventTypes, spaces] = await Promise.all([
     db.rentalPrice.findMany({ where: { priceListId: priceList.id } }),
     columnasDe(db, priceList.id),
+    tablasDe(db, priceList.id),
     db.foodPackage.findMany({ where: { priceListId: priceList.id }, include: { brackets: true } }),
     // SIN filtrar por `activo`: el catálogo tiene que RESOLVER todos los
     // add-ons, incluidos los dados de baja, porque las cotizaciones ya emitidas
@@ -89,6 +121,8 @@ export async function loadCatalog(
     rentalPrices: toRentalRows(rentals.filter((r) => r.tipo === 'dia')),
     rentalPricesFlat: toRentalRows(rentals.filter((r) => r.tipo === 'plano')),
     flatRentalEventTypeIds,
+    // Lo que de verdad lee el motor: cada tipo de evento con su tabla.
+    tablasRenta: tablas.map((t) => ({ ...t, rows: toRentalRows(rentals.filter((r) => r.tipo === t.clave)) })),
     foodPackages: packages.map((p) => ({
       id: p.id,
       eventTypeId: p.eventTypeId,
