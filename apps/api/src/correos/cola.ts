@@ -1,6 +1,6 @@
 import type { PrismaClient, Payment } from '@hsa/database';
 import { afectaContrato, formatFolio, partesDePago, FORMA_PAGO_LABEL, hoyCivilMexico, type Marca, type MetodoPago, sumarDinero, restarDinero } from '@hsa/shared';
-import { loadEstadoCuenta, loadEstadoCuentaBulk, QuoteError } from '../quotes/service.js';
+import { loadEstadoCuenta, loadEstadoCuentaBulk, ownershipWhere, QuoteError, type Actor } from '../quotes/service.js';
 import type { Mailer } from './mailer.js';
 import { correoBienvenida, correoCierre, correoLiquidacion, correoRecibo, type EventoCorreo, type PagoCorreo } from './plantillas.js';
 import { reciboPdf } from './reciboPdf.js';
@@ -59,6 +59,22 @@ export async function yaEstabaComprometido(db: PrismaClient, quoteId: string): P
     const m = c.meta as { de?: string; a?: string } | null;
     return m?.a === 'borrador' && !!m.de && COMPROMETIDOS.has(m.de);
   });
+}
+
+/**
+ * El correo que quien vende ya tecleó en el evento pero todavía no guardó.
+ * Cambiar el estatus lo manda junto: antes se exigía el de la base y salía
+ * "captura el correo" con el correo escrito en pantalla (21-oct-2026).
+ * Solo completa un correo que falta; uno que ya está se cambia guardando el evento.
+ */
+export async function completarCorreoDelCliente(db: PrismaClient, quoteId: string, correo: string, actor: Actor) {
+  if (!tieneCorreo(correo)) return;
+  const q = await db.quote.findFirst({
+    where: { id: quoteId, ...ownershipWhere(actor) },
+    select: { clientId: true, client: { select: { correo: true } } },
+  });
+  if (!q?.clientId || tieneCorreo(q.client?.correo)) return;
+  await db.client.update({ where: { id: q.clientId }, data: { correo: correo.trim() } });
 }
 
 /**

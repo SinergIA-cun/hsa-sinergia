@@ -6,6 +6,7 @@ export interface BanqueteroLite {
   id: string;
   nombre: string;
   telefono: string | null;
+  correo?: string | null;
   tipo?: TipoProfesional;
 }
 

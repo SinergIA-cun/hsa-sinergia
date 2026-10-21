@@ -173,6 +173,17 @@ describe('el correo es obligatorio al formalizar (desde la pantalla)', () => {
     const lista = await app.inject({ method: 'GET', url: `/api/quotes/${q.id}/correos`, cookies: cookie });
     expect(lista.json().correos).toEqual([expect.objectContaining({ tipo: 'bienvenida', estado: 'pendiente' })]);
   });
+
+  it('el correo tecleado y aún sin guardar viaja con el estatus y formaliza (21-oct-2026)', async () => {
+    const q = await evento(null);
+    const formalizar = (correo: string) =>
+      app.inject({ method: 'PATCH', url: `/api/quotes/${q.id}/status`, cookies: cookie, payload: { status: 'formalizada', correo } });
+    // Un correo mal escrito no cuenta: se sigue pidiendo.
+    expect((await formalizar('no-es-correo')).statusCode).toBe(409);
+    expect((await formalizar(' toyota@example.com ')).statusCode).toBe(200);
+    const cliente = await prisma.client.findUniqueOrThrow({ where: { id: q.clientId! } });
+    expect(cliente.correo).toBe('toyota@example.com');
+  });
 });
 
 describe('volver a su estatus no es formalizar (15-oct-2026)', () => {
