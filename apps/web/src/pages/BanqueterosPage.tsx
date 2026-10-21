@@ -16,7 +16,7 @@ import { formatEventDate } from '../lib/date.ts';
 import { coincideTexto } from '@hsa/shared';
 import { useAuth } from '../auth/auth.tsx';
 import { ArrowDivider, Button, Card, Field, SelectInput, TextInput } from '../components/ui.tsx';
-import { TIPOS_PROFESIONAL, TIPO_PROFESIONAL, type TipoProfesional } from '@hsa/shared';
+import { COMISION_HSA_POR_OMISION, TIPOS_PROFESIONAL, TIPO_PROFESIONAL, type TipoProfesional } from '@hsa/shared';
 import { apiErrorMessage, ConfirmDelete } from '../components/admin/shared.tsx';
 import {
   ADMIN_BANQUETEROS_KEY,
@@ -158,15 +158,16 @@ export function BanqueterosPage() {
       <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
         <div>
           <ArrowDivider>Cartera</ArrowDivider>
-          <h1 className="mt-2 font-display text-4xl text-ink">Banqueteros</h1>
+          <h1 className="mt-2 font-display text-4xl text-ink">Clientes</h1>
           <p className="mt-1 text-sm text-charcoal-soft">
-            Quien compra eventos al mayoreo y los revende. Cada uno tiene cuenta corriente.
+            Banqueteros, banquetes de graduación, agencias, wedding planners y otros profesionales. Cada uno
+            tiene cuenta corriente y su comisión de HSA por el paquete de alimentos.
           </p>
         </div>
         {isAdmin && (
           <Button variant="gold" onClick={() => setAlta((a) => !a)}>
             {alta ? <X size={16} /> : <Plus size={16} />}
-            {alta ? 'Cerrar' : 'Nuevo banquetero'}
+            {alta ? 'Cerrar' : 'Nuevo cliente'}
           </Button>
         )}
       </div>
@@ -269,7 +270,9 @@ function AltaBanquetero({
   const [tipo, setTipo] = useState<TipoProfesional>('banquetero');
   const [telefono, setTelefono] = useState('');
   const [correo, setCorreo] = useState('');
+  const [comision, setComision] = useState(String(COMISION_HSA_POR_OMISION));
   const [error, setError] = useState('');
+  const comisionValida = comision.trim() !== '' && Number(comision) >= 0 && Number(comision) <= 100;
 
   const crear = useMutation({
     mutationFn: () =>
@@ -278,8 +281,10 @@ function AltaBanquetero({
         tipo,
         telefono: telefono.trim(),
         correo: correo.trim() || undefined,
+        comisionPct: Number(comision),
       }),
     onSuccess: async () => {
+      setComision(String(COMISION_HSA_POR_OMISION));
       setNombre('');
       setTelefono('');
       setCorreo('');
@@ -287,22 +292,22 @@ function AltaBanquetero({
       await onCreado();
       onCerrar();
     },
-    onError: (e) => setError(apiErrorMessage(e, 'No se pudo crear el banquetero.')),
+    onError: (e) => setError(apiErrorMessage(e, 'No se pudo dar de alta al cliente.')),
   });
 
   function onSubmit(e: FormEvent) {
     e.preventDefault();
     // El teléfono es obligatorio: un banquetero con el que no se puede hablar es
     // una contraparte de la que depende dinero y nadie sabe localizar.
-    if (!nombre.trim() || !telefono.trim()) return;
+    if (!nombre.trim() || !telefono.trim() || !comisionValida) return;
     crear.mutate();
   }
 
   return (
     <Card className="mb-6 p-6">
-      <h2 className="mb-4 font-display text-lg text-ink">Nuevo profesional de eventos</h2>
-      <form onSubmit={onSubmit} className="grid gap-4 sm:grid-cols-[1fr_auto_1fr_1fr_auto] sm:items-end">
-        <Field label="Nombre de la empresa">
+      <h2 className="mb-4 font-display text-lg text-ink">Nuevo cliente</h2>
+      <form onSubmit={onSubmit} className="grid gap-4 sm:grid-cols-2 sm:items-end xl:grid-cols-[1.4fr_auto_1fr_1fr_7rem_auto]">
+        <Field label="Nombre">
           <TextInput
             value={nombre}
             onChange={(e) => setNombre(e.target.value)}
@@ -332,10 +337,13 @@ function AltaBanquetero({
             placeholder="ej. contacto@banquetes.mx"
           />
         </Field>
+        <Field label="Comisión HSA (%)">
+          <TextInput type="number" min={0} max={100} step={0.5} value={comision} onChange={(e) => setComision(e.target.value)} />
+        </Field>
         <Button
           type="submit"
           variant="gold"
-          disabled={crear.isPending || !nombre.trim() || !telefono.trim()}
+          disabled={crear.isPending || !nombre.trim() || !telefono.trim() || !comisionValida}
         >
           {crear.isPending ? 'Guardando…' : 'Agregar'}
         </Button>
@@ -381,6 +389,11 @@ function BanqueteroRow({
         {b.tipo && (
           <span className="ml-2 rounded-full bg-cream-200 px-2 py-0.5 text-[0.65rem] font-semibold uppercase tracking-wide text-ink-500" title={TIPO_PROFESIONAL[b.tipo].label}>
             {TIPO_PROFESIONAL[b.tipo].label}
+          </span>
+        )}
+        {b.comisionPct != null && (
+          <span className="ml-2 text-xs text-charcoal-soft" title="Comisión de HSA por el paquete de alimentos">
+            Comisión {b.comisionPct}%
           </span>
         )}
         <p className="mt-0.5 flex flex-wrap items-center gap-x-3 text-xs text-charcoal-soft">

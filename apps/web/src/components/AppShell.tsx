@@ -80,7 +80,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     { to: '/eventos', icon: <FileText size={18} />, label: 'Eventos' },
     { to: '/agenda', icon: <CalendarDays size={18} />, label: 'Agenda de Eventos' },
     { to: '/agenda/apartados', icon: <CalendarClock size={18} />, label: 'Apartados' },
-    { to: '/banqueteros', icon: <ChefHat size={18} />, label: 'Banqueteros' },
+    { to: '/banqueteros', icon: <ChefHat size={18} />, label: 'Clientes' },
     { to: '/historico', icon: <Archive size={18} />, label: 'Histórico' },
     { to: '/eventos/nuevo', icon: <Plus size={18} />, label: 'Nuevo' },
     { to: '/papelera', icon: <Trash2 size={18} />, label: 'Papelera', badge: pendientes },

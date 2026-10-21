@@ -224,31 +224,28 @@ describe('comisión congelada, quién cobra y servicios del banquetero', () => {
     expect(despues.lines).toEqual(b.lines);
   });
 
-  it('el paquete lleva la comisión de la agencia (el banquetero del evento), congelada al venderlo', async () => {
+  it('el paquete lleva la comisión de HSA del cliente o agencia; sin ellos, la del evento (21-oct-2026)', async () => {
     const ban = await prisma.banquetero.create({ data: { nombre: `Agencia ${SUF}`, telefono: '5514141415' } });
-    const alimentosDe = (ev: { desglose: { tipo: string }[] }) => ev.desglose.find((r) => r.tipo === 'alimentos')!;
-    // Sin comisión en el catálogo: nada que reportar.
-    const sinComision = await evento({ banqueteroId: ban.id });
-    expect(alimentosDe(await desgloseDe(sinComision.id))).toMatchObject({ comision: null, agencia: { clave: ban.id, nombre: `Agencia ${SUF}` } });
+    const alimentosDe = (ev: { desglose: { tipo: string }[] }) =>
+      ev.desglose.find((r) => r.tipo === 'alimentos') as unknown as { subtotal: number; comision: { porcentaje: number; monto: number }; agencia: unknown };
 
-    await editarPaquete(prisma, catalogoId, paquete.id, { comisionPct: 12 }, admin);
+    // El cliente nace con 10%.
+    const q = await evento({ banqueteroId: ban.id });
+    const r = alimentosDe(await desgloseDe(q.id));
+    expect(r).toMatchObject({ comision: { porcentaje: 10 }, agencia: { clave: ban.id, nombre: `Agencia ${SUF}` } });
+    expect(r.comision.monto).toBe(Math.round(r.subtotal * 10) / 100);
+
+    // Se cambia en su ficha: manda la del cliente, no la del paquete del catálogo.
+    await prisma.banquetero.update({ where: { id: ban.id }, data: { comisionPct: 12 } });
+    await editarPaquete(prisma, catalogoId, paquete.id, { comisionPct: 15 }, admin);
     try {
-      const q = await evento({ banqueteroId: ban.id });
-      const r = alimentosDe(await desgloseDe(q.id)) as unknown as { subtotal: number; comision: { porcentaje: number; monto: number } };
-      expect(r.comision.porcentaje).toBe(12);
-      expect(r.comision.monto).toBe(Math.round(r.subtotal * 12) / 100);
-      const c = await get('/api/bi/catalogos');
-      expect(c.paquetesAlimentos.find((x: { id: string }) => x.id === paquete.id)).toMatchObject({ clave: paquete.clave, comisionPct: 12 });
-
-      // El catálogo cambia después: el evento se queda con el 12 %, y el que ya
-      // estaba sin comisión sigue sin ella.
-      await editarPaquete(prisma, catalogoId, paquete.id, { comisionPct: 15 }, admin);
       expect(alimentosDe(await desgloseDe(q.id))).toMatchObject({ comision: { porcentaje: 12 } });
-      expect(alimentosDe(await desgloseDe(sinComision.id))).toMatchObject({ comision: null });
 
-      // Sin banquetero no hay agencia, pero la comisión del paquete sí se reporta.
+      // Sin cliente ni agencia: la del evento (10% si no se puso otra).
       const sinAgencia = await evento();
-      expect(alimentosDe(await desgloseDe(sinAgencia.id))).toMatchObject({ agencia: null, comision: { porcentaje: 15 } });
+      expect(alimentosDe(await desgloseDe(sinAgencia.id))).toMatchObject({ agencia: null, comision: { porcentaje: 10 } });
+      await prisma.quote.update({ where: { id: sinAgencia.id }, data: { comisionPct: 7 } });
+      expect(alimentosDe(await desgloseDe(sinAgencia.id))).toMatchObject({ comision: { porcentaje: 7 } });
     } finally {
       await editarPaquete(prisma, catalogoId, paquete.id, { comisionPct: null }, admin);
     }

@@ -470,6 +470,17 @@ export function EditQuotePage() {
             cargosContrato={cargosContrato}
             onCorreoChange={setCorreoTecleado}
           />
+          {/* La agencia y la comisión de HSA del paquete, a la vista: abajo de
+              la bitácora nadie las encontraba (21-oct-2026). */}
+          {quoteQ.data?.paquete && (
+            <AgenciaPaquete
+              quoteId={quote.id}
+              paquete={quoteQ.data.paquete}
+              agencia={quote.agencia ?? null}
+              banqueteroDelEvento={quote.banquetero ?? null}
+              readOnly={congelado}
+            />
+          )}
           <PagosPanel
             quoteId={quote.id}
             publicToken={quote.publicToken}
@@ -558,8 +569,9 @@ export function EditQuotePage() {
         />
       )}
 
-      {/* El paquete de alimentos y la agencia que paga su comisión (BI #4). */}
-      {quoteQ.data?.paquete && (
+      {/* El paquete de alimentos y la agencia que paga su comisión (BI #4). Si el
+          evento se edita, va arriba, junto al formulario (21-oct-2026). */}
+      {!editable && quoteQ.data?.paquete && (
         <AgenciaPaquete
           quoteId={quote.id}
           paquete={quoteQ.data.paquete}
