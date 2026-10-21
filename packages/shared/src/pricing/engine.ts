@@ -1,7 +1,8 @@
-import type { Catalog, QuoteBreakdown, QuoteLine } from '../types.js';
+import type { Catalog, QuoteBreakdown, QuoteLine, RentalPriceRow } from '../types.js';
 import type { QuoteSelection } from '../schemas.js';
 import { findBracket, nivelConExtras } from './brackets.js';
 import { bracketDeParte, capacidadTotal, repartirInvitados } from './reparto.js';
+import { tablaDeRenta } from './tablasRenta.js';
 import { COLUMNAS_BASE, NOMBRE_DIA_SEMANA, columnaDeFecha, diaYMes, precioEnColumna, type ColumnaRenta } from './columnasRenta.js';
 
 /**
@@ -22,8 +23,8 @@ function round2(n: number): number {
  * Motor de precios (función pura). Recibe el catálogo y las selecciones y
  * devuelve el desglose congelado. Reglas:
  * - Renta de catálogo: precio(espacio, rango, tipoDía), CON IVA ya incluido; suma
- *   de espacios. Team Building (rentaPlana) usa una tabla PLANA: el mismo precio
- *   para cualquier día.
+ *   de espacios, con la tabla de renta que tenga elegido el tipo de evento (la
+ *   de siempre, o p. ej. la plana de Team Building: el mismo precio cualquier día).
  * - Descuento de cortesía: `descuentoPct`% de la renta de catálogo. NO es un
  *   descuento más al final: CAMBIA EL PRECIO DE LA RENTA. El resultado
  *   (`rentaBase`) es el precio efectivo, y todo lo que se deriva del precio de la
@@ -64,9 +65,8 @@ export function computeQuote(
 
   // 1. Renta de espacios de CATÁLOGO (con IVA) — suma de espacios. Todavía no es
   // la base de nada: el descuento de cortesía la convierte en el precio efectivo.
-  // Team Building usa la tabla PLANA (mismo precio todos los días); el resto, por-día.
-  const usaFlat = sel.eventTypeId != null && catalog.flatRentalEventTypeIds.includes(sel.eventTypeId);
-  const rentalRows = usaFlat ? catalog.rentalPricesFlat : catalog.rentalPrices;
+  // Cada tipo de evento se cobra con SU tabla (p. ej. Team Building, la plana).
+  const { rows: rentalRows, nombre: nombreTabla } = tablaDeRenta(catalog, sel.eventTypeId);
   //
   // Con VARIOS salones la gente se reparte entre ellos y cada uno cobra según la
   // que le toca: 600 invitados en dos salones de 400 son 300 en cada uno. Antes
@@ -96,7 +96,7 @@ export function computeQuote(
     if (precioDia == null) {
       const espacio = catalog.spaceNames?.[spaceId] ?? 'El espacio elegido';
       const dia = NOMBRE_DIA_SEMANA[diaSemana];
-      throw new Error(`${espacio} no se ofrece en ${dia}${usaFlat ? ' con renta plana' : ''}.`);
+      throw new Error(`${espacio} no se ofrece en ${dia}${nombreTabla ? ` (${nombreTabla})` : ''}.`);
     }
     // Personas extra: si se pasa del nivel anterior por poquito, se cobra ese
     // nivel más cada persona extra a precio del nivel entre su tope (Arcos sábado:
@@ -387,8 +387,12 @@ export function porPersonaDelNivel(
 ): { renta: number | null; alimentos: number | null } {
   const col = columnaDelEvento(catalog, sel.fecha);
   const tol = catalog.toleranciaExtras ?? 0;
-  const usaFlat = sel.eventTypeId != null && catalog.flatRentalEventTypeIds.includes(sel.eventTypeId);
-  const rentalRows = usaFlat ? catalog.rentalPricesFlat : catalog.rentalPrices;
+  let rentalRows: RentalPriceRow[];
+  try {
+    rentalRows = tablaDeRenta(catalog, sel.eventTypeId).rows;
+  } catch {
+    return { renta: null, alimentos: null };
+  }
   const reparto = repartirInvitados(sel.spaceIds, rentalRows, sel.invitados);
   let precio = 0;
   let topes = 0;

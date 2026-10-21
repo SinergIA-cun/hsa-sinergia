@@ -1,7 +1,7 @@
 import type { PrismaClient } from '@hsa/database';
 import { COLUMNAS_BASE } from '@hsa/shared';
 import { QuoteError } from '../quotes/service.js';
-import { columnasDe, preciosDe } from '../catalog/loader.js';
+import { columnasDe, preciosDe, tablasDe } from '../catalog/loader.js';
 
 /**
  * Todo lo editable de UN catálogo, con los ids que necesita el editor.
@@ -20,7 +20,7 @@ export async function contenidoDeCatalogo(db: PrismaClient, priceListId: string)
   const priceList = await db.priceList.findUnique({ where: { id: priceListId } });
   if (!priceList) throw new QuoteError(404, `El catálogo ${priceListId} no existe`);
 
-  const [renta, columnas, espacios, servicios, paquetes, dj, eventTypes] = await Promise.all([
+  const [renta, columnas, tablas, espacios, servicios, paquetes, dj, eventTypes] = await Promise.all([
     db.rentalPrice.findMany({
       where: { priceListId },
       include: { space: { select: { nombre: true } } },
@@ -29,6 +29,7 @@ export async function contenidoDeCatalogo(db: PrismaClient, priceListId: string)
       orderBy: [{ space: { nombre: 'asc' } }, { tipo: 'asc' }, { min: 'asc' }],
     }),
     columnasDe(db, priceListId),
+    tablasDe(db, priceListId),
     db.space.findMany({ orderBy: { nombre: 'asc' }, select: { id: true, nombre: true, activo: true } }),
     db.addOn.findMany({ where: { priceListId }, orderBy: { nombre: 'asc' } }),
     db.foodPackage.findMany({
@@ -66,6 +67,8 @@ export async function contenidoDeCatalogo(db: PrismaClient, priceListId: string)
     })),
     // Sin columnas guardadas, las cuatro de siempre: el editor las muestra igual.
     columnasRenta: columnas.length ? columnas : [...COLUMNAS_BASE],
+    // Las hojas de renta y a qué tipos de evento aplica cada una.
+    tablasRenta: tablas,
     // Todos los salones, para poder agregar uno a la tabla.
     espacios,
     servicios: servicios.map((s) => ({

@@ -24,6 +24,7 @@ export * from './eventos/ciclo.js';
 export * from './espacios/orden.js';
 export * from './pricing/precioDelDia.js';
 export * from './pricing/columnasRenta.js';
+export * from './pricing/tablasRenta.js';
 export * from './marca.js';
 export * from './profesionales.js';
 export * from './whatsapp.js';

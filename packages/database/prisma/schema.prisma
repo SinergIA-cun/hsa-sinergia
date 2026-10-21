@@ -145,6 +145,7 @@ model PriceList {
 
   rentalPrices RentalPrice[]
   columnasRenta ColumnaRenta[]
+  tablasRenta  TablaRenta[]
   addOns       AddOn[]
   foodPackages FoodPackage[]
   djPrices     DjHoraExtraPrice[]
@@ -199,7 +200,9 @@ model RentalPrice {
   /// viernesEspecial, sabado, domAJue); desde el 16-oct-2026 las columnas las
   /// define cada catálogo.
   precios         Json      @default("{}")
-  /// "dia" = renta por tipo de día · "plano" = renta plana (Team Building).
+  /// La tabla de renta a la que pertenece: la `clave` de una `TablaRenta` del
+  /// catálogo. "dia" (Renta) y "plano" (Renta plana, Team Building) son las dos
+  /// de siempre; desde el 21-oct-2026 cada catálogo puede tener las que quiera.
   /// Antes vivía en PriceList, lo que obligaba a tener DOS listas por año y
   /// dejaba la plana fuera del filtro `activa`.
   tipo            String    @default("dia")
@@ -226,6 +229,24 @@ model ColumnaRenta {
   /// Clave de la columna con cuyo precio se cobra si esta no tiene.
   respaldo    String?
   orden       Int
+
+  @@unique([priceListId, clave])
+}
+
+/// Una tabla ("hoja") de renta de un catálogo y a qué tipos de evento se le
+/// cobra con ella (21-oct-2026). Sus renglones son los `RentalPrice` con
+/// `tipo = clave`. Un catálogo SIN tablas usa las dos de siempre: "dia" para
+/// todos los tipos y "plano" para los de `EventType.rentaPlana`.
+model TablaRenta {
+  id           String    @id @default(cuid())
+  priceList    PriceList @relation(fields: [priceListId], references: [id], onDelete: Cascade)
+  priceListId  String
+  /// Llave de sus renglones (`RentalPrice.tipo`). No cambia al renombrar.
+  clave        String
+  nombre       String
+  /// Tipos de evento que se cobran con esta tabla. Un tipo va en una sola.
+  eventTypeIds String[]
+  orden        Int
 
   @@unique([priceListId, clave])
 }

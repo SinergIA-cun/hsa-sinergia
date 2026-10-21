@@ -156,6 +156,8 @@ export function CatalogoEditor({
           <RentaSeccion
             renta={c.renta}
             columnas={c.columnasRenta}
+            tablas={c.tablasRenta}
+            eventTypes={c.eventTypes}
             espacios={c.espacios}
             enUso={impactoQ.data?.impacto.total ?? 0}
             onGuardar={(tabla: TablaRentaPayload) => conInvalidacion(() => api.put(`${base}/renta`, tabla))}

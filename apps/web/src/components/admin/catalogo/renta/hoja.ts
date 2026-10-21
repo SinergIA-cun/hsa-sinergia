@@ -1,5 +1,5 @@
 import { validarBrackets, validarColumnas, type ColumnaRenta } from '@hsa/shared';
-import type { RentaRenglon } from '../../../../lib/types.ts';
+import type { RentaRenglon, TablaRentaCatalogo } from '../../../../lib/types.ts';
 
 /**
  * El estado de la hoja de renta mientras se edita. Todo en texto: una celda
@@ -11,7 +11,8 @@ export interface Fila {
   id?: string;
   spaceId: string;
   espacio: string;
-  tipo: 'dia' | 'plano';
+  /** La clave de su tabla. */
+  tipo: string;
   min: string;
   max: string;
   precios: Record<string, string>;
@@ -19,21 +20,24 @@ export interface Fila {
 
 export interface Hoja {
   columnas: ColumnaRenta[];
+  /** Las tablas de renta en su orden, con los tipos de evento de cada una. */
+  tablas: TablaRentaCatalogo[];
   filas: Fila[];
 }
 
 let consecutivo = 0;
 export const claveNueva = (prefijo: string) => `${prefijo}${Date.now().toString(36)}${(consecutivo++).toString(36)}`;
 
-export function hojaDe(renta: RentaRenglon[], columnas: ColumnaRenta[]): Hoja {
+export function hojaDe(renta: RentaRenglon[], columnas: ColumnaRenta[], tablas: TablaRentaCatalogo[]): Hoja {
   return {
     columnas: columnas.map((c) => ({ ...c, dias: [...c.dias], meses: [...c.meses] })),
+    tablas: tablas.map((t) => ({ ...t, eventTypeIds: [...t.eventTypeIds] })),
     filas: renta.map((r) => ({
       key: r.id,
       id: r.id,
       spaceId: r.spaceId,
       espacio: r.espacio,
-      tipo: r.tipo === 'plano' ? 'plano' : 'dia',
+      tipo: r.tipo,
       min: String(r.min),
       max: r.max == null ? '' : String(r.max),
       precios: Object.fromEntries(columnas.map((c) => [c.clave, r.precios[c.clave] == null ? '' : String(r.precios[c.clave])])),
@@ -61,6 +65,11 @@ export interface Revision {
 export function revisar(hoja: Hoja): Revision {
   const { errores, avisos } = validarColumnas(hoja.columnas);
   const celdasMalas = new Set<string>();
+  const nombreTabla = new Map(hoja.tablas.map((t) => [t.clave, t.nombre.trim()]));
+  if (hoja.tablas.length === 0) errores.push('Tiene que quedar al menos una tabla de renta.');
+  if (hoja.tablas.some((t) => t.nombre.trim() === '')) errores.push('Ponle nombre a cada tabla.');
+  const nombres = hoja.tablas.map((t) => t.nombre.trim().toLowerCase()).filter(Boolean);
+  if (new Set(nombres).size !== nombres.length) errores.push('Hay dos tablas con el mismo nombre.');
   const grupos = new Map<string, { espacio: string; tipo: string; rangos: { min: number; max: number | null }[] }>();
   for (const f of hoja.filas) {
     const min = leerEntero(f.min);
@@ -77,7 +86,8 @@ export function revisar(hoja: Hoja): Revision {
   }
   for (const g of grupos.values()) {
     const p = validarBrackets(g.rangos);
-    if (p.length) errores.push(`${g.espacio}${g.tipo === 'plano' ? ' (renta plana)' : ''}: ${p.join('; ')}.`);
+    const deTabla = hoja.tablas.length > 1 ? ` (${nombreTabla.get(g.tipo) || 'tabla sin nombre'})` : '';
+    if (p.length) errores.push(`${g.espacio}${deTabla}: ${p.join('; ')}.`);
   }
   if (celdasMalas.size) errores.push('Hay precios que no son pesos enteros (sin centavos).');
   return { errores, avisos, celdasMalas };
@@ -87,6 +97,7 @@ export function revisar(hoja: Hoja): Revision {
 export function aPayload(hoja: Hoja) {
   return {
     columnas: hoja.columnas,
+    tablas: hoja.tablas.map((t) => ({ ...t, nombre: t.nombre.trim() })),
     renglones: hoja.filas.map((f) => ({
       ...(f.id ? { id: f.id } : {}),
       spaceId: f.spaceId,
