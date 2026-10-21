@@ -74,7 +74,7 @@ export function BanqueteroPage() {
         to="/banqueteros"
         className="mb-4 inline-flex items-center gap-1.5 text-sm text-charcoal-soft hover:text-ink"
       >
-        <ArrowLeft size={15} /> Banqueteros
+        <ArrowLeft size={15} /> Clientes
       </Link>
 
       <div className="mb-8 flex flex-wrap items-end justify-between gap-4">
@@ -99,6 +99,7 @@ export function BanqueteroPage() {
         telefono={banquetero.telefono}
         correo={banquetero.correo}
         tipo={banquetero.tipo}
+        comisionPct={banquetero.comisionPct ?? 10}
         onGuardado={invalidar}
       />
 

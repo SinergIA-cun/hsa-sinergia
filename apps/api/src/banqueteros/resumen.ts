@@ -26,6 +26,8 @@ export interface ResumenBanquetero {
   tipo: string;
   telefono: string | null;
   correo: string | null;
+  /** Comisión de HSA por el paquete de alimentos de sus eventos. */
+  comisionPct: number;
   activo: boolean;
   publicToken: string;
   /** Cotizaciones vivas suyas (sin papelera). Los apartados NO cuentan: no son ventas. */
@@ -126,6 +128,7 @@ export async function resumenBanqueteros(
       tipo: b.tipo,
       telefono: b.telefono,
       correo: b.correo,
+      comisionPct: b.comisionPct,
       activo: b.activo,
       publicToken: b.publicToken,
       eventos: eventosPorBanquetero.get(b.id) ?? 0,

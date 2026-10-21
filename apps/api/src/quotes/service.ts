@@ -20,6 +20,8 @@ import {
   type QuoteSelection,
   formasSinNotas,
   TIPOS_CLIENTE,
+  comisionDelEvento,
+  type QuoteBreakdown as DesgloseCotizacion,
 } from '@hsa/shared';
 import { loadCatalog } from '../catalog/loader.js';
 import { getAvailability } from '../availability/service.js';
@@ -145,9 +147,9 @@ export const includeRels = {
   priceList: { select: { id: true, nombre: true, anio: true } },
   // El banquetero por nombre: el formulario tiene que poder reabrir la cotización
   // en modo "Banquetero" y enseñar de quién se trata sin otra consulta.
-  banquetero: { select: { id: true, nombre: true, telefono: true } },
+  banquetero: { select: { id: true, nombre: true, telefono: true, comisionPct: true } },
   // La agencia del paquete (BI #4): aparte del banquetero-cliente.
-  agencia: { select: { id: true, nombre: true } },
+  agencia: { select: { id: true, nombre: true, comisionPct: true } },
   // Quién cerró el evento ("Cerrar evento", 15-oct-2026).
   cerradoBy: { select: { nombre: true } },
   // Los servicios sueltos del evento: no viven en el catálogo, así que la única
@@ -1909,9 +1911,20 @@ export async function getQuote(db: PrismaClient, id: string, actor: Actor) {
     codigos,
     // Si está cancelado: lo acordado, lo devuelto y lo que falta devolver.
     cancelacion,
-    // El paquete de alimentos y su agencia (BI #4).
-    paquete,
+    // El paquete de alimentos y su agencia (BI #4), con la comisión de HSA
+    // (21-oct-2026): de la agencia o cliente profesional, o la del evento.
+    paquete: paquete ? { ...paquete, comision: comisionDelPaquete(quote) } : null,
   };
+}
+
+/** La comisión de HSA del paquete: %, de dónde sale y cuánto es sobre el subtotal de alimentos. */
+function comisionDelPaquete(quote: Parameters<typeof comisionDelEvento>[0] & { breakdown: unknown }) {
+  const c = comisionDelEvento(quote);
+  const lineas = ((quote.breakdown as DesgloseCotizacion | null)?.lines ?? []).filter((l) => l.ref?.tipo === 'alimentos');
+  // El IVA de los alimentos es el general; el subtotal es la base de la comisión.
+  const iva = 1.16;
+  const subtotal = lineas.reduce((s, l) => s + (l.ivaIncluido ? l.monto / iva : l.monto), 0);
+  return { ...c, monto: lineas.length ? Math.round(subtotal * c.pct) / 100 : null };
 }
 
 /** Vista pública por token: cotización + estado de cuenta con pagos. */

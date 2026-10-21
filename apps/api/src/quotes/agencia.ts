@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import type { PrismaClient } from '@hsa/database';
-import type { QuoteBreakdown } from '@hsa/shared';
+import { COMISION_HSA_POR_OMISION, type QuoteBreakdown } from '@hsa/shared';
 import { QuoteError, ownershipWhere, assertNotTrashed, type Actor } from './service.js';
 import { logActivity } from './activityLog.js';
 
@@ -31,6 +31,34 @@ export async function paqueteDelEvento(
   return { clave: ref.paqueteClave, nombre: p?.nombre ?? 'Paquete', comisionMonto: ref.comisionMonto ?? null, origen: 'pactado' };
 }
 
+export const comisionSchema = z.object({ comisionPct: z.number().min(0).max(100) });
+
+/**
+ * La comisión de HSA de un evento SIN agencia ni cliente profesional (21-oct-2026):
+ * el proveedor de alimentos no siempre se da de alta, así que vive en el evento.
+ * Con agencia o cliente, manda la de su ficha y aquí no se cambia.
+ */
+export async function cambiarComision(db: PrismaClient, quoteId: string, rawInput: unknown, actor: Actor) {
+  const { comisionPct } = comisionSchema.parse(rawInput);
+  const quote = await db.quote.findFirst({ where: { id: quoteId, ...ownershipWhere(actor) } });
+  if (!quote) throw new QuoteError(404, 'Cotización no encontrada');
+  assertNotTrashed(quote);
+  if (quote.agenciaId || quote.banqueteroId) {
+    throw new QuoteError(409, 'La comisión de este evento es la de su cliente o agencia: cámbiala en su ficha de Clientes.');
+  }
+  const antes = quote.comisionPct ?? COMISION_HSA_POR_OMISION;
+  if (antes === comisionPct) return { comisionPct };
+  await db.quote.update({ where: { id: quoteId }, data: { comisionPct } });
+  await logActivity(db, {
+    quoteId,
+    tipo: 'edicion',
+    descripcion: `Comisión de HSA del evento: ${antes}% → ${comisionPct}%`,
+    meta: { comisionAntes: antes, comisionDespues: comisionPct },
+    actorId: actor.id,
+  });
+  return { comisionPct };
+}
+
 export async function cambiarAgencia(db: PrismaClient, quoteId: string, rawInput: unknown, actor: Actor) {
   const { agenciaId } = agenciaSchema.parse(rawInput);
   const quote = await db.quote.findFirst({
@@ -41,7 +69,7 @@ export async function cambiarAgencia(db: PrismaClient, quoteId: string, rawInput
   assertNotTrashed(quote);
   if (!(await paqueteDelEvento(db, quote))) throw new QuoteError(409, 'El evento no tiene paquete de alimentos: no hay agencia que poner.');
   const nueva = agenciaId ? await db.banquetero.findUnique({ where: { id: agenciaId }, select: { id: true, nombre: true } }) : null;
-  if (agenciaId && !nueva) throw new QuoteError(400, 'Esa agencia no está en la lista de banqueteros.');
+  if (agenciaId && !nueva) throw new QuoteError(400, 'Esa agencia no está en la lista de Clientes.');
   if ((quote.agenciaId ?? null) === agenciaId) return { agencia: nueva };
 
   await db.quote.update({ where: { id: quoteId }, data: { agenciaId } });

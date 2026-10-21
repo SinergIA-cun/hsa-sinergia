@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { useMutation } from '@tanstack/react-query';
-import { AlertTriangle, Mail, Pencil, Phone, Save, X } from 'lucide-react';
+import { AlertTriangle, Mail, Pencil, Percent, Phone, Save, X } from 'lucide-react';
 import { api } from '../../lib/api.ts';
 import { useAuth } from '../../auth/auth.tsx';
 import { Button, Card, Field, SelectInput, TextInput } from '../ui.tsx';
@@ -14,6 +14,8 @@ interface Props {
   telefono: string | null;
   correo: string | null;
   tipo?: TipoProfesional;
+  /** Comisión de HSA por el paquete de alimentos de sus eventos (21-oct-2026). */
+  comisionPct?: number;
   onGuardado: () => Promise<void>;
 }
 
@@ -29,11 +31,13 @@ interface Props {
  * incompletos hasta que alguien capture el de verdad. Un teléfono inventado para
  * cumplir una validación se ve igual que uno real, y es peor.
  */
-export function ContactoBanquetero({ banqueteroId, nombre, telefono, correo, tipo = 'banquetero', onGuardado }: Props) {
+export function ContactoBanquetero({ banqueteroId, nombre, telefono, correo, tipo = 'banquetero', comisionPct = 10, onGuardado }: Props) {
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin';
   const [editando, setEditando] = useState(false);
-  const [form, setForm] = useState({ nombre, tipo, telefono: telefono ?? '', correo: correo ?? '' });
+  const inicial = { nombre, tipo, telefono: telefono ?? '', correo: correo ?? '', comision: String(comisionPct) };
+  const [form, setForm] = useState(inicial);
+  const comisionValida = form.comision.trim() !== '' && Number(form.comision) >= 0 && Number(form.comision) <= 100;
   const [error, setError] = useState('');
 
   const guardar = useMutation({
@@ -43,6 +47,7 @@ export function ContactoBanquetero({ banqueteroId, nombre, telefono, correo, tip
         tipo: form.tipo,
         telefono: form.telefono.trim() || null,
         correo: form.correo.trim() || null,
+        comisionPct: Number(form.comision),
       }),
     onSuccess: async () => {
       setError('');
@@ -54,7 +59,7 @@ export function ContactoBanquetero({ banqueteroId, nombre, telefono, correo, tip
 
   function onSubmit(e: FormEvent) {
     e.preventDefault();
-    if (!form.nombre.trim() || !form.telefono.trim()) return;
+    if (!form.nombre.trim() || !form.telefono.trim() || !comisionValida) return;
     guardar.mutate();
   }
 
@@ -76,6 +81,9 @@ export function ContactoBanquetero({ banqueteroId, nombre, telefono, correo, tip
           <span className="inline-flex items-center gap-1.5 text-charcoal-soft">
             <Mail size={14} /> {correo ?? 'Sin correo'}
           </span>
+          <span className="inline-flex items-center gap-1.5 text-charcoal-soft" title="Comisión de HSA por el paquete de alimentos de sus eventos">
+            <Percent size={14} className="text-gold" /> Comisión HSA {comisionPct}%
+          </span>
         </div>
         {isAdmin && (
           <Button
@@ -84,7 +92,7 @@ export function ContactoBanquetero({ banqueteroId, nombre, telefono, correo, tip
             className="px-3 py-1.5 text-xs"
             onClick={() => setEditando(true)}
           >
-            <Pencil size={13} /> Editar contacto
+            <Pencil size={13} /> Editar datos
           </Button>
         )}
       </Card>
@@ -93,7 +101,7 @@ export function ContactoBanquetero({ banqueteroId, nombre, telefono, correo, tip
 
   return (
     <Card className="mb-6 p-5">
-      <form onSubmit={onSubmit} className="grid gap-4 sm:grid-cols-4">
+      <form onSubmit={onSubmit} className="grid gap-4 sm:grid-cols-5">
         <Field label="Nombre">
           <TextInput
             value={form.nombre}
@@ -124,6 +132,17 @@ export function ContactoBanquetero({ banqueteroId, nombre, telefono, correo, tip
             placeholder="ej. contacto@banquetes.mx"
           />
         </Field>
+        <Field label="Comisión HSA (%)" hint="Por el paquete de alimentos de sus eventos.">
+          <TextInput
+            type="number"
+            min={0}
+            max={100}
+            step={0.5}
+            value={form.comision}
+            onChange={(e) => setForm((f) => ({ ...f, comision: e.target.value }))}
+            className={comisionValida ? undefined : 'border-wine'}
+          />
+        </Field>
       </form>
       {error && <p className="mt-3 text-sm text-wine">{error}</p>}
       <div className="mt-4 flex items-center gap-2">
@@ -131,7 +150,7 @@ export function ContactoBanquetero({ banqueteroId, nombre, telefono, correo, tip
           type="button"
           variant="gold"
           className="px-3 py-1.5 text-xs"
-          disabled={guardar.isPending || !form.nombre.trim() || !form.telefono.trim()}
+          disabled={guardar.isPending || !form.nombre.trim() || !form.telefono.trim() || !comisionValida}
           onClick={onSubmit}
         >
           <Save size={13} /> {guardar.isPending ? 'Guardando…' : 'Guardar'}
@@ -143,7 +162,7 @@ export function ContactoBanquetero({ banqueteroId, nombre, telefono, correo, tip
           onClick={() => {
             setEditando(false);
             setError('');
-            setForm({ nombre, tipo, telefono: telefono ?? '', correo: correo ?? '' });
+            setForm(inicial);
           }}
         >
           <X size={13} /> Cancela

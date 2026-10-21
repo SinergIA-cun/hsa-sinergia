@@ -14,6 +14,8 @@ const banqueteroCreateSchema = z.object({
   // El correo es opcional.
   telefono: z.string().min(1, 'El teléfono del banquetero es obligatorio').max(40),
   correo: z.string().max(200).nullish(),
+  /** Comisión de HSA por el paquete de alimentos de sus eventos (nace en 10%). */
+  comisionPct: z.number().min(0).max(100).optional(),
 });
 
 const banqueteroUpdateSchema = z.object({
@@ -24,6 +26,7 @@ const banqueteroUpdateSchema = z.object({
   // retroactivamente. La ficha los marca como incompletos.
   telefono: z.string().max(40).nullable().optional(),
   correo: z.string().max(200).nullable().optional(),
+  comisionPct: z.number().min(0).max(100).optional(),
   activo: z.boolean().optional(),
 });
 

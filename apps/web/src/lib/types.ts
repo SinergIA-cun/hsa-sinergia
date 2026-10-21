@@ -503,6 +503,8 @@ export interface PaqueteDelEvento {
   nombre: string;
   comisionMonto: number | null;
   origen: 'catalogo' | 'pactado';
+  /** La comisión de HSA (21-oct-2026): de la agencia o cliente, o del evento. */
+  comision?: { pct: number; fuente: 'cliente' | 'evento'; de: string | null; monto: number | null };
 }
 
 export interface ResumenCancelacion {
@@ -644,6 +646,8 @@ export interface Banquetero {
   tipo?: TipoProfesional;
   telefono?: string | null;
   correo?: string | null;
+  /** Comisión de HSA por el paquete de alimentos de sus eventos (nace en 10%). */
+  comisionPct?: number;
   activo: boolean;
   createdAt?: string;
 }
@@ -806,6 +810,7 @@ export interface EstadoCuentaBanquetero {
     tipo?: TipoProfesional;
     telefono: string | null;
     correo: string | null;
+    comisionPct?: number;
     activo: boolean;
     publicToken: string;
   };
@@ -871,6 +876,7 @@ export interface ResumenBanquetero {
   tipo?: TipoProfesional;
   telefono: string | null;
   correo: string | null;
+  comisionPct?: number;
   activo: boolean;
   publicToken: string;
   eventos: number;

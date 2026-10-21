@@ -45,7 +45,7 @@ describe('tipo de profesional', () => {
     expect(alta.statusCode).toBe(201);
     banqueteroId = alta.json().banquetero.id;
     expect(alta.json().banquetero.tipo).toBe('weddingPlanner');
-    const malo = await app.inject({ method: 'PATCH', url: `/api/admin/banqueteros/${banqueteroId}`, cookies: cookie, payload: { tipo: 'otro' } });
+    const malo = await app.inject({ method: 'PATCH', url: `/api/admin/banqueteros/${banqueteroId}`, cookies: cookie, payload: { tipo: 'inventado' } });
     expect(malo.statusCode).toBe(400);
 
     const arcosId = (await prisma.space.findFirstOrThrow({ where: { nombre: 'Arcos' } })).id;

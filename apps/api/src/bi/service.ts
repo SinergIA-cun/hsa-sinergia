@@ -1,5 +1,5 @@
 import type { PrismaClient } from '@hsa/database';
-import { TIPO_PROFESIONAL, type TipoProfesional } from '@hsa/shared';
+import { TIPO_PROFESIONAL, comisionDelEvento, type TipoProfesional } from '@hsa/shared';
 import { resumenCancelacion } from '../quotes/ciclo.js';
 import {
   restarDinero,
@@ -44,8 +44,8 @@ const incluirEvento = {
   client: true,
   eventType: { select: { nombre: true, slug: true } },
   createdBy: { select: { id: true, nombre: true } },
-  banquetero: { select: { id: true, nombre: true, tipo: true } },
-  agencia: { select: { id: true, nombre: true, tipo: true } },
+  banquetero: { select: { id: true, nombre: true, tipo: true, comisionPct: true } },
+  agencia: { select: { id: true, nombre: true, tipo: true, comisionPct: true } },
   apartado: { select: { importadoBI: true } },
   priceList: { select: { ivaRate: true } },
   serviciosBanquetero: { select: { nombre: true, cantidad: true, monto: true }, orderBy: { id: 'asc' as const } },
@@ -98,8 +98,9 @@ function desgloseDelEvento(
     rentaTotal: number;
     total: number;
     priceList: { ivaRate: number } | null;
-    banquetero: { id: string; nombre: string; tipo: TipoProfesional } | null;
-    agencia: { id: string; nombre: string; tipo: TipoProfesional } | null;
+    comisionPct: number | null;
+    banquetero: { id: string; nombre: string; tipo: TipoProfesional; comisionPct: number } | null;
+    agencia: { id: string; nombre: string; tipo: TipoProfesional; comisionPct: number } | null;
     serviciosBanquetero: { nombre: string; cantidad: number; monto: number | null }[];
   },
   refs: Awaited<ReturnType<typeof referenciasDelDesglose>>,
@@ -123,9 +124,13 @@ function desgloseDelEvento(
       : r.tipo === 'pactado' ? pactadoPaquete?.clave ?? null
       : null;
     const datos = congelado ?? (servicio ? { proveedorId: servicio.proveedorId, comisionPct: servicio.comisionPct, cobra: servicio.cobra } : null);
+    // El paquete de alimentos lleva la comisión de HSA del evento (21-oct-2026):
+    // la de su agencia o cliente profesional, o la que se puso en el evento (10%).
+    // El % que el renglón congeló del paquete del catálogo ya no manda.
+    void paqueteCongelado;
     const pct =
       r.tipo === 'alimentos'
-        ? (paqueteCongelado ? paqueteCongelado.comisionPct : paquete?.comisionPct ?? null)
+        ? comisionDelEvento(q).pct
         : datos?.proveedorId ? datos.comisionPct : null;
     return {
       ...r,
@@ -290,6 +295,8 @@ export async function biEventos(db: PrismaClient, r: RangoBI) {
     vendedora: q.createdBy ? { id: q.createdBy.id, nombre: q.createdBy.nombre } : null,
     // `tipo`: B, BG, A o WP (reunión del 15-oct-2026).
     banquetero: q.banquetero ? { id: q.banquetero.id, nombre: q.banquetero.nombre, tipo: TIPO_PROFESIONAL[q.banquetero.tipo].codigo } : null,
+    // La comisión de HSA por el paquete (21-oct-2026): de la agencia o cliente, o del evento.
+    comisionHSA: (({ pct, fuente }) => ({ porcentaje: pct, fuente }))(comisionDelEvento(q)),
     // Dos bloques separados: la renta la cobra la hacienda, lo demás se paga al proveedor.
     renta: { subtotal: rentaSubtotalDe(q.breakdown), total: q.rentaTotal },
     otros: { total: restarDinero(q.total, q.rentaTotal) },

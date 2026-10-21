@@ -295,6 +295,8 @@ enum TipoProfesional {
   banqueteGraduacion
   agencia
   weddingPlanner
+  /// Cualquier otro cliente profesional (21-oct-2026).
+  otro
 }
 
 /// Un cliente directo es una persona o una empresa (16-oct-2026).
@@ -316,6 +318,9 @@ model Banquetero {
   telefono     String?
   /// Opcional. Sirve para mandarle su estado de cuenta sin depender de WhatsApp.
   correo       String?
+  /// La comisión de HSA que paga este cliente por el paquete de alimentos de
+  /// sus eventos, en % del subtotal sin IVA (21-oct-2026). Nace en 10.
+  comisionPct  Float            @default(10)
   activo       Boolean          @default(true)
   /// Token del enlace de solo lectura de su estado de cuenta, mismo formato que
   /// `Quote.publicToken` (32 hex sin guiones). Es lo que mata el hilo de WhatsApp.
@@ -641,6 +646,10 @@ model Quote {
   /// "Aplicar promoción" por contratar alimentos (21-oct-2026): % de descuento en
   /// la renta, de 0 a 5. `null` = evento anterior a la casilla: el % del catálogo.
   descuentoAlimentosPct Float?
+  /// Comisión de HSA del evento SIN cliente profesional ni agencia (21-oct-2026):
+  /// el proveedor de alimentos no siempre se da de alta. `null` = 10%. Con
+  /// cliente o agencia, manda la de su ficha.
+  comisionPct         Float?
   horaExtraMonto      Float?
   descuentoMotivo     String?
   /// El estatus que tenía antes de ponerse en standby o cancelarse. Es al que
