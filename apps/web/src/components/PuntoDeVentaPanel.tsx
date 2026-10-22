@@ -1,3 +1,4 @@
+import { SeccionPlegable } from './SeccionPlegable.tsx';
 import { useState, type FormEvent } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Receipt, ShoppingBag } from 'lucide-react';
@@ -6,7 +7,7 @@ import { describirFormasPago, formatFolio, PRODUCTO_INFO } from '@hsa/shared';
 import { api, API_BASE } from '../lib/api.ts';
 import { formatMXN } from '../lib/money.ts';
 import { formatEventDate } from '../lib/date.ts';
-import { Button, Card, Field, MoneyInput, TextInput } from './ui.tsx';
+import { Button, Field, MoneyInput, TextInput } from './ui.tsx';
 import { FormasPagoCampo, errorFormas, formasEnFormData, formasIniciales } from './FormasPagoCampo.tsx';
 import { apiErrorMessage } from './admin/shared.tsx';
 import type { CuentaEvento, ProductoPuntoDeVenta } from '../lib/types.ts';
@@ -76,13 +77,19 @@ export function PuntoDeVentaPanel({
   }
 
   return (
-    <Card className="mt-8 p-6">
+    <SeccionPlegable
+      titulo={
+        <>
+          <ShoppingBag size={18} className="text-gold" /> Punto de venta · cuenta del evento
+        </>
+      }
+      resumen={`Cargado ${formatMXN(cuenta.total)} · Por cobrar ${formatMXN(cuenta.saldo)}`}
+      abiertaAlInicio={false}
+      className="mt-8"
+    >
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h3 className="flex items-center gap-2 font-display text-xl text-ink">
-            <ShoppingBag size={18} className="text-gold" /> Punto de venta · cuenta del evento
-          </h3>
-          <p className="mt-1 max-w-xl text-sm text-charcoal-soft">
+          <p className="max-w-xl text-sm text-charcoal-soft">
             Lo que se agrega después de contratar. <strong>Las horas extra de salón y los PAX extra
             se suman al contrato</strong>: suben el total del evento y se cobran con sus pagos. Lo
             demás (multas, daños, DJ, alimentos, PAX banquete) no cambia el valor del evento y se
@@ -187,7 +194,7 @@ export function PuntoDeVentaPanel({
           </ul>
         </div>
       )}
-    </Card>
+    </SeccionPlegable>
   );
 }
 

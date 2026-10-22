@@ -1,3 +1,4 @@
+import { SeccionPlegable } from './SeccionPlegable.tsx';
 import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Lock, Receipt, ReceiptText } from 'lucide-react';
@@ -112,8 +113,13 @@ export function PagosPanel({
 
   return (
     <div className="mt-8 grid gap-6">
-      {/* Estado de cuenta */}
-      <Card className="p-6">
+      {/* Estado de cuenta: plegable como el resto (22-oct-2026); plegado dice
+          total, pagado y saldo. */}
+      <SeccionPlegable
+        titulo="Estado de cuenta"
+        resumen={`Total ${formatMXN(estadoCuenta.total)} · Pagado ${formatMXN(estadoCuenta.pagado)} · Saldo ${formatMXN(estadoCuenta.saldo)}`}
+        abiertaAlInicio={false}
+      >
         <div className="grid grid-cols-3 gap-4 text-center">
           <div><p className="text-xs uppercase tracking-wide text-charcoal-soft">Total</p><p className="font-display text-2xl text-ink">{formatMXN(estadoCuenta.total)}</p></div>
           <div><p className="text-xs uppercase tracking-wide text-charcoal-soft">Pagado</p><p className="font-display text-2xl text-ink">{formatMXN(estadoCuenta.pagado)}</p></div>
@@ -298,7 +304,7 @@ export function PagosPanel({
             </ul>
           </div>
         )}
-      </Card>
+      </SeccionPlegable>
 
       {info && (
         <Card className="border-gold/40 bg-gold/5 p-4">
@@ -309,15 +315,18 @@ export function PagosPanel({
       {/* Registrar pago de la RENTA y, debajo, del BANQUETE (Jorge, 15-oct-2026):
           dos cuentas separadas, de distinto color para no confundirlas. */}
       {!readOnly && !sinPagosNuevos && (
-        <Card className="p-6">
+        <SeccionPlegable
+          titulo={<>Registrar pago <span className="font-sans text-base font-semibold uppercase tracking-[0.12em] text-gold">Renta</span></>}
+          resumen={estadoCuenta.saldo > 0 ? `Saldo ${formatMXN(estadoCuenta.saldo)}` : 'Sin saldo'}
+          abiertaAlInicio={false}
+        >
           <RegistrarPagoForm
             quoteId={quoteId}
             isAdmin={isAdmin}
             destino="evento"
-            titulo={<>Registrar pago <span className="font-sans text-base font-semibold uppercase tracking-[0.12em] text-gold">Renta</span></>}
             onListo={async (mensaje) => { setInfo(mensaje); await refresh(); }}
           />
-        </Card>
+        </SeccionPlegable>
       )}
       {banquete && (
         <BanquetePagos
@@ -377,8 +386,11 @@ export function PagosPanel({
 
       {/* Bitácora */}
       {activityLog.length > 0 && (
-        <Card className="p-6">
-          <h3 className="mb-4 font-display text-xl text-ink">Bitácora</h3>
+        <SeccionPlegable
+          titulo="Bitácora"
+          resumen={`${activityLog.length} movimiento${activityLog.length === 1 ? '' : 's'} · el último ${formatTimestamp(activityLog[0]!.createdAt)}`}
+          abiertaAlInicio={false}
+        >
           <ul className="space-y-2 text-sm">
             {activityLog.map((a) => (
               <li key={a.id} className="flex justify-between gap-4 text-charcoal-soft">
@@ -387,7 +399,7 @@ export function PagosPanel({
               </li>
             ))}
           </ul>
-        </Card>
+        </SeccionPlegable>
       )}
     </div>
   );
