@@ -1,6 +1,7 @@
+import { SeccionPlegable } from './SeccionPlegable.tsx';
 import { Check, X, FileText, Lock, ShieldAlert } from 'lucide-react';
 import { REGIMENES_FISCALES, USOS_CFDI, requisitosFactura, type DatosFiscales } from '@hsa/shared';
-import { Card, Field, TextInput, SelectInput } from './ui.tsx';
+import { Field, TextInput, SelectInput } from './ui.tsx';
 
 interface Props {
   requiereFactura: boolean;
@@ -38,8 +39,12 @@ export function FacturacionSection({
   const bloqueado = congelado && !esAdmin;
 
   return (
-    <Card className="space-y-4 p-6">
-      <h2 className="font-display text-xl text-ink">Facturación del cliente</h2>
+    // Plegada al abrir (22-oct-2026): casi nunca se toca al cotizar.
+    <SeccionPlegable
+      titulo="Facturación del cliente"
+      resumen={requiereFactura ? `Requiere factura${faltan ? ` · faltan ${faltan} dato${faltan === 1 ? '' : 's'}` : ''}` : 'Sin factura'}
+      abiertaAlInicio={false}
+    >
 
       <label
         className={`flex cursor-pointer items-start gap-3 rounded-lg border px-4 py-3 text-sm transition-colors ${
@@ -171,6 +176,6 @@ export function FacturacionSection({
           </div>
         </>
       )}
-    </Card>
+    </SeccionPlegable>
   );
 }

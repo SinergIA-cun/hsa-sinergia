@@ -125,6 +125,179 @@ export function PagosPanel({
             Aviso: lo pagado ya no alcanza para el estatus que tiene. Revisa si corresponde ajustarlo.
           </p>
         )}
+        {/* Los pagos van en la misma tarjeta del total (Jorge, 22-oct-2026): la
+            relación de recibos explica de un vistazo qué se ha pagado. */}
+        {payments.length > 0 && (
+          <div className="mt-6 border-t border-cream-200 pt-5">
+            <h3 className="mb-2 font-display text-lg text-ink">Pagos</h3>
+            <ul className="divide-y divide-cream-200">
+              {payments.map((p) => (
+                <li key={p.id} className={`flex flex-wrap items-center justify-between gap-x-4 gap-y-1 py-2.5 text-sm`}>
+                  <span className={`flex flex-wrap items-center gap-x-1.5 gap-y-1 ${p.anuladoAt ? 'line-through opacity-60' : ''}`}>
+                    <span className="font-medium text-charcoal-soft">{formatFolio(p.folio, p.folioLetra)}</span> · {formatEventDate(p.fecha)} ·{' '}
+                    {/* El concepto es editable en el renglón: corregirlo es un error
+                        de captura, no un movimiento de dinero. En los pagos anulados
+                        no se toca (son evidencia y el servidor lo rechaza). */}
+                    {readOnly || p.anuladoAt ? (
+                      <span>{CONCEPTO_LABEL[p.concepto]}</span>
+                    ) : (
+                      <label className="inline-flex items-center">
+                        <span className="sr-only">Concepto del pago {formatFolio(p.folio, p.folioLetra)}</span>
+                        <select
+                          value={p.concepto}
+                          onChange={(e) => corregirConcepto.mutate({ paymentId: p.id, concepto: e.target.value })}
+                          disabled={corregirConcepto.isPending}
+                          className="rounded border border-ink/15 bg-transparent px-1 py-0.5 text-sm text-ink disabled:opacity-50"
+                        >
+                          {CONCEPTOS.map((c) => (
+                            <option key={c.value} value={c.value}>{c.label}</option>
+                          ))}
+                        </select>
+                      </label>
+                    )}
+                    · {describirFormasPago(p)}
+                    {p.referencia && ` · ${p.referencia}`}
+                  </span>
+                  <span className="flex items-center gap-3">
+                    <span className={`tabular-nums ${p.anuladoAt ? 'line-through opacity-60' : ''}`}>{formatMXN(p.monto)}</span>
+                    {p.comprobanteKey && !p.anuladoAt && (
+                      <a
+                        href={`${apiBase}/api/quotes/${quoteId}/comprobante/${p.id}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-xs font-medium text-gold hover:underline"
+                      >
+                        Ver comprobante
+                      </a>
+                    )}
+                    {/* El recibo imprimible del pago. Ya existía para el cliente
+                        (cuelga de su token); esto es el enlace que le faltaba a la
+                        vendedora, que tiene ese token a mano.
+
+                        En los pagos ANULADOS no se muestra: un recibo de un pago
+                        anulado circulando es un problema. El servidor tampoco lo
+                        sirve —`getByToken` filtra los anulados—, así que el enlace
+                        solo llevaría a "Recibo no encontrado". */}
+                    {!p.anuladoAt && (
+                      <a
+                        href={`/c/${publicToken}/recibo/${p.id}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center gap-1 text-xs font-medium text-gold hover:underline"
+                      >
+                        <Receipt size={12} /> Ver recibo
+                      </a>
+                    )}
+                    {!p.anuladoAt && <ReciboWhatsApp cliente={cliente} publicToken={publicToken} pago={p} />}
+                    {p.facturadoAt && (
+                      <span
+                        className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700"
+                        title={p.facturaUuid ? `Folio fiscal ${p.facturaUuid}` : 'Sin folio fiscal capturado'}
+                      >
+                        <ReceiptText size={12} /> Facturado
+                      </span>
+                    )}
+                    {isAdmin && !readOnly && !p.anuladoAt && !p.facturadoAt && (
+                      <button
+                        type="button"
+                        onClick={() => { setPagoAFacturar(p); setUuidFactura(''); setErrFactura(''); }}
+                        className="text-xs text-ink hover:underline"
+                      >
+                        Marcar facturado
+                      </button>
+                    )}
+                    {/* Corregir y mover: el mismo recibo, capturado mal. No en un pago
+                        facturado (primero se cancela el CFDI) ni en uno que salió de
+                        un depósito del banquetero (se corrige desde su cuenta). */}
+                    {isAdmin && !readOnly && !p.anuladoAt && !p.facturadoAt && !p.pagoBanqueteroId && (
+                      <>
+                        <button type="button" onClick={() => setAccion({ id: p.id, tipo: 'corregir' })} className="text-xs text-ink hover:underline">
+                          Corregir
+                        </button>
+                        <button type="button" onClick={() => setAccion({ id: p.id, tipo: 'mover' })} className="text-xs text-ink hover:underline">
+                          Mover
+                        </button>
+                      </>
+                    )}
+                    {isAdmin && !readOnly && !p.anuladoAt && <button onClick={() => anular(p.id)} className="text-xs text-wine hover:underline">Anular</button>}
+                    {/* Se anuló porque iba en otro evento: se reasigna allá con su
+                        folio, en vez de recapturarlo (el folio ya está "usado"). */}
+                    {isAdmin && !readOnly && p.anuladoAt && !p.facturadoAt && !p.pagoBanqueteroId && (
+                      <button type="button" onClick={() => setAccion({ id: p.id, tipo: 'mover' })} className="text-xs text-ink hover:underline">
+                        Reasignar a otro evento
+                      </button>
+                    )}
+                  </span>
+                  {accion?.id === p.id && accion.tipo === 'corregir' && (
+                    <CorregirPagoForm
+                      quoteId={quoteId}
+                      pago={p}
+                      onCancelar={() => setAccion(null)}
+                      onListo={async () => {
+                        setAccion(null);
+                        setInfo(`Pago ${formatFolio(p.folio, p.folioLetra)} corregido.`);
+                        await refresh();
+                      }}
+                    />
+                  )}
+                  {accion?.id === p.id && accion.tipo === 'mover' && (
+                    <MoverPagoForm
+                      quoteId={quoteId}
+                      pago={p}
+                      onCancelar={() => setAccion(null)}
+                      onListo={async (destino) => {
+                        setAccion(null);
+                        setInfo(`Pago ${formatFolio(p.folio, p.folioLetra)} ${p.anuladoAt ? 'reasignado' : 'movido'} al evento ${destino.codigo}.`);
+                        await refresh();
+                      }}
+                    />
+                  )}
+                  {/* Si el deducido difiere del capturado, se muestra el deducido
+                      (arriba, en el selector) y se dice por qué. Es el caso que el
+                      dueño pidió: "debe moverse a finiquito solo, si ya fue el pago
+                      que finiquitó, sin importar cómo pusieron el campo." */}
+                  {p.conceptoManual && p.conceptoManual !== p.concepto && !p.anuladoAt && (
+                    <p className="w-full text-xs text-charcoal-soft">
+                      Se capturó <strong>{CONCEPTO_LABEL[p.conceptoManual]}</strong>, pero el saldo dice{' '}
+                      <strong>{CONCEPTO_LABEL[p.concepto]}</strong>
+                      {p.concepto === 'finiquito'
+                        ? ': este pago es el que finiquitó la renta.'
+                        : ': este pago no finiquita la renta, así que no puede ir como finiquito.'}
+                    </p>
+                  )}
+                  {p.facturable === false && !p.anuladoAt && !p.facturadoAt && (
+                    <div className="flex w-full flex-wrap items-center gap-2 text-xs text-charcoal-soft">
+                      <span className="inline-flex items-center gap-1">
+                        <Lock size={12} /> {p.motivoFactura}
+                      </span>
+                      {isAdmin && !readOnly && (
+                        <button
+                          type="button"
+                          onClick={() => desbloquear.mutate(p.id)}
+                          disabled={desbloquear.isPending}
+                          className="rounded border border-ink/15 px-2 py-0.5 text-xs text-ink hover:bg-ink/5 disabled:opacity-50"
+                        >
+                          Reabrir facturación
+                        </button>
+                      )}
+                    </div>
+                  )}
+                  {/* Las notas: lo que ayuda a entender el pago. Se pueden agregar
+                      después, incluso en un pago anulado (ahí es donde más falta
+                      explicar qué pasó). */}
+                  <NotasEditables
+                    notas={p.notas}
+                    editable={!readOnly}
+                    onGuardar={async (notas) => {
+                      await api.patch(`/api/quotes/${quoteId}/payments/${p.id}/notas`, { notas });
+                      await refresh();
+                    }}
+                  />
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
       </Card>
 
       {info && (
@@ -160,178 +333,6 @@ export function PagosPanel({
         />
       )}
 
-      {/* Lista de pagos */}
-      {payments.length > 0 && (
-        <Card className="p-6">
-          <h3 className="mb-4 font-display text-xl text-ink">Pagos</h3>
-          <ul className="divide-y divide-cream-200">
-            {payments.map((p) => (
-              <li key={p.id} className={`flex flex-wrap items-center justify-between gap-x-4 gap-y-1 py-2.5 text-sm`}>
-                <span className={`flex flex-wrap items-center gap-x-1.5 gap-y-1 ${p.anuladoAt ? 'line-through opacity-60' : ''}`}>
-                  <span className="font-medium text-charcoal-soft">{formatFolio(p.folio, p.folioLetra)}</span> · {formatEventDate(p.fecha)} ·{' '}
-                  {/* El concepto es editable en el renglón: corregirlo es un error
-                      de captura, no un movimiento de dinero. En los pagos anulados
-                      no se toca (son evidencia y el servidor lo rechaza). */}
-                  {readOnly || p.anuladoAt ? (
-                    <span>{CONCEPTO_LABEL[p.concepto]}</span>
-                  ) : (
-                    <label className="inline-flex items-center">
-                      <span className="sr-only">Concepto del pago {formatFolio(p.folio, p.folioLetra)}</span>
-                      <select
-                        value={p.concepto}
-                        onChange={(e) => corregirConcepto.mutate({ paymentId: p.id, concepto: e.target.value })}
-                        disabled={corregirConcepto.isPending}
-                        className="rounded border border-ink/15 bg-transparent px-1 py-0.5 text-sm text-ink disabled:opacity-50"
-                      >
-                        {CONCEPTOS.map((c) => (
-                          <option key={c.value} value={c.value}>{c.label}</option>
-                        ))}
-                      </select>
-                    </label>
-                  )}
-                  · {describirFormasPago(p)}
-                  {p.referencia && ` · ${p.referencia}`}
-                </span>
-                <span className="flex items-center gap-3">
-                  <span className={`tabular-nums ${p.anuladoAt ? 'line-through opacity-60' : ''}`}>{formatMXN(p.monto)}</span>
-                  {p.comprobanteKey && !p.anuladoAt && (
-                    <a
-                      href={`${apiBase}/api/quotes/${quoteId}/comprobante/${p.id}`}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-xs font-medium text-gold hover:underline"
-                    >
-                      Ver comprobante
-                    </a>
-                  )}
-                  {/* El recibo imprimible del pago. Ya existía para el cliente
-                      (cuelga de su token); esto es el enlace que le faltaba a la
-                      vendedora, que tiene ese token a mano.
-
-                      En los pagos ANULADOS no se muestra: un recibo de un pago
-                      anulado circulando es un problema. El servidor tampoco lo
-                      sirve —`getByToken` filtra los anulados—, así que el enlace
-                      solo llevaría a "Recibo no encontrado". */}
-                  {!p.anuladoAt && (
-                    <a
-                      href={`/c/${publicToken}/recibo/${p.id}`}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="inline-flex items-center gap-1 text-xs font-medium text-gold hover:underline"
-                    >
-                      <Receipt size={12} /> Ver recibo
-                    </a>
-                  )}
-                  {!p.anuladoAt && <ReciboWhatsApp cliente={cliente} publicToken={publicToken} pago={p} />}
-                  {p.facturadoAt && (
-                    <span
-                      className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700"
-                      title={p.facturaUuid ? `Folio fiscal ${p.facturaUuid}` : 'Sin folio fiscal capturado'}
-                    >
-                      <ReceiptText size={12} /> Facturado
-                    </span>
-                  )}
-                  {isAdmin && !readOnly && !p.anuladoAt && !p.facturadoAt && (
-                    <button
-                      type="button"
-                      onClick={() => { setPagoAFacturar(p); setUuidFactura(''); setErrFactura(''); }}
-                      className="text-xs text-ink hover:underline"
-                    >
-                      Marcar facturado
-                    </button>
-                  )}
-                  {/* Corregir y mover: el mismo recibo, capturado mal. No en un pago
-                      facturado (primero se cancela el CFDI) ni en uno que salió de
-                      un depósito del banquetero (se corrige desde su cuenta). */}
-                  {isAdmin && !readOnly && !p.anuladoAt && !p.facturadoAt && !p.pagoBanqueteroId && (
-                    <>
-                      <button type="button" onClick={() => setAccion({ id: p.id, tipo: 'corregir' })} className="text-xs text-ink hover:underline">
-                        Corregir
-                      </button>
-                      <button type="button" onClick={() => setAccion({ id: p.id, tipo: 'mover' })} className="text-xs text-ink hover:underline">
-                        Mover
-                      </button>
-                    </>
-                  )}
-                  {isAdmin && !readOnly && !p.anuladoAt && <button onClick={() => anular(p.id)} className="text-xs text-wine hover:underline">Anular</button>}
-                  {/* Se anuló porque iba en otro evento: se reasigna allá con su
-                      folio, en vez de recapturarlo (el folio ya está "usado"). */}
-                  {isAdmin && !readOnly && p.anuladoAt && !p.facturadoAt && !p.pagoBanqueteroId && (
-                    <button type="button" onClick={() => setAccion({ id: p.id, tipo: 'mover' })} className="text-xs text-ink hover:underline">
-                      Reasignar a otro evento
-                    </button>
-                  )}
-                </span>
-                {accion?.id === p.id && accion.tipo === 'corregir' && (
-                  <CorregirPagoForm
-                    quoteId={quoteId}
-                    pago={p}
-                    onCancelar={() => setAccion(null)}
-                    onListo={async () => {
-                      setAccion(null);
-                      setInfo(`Pago ${formatFolio(p.folio, p.folioLetra)} corregido.`);
-                      await refresh();
-                    }}
-                  />
-                )}
-                {accion?.id === p.id && accion.tipo === 'mover' && (
-                  <MoverPagoForm
-                    quoteId={quoteId}
-                    pago={p}
-                    onCancelar={() => setAccion(null)}
-                    onListo={async (destino) => {
-                      setAccion(null);
-                      setInfo(`Pago ${formatFolio(p.folio, p.folioLetra)} ${p.anuladoAt ? 'reasignado' : 'movido'} al evento ${destino.codigo}.`);
-                      await refresh();
-                    }}
-                  />
-                )}
-                {/* Si el deducido difiere del capturado, se muestra el deducido
-                    (arriba, en el selector) y se dice por qué. Es el caso que el
-                    dueño pidió: "debe moverse a finiquito solo, si ya fue el pago
-                    que finiquitó, sin importar cómo pusieron el campo." */}
-                {p.conceptoManual && p.conceptoManual !== p.concepto && !p.anuladoAt && (
-                  <p className="w-full text-xs text-charcoal-soft">
-                    Se capturó <strong>{CONCEPTO_LABEL[p.conceptoManual]}</strong>, pero el saldo dice{' '}
-                    <strong>{CONCEPTO_LABEL[p.concepto]}</strong>
-                    {p.concepto === 'finiquito'
-                      ? ': este pago es el que finiquitó la renta.'
-                      : ': este pago no finiquita la renta, así que no puede ir como finiquito.'}
-                  </p>
-                )}
-                {p.facturable === false && !p.anuladoAt && !p.facturadoAt && (
-                  <div className="flex w-full flex-wrap items-center gap-2 text-xs text-charcoal-soft">
-                    <span className="inline-flex items-center gap-1">
-                      <Lock size={12} /> {p.motivoFactura}
-                    </span>
-                    {isAdmin && !readOnly && (
-                      <button
-                        type="button"
-                        onClick={() => desbloquear.mutate(p.id)}
-                        disabled={desbloquear.isPending}
-                        className="rounded border border-ink/15 px-2 py-0.5 text-xs text-ink hover:bg-ink/5 disabled:opacity-50"
-                      >
-                        Reabrir facturación
-                      </button>
-                    )}
-                  </div>
-                )}
-                {/* Las notas: lo que ayuda a entender el pago. Se pueden agregar
-                    después, incluso en un pago anulado (ahí es donde más falta
-                    explicar qué pasó). */}
-                <NotasEditables
-                  notas={p.notas}
-                  editable={!readOnly}
-                  onGuardar={async (notas) => {
-                    await api.patch(`/api/quotes/${quoteId}/payments/${p.id}/notas`, { notas });
-                    await refresh();
-                  }}
-                />
-              </li>
-            ))}
-          </ul>
-        </Card>
-      )}
 
       {/* Sellar un pago como facturado */}
       {pagoAFacturar && (
