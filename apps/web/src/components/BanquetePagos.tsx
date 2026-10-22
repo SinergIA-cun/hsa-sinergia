@@ -1,9 +1,10 @@
+import { SeccionPlegable } from './SeccionPlegable.tsx';
 import { useState } from 'react';
 import { Receipt, UtensilsCrossed } from 'lucide-react';
 import { describirFormasPago, formatFolio } from '@hsa/shared';
 import { formatMXN } from '../lib/money.ts';
 import { formatEventDate } from '../lib/date.ts';
-import { Card } from './ui.tsx';
+
 import { RegistrarPagoForm } from './RegistrarPagoForm.tsx';
 import { ReciboWhatsApp, type ClienteContacto } from './ReciboWhatsApp.tsx';
 import { MoverPagoForm } from './CorregirPago.tsx';
@@ -64,13 +65,21 @@ export function BanquetePagos({
   );
 
   return (
-    <Card className="border-emerald-200 bg-emerald-50/70 p-6">
+    <SeccionPlegable
+      titulo={titulo}
+      resumen={
+        sinBanquete
+          ? 'Sin banquete'
+          : `Total ${formatMXN(banquete.total)} · Pagado ${formatMXN(banquete.pagado)} · Saldo ${formatMXN(banquete.saldo)}`
+      }
+      abiertaAlInicio={false}
+      className="border-emerald-200 bg-emerald-50/70"
+    >
       {puedeRegistrar && !sinBanquete && !saldado ? (
         <RegistrarPagoForm
           quoteId={quoteId}
           isAdmin={isAdmin}
           destino="banquete"
-          titulo={titulo}
           pie={
             <div className="space-y-2">
               <p className="text-sm text-charcoal-soft">
@@ -83,7 +92,6 @@ export function BanquetePagos({
         />
       ) : (
         <>
-          <h3 className="mb-1 font-display text-xl text-ink">{titulo}</h3>
           <p className="mb-3 text-sm text-charcoal-soft">
             {sinBanquete
               ? 'Este evento no tiene alimentos ni servicios contratados: no hay banquete que cobrar.'
@@ -149,7 +157,7 @@ export function BanquetePagos({
           </ul>
         </div>
       )}
-    </Card>
+    </SeccionPlegable>
   );
 }
 

@@ -15,7 +15,7 @@ export function SeccionPlegable({
   className,
   children,
 }: {
-  titulo: string;
+  titulo: ReactNode;
   /** Lo que se ve junto al título cuando está plegada. */
   resumen?: ReactNode;
   abiertaAlInicio?: boolean;
@@ -33,7 +33,7 @@ export function SeccionPlegable({
         onClick={() => setAbierta((a) => !a)}
         className="group -m-2 flex w-[calc(100%+1rem)] items-center gap-3 rounded-lg p-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold/60"
       >
-        <h2 className="font-display text-xl text-ink">{titulo}</h2>
+        <h2 className="flex items-center gap-2 font-display text-xl text-ink">{titulo}</h2>
         {!abierta && resumen && <span className="min-w-0 flex-1 truncate text-sm text-charcoal-soft">{resumen}</span>}
         <ChevronDown
           size={18}

@@ -1,10 +1,11 @@
+import { SeccionPlegable } from './SeccionPlegable.tsx';
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { ClipboardList, X } from 'lucide-react';
 import { api } from '../lib/api.ts';
 import { formatMXN } from '../lib/money.ts';
-import { Button, Card, TextInput, TimeInput, SelectInput, Field } from './ui.tsx';
+import { Button, TextInput, TimeInput, SelectInput, Field } from './ui.tsx';
 import type { Quote, HojaOperativa, Banquetero, Empleado, Cuadrilla, PersonalHsaRow } from '../lib/types.ts';
 
 /** Filas iniciales del personal: usa las estructuradas o migra el texto legado. */
@@ -161,10 +162,14 @@ export function OperativaSection({ quote }: { quote: Quote }) {
   }
 
   return (
-    <Card className="mt-6 p-6">
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+    <SeccionPlegable
+      titulo="Datos operativos (hoja del evento)"
+      resumen={[horaInicio && horaTermino ? `${horaInicio}–${horaTermino}` : null].filter(Boolean).join(' · ') || 'Horario, montaje y personal'}
+      abiertaAlInicio={false}
+      className="mt-6"
+    >
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h3 className="font-display text-xl text-ink">Datos operativos (hoja del evento)</h3>
           <p className="text-sm text-charcoal-soft">Se imprimen en el contrato y en la hoja operativa interna.</p>
         </div>
         <Link to={`/eventos/${quote.id}/operativa`}>
@@ -321,6 +326,6 @@ export function OperativaSection({ quote }: { quote: Quote }) {
           <Button type="submit" variant="primary">Guardar hoja operativa</Button>
         </div>
       </form>
-    </Card>
+    </SeccionPlegable>
   );
 }

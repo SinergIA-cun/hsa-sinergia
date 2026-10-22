@@ -1,3 +1,4 @@
+import { SeccionPlegable } from './SeccionPlegable.tsx';
 import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Undo2 } from 'lucide-react';
@@ -5,7 +6,7 @@ import { describirFormasPago } from '@hsa/shared';
 import { api } from '../lib/api.ts';
 import { formatMXN } from '../lib/money.ts';
 import { formatEventDate } from '../lib/date.ts';
-import { Button, Card } from './ui.tsx';
+import { Button } from './ui.tsx';
 import { DevolucionForm } from './DevolucionForm.tsx';
 import { apiErrorMessage } from './admin/shared.tsx';
 import type { Devolucion } from '../lib/types.ts';
@@ -105,11 +106,17 @@ export function DevolucionesEvento({
   if (!puedeDevolver && devoluciones.length === 0) return null;
 
   return (
-    <Card className="mt-8 p-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h3 className="flex items-center gap-2 font-display text-xl text-ink">
+    <SeccionPlegable
+      titulo={
+        <>
           <Undo2 size={18} className="text-wine" /> Devoluciones
-        </h3>
+        </>
+      }
+      resumen={devoluciones.length ? `${devoluciones.length} registrada${devoluciones.length === 1 ? '' : 's'}` : 'Ninguna'}
+      abiertaAlInicio={false}
+      className="mt-8"
+    >
+      <div className="flex flex-wrap items-center justify-end gap-3 empty:hidden">
         {puedeDevolver && !abierto && (
           <Button variant="outline" onClick={() => setAbierto(true)}>
             Registrar devolución
@@ -141,6 +148,6 @@ export function DevolucionesEvento({
           <ListaDevoluciones devoluciones={devoluciones} isAdmin={isAdmin && !readOnly} onCambio={refrescar} />
         </div>
       )}
-    </Card>
+    </SeccionPlegable>
   );
 }

@@ -38,7 +38,8 @@ export function RegistrarPagoForm({
   isAdmin: boolean;
   /** `evento` = la renta; `banquete` = alimentos y servicios. */
   destino: 'evento' | 'banquete';
-  titulo: ReactNode;
+  /** Sin título cuando ya lo pone la sección plegable que lo envuelve. */
+  titulo?: ReactNode;
   /** Algo bajo el título (p. ej. el saldo del banquete). */
   pie?: ReactNode;
   onListo: (mensaje: string) => Promise<void> | void;
@@ -104,8 +105,8 @@ export function RegistrarPagoForm({
 
   return (
     <>
-      <h3 className="mb-1 font-display text-xl text-ink">{titulo}</h3>
-      <div className="mb-4">{pie}</div>
+      {titulo && <h3 className="mb-1 font-display text-xl text-ink">{titulo}</h3>}
+      {pie && <div className="mb-4">{pie}</div>}
       <form onSubmit={registrar} className="grid gap-4 sm:grid-cols-2">
         <Field label="Monto (MXN)"><MoneyInput value={monto} onValue={setMonto} required /></Field>
         <Field label="Fecha"><TextInput type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} required /></Field>

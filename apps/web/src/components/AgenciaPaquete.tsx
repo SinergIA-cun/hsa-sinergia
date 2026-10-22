@@ -1,3 +1,4 @@
+import { SeccionPlegable } from './SeccionPlegable.tsx';
 import { useState } from 'react';
 import { COMISION_HSA_POR_OMISION } from '@hsa/shared';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -5,7 +6,7 @@ import { UtensilsCrossed } from 'lucide-react';
 import { api } from '../lib/api.ts';
 import { apiErrorMessage } from './admin/shared.tsx';
 import { formatMXN } from '../lib/money.ts';
-import { Button, Card, SelectInput, TextInput } from './ui.tsx';
+import { Button, SelectInput, TextInput } from './ui.tsx';
 import type { PaqueteDelEvento } from '../lib/types.ts';
 
 /**
@@ -73,13 +74,19 @@ export function AgenciaPaquete({
   }
 
   return (
-    <Card className="mt-6 p-6">
+    <SeccionPlegable
+      titulo={
+        <>
+          <UtensilsCrossed size={18} className="text-gold" /> Paquete de alimentos
+        </>
+      }
+      resumen={[paquete.nombre, agencia?.nombre ?? banqueteroDelEvento?.nombre, comision && `comisión ${comision.pct}%`].filter(Boolean).join(' · ')}
+      abiertaAlInicio={false}
+      className="mt-6"
+    >
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h3 className="inline-flex items-center gap-2 font-display text-xl text-ink">
-            <UtensilsCrossed size={18} className="text-gold" /> Paquete de alimentos
-          </h3>
-          <p className="mt-1 text-sm text-ink">
+          <p className="text-sm text-ink">
             <strong className="font-medium">{paquete.nombre}</strong>
             {paquete.comisionMonto != null && (
               <span className="text-charcoal-soft"> · comisión de la agencia {formatMXN(paquete.comisionMonto)}</span>
@@ -161,6 +168,6 @@ export function AgenciaPaquete({
           {error}
         </p>
       )}
-    </Card>
+    </SeccionPlegable>
   );
 }

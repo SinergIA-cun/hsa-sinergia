@@ -1,10 +1,11 @@
+import { SeccionPlegable } from './SeccionPlegable.tsx';
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Mail, Paperclip, RotateCcw, Send, X } from 'lucide-react';
 import { api } from '../lib/api.ts';
 import { formatTimestamp } from '../lib/date.ts';
 import { apiErrorMessage } from './admin/shared.tsx';
-import { Button, Card, Field, TextInput } from './ui.tsx';
+import { Button, Field, TextInput } from './ui.tsx';
 
 interface CorreoCliente {
   id: string;
@@ -87,11 +88,17 @@ export function CorreosCliente({ quoteId, isAdmin }: { quoteId: string; isAdmin:
   const pendientes = data.correos.filter(porMandar);
 
   return (
-    <Card className="mt-6 p-6">
-      <div className="mb-1 flex flex-wrap items-center justify-between gap-3">
-        <h3 className="flex items-center gap-2 font-display text-xl text-ink">
+    <SeccionPlegable
+      titulo={
+        <>
           <Mail size={18} className="text-gold" /> Correos al cliente
-        </h3>
+        </>
+      }
+      resumen={pendientes.length ? `${pendientes.length} por mandar` : `${data.correos.length} correo${data.correos.length === 1 ? '' : 's'}`}
+      abiertaAlInicio={false}
+      className="mt-6"
+    >
+      <div className="flex flex-wrap items-center justify-end gap-3 empty:hidden">
         {data.configurado && pendientes.length > 1 && (
           <Button
             variant="gold"
@@ -177,7 +184,7 @@ export function CorreosCliente({ quoteId, isAdmin }: { quoteId: string; isAdmin:
           ))}
         </ul>
       )}
-    </Card>
+    </SeccionPlegable>
   );
 }
 
