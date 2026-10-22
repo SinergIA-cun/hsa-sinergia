@@ -23,6 +23,7 @@ import { Button, Card, Field, MoneyInput, TextInput, SelectInput } from './ui.ts
 import { ClienteCombobox, type ClienteLite } from './ClienteSearch.tsx';
 import { BanqueteroPicker, TipoClienteChips, type BanqueteroLite, type ModoVenta } from './banqueteros/BanqueteroPicker.tsx';
 import { FacturacionSection } from './FacturacionSection.tsx';
+import { SeccionPlegable } from './SeccionPlegable.tsx';
 import { BreakdownGrouped } from './BreakdownGrouped.tsx';
 import type { Catalog, Availability, SpaceAvailability, QuoteExtraInput, ServicioBanqueteroInput } from '../lib/types.ts';
 import { ServiciosBanqueteroCampo } from './ServiciosBanqueteroCampo.tsx';
@@ -679,14 +680,25 @@ export function QuoteForm({
     }
   }
 
+  // Lo que se ve de cada sección cuando está plegada (22-oct-2026).
+  const resumenCliente = nombre ? [nombre, telefono || correo].filter(Boolean).join(' · ') : undefined;
+  const resumenEspacio = spaceIds.map((id) => spaceNameById.get(id)).filter(Boolean).join(', ') || undefined;
+  const resumenEvento =
+    [eventType?.nombre, fecha && new Date(`${fecha}T12:00:00`).toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric' }), `${invitados} invitados`]
+      .filter(Boolean)
+      .join(' · ') || undefined;
+  const resumenAlimentos = foodPackageId
+    ? `${foodPackages.find((p) => p.id === foodPackageId)?.nombre ?? 'Con alimentos'}${promoAlimentosPct.pct ? ` · promoción ${promoAlimentosPct.pct}%` : ''}`
+    : 'Sin alimentos';
+  const nServicios = Object.keys(addOns).length + extrasValidos.length + (esDeBanquetero ? serviciosBanquetero.filter((x) => x.nombre.trim()).length : 0);
+  const resumenServicios = nServicios ? `${nServicios} servicio${nServicios === 1 ? '' : 's'}` : 'Ninguno';
   return (
     <div className="grid gap-8 lg:grid-cols-[1.4fr_1fr]">
       {/* Formulario */}
       <div className="space-y-6">
         {/* relative z-10: la lista de clientes que ya existen se despliega encima
             de la tarjeta de abajo, no detrás. */}
-        <Card className="relative z-10 space-y-4 p-6">
-          <h2 className="font-display text-xl text-ink">Cliente</h2>
+        <SeccionPlegable titulo="Cliente" resumen={resumenCliente} className="relative z-10">
 
           {/* ¿Para quién es este evento? Con banquetero, ÉL es el cliente de la
               hacienda: firma él y se le factura a él. El festejado (el cliente
@@ -840,146 +852,11 @@ export function QuoteForm({
               </div>
             </div>
           )}
-        </Card>
+        </SeccionPlegable>
 
-        <Card className="space-y-4 p-6">
-          <h2 className="font-display text-xl text-ink">Evento</h2>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Tipo de evento">
-              <SelectInput
-                value={eventTypeId}
-                onChange={(e) => {
-                  setEventTypeId(e.target.value);
-                  setFoodPackageId('');
-                }}
-              >
-                <option value="">Selecciona…</option>
-                {catalog.eventTypes.map((et) => (
-                  <option key={et.id} value={et.id}>
-                    {et.nombre}
-                  </option>
-                ))}
-              </SelectInput>
-            </Field>
-            <Field
-              label="Fecha del evento"
-              hint={
-                bloqueado?.fecha
-                  ? 'Es la fecha que se apartó.'
-                  : precioPactado
-                    ? 'Se cambia con "Mover evento", que revisa que el salón esté libre.'
-                    : undefined
-              }
-            >
-              <TextInput
-                type="date"
-                value={fecha}
-                onChange={(e) => setFecha(e.target.value)}
-                disabled={bloqueado?.fecha || Boolean(precioPactado)}
-              />
-            </Field>
-            {catalogos && catalogos.length > 0 && (
-              <Field
-                label="Lista de precios"
-                hint={
-                  catalogoManual
-                    ? 'Elegida a mano. La fecha ya no la cambia.'
-                    : 'Se propone por el año del evento. Puedes cambiarla.'
-                }
-              >
-                <SelectInput
-                  value={priceListId ?? ''}
-                  onChange={(e) => {
-                    setCatalogoManual(true);
-                    onPriceListChange?.(e.target.value);
-                  }}
-                >
-                  {catalogos.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.nombre}
-                      {c.activa ? ' · en uso hoy' : ''}
-                    </option>
-                  ))}
-                </SelectInput>
-              </Field>
-            )}
-            <Field label="Invitados">
-              <TextInput type="number" min={1} value={invitados} onChange={(e) => setInvitados(Number(e.target.value))} />
-            </Field>
-            {/* Horas extra al cotizar (Fernando, 16-oct-2026: "necesito
-                regresarlo"). Las que se piden durante el evento se siguen cargando
-                en el punto de venta. Con precio pactado no se recotiza: no van. */}
-            {!precioPactado && (
-              <Field label="Horas extra" hint="Las que se contratan desde ahora. Las que se piden durante el evento se cargan en el punto de venta.">
-                <TextInput type="number" min={0} value={horasExtra} onChange={(e) => setHorasExtra(Math.max(0, Math.trunc(Number(e.target.value) || 0)))} />
-              </Field>
-            )}
-          </div>
-          {/* Al poner horas extra: cómo se cobra cada una (16-oct-2026). */}
-          {!precioPactado && horasExtra > 0 && (
-            <div className="space-y-2 rounded-lg border border-cream-300 bg-cream-100/60 p-3">
-              <p className="text-xs font-medium uppercase tracking-wide text-charcoal-soft">Cobro de cada hora extra</p>
-              <div role="radiogroup" aria-label="Cobro de la hora extra" className="inline-flex rounded-lg border border-ink/15 bg-white/70 p-0.5 text-sm">
-                {(
-                  [
-                    ['pct', '% de la renta'],
-                    ['monto', 'Monto fijo por hora ($)'],
-                  ] as const
-                ).map(([tipo, etiqueta]) => (
-                  <button
-                    key={tipo}
-                    type="button"
-                    role="radio"
-                    aria-checked={horaExtraTipo === tipo}
-                    onClick={() => {
-                      if (tipo === horaExtraTipo) return;
-                      setHoraExtraTipo(tipo);
-                      setHoraExtraValor('');
-                    }}
-                    className={`rounded-md px-3 py-1.5 font-medium transition-colors ${
-                      horaExtraTipo === tipo ? 'bg-ink text-cream' : 'text-ink hover:bg-ink/5'
-                    }`}
-                  >
-                    {etiqueta}
-                  </button>
-                ))}
-              </div>
-              <div className="max-w-56">
-                {horaExtraTipo === 'pct' ? (
-                  <Field label="% de la renta por hora" hint={`Vacío: el del catálogo (${pctCatalogo}%).`}>
-                    <TextInput
-                      type="number"
-                      min={0}
-                      max={100}
-                      step={0.5}
-                      value={horaExtraValor}
-                      onChange={(e) => setHoraExtraValor(e.target.value)}
-                      placeholder={String(pctCatalogo)}
-                    />
-                  </Field>
-                ) : (
-                  <Field label="$ por hora (con IVA)">
-                    <MoneyInput value={horaExtraValor} onValue={setHoraExtraValor} placeholder="0" />
-                  </Field>
-                )}
-              </div>
-              {horaExtra.invalida && horaExtraValor.trim() !== '' && (
-                <p className="inline-flex items-center gap-1.5 text-xs font-medium text-wine">
-                  <AlertTriangle size={13} /> {horaExtra.invalida}
-                </p>
-              )}
-              {horaExtra.invalida && horaExtraValor.trim() === '' && (
-                <p className="text-xs text-charcoal-soft">{horaExtra.invalida}</p>
-              )}
-            </div>
-          )}
-        </Card>
-
-        {/* Con precio pactado, lo que solo mueve el precio no se enseña. */}
+        {/* Espacio va antes que Evento (22-oct-2026). Con precio pactado no se enseña. */}
         {!precioPactado && (
-          <>
-        <Card className="space-y-3 p-6">
-          <h2 className="font-display text-xl text-ink">Espacio</h2>
+        <SeccionPlegable titulo="Espacio" resumen={resumenEspacio}>
           <p className="-mt-1 text-xs text-charcoal-soft">
             {bloqueado?.espacios
               ? 'Son los espacios que se apartaron. No se cambian aquí.'
@@ -1316,10 +1193,146 @@ export function QuoteForm({
               )}
             </div>
           )}
-        </Card>
+        </SeccionPlegable>
+        )}
 
-        <Card className="space-y-3 p-6">
-          <h2 className="font-display text-xl text-ink">Alimentos</h2>
+        <SeccionPlegable titulo="Evento" resumen={resumenEvento}>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="Tipo de evento">
+              <SelectInput
+                value={eventTypeId}
+                onChange={(e) => {
+                  setEventTypeId(e.target.value);
+                  setFoodPackageId('');
+                }}
+              >
+                <option value="">Selecciona…</option>
+                {catalog.eventTypes.map((et) => (
+                  <option key={et.id} value={et.id}>
+                    {et.nombre}
+                  </option>
+                ))}
+              </SelectInput>
+            </Field>
+            <Field
+              label="Fecha del evento"
+              hint={
+                bloqueado?.fecha
+                  ? 'Es la fecha que se apartó.'
+                  : precioPactado
+                    ? 'Se cambia con "Mover evento", que revisa que el salón esté libre.'
+                    : undefined
+              }
+            >
+              <TextInput
+                type="date"
+                value={fecha}
+                onChange={(e) => setFecha(e.target.value)}
+                disabled={bloqueado?.fecha || Boolean(precioPactado)}
+              />
+            </Field>
+            {catalogos && catalogos.length > 0 && (
+              <Field
+                label="Lista de precios"
+                hint={
+                  catalogoManual
+                    ? 'Elegida a mano. La fecha ya no la cambia.'
+                    : 'Se propone por el año del evento. Puedes cambiarla.'
+                }
+              >
+                <SelectInput
+                  value={priceListId ?? ''}
+                  onChange={(e) => {
+                    setCatalogoManual(true);
+                    onPriceListChange?.(e.target.value);
+                  }}
+                >
+                  {catalogos.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.nombre}
+                      {c.activa ? ' · en uso hoy' : ''}
+                    </option>
+                  ))}
+                </SelectInput>
+              </Field>
+            )}
+            <Field label="Invitados">
+              <TextInput type="number" min={1} value={invitados} onChange={(e) => setInvitados(Number(e.target.value))} />
+            </Field>
+            {/* Horas extra al cotizar (Fernando, 16-oct-2026: "necesito
+                regresarlo"). Las que se piden durante el evento se siguen cargando
+                en el punto de venta. Con precio pactado no se recotiza: no van. */}
+            {!precioPactado && (
+              <Field label="Horas extra" hint="Las que se contratan desde ahora. Las que se piden durante el evento se cargan en el punto de venta.">
+                <TextInput type="number" min={0} value={horasExtra} onChange={(e) => setHorasExtra(Math.max(0, Math.trunc(Number(e.target.value) || 0)))} />
+              </Field>
+            )}
+          </div>
+          {/* Al poner horas extra: cómo se cobra cada una (16-oct-2026). */}
+          {!precioPactado && horasExtra > 0 && (
+            <div className="space-y-2 rounded-lg border border-cream-300 bg-cream-100/60 p-3">
+              <p className="text-xs font-medium uppercase tracking-wide text-charcoal-soft">Cobro de cada hora extra</p>
+              <div role="radiogroup" aria-label="Cobro de la hora extra" className="inline-flex rounded-lg border border-ink/15 bg-white/70 p-0.5 text-sm">
+                {(
+                  [
+                    ['pct', '% de la renta'],
+                    ['monto', 'Monto fijo por hora ($)'],
+                  ] as const
+                ).map(([tipo, etiqueta]) => (
+                  <button
+                    key={tipo}
+                    type="button"
+                    role="radio"
+                    aria-checked={horaExtraTipo === tipo}
+                    onClick={() => {
+                      if (tipo === horaExtraTipo) return;
+                      setHoraExtraTipo(tipo);
+                      setHoraExtraValor('');
+                    }}
+                    className={`rounded-md px-3 py-1.5 font-medium transition-colors ${
+                      horaExtraTipo === tipo ? 'bg-ink text-cream' : 'text-ink hover:bg-ink/5'
+                    }`}
+                  >
+                    {etiqueta}
+                  </button>
+                ))}
+              </div>
+              <div className="max-w-56">
+                {horaExtraTipo === 'pct' ? (
+                  <Field label="% de la renta por hora" hint={`Vacío: el del catálogo (${pctCatalogo}%).`}>
+                    <TextInput
+                      type="number"
+                      min={0}
+                      max={100}
+                      step={0.5}
+                      value={horaExtraValor}
+                      onChange={(e) => setHoraExtraValor(e.target.value)}
+                      placeholder={String(pctCatalogo)}
+                    />
+                  </Field>
+                ) : (
+                  <Field label="$ por hora (con IVA)">
+                    <MoneyInput value={horaExtraValor} onValue={setHoraExtraValor} placeholder="0" />
+                  </Field>
+                )}
+              </div>
+              {horaExtra.invalida && horaExtraValor.trim() !== '' && (
+                <p className="inline-flex items-center gap-1.5 text-xs font-medium text-wine">
+                  <AlertTriangle size={13} /> {horaExtra.invalida}
+                </p>
+              )}
+              {horaExtra.invalida && horaExtraValor.trim() === '' && (
+                <p className="text-xs text-charcoal-soft">{horaExtra.invalida}</p>
+              )}
+            </div>
+          )}
+        </SeccionPlegable>
+
+        {/* Con precio pactado, lo que solo mueve el precio no se enseña. */}
+        {!precioPactado && (
+          <>
+
+        <SeccionPlegable titulo="Alimentos" resumen={resumenAlimentos} abiertaAlInicio={false}>
           <SelectInput value={foodPackageId} onChange={(e) => setFoodPackageId(e.target.value)} disabled={!eventType}>
             <option value="">Sin alimentos</option>
             {foodPackages.map((p) => (
@@ -1375,10 +1388,9 @@ export function QuoteForm({
               )}
             </div>
           )}
-        </Card>
+        </SeccionPlegable>
 
-        <Card className="space-y-3 p-6">
-          <h2 className="font-display text-xl text-ink">Servicios adicionales</h2>
+        <SeccionPlegable titulo="Servicios adicionales" resumen={resumenServicios} abiertaAlInicio={false}>
 
           {/* DJ Hora extra: se vende en el punto de venta. Solo sigue aquí para los
               contratos que ya lo traían (Fernando, 16-oct-2026: "No DJ, solo Hora extra"). */}
@@ -1487,7 +1499,7 @@ export function QuoteForm({
           {esDeBanquetero && (
             <ServiciosBanqueteroCampo servicios={serviciosBanquetero} onChange={setServiciosBanquetero} />
           )}
-        </Card>
+        </SeccionPlegable>
           </>
         )}
 
