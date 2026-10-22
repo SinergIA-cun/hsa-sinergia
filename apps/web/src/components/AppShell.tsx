@@ -76,13 +76,14 @@ export function AppShell({ children }: { children: ReactNode }) {
   const pendientes = sinVer.data?.count ?? 0;
 
   const apartados: Apartado[] = [
-    { to: '/', icon: <LayoutDashboard size={18} />, label: 'Inicio' },
-    { to: '/eventos', icon: <FileText size={18} />, label: 'Eventos' },
-    { to: '/agenda', icon: <CalendarDays size={18} />, label: 'Agenda de Eventos' },
-    { to: '/agenda/apartados', icon: <CalendarClock size={18} />, label: 'Apartados' },
-    { to: '/banqueteros', icon: <ChefHat size={18} />, label: 'Clientes' },
-    { to: '/historico', icon: <Archive size={18} />, label: 'Histórico' },
+    // Orden y nombres de Jorge (22-oct-2026).
+    { to: '/', icon: <LayoutDashboard size={18} />, label: 'Programa' },
     { to: '/eventos/nuevo', icon: <Plus size={18} />, label: 'Nuevo' },
+    { to: '/agenda', icon: <CalendarDays size={18} />, label: 'Calendario' },
+    { to: '/agenda/apartados', icon: <CalendarClock size={18} />, label: 'Apartados' },
+    { to: '/eventos', icon: <FileText size={18} />, label: 'Eventos' },
+    { to: '/banqueteros', icon: <ChefHat size={18} />, label: 'Prof. Evento' },
+    { to: '/historico', icon: <Archive size={18} />, label: 'Histórico' },
     { to: '/papelera', icon: <Trash2 size={18} />, label: 'Papelera', badge: pendientes },
     ...(user?.role === 'admin' ? [{ to: '/admin', icon: <SlidersHorizontal size={18} />, label: 'Admin' }] : []),
   ];

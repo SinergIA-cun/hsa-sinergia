@@ -74,7 +74,7 @@ export function BanqueteroPage() {
         to="/banqueteros"
         className="mb-4 inline-flex items-center gap-1.5 text-sm text-charcoal-soft hover:text-ink"
       >
-        <ArrowLeft size={15} /> Clientes
+        <ArrowLeft size={15} /> Prof. Evento
       </Link>
 
       <div className="mb-8 flex flex-wrap items-end justify-between gap-4">
