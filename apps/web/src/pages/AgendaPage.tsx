@@ -346,7 +346,7 @@ export function AgendaPage() {
 
   return (
     <div>
-      <CabeceraCalendario cal={cal} seccion="Agenda de eventos" extra={<BuscadorEventos onAbrir={abrir} onVer={(f) => cal.ir('mes', new Date(`${f}T12:00:00`))} />} />
+      <CabeceraCalendario cal={cal} seccion="Calendario" extra={<BuscadorEventos onAbrir={abrir} onVer={(f) => cal.ir('mes', new Date(`${f}T12:00:00`))} />} />
 
       <SinFechaPanel />
 

@@ -142,7 +142,7 @@ export function InicioPage() {
 
       <div className="mb-8 flex flex-wrap items-end justify-between gap-4 print:hidden">
         <div>
-          <ArrowDivider>Panel · Operación semanal</ArrowDivider>
+          <ArrowDivider>Programa · Operación semanal</ArrowDivider>
           <h1 className="mt-2 font-display text-4xl text-ink">
             {saludo()}, {user?.nombre?.split(' ')[0] ?? ''}
           </h1>

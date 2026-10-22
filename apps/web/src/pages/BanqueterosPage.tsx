@@ -47,6 +47,13 @@ type Filtro = 'activos' | 'sin-repartir' | 'por-vencer' | 'inactivos';
  * y ediciones siguen siendo de admin —la API las exige— pero la consulta y la
  * cuenta corriente son de todo el equipo.
  */
+function cumpleFiltro(b: ResumenBanquetero, filtro: Filtro): boolean {
+  if (filtro === 'activos') return b.activo;
+  if (filtro === 'inactivos') return !b.activo;
+  if (filtro === 'sin-repartir') return b.saldoSinAsignar > 0;
+  return b.apartadosPorVencer > 0;
+}
+
 export function BanqueterosPage() {
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin';
@@ -93,6 +100,8 @@ export function BanqueterosPage() {
 
   const [q, setQ] = useState('');
   const [filtro, setFiltro] = useState<Filtro>('activos');
+  // Por tipo (Jorge, 22-oct-2026): wedding planner, agencia… además del estatus.
+  const [tipo, setTipo] = useState<TipoProfesional | ''>('');
   const [verTodos, setVerTodos] = useState(false);
   const [alta, setAlta] = useState(false);
 
@@ -116,14 +125,15 @@ export function BanqueterosPage() {
     // banquetero dado de baja, encontrarlo vale más que respetar el filtro. Por
     // eso la búsqueda IGNORA el filtro en vez de combinarse con él, que es como
     // se llega a "no aparece" teniendo el registro enfrente.
-    if (needle) return todos.filter((b) => coincideTexto([b.nombre, b.telefono], needle));
-    return todos.filter((b) => {
-      if (filtro === 'activos') return b.activo;
-      if (filtro === 'inactivos') return !b.activo;
-      if (filtro === 'sin-repartir') return b.saldoSinAsignar > 0;
-      return b.apartadosPorVencer > 0;
-    });
-  }, [todos, filtro, q]);
+    // El tipo sí se combina con todo: es lo que se eligió ver.
+    const delTipo = (b: ResumenBanquetero) => !tipo || (b.tipo ?? 'banquetero') === tipo;
+    if (needle) return todos.filter((b) => delTipo(b) && coincideTexto([b.nombre, b.telefono], needle));
+    return todos.filter((b) => delTipo(b) && cumpleFiltro(b, filtro));
+  }, [todos, filtro, tipo, q]);
+
+  /** Cuántos de cada tipo hay con el filtro de estatus vigente. */
+  const porTipo = (t: TipoProfesional) =>
+    todos.filter((b) => (b.tipo ?? 'banquetero') === t && (q.trim() ? true : cumpleFiltro(b, filtro))).length;
 
   const visibles = verTodos ? filtrados : filtrados.slice(0, TOPE_LISTA);
   const ocultos = filtrados.length - visibles.length;
@@ -158,7 +168,7 @@ export function BanqueterosPage() {
       <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
         <div>
           <ArrowDivider>Cartera</ArrowDivider>
-          <h1 className="mt-2 font-display text-4xl text-ink">Clientes</h1>
+          <h1 className="mt-2 font-display text-4xl text-ink">Profesionales de evento</h1>
           <p className="mt-1 text-sm text-charcoal-soft">
             Banqueteros, banquetes de graduación, agencias, wedding planners y otros profesionales. Cada uno
             tiene cuenta corriente y su comisión de HSA por el paquete de alimentos.
@@ -167,7 +177,7 @@ export function BanqueterosPage() {
         {isAdmin && (
           <Button variant="gold" onClick={() => setAlta((a) => !a)}>
             {alta ? <X size={16} /> : <Plus size={16} />}
-            {alta ? 'Cerrar' : 'Nuevo cliente'}
+            {alta ? 'Cerrar' : 'Nuevo profesional'}
           </Button>
         )}
       </div>
@@ -207,6 +217,32 @@ export function BanqueterosPage() {
         {chip('sin-repartir', 'Con dinero sin repartir')}
         {chip('por-vencer', 'Apartados por vencer')}
         {chip('inactivos', 'Inactivos')}
+      </div>
+      <div role="group" aria-label="Filtrar por tipo" className="-mt-3 mb-5 flex flex-wrap items-center gap-2">
+        <span className="mr-1 text-xs uppercase tracking-wide text-charcoal-soft">Tipo</span>
+        {([['', 'Todos'], ...TIPOS_PROFESIONAL.map((t) => [t, TIPO_PROFESIONAL[t].label])] as [TipoProfesional | '', string][]).map(
+          ([t, label]) => (
+            <button
+              key={t || 'todos'}
+              type="button"
+              aria-pressed={tipo === t}
+              onClick={() => {
+                setTipo(t);
+                setVerTodos(false);
+              }}
+              className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold/60 ${
+                tipo === t ? 'border-gold bg-gold text-cream' : 'border-cream-300 bg-white/70 text-ink hover:border-gold/60'
+              }`}
+            >
+              {label}
+              {t && (
+                <span className={`rounded-full px-1.5 text-[0.7rem] font-semibold ${tipo === t ? 'bg-cream/25' : 'bg-ink/10'}`}>
+                  {porTipo(t)}
+                </span>
+              )}
+            </button>
+          ),
+        )}
       </div>
       {q.trim() && (
         <p className="mb-3 text-xs text-charcoal-soft">
@@ -292,7 +328,7 @@ function AltaBanquetero({
       await onCreado();
       onCerrar();
     },
-    onError: (e) => setError(apiErrorMessage(e, 'No se pudo dar de alta al cliente.')),
+    onError: (e) => setError(apiErrorMessage(e, 'No se pudo dar de alta al profesional.')),
   });
 
   function onSubmit(e: FormEvent) {
@@ -305,7 +341,7 @@ function AltaBanquetero({
 
   return (
     <Card className="mb-6 p-6">
-      <h2 className="mb-4 font-display text-lg text-ink">Nuevo cliente</h2>
+      <h2 className="mb-4 font-display text-lg text-ink">Nuevo profesional de evento</h2>
       <form onSubmit={onSubmit} className="grid gap-4 sm:grid-cols-2 sm:items-end xl:grid-cols-[1.4fr_auto_1fr_1fr_7rem_auto]">
         <Field label="Nombre">
           <TextInput

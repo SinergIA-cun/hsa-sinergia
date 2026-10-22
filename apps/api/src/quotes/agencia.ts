@@ -44,7 +44,7 @@ export async function cambiarComision(db: PrismaClient, quoteId: string, rawInpu
   if (!quote) throw new QuoteError(404, 'Cotización no encontrada');
   assertNotTrashed(quote);
   if (quote.agenciaId || quote.banqueteroId) {
-    throw new QuoteError(409, 'La comisión de este evento es la de su cliente o agencia: cámbiala en su ficha de Clientes.');
+    throw new QuoteError(409, 'La comisión de este evento es la de su cliente o agencia: cámbiala en su ficha de Prof. Evento.');
   }
   const antes = quote.comisionPct ?? COMISION_HSA_POR_OMISION;
   if (antes === comisionPct) return { comisionPct };
@@ -69,7 +69,7 @@ export async function cambiarAgencia(db: PrismaClient, quoteId: string, rawInput
   assertNotTrashed(quote);
   if (!(await paqueteDelEvento(db, quote))) throw new QuoteError(409, 'El evento no tiene paquete de alimentos: no hay agencia que poner.');
   const nueva = agenciaId ? await db.banquetero.findUnique({ where: { id: agenciaId }, select: { id: true, nombre: true } }) : null;
-  if (agenciaId && !nueva) throw new QuoteError(400, 'Esa agencia no está en la lista de Clientes.');
+  if (agenciaId && !nueva) throw new QuoteError(400, 'Esa agencia no está en Prof. Evento.');
   if ((quote.agenciaId ?? null) === agenciaId) return { agencia: nueva };
 
   await db.quote.update({ where: { id: quoteId }, data: { agenciaId } });

@@ -739,7 +739,7 @@ export function QuoteForm({
             <p className="rounded-lg bg-cream-200/70 px-3 py-2 text-sm text-ink">
               El profesional de eventos es el cliente de la hacienda: <strong>firma él y se le factura a él</strong>.
               Sus datos quedan de solo lectura; para corregirlos, edítalo en{' '}
-              <a href="/banqueteros" className="underline">Clientes</a>.
+              <a href="/banqueteros" className="underline">Prof. Evento</a>.
               {enableClientSearch && ' Si ya tiene ficha de cliente, aparece abajo de su nombre: úsala para no duplicarla.'}
             </p>
           )}

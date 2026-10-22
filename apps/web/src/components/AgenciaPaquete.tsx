@@ -16,7 +16,7 @@ import type { PaqueteDelEvento } from '../lib/types.ts';
  * evento, si tiene.
  *
  * La comisión de HSA (21-oct-2026): la de la agencia o del cliente profesional
- * (se cambia en su ficha de Clientes); sin ninguno, vive en el evento —el
+ * (se cambia en su ficha de Prof. Evento); sin ninguno, vive en el evento —el
  * proveedor no siempre se da de alta— y nace en 10%.
  */
 export function AgenciaPaquete({
@@ -95,7 +95,7 @@ export function AgenciaPaquete({
                   <span className="block text-xs text-charcoal-soft">
                     La de {comision.de}; se cambia en su ficha de{' '}
                     <a href="/banqueteros" className="underline">
-                      Clientes
+                      Prof. Evento
                     </a>
                     .
                   </span>
@@ -150,7 +150,7 @@ export function AgenciaPaquete({
           <span className="mt-1 block text-xs text-charcoal-soft">
             Quien paga la comisión del paquete. No cambia el cliente ni el contrato. ¿No aparece? Dalo de alta en{' '}
             <a href="/banqueteros" className="underline">
-              Clientes
+              Prof. Evento
             </a>
             .
           </span>

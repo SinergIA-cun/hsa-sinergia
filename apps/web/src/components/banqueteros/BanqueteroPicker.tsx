@@ -248,7 +248,7 @@ export function BanqueteroPicker({
             <p className="mt-1 text-xs text-charcoal-soft">
               {tipo && !needle ? `Todavía no hay nadie dado de alta como «${TIPO_PROFESIONAL[tipo].label}».` : 'Sin coincidencias.'} Si es nuevo, un admin lo da de alta en{' '}
               <a href="/banqueteros" className="underline">
-                Clientes
+                Prof. Evento
               </a>{' '}
               (banqueteros, agencias, wedding planners y otros).
             </p>
