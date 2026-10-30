@@ -674,6 +674,75 @@ Real, de `GET /api/bi/facturacion?desde=2031-01-01&hasta=2031-12-31`:
 
 `faltantes` vacío significa que el cliente tiene todo lo que exige el CFDI 4.0.
 
+### `GET /api/bi/facturacion/pagos` — los pagos de un mes para facturar (desde el 30-oct-2026)
+
+Para la sección de facturación del BI: "hay 15 facturas pendientes" y cuáles son. Llave de
+lectura (`BI_API_KEY`). Parámetro `mes=AAAA-MM`; sin él, el mes en curso (hora de México).
+No pagina: un mes cabe completo.
+
+Reglas (Fernando, 16 y 30-oct-2026):
+- **Cada pago se factura por separado**, en el mes en que entró (el candado fiscal). Los de
+  meses pasados solo salen si un admin los desbloqueó.
+- **El efectivo no se factura.** De un pago mixto se factura solo lo que no es efectivo
+  (`montoFacturable`). Los pagos 100% en efectivo no se listan.
+- **Receptor:** el cliente si el evento pidió factura y sus datos fiscales están completos; si
+  no, **público en general** (RFC `XAXX010101000`), pago por pago. `pidioFactura: true` con
+  `receptor.tipo: "publicoGeneral"` = pidió factura pero le faltan datos (`faltantes`):
+  conviene avisar antes de facturar.
+- Los pagos que salieron de un depósito del banquetero no se facturan aquí (van en `noSeFacturan`).
+
+```json
+{
+  "mes": "2026-10",
+  "pendientes": {
+    "cantidad": 15,
+    "monto": 184500,
+    "pagos": [
+      {
+        "pagoId": "cm…", "quoteId": "cm…", "eventoCodigo": "…", "eventoFolio": 123, "cliente": "…",
+        "folioTexto": "I-5501", "fecha": "2026-10-18", "destino": "evento",
+        "montoPago": 20000, "montoFacturable": 15000,
+        "formas": [{ "forma": "efectivo", "monto": 5000 }, { "forma": "transferencia", "monto": 15000 }],
+        "receptor": { "tipo": "cliente", "rfc": "EKU9003173C9", "nombre": "ESCUELA KEMPER URGATE" },
+        "pidioFactura": true, "faltantes": [],
+        "facturaUuid": null, "facturadoAt": null, "motivo": null
+      }
+    ]
+  },
+  "facturados": { "cantidad": 3, "pagos": [ "… mismas columnas, con facturaUuid y facturadoAt …" ] },
+  "noSeFacturan": [ "… mismas columnas, con motivo …" ]
+}
+```
+
+### `POST /api/bi/facturacion/facturar` — timbrar con el PAC (escritura, llave de importación)
+
+Factura con Facturador.com, pago por pago, y le manda al cliente su XML y PDF por correo (si
+va a su nombre). Usa la llave de escritura (`BI_IMPORT_API_KEY`), no la de lectura.
+
+- Unos pagos: `{ "pagoIds": ["cm…", "cm…"] }` (de 1 a 100; para uno solo, un arreglo de uno).
+- Todos los pendientes: `{ "todos": true }` o `{ "todos": true, "mes": "2026-10" }` (hasta 100
+  por llamada; si hay más, se vuelve a llamar).
+
+Responde cuando termina (puede tardar unos segundos por factura):
+
+```json
+{
+  "facturados": 2,
+  "fallidos": 1,
+  "resultados": [
+    { "pagoId": "cm…", "ok": true, "folioTexto": "I-5501", "uuid": "…", "monto": 15000,
+      "receptor": { "tipo": "cliente", "rfc": "…", "nombre": "…" }, "correo": "enviado" },
+    { "pagoId": "cm…", "ok": false, "error": "Pago en efectivo: no se factura." }
+  ]
+}
+```
+
+`correo`: `enviado`, `sinCorreo` (público en general o el cliente no tiene correo), `sinSmtp`, o
+`error: …` (la factura sí quedó hecha). Un pago que falla no detiene a los demás. Cada factura
+queda en la bitácora del evento ("… desde el BI") y sale en `/cambios` como `factura`; el pago
+trae `facturadoAt` y su `facturaUuid`. **No existe** la factura automática a fin de mes: se
+factura cuando alguien lo pide.
+
 ### `GET /api/bi/apartados`
 
 Las fechas apartadas (pagadas sin todos los datos del evento). Misma envoltura, parámetros y

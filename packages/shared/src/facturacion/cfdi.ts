@@ -45,6 +45,35 @@ export const FORMA_PAGO_SAT: Record<FormaPago | 'tarjeta', string> = {
 
 const r2 = (n: number) => Math.round(n * 100) / 100;
 
+/** RFC genérico de público en general (Anexo 20). */
+export const RFC_PUBLICO_GENERAL = 'XAXX010101000';
+
+/**
+ * El receptor de una factura a público en general: RFC genérico, régimen 616
+ * (sin obligaciones fiscales), uso S01 y, como domicilio, el lugar de expedición.
+ */
+export function receptorPublicoGeneral(codigoPostalEmisor: string): ReceptorCfdi {
+  return { rfc: RFC_PUBLICO_GENERAL, nombre: 'PUBLICO EN GENERAL', regimenFiscal: '616', codigoPostal: codigoPostalEmisor, usoCfdi: 'S01' };
+}
+
+/**
+ * El nodo `InformacionGlobal` que el SAT exige con el RFC genérico. Cada pago se
+ * factura por separado (regla de Fernando, 16-oct-2026), así que la periodicidad
+ * es diaria (`01`) y el mes y el año son los del día en que se timbra.
+ */
+export function informacionGlobalDiaria(fechaLocal: string): { periodicidad: string; meses: string; año: string } {
+  return { periodicidad: '01', meses: fechaLocal.slice(5, 7), año: fechaLocal.slice(0, 4) };
+}
+
+/**
+ * Lo que se factura de un pago: todo menos el efectivo (16-oct y 30-oct-2026).
+ * Un pago mixto solo factura sus partes que no son efectivo.
+ */
+export function partesFacturables<T extends { forma: string; monto: number }>(partes: readonly T[]): { partes: T[]; monto: number } {
+  const facturables = partes.filter((p) => p.forma !== 'efectivo' && p.monto > 0);
+  return { partes: facturables, monto: r2(facturables.reduce((s, p) => s + p.monto, 0)) };
+}
+
 /**
  * La forma de pago del CFDI. Un pago dividido (débito + crédito) se factura con
  * la forma de la parte más grande, que es la regla del SAT para PUE con varias formas.
@@ -78,6 +107,8 @@ export function cfdiDePago(args: {
   /** El id de la serie en Facturador, si la cuenta tiene varias del mismo nombre. */
   serieId?: number;
   folio?: string;
+  /** Solo a público en general: ver `informacionGlobalDiaria`. */
+  informacionGlobal?: { periodicidad: string; meses: string; año: string };
 }) {
   const { base, iva } = desglosarIva(args.montoConIva, args.ivaRate);
   const traslado = { base, impuesto: '002', tipoFactor: 'Tasa', tasaOCuota: args.ivaRate, importe: iva };
@@ -116,6 +147,7 @@ export function cfdiDePago(args: {
       },
     ],
     impuestos: { traslados: [traslado], totalImpuestosTrasladados: iva },
+    ...(args.informacionGlobal ? { informacionGlobal: args.informacionGlobal } : {}),
   };
 }
 

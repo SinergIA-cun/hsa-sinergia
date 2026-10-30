@@ -29,6 +29,7 @@ import { historicoRoutes } from './historico/routes.js';
 import { proveedorRoutes } from './proveedores/routes.js';
 import { correoRoutes } from './correos/routes.js';
 import { crearMailer, type Mailer } from './correos/mailer.js';
+import { proveedorDesdeEnv, type ProveedorFactura } from './facturacion/facturar.js';
 import { apartadoRapidoRoutes } from './apartadosRapidos/routes.js';
 import { whatsappRoutes } from './whatsapp/routes.js';
 import { candadoDeEventoCerrado } from './quotes/cierre.js';
@@ -39,6 +40,8 @@ declare module 'fastify' {
     prisma: PrismaClient;
     /** Quien manda los correos al cliente; `null` sin SMTP. */
     mailer: Mailer | null;
+    /** El PAC para timbrar; `null` sin llaves de Facturador. */
+    facturacion: ProveedorFactura | null;
   }
   interface FastifyRequest {
     user?: { id: string; role: 'ventas' | 'admin' };
@@ -50,6 +53,8 @@ export interface BuildOptions {
   db?: PrismaClient;
   /** En pruebas, un correo de mentiras. Omitido = el SMTP de la configuración. */
   mailer?: Mailer | null;
+  /** En pruebas, un PAC de mentiras. Omitido = Facturador con las llaves del entorno. */
+  facturacion?: ProveedorFactura | null;
 }
 
 export async function buildServer(opts: BuildOptions = {}): Promise<FastifyInstance> {
@@ -60,6 +65,7 @@ export async function buildServer(opts: BuildOptions = {}): Promise<FastifyInsta
   app.decorate('config', config);
   app.decorate('prisma', db);
   app.decorate('mailer', opts.mailer !== undefined ? opts.mailer : crearMailer(config));
+  app.decorate('facturacion', opts.facturacion !== undefined ? opts.facturacion : proveedorDesdeEnv());
 
   await app.register(helmet, { contentSecurityPolicy: false });
   await app.register(cors, { origin: [config.PUBLIC_WEB_URL], credentials: true });

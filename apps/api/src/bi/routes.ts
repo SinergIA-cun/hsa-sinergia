@@ -6,6 +6,7 @@ import { importarLote, conciliarLote } from './importar.js';
 import { conciliarBanqueteros, importarBanqueteros } from './banqueteros.js';
 import { conciliarApartados, importarApartados } from './apartados.js';
 import { conciliarPaquetes, importarPaquetes } from './paquetes.js';
+import { facturarVarios, mesActual, mesSchema, pagosDelMes } from '../facturacion/facturar.js';
 import { biEventos, biPagos, biIngresos, biCargos, biDevoluciones, biPagosEsperados, biCambios, biFacturacion, biApartados, biCatalogos, type RangoBI } from './service.js';
 
 const LIMITE_MAX = 500;
@@ -64,6 +65,13 @@ export async function biRoutes(app: FastifyInstance): Promise<void> {
 
   app.get('/bi/catalogos', { preHandler: guardia }, async () => biCatalogos(app.prisma));
 
+  // Los pagos de un mes para facturar: pendientes, facturados y los que no se facturan.
+  app.get('/bi/facturacion/pagos', { preHandler: guardia }, async (req, reply) => {
+    const mes = z.object({ mes: mesSchema.optional() }).safeParse(req.query);
+    if (!mes.success) return reply.code(400).send({ error: 'mes como AAAA-MM' });
+    return pagosDelMes(app.prisma, mes.data.mes ?? mesActual());
+  });
+
   for (const [nombre, consulta] of endpoints) {
     app.get(`/bi/${nombre}`, { preHandler: guardia }, async (req, reply) => {
       const parsed = querySchema.safeParse(req.query);
@@ -112,4 +120,24 @@ async function rutasDeImportacion(app: FastifyInstance): Promise<void> {
   app.post('/bi/importar/apartados', opciones, async (req) => importarApartados(app.prisma, req.body));
   app.post('/bi/conciliar/paquetes', opciones, async (req) => conciliarPaquetes(app.prisma, req.body));
   app.post('/bi/importar/paquetes', opciones, async (req) => importarPaquetes(app.prisma, req.body));
+
+  // Facturar con el PAC: unos pagos (`pagoIds`) o todos los pendientes de un mes
+  // (`todos: true`, con `mes` o el mes en curso). Uno por uno, hasta 100 por llamada.
+  app.post('/bi/facturacion/facturar', { preHandler: guardia }, async (req, reply) => {
+    const body = facturarBiSchema.safeParse(req.body ?? {});
+    if (!body.success) return reply.code(400).send({ error: 'Manda pagoIds (1 a 100) o todos: true', issues: body.error.issues });
+    const ids = body.data.todos
+      ? (await pagosDelMes(app.prisma, body.data.mes ?? mesActual())).pendientes.pagos.map((p) => p.pagoId).slice(0, MAX_FACTURAS)
+      : body.data.pagoIds!;
+    return facturarVarios(app.prisma, ids, { proveedor: app.facturacion, mailer: app.mailer, actorId: null, origen: 'BI' });
+  });
 }
+
+const MAX_FACTURAS = 100;
+const facturarBiSchema = z
+  .object({
+    pagoIds: z.array(z.string().min(1).max(40)).min(1).max(MAX_FACTURAS).optional(),
+    todos: z.literal(true).optional(),
+    mes: mesSchema.optional(),
+  })
+  .refine((b) => (b.pagoIds ? !b.todos : b.todos === true), 'pagoIds o todos, uno de los dos');

@@ -79,6 +79,21 @@ FACTURADOR_CLIENT_ID=<del menú Desarrolladores de la cuenta de la hacienda>
 FACTURADOR_CLIENT_SECRET=<ídem>
 ```
 
+Para facturar desde la app (botón "Facturar" del pago y `/api/bi/facturacion/facturar`, desde el
+30-oct-2026) además:
+
+```
+FACTURADOR_EMISOR_NOMBRE=<razón social de la hacienda, como en la constancia>
+FACTURADOR_EMISOR_REGIMEN=<clave SAT del régimen, p. ej. 601>
+FACTURADOR_EMISOR_CP=<CP del lugar de expedición>
+FACTURADOR_SERIE=A                      # opcional: sin ella, la primera serie de facturas
+FACTURADOR_CLAVE_PROD_SERV=<clave SAT del servicio>   # opcional: sin ella, 01010101
+FACTURADOR_CLAVE_UNIDAD=E48             # opcional
+```
+
+Sin las tres del emisor el botón responde "No se pudo conectar con el PAC". A público en general
+va con RFC `XAXX010101000`, régimen 616, uso S01 e `informacionGlobal` diaria del mes en curso.
+
 La prueba de compatibilidad se niega a correr con estas direcciones: en producción cada factura
 es real.
 

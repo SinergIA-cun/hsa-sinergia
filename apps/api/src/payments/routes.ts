@@ -17,6 +17,7 @@ import { ServerStorage } from './storage.js';
 import { estadoFolios, fijarSiguienteFolio } from './folios.js';
 import { buscarRecibos, corregirPago, eventoPorCodigo, moverPago } from './correcciones.js';
 import { exigirCorreoParaFormalizar } from '../correos/cola.js';
+import { facturarPago, uuidDePago, vistaPreviaFactura } from '../facturacion/facturar.js';
 
 /**
  * Las partes de un pago dividido llegan en multipart como UN campo con JSON
@@ -195,6 +196,59 @@ export async function paymentRoutes(app: FastifyInstance): Promise<void> {
       } catch (e) {
         if (e instanceof QuoteError) return reply.code(e.status).send({ error: e.message });
         throw e;
+      }
+    },
+  );
+
+  // A quién y cuánto se facturaría el pago, sin timbrar (para confirmar antes).
+  app.get<{ Params: { id: string; paymentId: string } }>(
+    '/quotes/:id/payments/:paymentId/factura',
+    { preHandler: requireAuth },
+    async (req, reply) => {
+      try {
+        const vista = await vistaPreviaFactura(app.prisma, req.params.id, req.params.paymentId, req.user as Actor);
+        return { ...vista, pacConfigurado: app.facturacion != null };
+      } catch (e) {
+        if (e instanceof QuoteError) return reply.code(e.status).send({ error: e.message });
+        throw e;
+      }
+    },
+  );
+
+  // Timbrar con el PAC y mandarle la factura al cliente (solo admin).
+  app.post<{ Params: { id: string; paymentId: string } }>(
+    '/quotes/:id/payments/:paymentId/facturar',
+    { preHandler: requireAdmin },
+    async (req, reply) => {
+      try {
+        // Que el pago sea de este evento (la ruta lo dice; el servicio busca por id).
+        await vistaPreviaFactura(app.prisma, req.params.id, req.params.paymentId, req.user as Actor);
+        return await facturarPago(app.prisma, req.params.paymentId, {
+          proveedor: app.facturacion,
+          mailer: app.mailer,
+          actorId: (req.user as Actor).id,
+          origen: 'app',
+        });
+      } catch (e) {
+        if (e instanceof QuoteError) return reply.code(e.status).send({ error: e.message });
+        throw e;
+      }
+    },
+  );
+
+  // El PDF de la factura de un pago, tal como lo genera el PAC.
+  app.get<{ Params: { id: string; paymentId: string } }>(
+    '/quotes/:id/payments/:paymentId/factura/pdf',
+    { preHandler: requireAuth },
+    async (req, reply) => {
+      try {
+        const uuid = await uuidDePago(app.prisma, req.params.id, req.params.paymentId, req.user as Actor);
+        if (!app.facturacion) return reply.code(503).send({ error: 'El PAC no está configurado.' });
+        const pdf = await (await app.facturacion()).pac.pdf(uuid);
+        return reply.type('application/pdf').header('Content-Disposition', `inline; filename="${uuid}.pdf"`).send(pdf);
+      } catch (e) {
+        if (e instanceof QuoteError) return reply.code(e.status).send({ error: e.message });
+        return reply.code(502).send({ error: `No se pudo bajar el PDF: ${e instanceof Error ? e.message : String(e)}` });
       }
     },
   );
