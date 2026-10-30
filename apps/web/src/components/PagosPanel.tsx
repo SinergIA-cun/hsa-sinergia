@@ -13,6 +13,7 @@ import { BanquetePagos } from './BanquetePagos.tsx';
 import { CorregirPagoForm, MoverPagoForm } from './CorregirPago.tsx';
 import type { EstadoCuenta, Payment, PaymentConcept, ActivityEntry, CuentaBanquete } from '../lib/types.ts';
 import { ReciboWhatsApp, type ClienteContacto } from './ReciboWhatsApp.tsx';
+import { FacturarPagoModal } from './FacturarPagoModal.tsx';
 
 const CONCEPTO_LABEL: Record<PaymentConcept, string> = {
   anticipo: 'Anticipo',
@@ -55,6 +56,8 @@ export function PagosPanel({
   const qc = useQueryClient();
   const [info, setInfo] = useState('');
   const [pagoAFacturar, setPagoAFacturar] = useState<Payment | null>(null);
+  /** El pago que se va a timbrar con el PAC. */
+  const [pagoATimbrar, setPagoATimbrar] = useState<Payment | null>(null);
   /** El pago que se está corrigiendo o moviendo (uno a la vez). */
   const [accion, setAccion] = useState<{ id: string; tipo: 'corregir' | 'mover' } | null>(null);
   const [uuidFactura, setUuidFactura] = useState('');
@@ -203,13 +206,23 @@ export function PagosPanel({
                         <ReceiptText size={12} /> Facturado
                       </span>
                     )}
+                    {p.facturaUuid && (
+                      <a
+                        href={`${apiBase}/api/quotes/${quoteId}/payments/${p.id}/factura/pdf`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-xs font-medium text-gold hover:underline"
+                      >
+                        PDF de la factura
+                      </a>
+                    )}
                     {isAdmin && !readOnly && !p.anuladoAt && !p.facturadoAt && (
                       <button
                         type="button"
-                        onClick={() => { setPagoAFacturar(p); setUuidFactura(''); setErrFactura(''); }}
-                        className="text-xs text-ink hover:underline"
+                        onClick={() => setPagoATimbrar(p)}
+                        className="text-xs font-medium text-gold hover:underline"
                       >
-                        Marcar facturado
+                        Facturar
                       </button>
                     )}
                     {/* Corregir y mover: el mismo recibo, capturado mal. No en un pago
@@ -343,7 +356,23 @@ export function PagosPanel({
       )}
 
 
-      {/* Sellar un pago como facturado */}
+      {/* Timbrar con el PAC */}
+      {pagoATimbrar && (
+        <FacturarPagoModal
+          quoteId={quoteId}
+          pago={pagoATimbrar}
+          onCerrar={() => setPagoATimbrar(null)}
+          onFacturado={refresh}
+          onManual={() => {
+            setPagoAFacturar(pagoATimbrar);
+            setPagoATimbrar(null);
+            setUuidFactura('');
+            setErrFactura('');
+          }}
+        />
+      )}
+
+      {/* Sellar un pago como facturado (la factura se hizo fuera de la app) */}
       {pagoAFacturar && (
         <div className="fixed inset-0 z-50 grid place-items-center bg-ink/40 px-4" role="dialog" aria-modal="true">
           <Card className="w-full max-w-md space-y-4 p-6">

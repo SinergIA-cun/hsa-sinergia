@@ -21,7 +21,7 @@ const PERMITIDO_CERRADO = [
   /\/simular$/,
   /\/duplicate$/,
   /\/correos\/:correoId\/reenviar$/,
-  /\/payments\/:paymentId\/(facturado|desbloquear-factura)$/,
+  /\/payments\/:paymentId\/(facturado|facturar|desbloquear-factura)$/,
 ];
 
 export const MENSAJE_CERRADO = 'El evento está cerrado: un admin tiene que reabrirlo (con motivo) para cambiar algo.';
