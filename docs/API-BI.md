@@ -375,18 +375,24 @@ existiera el folio; nada se renumeró.
 ### `GET /api/bi/cargos`
 
 Lo cargado al evento en el punto de venta **después de contratar**. Cada renglón trae
-**`afectaContrato`** (decisión del dueño, 5-oct-2026):
+**`afectaContrato`**, que es **el de ese cargo**: se decide al registrarlo y no cambia después.
 
-- **`true`: sube el valor del contrato.** Hora extra de salón (`horaExtra`) e invitados extra,
-  PAX (`invitadoExtra`). Se suman al desglose del evento: **ya están en `total` y en
-  `renta.total` de `/eventos`**, mueven su saldo y su estatus (un evento liquidado vuelve a
-  deber), y se cobran con pagos normales del evento (`destino: "evento"`). No sumarlos aparte.
-- **`false`: cuenta aparte.** Hora extra de DJ, alimentos de invitados extra, PAX banquete
-  (personas adicionales del banquetero, precio tecleado), daños, multas, gastos imprevistos y
-  otros. **No** cambian `/eventos.total`; van en `cargosAdicionales: { total, pagado, saldo }`
-  de `/eventos`, y se cobran con `destino: "cargos"`.
+**Regla desde el 30-oct-2026 (decisión del dueño): todo sube el valor del evento salvo multas
+(`multa`) y daños (`danos`).** Antes solo subían la hora extra de salón y los PAX extra; los
+cargos registrados antes del cambio **se quedan como estaban** (ya se cuadraron a mano), así que
+un mismo producto puede venir con `true` en un cargo nuevo y `false` en uno viejo. Leer siempre
+el `afectaContrato` del renglón, no el del producto.
 
-La lista con su `afectaContrato` está en `/catalogos.productosCargo`.
+- **`true`: sube el valor del contrato.** Se suman al desglose del evento (bloque `renta`,
+  `origen: "puntoDeVenta"`): **ya están en `total` y en `renta.total` de `/eventos`**, mueven su
+  saldo y su estatus (un evento liquidado vuelve a deber), y se cobran con pagos normales del
+  evento (`destino: "evento"`). No sumarlos aparte.
+- **`false`: cuenta aparte.** Multas y daños (y los cargos viejos de DJ, alimentos de invitados
+  extra, PAX banquete, gastos imprevistos y otros). **No** cambian `/eventos.total`; van en
+  `cargosAdicionales: { total, pagado, saldo }` de `/eventos`, y se cobran con
+  `destino: "cargos"`. Multas y daños no son ingreso del evento: acaban en caja chica.
+
+`/catalogos.productosCargo` trae el `afectaContrato` que llevará un cargo **nuevo** de cada producto.
 
 - **Rango sobre:** `fecha` del cargo (el día de la venta). Incluye los anulados, marcados.
 

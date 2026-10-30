@@ -1,15 +1,10 @@
 import type { PrismaClient, Prisma } from '@hsa/database';
 import {
   centavos,
-  PRODUCTOS_CARGO,
-  afectaContrato,
   conCargosDelContrato,
   lineaDeCargo,
   type QuoteBreakdown,
 } from '@hsa/shared';
-
-/** Los productos que suben el valor del contrato (horas extra de salón, PAX extra). */
-export const PRODUCTOS_DEL_CONTRATO = PRODUCTOS_CARGO.filter(afectaContrato);
 
 /**
  * Pone en el desglose del evento los cargos VIGENTES que suben el contrato, y
@@ -31,7 +26,7 @@ export async function sincronizarContrato(db: PrismaClient, quoteId: string): Pr
   if (!b?.lines) return { antes: q.total, despues: q.total };
   const [cargos, lista] = await Promise.all([
     db.cargoEvento.findMany({
-      where: { quoteId, anuladoAt: null, producto: { in: PRODUCTOS_DEL_CONTRATO } },
+      where: { quoteId, anuladoAt: null, sumaAlContrato: true },
       orderBy: [{ fecha: 'asc' }, { createdAt: 'asc' }],
     }),
     db.priceList.findUnique({ where: { id: q.priceListId }, select: { ivaRate: true } }),

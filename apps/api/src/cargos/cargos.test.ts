@@ -121,14 +121,14 @@ describe('cargos a la cuenta del evento', () => {
     }
   });
 
-  it('la hora extra de DJ NO cambia el valor del evento ni su plan de pagos: va a la cuenta aparte', async () => {
+  it('una multa NO cambia el valor del evento ni su plan de pagos: va a la cuenta aparte', async () => {
     const q = await nuevoEvento();
     const antes = await loadEstadoCuenta(prisma, q);
     const { cargo, cuenta } = await registrarCargo(
-      prisma, q.id, { producto: 'djHoraExtra', cantidad: 2, precioUnitario: 5_425, fecha: '2026-10-01' }, admin,
+      prisma, q.id, { producto: 'multa', descripcion: 'Multa por ruido', cantidad: 2, precioUnitario: 5_425, fecha: '2026-10-01' }, admin,
     );
     expect(cargo.total).toBe(10_850);
-    expect(cargo.descripcion).toBe('Hora extra de DJ');
+    expect(cargo.sumaAlContrato).toBe(false);
     expect(cuenta).toMatchObject({ total: 10_850, pagado: 0, saldo: 10_850 });
 
     const despues = await prisma.quote.findUniqueOrThrow({ where: { id: q.id } });
@@ -153,7 +153,7 @@ describe('cobrar la cuenta del evento', () => {
     const q = await nuevoEvento();
     await registrarCargo(
       prisma, q.id,
-      { producto: 'djHoraExtra', cantidad: 2, precioUnitario: 3_000, fecha: '2026-10-01' }, admin,
+      { producto: 'multa', descripcion: 'Multa por ruido', cantidad: 2, precioUnitario: 3_000, fecha: '2026-10-01' }, admin,
     );
     const ecAntes = await loadEstadoCuenta(prisma, q);
     const { payment, nuevoEstatus } = await registerPayment(
@@ -183,7 +183,7 @@ describe('cobrar la cuenta del evento', () => {
 
   it('no se le puede cobrar más de lo que debe', async () => {
     const q = await nuevoEvento();
-    await registrarCargo(prisma, q.id, { producto: 'djHoraExtra', cantidad: 1, precioUnitario: 5_425, fecha: '2026-10-01' }, admin);
+    await registrarCargo(prisma, q.id, { producto: 'multa', descripcion: 'Multa por ruido', cantidad: 1, precioUnitario: 5_425, fecha: '2026-10-01' }, admin);
     await expect(
       registerPayment(prisma, storage, q.id, { monto: 6_000, metodo: 'efectivo', destino: 'cargos', fecha: '2026-10-02' }, admin),
     ).rejects.toMatchObject({ status: 409 });
@@ -267,7 +267,7 @@ describe('anular un cargo', () => {
   it('no deja la cuenta sobrepagada: primero se anula el pago', async () => {
     const q = await nuevoEvento();
     const { cargo } = await registrarCargo(
-      prisma, q.id, { producto: 'djHoraExtra', cantidad: 1, precioUnitario: 5_425, fecha: '2026-10-01' }, admin,
+      prisma, q.id, { producto: 'multa', descripcion: 'Multa por ruido', cantidad: 1, precioUnitario: 5_425, fecha: '2026-10-01' }, admin,
     );
     const { payment } = await registerPayment(
       prisma, storage, q.id, { monto: 5_425, metodo: 'efectivo', destino: 'cargos', fecha: '2026-10-02' }, admin,
@@ -285,7 +285,7 @@ describe('anular un cargo', () => {
 describe('BI', () => {
   it('/eventos trae la cuenta aparte del total; /cargos cada renglón; /pagos el destino', async () => {
     const q = await nuevoEvento();
-    await registrarCargo(prisma, q.id, { producto: 'djHoraExtra', cantidad: 2, precioUnitario: 5_425, fecha: '2026-10-03' }, admin);
+    await registrarCargo(prisma, q.id, { producto: 'multa', descripcion: 'Multa por ruido', cantidad: 2, precioUnitario: 5_425, fecha: '2026-10-03' }, admin);
     await registerPayment(prisma, storage, q.id, { monto: 10_850, metodo: 'efectivo', destino: 'cargos', fecha: '2026-10-03' }, admin);
 
     const dia = q.fechaEvento.toISOString().slice(0, 10);
@@ -299,7 +299,7 @@ describe('BI', () => {
     const rango = { desde: new Date('2026-10-03T00:00:00Z'), hasta: new Date('2026-10-03T23:59:59Z'), limit: 500 };
     const cargos = (await biCargos(prisma, rango)).filter((c) => c.quoteId === q.id);
     expect(cargos).toHaveLength(1);
-    expect(cargos[0]).toMatchObject({ producto: 'djHoraExtra', productoNombre: 'Hora extra de DJ', cantidad: 2, total: 10_850, afectaContrato: false });
+    expect(cargos[0]).toMatchObject({ producto: 'multa', productoNombre: 'Multa', cantidad: 2, total: 10_850, afectaContrato: false });
     const pagos = (await biPagos(prisma, rango)).filter((p) => p.quoteId === q.id);
     expect(pagos.map((p) => p.destino)).toEqual(['cargos']);
   });
@@ -313,7 +313,7 @@ describe('BI', () => {
     await prisma.quote.update({ where: { id: q.id }, data: { createdById: ventas.id } });
     const alta = await app.inject({
       method: 'POST', url: `/api/quotes/${q.id}/cargos`, cookies,
-      payload: { producto: 'djHoraExtra', cantidad: 1, precioUnitario: 5_425, fecha: '2026-10-01' },
+      payload: { producto: 'multa', descripcion: 'Multa por ruido', cantidad: 1, precioUnitario: 5_425, fecha: '2026-10-01' },
     });
     expect(alta.statusCode).toBe(201);
     const cuenta = await app.inject({ method: 'GET', url: `/api/quotes/${q.id}/cuenta`, cookies });
@@ -321,7 +321,7 @@ describe('BI', () => {
   });
 });
 
-describe('cargos que suben el contrato (horas extra de salón, PAX extra)', () => {
+describe('cargos que suben el contrato (todo salvo multas y daños)', () => {
   it('se suman al desglose y al total, no a la cuenta aparte; el BI los ve en el total', async () => {
     const q = await nuevoEvento();
     const { cuenta } = await registrarCargo(
@@ -391,10 +391,39 @@ describe('cargos que suben el contrato (horas extra de salón, PAX extra)', () =
     expect(editado.total).toBe(sinCargo.total + 5_000);
   });
 
-  it('PAX banquete va a la cuenta aparte con precio tecleado', async () => {
+  it('un gasto imprevisto, la hora extra de DJ y PAX banquete suben el total del evento (30-oct-2026)', async () => {
     const q = await nuevoEvento();
-    const { cuenta } = await registrarCargo(prisma, q.id, { producto: 'paxBanquete', cantidad: 10, precioUnitario: 450, fecha: '2026-10-01' }, admin);
-    expect(cuenta).toMatchObject({ total: 4_500, saldo: 4_500 });
-    expect((await prisma.quote.findUniqueOrThrow({ where: { id: q.id } })).total).toBe(q.total);
+    const { cargo, cuenta } = await registrarCargo(
+      prisma, q.id,
+      { producto: 'gastoImprevisto', descripcion: 'Media hora de capilla', cantidad: 1, precioUnitario: 2_500, fecha: '2026-10-01' },
+      admin,
+    );
+    expect(cargo.sumaAlContrato).toBe(true);
+    // Se cobra con los pagos del evento, no en la cuenta aparte.
+    expect(cuenta).toMatchObject({ total: 0, saldo: 0 });
+    await registrarCargo(prisma, q.id, { producto: 'djHoraExtra', cantidad: 2, precioUnitario: 1_000, fecha: '2026-10-01' }, admin);
+    await registrarCargo(prisma, q.id, { producto: 'paxBanquete', cantidad: 10, precioUnitario: 450, fecha: '2026-10-01' }, admin);
+    const despues = await prisma.quote.findUniqueOrThrow({ where: { id: q.id } });
+    expect(despues.total).toBe(q.total + 2_500 + 2_000 + 4_500);
+    expect(despues.rentaTotal).toBe(q.rentaTotal + 2_500 + 2_000 + 4_500);
+    const lineas = (despues.breakdown as { lines: { concepto: string; cargoId?: string; ref?: { unidad: string } }[] }).lines.filter((l) => l.cargoId);
+    expect(lineas.map((l) => [l.concepto, l.ref?.unidad])).toEqual([
+      ['Media hora de capilla', 'unidades'],
+      ['Hora extra de DJ', 'horas'],
+      ['PAX banquete', 'personas'],
+    ]);
+  });
+
+  it('los cargos de antes del cambio se quedan como estaban: el DJ guardado aparte sigue aparte', async () => {
+    const q = await nuevoEvento();
+    // Un cargo registrado con la regla vieja (sumaAlContrato = false).
+    await prisma.cargoEvento.create({
+      data: { quoteId: q.id, producto: 'djHoraExtra', descripcion: 'Hora extra de DJ', cantidad: 1, precioUnitario: 3_000, total: 3_000, fecha: new Date('2026-10-01T00:00:00Z') },
+    });
+    // Uno nuevo hace que se resincronice el contrato: el viejo no entra.
+    await registrarCargo(prisma, q.id, { producto: 'horaExtra', cantidad: 1, precioUnitario: 1_000, fecha: '2026-10-02' }, admin);
+    const despues = await prisma.quote.findUniqueOrThrow({ where: { id: q.id } });
+    expect(despues.total).toBe(q.total + 1_000);
+    expect(await cuentaDelEvento(prisma, q.id)).toMatchObject({ total: 3_000, saldo: 3_000 });
   });
 });

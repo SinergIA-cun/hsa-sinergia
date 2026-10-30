@@ -220,8 +220,8 @@ export function PublicQuotePage() {
         )}
 
         {/* La cuenta del evento: lo que se agregó después de contratar (horas
-            extra, invitados de más, daños). Va aparte del plan de pagos porque
-            no cambia el valor del evento. */}
+            extra, invitados de más, daños). Lo que sube el contrato ya está en
+            el desglose; aquí va la lista completa de lo agregado. */}
         {data.cuenta && data.cuenta.cargos.length > 0 && (
           <section className="mt-10">
             <div className="mb-4 flex items-center justify-center">

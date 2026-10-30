@@ -8,12 +8,16 @@ import type { QuoteBreakdown, QuoteLine } from '../types.js';
  * quieren extender, entonces agrego un producto a su cuenta que es horas extras y
  * pongo cuántas fueron" (el dueño).
  *
- * Dos clases (decisión del dueño, 5-oct-2026):
- * - **Suben el contrato** (`afectaContrato`): horas extra de salón y PAX extra
- *   (invitados de más, renta). Se suman al desglose del evento, suben su total y
- *   su saldo, y se cobran con pagos normales del evento.
- * - **Cuenta aparte**: lo demás (multas, daños, DJ, alimentos, PAX banquete…). No
- *   cambia el valor del evento y se cobra en la cuenta del punto de venta.
+ * Dos clases (decisión del dueño, 30-oct-2026; antes solo subían horas extra de
+ * salón y PAX extra):
+ * - **Suben el contrato** (`afectaContrato`): TODO salvo multas y daños. Se suman
+ *   al desglose del evento, suben su total y su saldo, y se cobran con pagos
+ *   normales del evento.
+ * - **Cuenta aparte**: multas y daños. No son ingreso del evento (acaban en caja
+ *   chica): solo queda el rastro, y se cobran en la cuenta del punto de venta.
+ *
+ * Esta es la regla para los cargos NUEVOS: cada cargo guarda la suya al
+ * registrarse (`CargoEvento.sumaAlContrato`), así los de antes no se mueven.
  *
  * Mismo juego de valores que el enum `ProductoCargo` de Postgres.
  */
@@ -57,7 +61,7 @@ export interface ProductoInfo {
 
 export const PRODUCTO_INFO: Record<ProductoCargo, ProductoInfo> = {
   horaExtra: { producto: 'horaExtra', nombre: 'Hora extra de salón', unidad: 'horas', precio: 'horaDeRenta', pideDescripcion: false, afectaContrato: true },
-  djHoraExtra: { producto: 'djHoraExtra', nombre: 'Hora extra de DJ', unidad: 'horas', precio: 'djDelCatalogo', pideDescripcion: false, afectaContrato: false },
+  djHoraExtra: { producto: 'djHoraExtra', nombre: 'Hora extra de DJ', unidad: 'horas', precio: 'djDelCatalogo', pideDescripcion: false, afectaContrato: true },
   invitadoExtra: { producto: 'invitadoExtra', nombre: 'Invitados extra (PAX)', unidad: 'invitados', precio: 'rentaPorPersona', pideDescripcion: false, afectaContrato: true },
   invitadoExtraAlimentos: {
     producto: 'invitadoExtraAlimentos',
@@ -65,18 +69,18 @@ export const PRODUCTO_INFO: Record<ProductoCargo, ProductoInfo> = {
     unidad: 'invitados',
     precio: 'alimentosPorPersona',
     pideDescripcion: false,
-    afectaContrato: false,
+    afectaContrato: true,
   },
   danos: { producto: 'danos', nombre: 'Daños a las instalaciones', unidad: 'piezas', precio: 'manual', pideDescripcion: true, afectaContrato: false },
   multa: { producto: 'multa', nombre: 'Multa', unidad: 'multas', precio: 'manual', pideDescripcion: true, afectaContrato: false },
-  gastoImprevisto: { producto: 'gastoImprevisto', nombre: 'Gasto imprevisto', unidad: 'piezas', precio: 'manual', pideDescripcion: true, afectaContrato: false },
-  otro: { producto: 'otro', nombre: 'Otro', unidad: 'piezas', precio: 'manual', pideDescripcion: true, afectaContrato: false },
-  // Personas adicionales del BANQUETERO: aparte de la renta, no sube el valor del
-  // evento; el precio se teclea en cada cargo (decisión del dueño, 5-oct-2026).
-  paxBanquete: { producto: 'paxBanquete', nombre: 'PAX banquete', unidad: 'invitados', precio: 'manual', pideDescripcion: false, afectaContrato: false },
+  gastoImprevisto: { producto: 'gastoImprevisto', nombre: 'Gasto imprevisto', unidad: 'piezas', precio: 'manual', pideDescripcion: true, afectaContrato: true },
+  otro: { producto: 'otro', nombre: 'Otro', unidad: 'piezas', precio: 'manual', pideDescripcion: true, afectaContrato: true },
+  // Personas adicionales del BANQUETERO: el precio se teclea en cada cargo. Sube
+  // el valor del evento como todo lo demás (30-oct-2026; antes iba aparte).
+  paxBanquete: { producto: 'paxBanquete', nombre: 'PAX banquete', unidad: 'invitados', precio: 'manual', pideDescripcion: false, afectaContrato: true },
 }
 
-/** ¿Este producto sube el valor del contrato? */
+/** ¿Un cargo NUEVO de este producto sube el valor del contrato? Los guardados traen el suyo. */
 export const afectaContrato = (producto: ProductoCargo): boolean => PRODUCTO_INFO[producto].afectaContrato;
 
 /**
@@ -108,6 +112,13 @@ export function conCargosDelContrato(b: QuoteBreakdown, cargos: QuoteLine[], iva
   };
 }
 
+/** Cómo se cuenta el renglón: horas, personas, o piezas (un gasto imprevisto, otro). */
+function unidadDeRenglon(unidad: string): 'horas' | 'personas' | 'unidades' {
+  if (unidad === 'horas') return 'horas';
+  if (unidad === 'invitados') return 'personas';
+  return 'unidades';
+}
+
 /** El renglón de renta de un cargo que sube el contrato. */
 export function lineaDeCargo(c: { id: string; producto: ProductoCargo; descripcion: string; cantidad: number; precioUnitario: number; total: number }): QuoteLine {
   return {
@@ -121,7 +132,7 @@ export function lineaDeCargo(c: { id: string; producto: ProductoCargo; descripci
       tipo: 'cargoContrato',
       id: c.producto,
       cantidad: c.cantidad,
-      unidad: PRODUCTO_INFO[c.producto].unidad === 'horas' ? 'horas' : 'personas',
+      unidad: unidadDeRenglon(PRODUCTO_INFO[c.producto].unidad),
       precioUnitario: c.precioUnitario,
     },
   };

@@ -1159,6 +1159,11 @@ model CargoEvento {
   /// Con IVA incluido: lo que se teclea es lo que se cobra.
   precioUnitario  Float
   total           Float
+  /// Si sube el valor del evento: va al desglose, sube `Quote.total` y se cobra con
+  /// los pagos del evento. Se decide AL REGISTRAR con la regla del producto de ese
+  /// momento y no se recalcula: desde el 30-oct-2026 todo sube salvo multas y
+  /// daños, pero los cargos de antes se quedan como estaban (ya se cuadraron).
+  sumaAlContrato  Boolean       @default(false)
   /// El día de la venta (medianoche UTC, como `Payment.fecha`).
   fecha           DateTime
   registradoBy    User?         @relation("CargoRegistradoBy", fields: [registradoById], references: [id])
