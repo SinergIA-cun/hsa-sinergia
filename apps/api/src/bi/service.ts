@@ -16,7 +16,6 @@ import {
   type QuoteLine,
 } from '@hsa/shared';
 import { loadEstadoCuentaBulk, rentaBasePorEspacio } from '../quotes/service.js';
-import { PRODUCTOS_DEL_CONTRATO } from '../cargos/contrato.js';
 
 /** Rango de fechas y paginación comunes a todos los endpoints del BI. */
 export interface RangoBI {
@@ -203,7 +202,7 @@ export async function biEventos(db: PrismaClient, r: RangoBI) {
   const [cargos, pagosCargos, codigos] = await Promise.all([
     // Solo los de la cuenta aparte: los que suben el contrato ya están en `total`.
     db.cargoEvento.findMany({
-      where: { quoteId: { in: ids }, producto: { notIn: PRODUCTOS_DEL_CONTRATO } },
+      where: { quoteId: { in: ids }, sumaAlContrato: false },
       select: { quoteId: true, total: true, anuladoAt: true },
     }),
     db.payment.findMany({
@@ -610,7 +609,8 @@ export async function biCargos(db: PrismaClient, r: RangoBI) {
     productoNombre: PRODUCTO_INFO[c.producto].nombre,
     // `true` = sube el valor del contrato: ya está en `total` y `renta` de
     // /eventos y se cobra con pagos `destino: evento`. `false` = cuenta aparte.
-    afectaContrato: PRODUCTO_INFO[c.producto].afectaContrato,
+    // Es el de ESTE cargo (se guarda al registrarlo), no la regla del producto.
+    afectaContrato: c.sumaAlContrato,
     descripcion: c.descripcion,
     cantidad: c.cantidad,
     precioUnitario: c.precioUnitario,

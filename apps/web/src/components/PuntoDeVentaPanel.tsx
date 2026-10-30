@@ -21,9 +21,9 @@ import { NotasCampo } from './NotasPago.tsx';
  * horas extras y pongo cuántas fueron" (el dueño). Multas, daños, invitados de
  * más y gastos imprevistos, igual.
  *
- * NO cambia el valor del evento: el contrato y su plan de pagos quedan como se
- * firmaron. La cuenta tiene su propio saldo y sus propios cobros, cada uno con
- * su folio de la serie I, y todo le llega al BI.
+ * Todo lo que se carga SUBE el valor del evento y se cobra con sus pagos, salvo
+ * multas y daños (30-oct-2026): esos no son ingreso del evento, se cobran en esta
+ * cuenta aparte, cada cobro con su folio de la serie I, y todo le llega al BI.
  */
 
 const hoy = () => new Date().toISOString().slice(0, 10);
@@ -90,10 +90,9 @@ export function PuntoDeVentaPanel({
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <p className="max-w-xl text-sm text-charcoal-soft">
-            Lo que se agrega después de contratar. <strong>Las horas extra de salón y los PAX extra
-            se suman al contrato</strong>: suben el total del evento y se cobran con sus pagos. Lo
-            demás (multas, daños, DJ, alimentos, PAX banquete) no cambia el valor del evento y se
-            cobra aquí, aparte.
+            Lo que se agrega después de contratar. <strong>Todo se suma al contrato</strong>: sube
+            el total del evento y se cobra con sus pagos. Solo las multas y los daños no cambian el
+            valor del evento y se cobran aquí, aparte.
           </p>
         </div>
         <div className="grid grid-cols-3 gap-4 text-center">
@@ -126,7 +125,7 @@ export function PuntoDeVentaPanel({
                   {c.descripcion !== PRODUCTO_INFO[c.producto].nombre && (
                     <span className="block text-xs text-charcoal-soft">{PRODUCTO_INFO[c.producto].nombre}</span>
                   )}
-                  {PRODUCTO_INFO[c.producto].afectaContrato && (
+                  {c.sumaAlContrato && (
                     <span className="mt-0.5 inline-block rounded-full bg-gold/15 px-2 py-0.5 text-[0.65rem] font-semibold uppercase tracking-wide text-gold">
                       En el contrato
                     </span>

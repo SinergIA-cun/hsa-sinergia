@@ -14,13 +14,15 @@ import { archivarEvento } from '../historico/archivar.js';
  * Lo que se vende DESPUÉS de contratar —horas extra, DJ extra, invitados de más,
  * multas, daños, gastos imprevistos— se carga aquí. Dos reglas del dueño:
  *
- *  1. **Horas extra de salón y PAX extra SUBEN el contrato** (5-oct-2026: "debe
- *     reflejarse en ambos lados, punto de venta y BI"). Se suman al desglose,
- *     suben `total` y `rentaTotal`, y se cobran con pagos normales del evento:
- *     el evento no queda liquidado hasta cubrirlos. Ver `contrato.ts`.
- *  2. **Lo demás va a la cuenta aparte** (multas, daños, DJ, alimentos, PAX
- *     banquete): no cambia el valor del evento y sus pagos van con
- *     `Payment.destino = cargos`, con folio de la serie I.
+ *  1. **Todo SUBE el contrato salvo multas y daños** (30-oct-2026; desde el 5-oct
+ *     solo subían horas extra de salón y PAX extra). Se suman al desglose, suben
+ *     `total` y `rentaTotal`, y se cobran con pagos normales del evento: el
+ *     evento no queda liquidado hasta cubrirlos. Ver `contrato.ts`.
+ *  2. **Multas y daños van a la cuenta aparte**: no son ingreso del evento y sus
+ *     pagos van con `Payment.destino = cargos`, con folio de la serie I.
+ *
+ * Cada cargo guarda su clase al registrarse (`sumaAlContrato`): cambiar la regla
+ * no mueve los que ya estaban.
  */
 
 const fechaISO = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
@@ -87,6 +89,7 @@ export async function registrarCargo(db: PrismaClient, quoteId: string, rawInput
       cantidad: input.cantidad,
       precioUnitario: input.precioUnitario,
       total,
+      sumaAlContrato: afectaContrato(input.producto as ProductoCargo),
       fecha: new Date(`${input.fecha}T00:00:00.000Z`),
       registradoById: actor.id,
     },
@@ -98,7 +101,7 @@ export async function registrarCargo(db: PrismaClient, quoteId: string, rawInput
     meta: { cargoId: cargo.id, producto: input.producto, cantidad: input.cantidad, precioUnitario: input.precioUnitario, total },
     actorId: actor.id,
   });
-  if (afectaContrato(input.producto as ProductoCargo)) await alContrato(db, quoteId, actor.id, `+${descripcion} $${total}`);
+  if (cargo.sumaAlContrato) await alContrato(db, quoteId, actor.id, `+${descripcion} $${total}`);
   // A un evento que ya pasó se le cargan las horas extra o la multa después: su
   // foto del Histórico se pone al día (no hace nada si todavía no se celebra).
   await archivarEvento(db, quoteId);
@@ -126,7 +129,7 @@ export async function anularCargo(
   if (!cargo) throw new QuoteError(404, 'Cargo no encontrado');
   if (cargo.anuladoAt) throw new QuoteError(409, 'Ese cargo ya está anulado.');
 
-  if (afectaContrato(cargo.producto)) {
+  if (cargo.sumaAlContrato) {
     // Sube el contrato: sin él, el evento no puede quedar con más pagado que su valor.
     const { estadoCuenta } = await loadEstadoCuenta(db, quote);
     if (estadoCuenta.pagado > quote.rentaTotal - cargo.total) {
@@ -155,7 +158,7 @@ export async function anularCargo(
     meta: { cargoId, total: cargo.total, motivo },
     actorId: actor.id,
   });
-  if (afectaContrato(cargo.producto)) await alContrato(db, quoteId, actor.id, `−${cargo.descripcion} $${cargo.total} (anulado)`);
+  if (cargo.sumaAlContrato) await alContrato(db, quoteId, actor.id, `−${cargo.descripcion} $${cargo.total} (anulado)`);
   await archivarEvento(db, quoteId);
   return cuentaDelEvento(db, quoteId);
 }

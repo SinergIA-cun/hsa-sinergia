@@ -572,6 +572,8 @@ export interface CargoEvento {
   cantidad: number;
   precioUnitario: number;
   total: number;
+  /** Si sube el valor del evento. Se guarda al registrarlo: los de antes del 30-oct-2026 siguen la regla de entonces. */
+  sumaAlContrato: boolean;
   fecha: string;
   registradoBy?: { nombre: string } | null;
   anuladoAt: string | null;
