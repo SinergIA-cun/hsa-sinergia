@@ -388,6 +388,15 @@ export function EditQuotePage() {
               </Button>
             </Link>
           )}
+          {/* Cambió el salón, los invitados o el paquete después de firmar: solo
+              se reimprimen las páginas 1 y 2 con los datos de hoy. */}
+          {contratoDisponible && (
+            <Link to={`/eventos/${quote.id}/contrato?caratula=1`}>
+              <Button variant="outline">
+                <FileText size={15} /> Reimprimir carátula
+              </Button>
+            </Link>
+          )}
         </div>
       </div>
 
