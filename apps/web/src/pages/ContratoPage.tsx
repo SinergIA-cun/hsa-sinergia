@@ -1,6 +1,8 @@
-import { useParams, Link } from 'react-router-dom';
+import { useState } from 'react';
+import { flushSync } from 'react-dom';
+import { useParams, useSearchParams, Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { ArrowLeft, Printer } from 'lucide-react';
+import { ArrowLeft, FileText, Printer } from 'lucide-react';
 import { api } from '../lib/api.ts';
 import { formatMXNCents } from '../lib/money.ts';
 import { formatEventDate } from '../lib/date.ts';
@@ -10,9 +12,18 @@ import { BLANK, Foot, type ClausulasProps } from './contrato/comun.tsx';
 import { ClausulasHSA } from './contrato/ClausulasHSA.tsx';
 import { ClausulasNeutras } from './contrato/ClausulasNeutras.tsx';
 
-/** Contrato pre-llenado del salón (9 páginas), vista de impresión. */
+/**
+ * Contrato pre-llenado del salón (9 páginas), vista de impresión.
+ *
+ * "Reimprimir carátula" imprime solo las páginas 1 y 2 —las partes, el salón,
+ * invitados, precios y paquete— con los datos de hoy. Cuando cambian el salón o
+ * los invitados después de firmar, la hacienda cambia la carátula y lo demás del
+ * contrato se queda igual (Jorge, 29-oct-2026). `?caratula=1` abre en ese modo.
+ */
 export function ContratoPage() {
   const { id } = useParams<{ id: string }>();
+  const [params] = useSearchParams();
+  const [soloCaratula, setSoloCaratula] = useState(params.get('caratula') === '1');
   const { data, isLoading, isError } = useQuery({
     queryKey: ['quote', id],
     queryFn: () => api.get<QuoteDetail>(`/api/quotes/${id}`),
@@ -93,12 +104,23 @@ export function ContratoPage() {
   const espacioNombre = nombresEspacios.length > 0 ? nombresEspacios.join(' y ') : BLANK;
 
   const hoy = new Date();
+  // La fecha de HOY en el reloj de quien imprime (de noche, la UTC ya es mañana).
+  const hoyLocalISO = new Date(hoy.getTime() - hoy.getTimezoneOffset() * 60_000).toISOString().slice(0, 10);
   const correo = quote.client?.correo || '____________';
   const horarioCivil = quote.horarioCivil || BLANK;
   const horaInicio = quote.horaInicio || BLANK;
   const horaTermino = quote.horaTermino || BLANK;
   const horasEvento = quote.horasEvento != null ? String(quote.horasEvento) : '____';
   const vendedor = quote.createdBy?.nombre || '';
+
+  // Imprime en el modo pedido y regresa al que estaba: `print()` bloquea hasta que
+  // se cierra el diálogo, y `flushSync` asegura que ya se pintó el modo.
+  function imprimir(caratula: boolean) {
+    const antes = soloCaratula;
+    flushSync(() => setSoloCaratula(caratula));
+    window.print();
+    setSoloCaratula(antes);
+  }
 
   const propsClausulas: ClausulasProps = {
     quote,
@@ -113,7 +135,7 @@ export function ContratoPage() {
   };
 
   return (
-    <div className="contrato-root">
+    <div className={`contrato-root${soloCaratula ? ' solo-caratula' : ''}`}>
       <style>{`
         .contrato-root { background: #f3f3f0; color: #1a1a1a; font-family: Georgia, 'Times New Roman', serif; }
         .contrato-toolbar { position: sticky; top: 0; z-index: 10; display: flex; justify-content: space-between;
@@ -144,6 +166,9 @@ export function ContratoPage() {
         .doc-page .firma { flex: 1; border-top: 1px solid #333; padding-top: 0.4rem; }
         .doc-page .foot { margin-top: 3rem; padding-top: 0.75rem; border-top: 1px solid #ddd; text-align: center;
           font-size: 0.7rem; color: #777; }
+        .solo-caratula .doc-page:not(.caratula) { display: none; }
+        .doc-page .actualizada { text-align: center; font-size: 0.78rem; color: #14304d; border: 1px solid #b0894e;
+          padding: 0.35rem 0.6rem; margin: -1.25rem 0 1.5rem; }
         @media print {
           .contrato-root { background: #fff; }
           .contrato-toolbar { display: none; }
@@ -161,20 +186,38 @@ export function ContratoPage() {
           Contrato · {quote.client?.nombre}
           {` · ${quote.etiqueta ?? quote.folio}`}
         </span>
-        <button onClick={() => window.print()} className="contrato-btn" style={{ background: '#b0894e', color: '#fff' }}>
-          <Printer size={15} /> Imprimir / PDF
-        </button>
+        <span style={{ display: 'inline-flex', gap: '0.5rem' }}>
+          {soloCaratula && (
+            <button onClick={() => setSoloCaratula(false)} className="contrato-btn" style={{ border: '1px solid rgba(247,242,232,0.4)' }}>
+              Ver contrato completo
+            </button>
+          )}
+          <button onClick={() => imprimir(true)} className="contrato-btn" style={{ border: '1px solid rgba(247,242,232,0.4)' }}>
+            <FileText size={15} /> Reimprimir carátula
+          </button>
+          {!soloCaratula && (
+            <button onClick={() => imprimir(false)} className="contrato-btn" style={{ background: '#b0894e', color: '#fff' }}>
+              <Printer size={15} /> Imprimir / PDF
+            </button>
+          )}
+        </span>
       </div>
 
       <div className="doc">
         {/* PÁGINA 1 */}
-        <section className="doc-page">
+        <section className="doc-page caratula">
           <div className="marca">{MARCA.nombre}<small>{MARCA.anio}</small></div>
           {/* El código de evento va en la primera página: es el identificador que
               alguien va a copiar del contrato al recibo o al correo. */}
           <div className="folio">
             Evento <b>{quote.etiqueta ?? quote.folio}</b> · folio {quote.folio} · -1-
           </div>
+          {soloCaratula && (
+            <div className="actualizada">
+              Carátula actualizada el {formatEventDate(hoyLocalISO, 'long')}. Sustituye a la
+              carátula anterior; las demás cláusulas del contrato firmado no cambian.
+            </div>
+          )}
           <p>
             Contrato de Prestación de Servicios y Renta de Instalaciones que celebran por una parte{' '}
             <b>{MARCA.razonSocial}</b> y por la otra parte{' '}
@@ -258,7 +301,7 @@ export function ContratoPage() {
         </section>
 
         {/* PÁGINA 2 */}
-        <section className="doc-page">
+        <section className="doc-page caratula">
           <div className="folio">-2-</div>
           {foodLine && (
             <table>
