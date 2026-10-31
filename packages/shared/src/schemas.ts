@@ -44,9 +44,9 @@ export const AUMENTO_PCT_MAXIMO = 500;
 export const quoteSelectionSchema = z.object({
   fecha: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   invitados: z.number().int().positive(),
+  // Vacío = evento de SOLO CAPILLA (30-oct-2026); lo exige `conEspacioOCapilla`.
   spaceIds: z
     .array(z.string())
-    .min(1)
     .max(3, { message: 'Máximo 3 espacios por evento' })
     .refine((ids) => new Set(ids).size === ids.length, {
       message: 'spaceIds no debe tener duplicados',
@@ -66,6 +66,13 @@ export const quoteSelectionSchema = z.object({
    */
   descuentoAlimentosPct: z.number().min(0).max(DESCUENTO_ALIMENTOS_MAXIMO, `La promoción por alimentos es de hasta ${DESCUENTO_ALIMENTOS_MAXIMO}%.`).optional(),
   usaCapilla: z.boolean().default(false),
+  /**
+   * Lo que se cobra de capilla en ESTE evento, con IVA (30-oct-2026: "siempre
+   * poder cobrar variable la capilla"; un viernes se cobraron 30 minutos, un
+   * sábado $2,000). Omitido = la regla de siempre: cortesía entre semana y la
+   * tarifa del catálogo en sábado.
+   */
+  capillaMonto: montoNoNegativoSchema.optional(),
   usaDjHoraExtra: z.boolean().default(false),
   // Tipo de evento: necesario para el precio del DJ por hora extra. Opcional en el
   // motor puro; la API/UI siempre lo envían (y lo exigen en su propio esquema).
@@ -132,6 +139,18 @@ export const motivoObligatorio = {
     Boolean(d.descuentoMotivo?.trim()),
   opts: { message: 'Un descuento requiere motivo', path: ['descuentoMotivo'] },
 };
+
+/**
+ * Un evento lleva al menos un salón, o es de solo capilla (sin salón y con la
+ * capilla marcada). Suelto por la misma razón que `motivoObligatorio`.
+ */
+export const conEspacioOCapilla = {
+  check: (d: { spaceIds: string[]; usaCapilla?: boolean }): boolean => d.spaceIds.length > 0 || Boolean(d.usaCapilla),
+  opts: { message: 'Elige al menos un espacio, o la capilla sola.', path: ['spaceIds'] },
+};
+
+/** Cupo de la capilla cuando se renta sola. */
+export const CUPO_CAPILLA = 170;
 
 /** Un descuento es en porcentaje O en monto fijo, nunca los dos. */
 /** La hora extra es en porcentaje o en monto fijo, no los dos. */

@@ -84,10 +84,25 @@ export function computeEstadoCuenta(args: {
   payments: PaymentLite[];
   fechaApartado?: Date | null;
   now?: Date;
+  /** Evento de solo capilla: sin plan de pagos, se aparta con lo que dé y se liquida. */
+  soloCapilla?: boolean;
 }): EstadoCuenta {
   const { total, fechaEvento, status, rules, payments, fechaApartado } = args;
   const pagado = payments.filter((p) => p.anuladoAt == null).reduce((s, p) => sumarDinero(s, p.monto), 0);
   const saldo = restarDinero(total, pagado);
+
+  // Solo capilla (30-oct-2026): "no hay plan de pagos; se aparta igual que lo
+  // demás y se liquida". El primer pago la aparta y cubrir el total la liquida.
+  if (args.soloCapilla) {
+    const sugerido: PaymentStatus | null = pagado > 0 && pagado >= total ? 'liquidada' : pagado > 0 ? 'formalizada' : null;
+    let desfase = false;
+    if (status in RANK) {
+      const req = RANK[status as PaymentStatus];
+      if (req >= RANK.formalizada && pagado <= 0 && total > 0) desfase = true;
+      if (req >= RANK.liquidada && pagado < total) desfase = true;
+    }
+    return { total, pagado, saldo, plan: null, planPendiente: true, sugerido, desfase };
+  }
 
   if (!rules || rules.length === 0) {
     return { total, pagado, saldo, plan: null, planPendiente: true, sugerido: null, desfase: false };

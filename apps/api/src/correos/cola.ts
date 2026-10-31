@@ -286,7 +286,7 @@ export async function encolarLiquidaciones(db: PrismaClient, hoy = hoyCivilMexic
       fechaEvento: { gte: new Date(hoy.getTime() + 21 * dia), lte: new Date(hoy.getTime() + 30 * dia) },
       correos: { none: { tipo: 'liquidacion' } },
     },
-    select: { id: true, rentaTotal: true, fechaEvento: true, status: true, spaceIds: true, breakdown: true },
+    select: { id: true, rentaTotal: true, fechaEvento: true, status: true, spaceIds: true, usaCapilla: true, breakdown: true },
   });
   if (eventos.length === 0) return 0;
   const cuentas = await loadEstadoCuentaBulk(db, eventos);

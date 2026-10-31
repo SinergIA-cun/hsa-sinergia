@@ -45,7 +45,7 @@ export async function descuadres(db: PrismaClient, actor: Actor, hoy = hoyCivilM
       etiqueta: true,
       status: true,
       fechaEvento: true,
-      spaceIds: true,
+      spaceIds: true, usaCapilla: true,
       breakdown: true,
       total: true,
       rentaTotal: true,
