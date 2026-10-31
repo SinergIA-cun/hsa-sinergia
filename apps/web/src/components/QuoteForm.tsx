@@ -8,6 +8,7 @@ import {
   tablaDeRenta,
   AUMENTO_PCT_MAXIMO,
   DESCUENTO_ALIMENTOS_MAXIMO,
+  CUPO_CAPILLA,
   tieneContacto,
   MENSAJE_SIN_CONTACTO,
   type DatosFiscales,
@@ -73,6 +74,8 @@ export interface QuoteFormInitial {
   descuentoAlimentosPct: number | null;
   usaCapilla: boolean;
   capillaHorario: string;
+  /** Lo que se cobra de capilla en este evento; `null` = la regla del día. */
+  capillaMonto?: number | null;
   esCortesia: boolean;
   esPromocion: boolean;
   usaDjHoraExtra: boolean;
@@ -110,6 +113,7 @@ export interface QuotePayload {
   descuentoAlimentosPct?: number;
   usaCapilla: boolean;
   capillaHorario?: string | null;
+  capillaMonto?: number | null;
   esCortesia: boolean;
   esPromocion: boolean;
   usaDjHoraExtra: boolean;
@@ -388,6 +392,20 @@ export function QuoteForm({
   );
   const [usaCapilla, setUsaCapilla] = useState(initial?.usaCapilla ?? false);
   const [capillaHorario, setCapillaHorario] = useState(initial?.capillaHorario ?? '');
+  // Lo que se cobra de capilla en ESTE evento (30-oct-2026: "siempre poder
+  // cobrar variable la capilla"). Vacío = la regla del día: cortesía entre
+  // semana, la tarifa del catálogo en sábado.
+  const [capillaMontoTxt, setCapillaMontoTxt] = useState(initial?.capillaMonto != null ? String(initial.capillaMonto) : '');
+  const capillaMonto = useMemo((): { monto?: number; invalida?: boolean } => {
+    if (!usaCapilla || capillaMontoTxt.trim() === '') return {};
+    const n = Number(capillaMontoTxt);
+    if (!Number.isFinite(n) || n < 0 || !tieneCentavosValidos(n)) return { invalida: true };
+    return { monto: n };
+  }, [usaCapilla, capillaMontoTxt]);
+  // Sin salón y con la capilla: se renta solo la capilla.
+  const soloCapilla = spaceIds.length === 0 && usaCapilla;
+  // Lo que cobraría la regla del día, para proponerlo en el campo vacío.
+  const capillaPorDia = fecha && new Date(`${fecha}T12:00:00`).getDay() === 6 ? catalog.engine.capillaSabado : 0;
   const [esCortesia, setEsCortesia] = useState(initial?.esCortesia ?? false);
   const [esPromocion, setEsPromocion] = useState(initial?.esPromocion ?? false);
   const [usaDjHoraExtra, setUsaDjHoraExtra] = useState(initial?.usaDjHoraExtra ?? false);
@@ -505,6 +523,7 @@ export function QuoteForm({
       horaExtraMonto: horaExtra.horaExtraMonto,
       descuentoAlimentosPct: promoAlimentosPct.pct,
       usaCapilla,
+      capillaMonto: capillaMonto.monto,
       usaDjHoraExtra,
       eventTypeId: eventTypeId || undefined,
       foodPackageId: foodPackageId || undefined,
@@ -515,12 +534,12 @@ export function QuoteForm({
       descuentoMotivo: descuentoMotivo.trim() || undefined,
       esPromocion,
     }),
-    [fecha, invitados, spaceIds, horasExtra, horaExtra, promoAlimentosPct, usaCapilla, usaDjHoraExtra, eventTypeId, foodPackageId, addOns, extrasValidos, pctValido, montoValido, descuentoMotivo, esPromocion],
+    [fecha, invitados, spaceIds, horasExtra, horaExtra, promoAlimentosPct, usaCapilla, capillaMonto, usaDjHoraExtra, eventTypeId, foodPackageId, addOns, extrasValidos, pctValido, montoValido, descuentoMotivo, esPromocion],
   );
 
   const { breakdown, calcError } = useMemo(() => {
     if (precioPactado) return { breakdown: precioPactado, calcError: '' };
-    if (spaceIds.length === 0) return { breakdown: null as QuoteBreakdown | null, calcError: '' };
+    if (spaceIds.length === 0 && !usaCapilla) return { breakdown: null as QuoteBreakdown | null, calcError: '' };
     try {
       const calculado = computeQuote(catalog.engine, selection);
       // Los cargos del punto de venta que suben el contrato (horas extra, PAX
@@ -533,7 +552,7 @@ export function QuoteForm({
     } catch (e) {
       return { breakdown: null, calcError: e instanceof Error ? e.message : 'No se pudo calcular' };
     }
-  }, [catalog, selection, spaceIds.length, precioPactado, cargosContrato]);
+  }, [catalog, selection, spaceIds.length, usaCapilla, precioPactado, cargosContrato]);
 
   // El selector solo OFRECE los add-ons vigentes. Uno dado de baja aparece SOLO
   // si esta cotización ya lo trae seleccionado: el motor lo sigue cobrando, así
@@ -591,8 +610,9 @@ export function QuoteForm({
   // Cliente directo: termina de elegir si es cliente o empresa (como el tipo del profesional).
   const faltaTipoCliente = tipoClienteObligatorio && !esDeBanquetero && tipoCliente === '';
   const canSave = Boolean(
-    nombre && !faltaContacto && !faltaTipoCliente && eventTypeId && fecha && spaceIds.length >= 1 && spaceIds.length <= MAX_ESPACIOS &&
-    breakdown && !calcError && !blocked && !faltaMotivo && !horaExtra.invalida && !promoAlimentosPct.invalida,
+    nombre && !faltaContacto && !faltaTipoCliente && eventTypeId && fecha && (spaceIds.length >= 1 || soloCapilla) && spaceIds.length <= MAX_ESPACIOS &&
+    breakdown && !calcError && !blocked && !faltaMotivo && !horaExtra.invalida && !promoAlimentosPct.invalida &&
+    !capillaMonto.invalida,
   );
 
   const faltantes = [
@@ -601,11 +621,12 @@ export function QuoteForm({
     faltaContacto && (faltaTelefono ? 'el teléfono' : 'un teléfono o un correo'),
     !eventTypeId && 'el tipo de evento',
     !fecha && 'la fecha',
-    spaceIds.length === 0 && 'el espacio',
+    spaceIds.length === 0 && !usaCapilla && 'el espacio (o la capilla sola)',
     blocked && 'un espacio libre ese día',
     faltaMotivo && (esPromocion ? 'el motivo del ajuste' : 'el motivo del descuento'),
     horaExtra.invalida && 'el cobro de la hora extra',
     promoAlimentosPct.invalida && `la promoción por alimentos (de 1 a ${DESCUENTO_ALIMENTOS_MAXIMO}%)`,
+    capillaMonto.invalida && 'el cobro de la capilla',
     calcError && 'corregir el desglose',
   ].filter((x): x is string => Boolean(x));
 
@@ -646,6 +667,7 @@ export function QuoteForm({
         descuentoAlimentosPct: promoAlimentosPct.pct,
         usaCapilla,
         capillaHorario: usaCapilla ? capillaHorario || null : null,
+        capillaMonto: capillaMonto.monto ?? null,
         esCortesia,
         esPromocion,
         usaDjHoraExtra,
@@ -682,7 +704,8 @@ export function QuoteForm({
 
   // Lo que se ve de cada sección cuando está plegada (22-oct-2026).
   const resumenCliente = nombre ? [nombre, telefono || correo].filter(Boolean).join(' · ') : undefined;
-  const resumenEspacio = spaceIds.map((id) => spaceNameById.get(id)).filter(Boolean).join(', ') || undefined;
+  const resumenEspacio =
+    spaceIds.map((id) => spaceNameById.get(id)).filter(Boolean).join(', ') || (soloCapilla ? 'Solo capilla' : undefined);
   const resumenEvento =
     [eventType?.nombre, fecha && new Date(`${fecha}T12:00:00`).toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric' }), `${invitados} invitados`]
       .filter(Boolean)
@@ -921,6 +944,35 @@ export function QuoteForm({
                 </button>
               );
             })}
+            {/* Solo capilla (30-oct-2026): hay eventos que solo rentan la capilla.
+                No ocupa la fecha —la comparten varios eventos el mismo día—, así
+                que no se pinta por disponibilidad: abajo se dice quién más la usa. */}
+            {(!bloqueado?.espacios || soloCapilla) && (
+              <button
+                type="button"
+                disabled={bloqueado?.espacios}
+                aria-pressed={soloCapilla}
+                onClick={() => {
+                  if (soloCapilla) {
+                    setUsaCapilla(false);
+                  } else {
+                    setSpaceIds([]);
+                    setUsaCapilla(true);
+                  }
+                }}
+                title="Rentar solo la capilla, sin salón"
+                className={`flex items-center justify-between rounded-lg border px-4 py-3 text-left text-sm transition-colors disabled:cursor-not-allowed ${
+                  soloCapilla
+                    ? 'border-gold bg-gold/10 text-ink'
+                    : 'border-ink/12 bg-white/50 text-charcoal hover:border-ink/30'
+                }`}
+              >
+                <span className="font-medium">Capilla</span>
+                <span className="text-right text-xs text-charcoal-soft">
+                  {capillaEventos.length > 0 ? `${capillaEventos.length} evento(s) ese día` : `hasta ${CUPO_CAPILLA}`}
+                </span>
+              </button>
+            )}
           </div>
           {fecha && (
             <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-charcoal-soft">
@@ -985,22 +1037,36 @@ export function QuoteForm({
                 className="mt-0.5 h-4 w-4 accent-[var(--color-gold)]"
               />
               <span className="flex-1">
-                <span className="font-medium text-ink">Usar la Capilla</span>
+                <span className="font-medium text-ink">{soloCapilla ? 'Solo capilla, sin salón' : 'Usar la Capilla'}</span>
                 <span className="block text-xs text-charcoal-soft">
-                  Cortesía entre semana · $5,000 en sábado. Aparece en la hoja operativa.
+                  Cortesía entre semana · {formatMXN(catalog.engine.capillaSabado)} en sábado, salvo que pongas otro
+                  cobro. Aparece en la hoja operativa.
                 </span>
               </span>
             </label>
 
             {usaCapilla && (
-              <div className="mt-3 flex items-center gap-2 pl-7">
-                <span className="text-xs font-medium text-charcoal-soft">Horario de la capilla</span>
-                <TextInput
-                  type="time"
-                  value={capillaHorario}
-                  onChange={(e) => setCapillaHorario(e.target.value)}
-                  className="w-32"
-                />
+              <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2 pl-7">
+                <span className="flex items-center gap-2">
+                  <span className="text-xs font-medium text-charcoal-soft">Horario de la capilla</span>
+                  <TextInput
+                    type="time"
+                    value={capillaHorario}
+                    onChange={(e) => setCapillaHorario(e.target.value)}
+                    className="w-32"
+                  />
+                </span>
+                <span className="flex items-center gap-2">
+                  <span className="text-xs font-medium text-charcoal-soft">Cobro de la capilla</span>
+                  <MoneyInput
+                    value={capillaMontoTxt}
+                    onValue={setCapillaMontoTxt}
+                    placeholder={capillaPorDia === 0 ? '0 · cortesía' : capillaPorDia.toLocaleString('es-MX')}
+                    aria-label="Cobro de la capilla"
+                    className="w-36"
+                  />
+                </span>
+                {capillaMonto.invalida && <span className="w-full text-xs text-wine">Un monto en pesos, con hasta dos decimales.</span>}
               </div>
             )}
 

@@ -98,7 +98,9 @@ export function ContratoPage() {
   // desglose es anterior a ese campo, se usa el texto del concepto como respaldo.
   const nombresEspacios = quote.spaceIds.length > 0
     ? quote.spaceIds.map((id) => espaciosById.get(id) ?? id)
-    : lines
+    : quote.usaCapilla
+      ? ['Capilla']
+      : lines
         .filter((l) => l.concepto.startsWith('Renta '))
         .map((l) => l.concepto.replace('Renta ', ''));
   const espacioNombre = nombresEspacios.length > 0 ? nombresEspacios.join(' y ') : BLANK;

@@ -291,6 +291,8 @@ export interface Quote {
   horasExtra: number;
   usaCapilla?: boolean;
   capillaHorario?: string | null;
+  /** Lo que se cobra de capilla en este evento; `null` = la regla del día. */
+  capillaMonto?: number | null;
   esCortesia?: boolean;
   /** Descuento / promoción sobre la renta (como la cortesía, sin color en la agenda). */
   esPromocion?: boolean;

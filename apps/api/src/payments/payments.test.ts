@@ -336,7 +336,7 @@ describe('candado de facturación', () => {
       actor);
     const { payments } = await loadEstadoCuenta(prisma, {
       id: q.id, breakdown: q.breakdown, rentaTotal: q.rentaTotal,
-      fechaEvento: q.fechaEvento, status: q.status, spaceIds: q.spaceIds,
+      fechaEvento: q.fechaEvento, status: q.status, spaceIds: q.spaceIds, usaCapilla: false,
     });
     expect(payments[0]).toBeDefined();
     const detalle = (await getQuote(prisma, q.id, actor))!;

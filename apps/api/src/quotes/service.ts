@@ -11,6 +11,7 @@ import {
   datosFiscalesEditables,
   hoyCivilMexico,
   motivoObligatorio,
+  conEspacioOCapilla,
   unSoloDescuento,
   unModoHoraExtra,
   prorratearRenta,
@@ -108,7 +109,8 @@ export const createQuoteSchema = quoteSelectionSchema
   // `quoteSelectionSchema` porque `.refine()` devuelve un ZodEffects sin `.extend()`.
   .refine(motivoObligatorio.check, motivoObligatorio.opts)
   .refine(unSoloDescuento.check, unSoloDescuento.opts)
-  .refine(unModoHoraExtra.check, unModoHoraExtra.opts);
+  .refine(unModoHoraExtra.check, unModoHoraExtra.opts)
+  .refine(conEspacioOCapilla.check, conEspacioOCapilla.opts);
 
 export const updateQuoteSchema = quoteSelectionSchema
   .extend({
@@ -126,7 +128,8 @@ export const updateQuoteSchema = quoteSelectionSchema
   })
   .refine(motivoObligatorio.check, motivoObligatorio.opts)
   .refine(unSoloDescuento.check, unSoloDescuento.opts)
-  .refine(unModoHoraExtra.check, unModoHoraExtra.opts);
+  .refine(unModoHoraExtra.check, unModoHoraExtra.opts)
+  .refine(conEspacioOCapilla.check, conEspacioOCapilla.opts);
 
 export const statusSchema = z.object({
   status: z.enum(QUOTE_STATUSES),
@@ -279,6 +282,7 @@ export function toSelection(input: {
   horaExtraMonto?: number | null;
   descuentoAlimentosPct?: number | null;
   usaCapilla?: boolean;
+  capillaMonto?: number | null;
   usaDjHoraExtra?: boolean;
   eventTypeId?: string;
   foodPackageId?: string;
@@ -298,6 +302,7 @@ export function toSelection(input: {
     horaExtraMonto: input.horaExtraMonto ?? undefined,
     descuentoAlimentosPct: input.descuentoAlimentosPct ?? undefined,
     usaCapilla: input.usaCapilla ?? false,
+    capillaMonto: input.capillaMonto ?? undefined,
     usaDjHoraExtra: input.usaDjHoraExtra ?? false,
     eventTypeId: input.eventTypeId,
     foodPackageId: input.foodPackageId,
@@ -342,6 +347,7 @@ interface SeleccionGuardadaInput {
   horasExtra: number;
   usaCapilla: boolean;
   capillaHorario: string | null;
+  capillaMonto: number | null;
   esCortesia: boolean;
   esPromocion: boolean;
   usaDjHoraExtra: boolean;
@@ -373,6 +379,7 @@ export interface SeleccionGuardada {
   horasExtra: number;
   usaCapilla: boolean;
   capillaHorario: string | null;
+  capillaMonto: number | undefined;
   esCortesia: boolean;
   esPromocion: boolean;
   usaDjHoraExtra: boolean;
@@ -411,6 +418,7 @@ export function seleccionGuardada(q: SeleccionGuardadaInput): SeleccionGuardada 
     horasExtra: q.horasExtra,
     usaCapilla: q.usaCapilla,
     capillaHorario: q.capillaHorario,
+    capillaMonto: q.capillaMonto ?? undefined,
     esCortesia: q.esCortesia,
     esPromocion: q.esPromocion,
     usaDjHoraExtra: q.usaDjHoraExtra,
@@ -430,6 +438,16 @@ export function seleccionGuardada(q: SeleccionGuardadaInput): SeleccionGuardada 
     festejado: q.festejado,
     festejadoTelefono: q.festejadoTelefono,
   };
+}
+
+/** Un evento sin salón con la capilla marcada: se renta solo la capilla. */
+export function esSoloCapilla(q: { spaceIds: string[]; usaCapilla?: boolean | null }): boolean {
+  return q.spaceIds.length === 0 && Boolean(q.usaCapilla);
+}
+
+/** Cómo se nombra en su código un evento sin salón: el de solo capilla. */
+function sinSalonDe(q: { spaceIds: string[]; usaCapilla?: boolean | null }): string | undefined {
+  return esSoloCapilla(q) ? 'Capilla' : undefined;
 }
 
 /** Ventas solo ve/edita lo suyo; admin todo. */
@@ -505,6 +523,7 @@ function armarReglas(
 /** Carga las reglas de los espacios + pagos y arma el estado de cuenta (base: renta). */
 export async function loadEstadoCuenta(db: PrismaClient, quote: {
   id: string; rentaTotal: number; fechaEvento: Date; status: string; spaceIds: string[]; breakdown: unknown;
+  usaCapilla: boolean;
 }) {
   const [rules, payments, firstApartado, devoluciones] = await Promise.all([
     db.spacePaymentRule.findMany({ where: { spaceId: { in: quote.spaceIds } } }),
@@ -536,6 +555,7 @@ export async function loadEstadoCuenta(db: PrismaClient, quote: {
     fechaEvento: quote.fechaEvento,
     status: quote.status,
     rules: armarReglas(rules, quote.spaceIds, rentaBase),
+    soloCapilla: esSoloCapilla(quote),
     payments: [
       ...payments.map((p) => ({ monto: p.monto, anuladoAt: p.anuladoAt })),
       ...devoluciones.map((d) => ({ monto: -d.monto, anuladoAt: null })),
@@ -552,6 +572,7 @@ export interface QuoteEC {
   status: string;
   spaceIds: string[];
   breakdown: unknown;
+  usaCapilla: boolean;
 }
 
 /**
@@ -619,6 +640,7 @@ export async function loadEstadoCuentaBulk(
         fechaEvento: q.fechaEvento,
         status: q.status,
         rules: armarReglas(reglas, q.spaceIds, rentaBase),
+        soloCapilla: esSoloCapilla(q),
         payments: pagosByQuote.get(q.id) ?? [],
         fechaApartado: apartadoByQuote.get(q.id) ?? null,
       }),
@@ -654,7 +676,7 @@ export async function reconcileStatuses(
       status: true,
       rentaTotal: true,
       fechaEvento: true,
-      spaceIds: true,
+      spaceIds: true, usaCapilla: true,
       // El desglose lleva la renta de cada espacio, que pondera el complemento.
       breakdown: true,
       client: { select: { nombre: true } },
@@ -753,7 +775,7 @@ export async function createQuote(
 
   // El folio lo pone Postgres al insertar; aquí va el código, que es el
   // principal, con el primer renglón de su historial.
-  const datosCodigo = { fecha: input.fecha, cliente: nombreCliente, spaceIds: input.spaceIds };
+  const datosCodigo = { fecha: input.fecha, cliente: nombreCliente, spaceIds: input.spaceIds, sinSalon: sinSalonDe(input) };
   const etiqueta = await generarEtiqueta(db, datosCodigo);
 
   const created = await db.quote.create({
@@ -769,6 +791,7 @@ export async function createQuote(
           horasExtra: input.horasExtra,
           usaCapilla: input.usaCapilla ?? false,
           capillaHorario: input.capillaHorario ?? null,
+          capillaMonto: input.usaCapilla ? (input.capillaMonto ?? null) : null,
           esCortesia: input.esCortesia ?? false,
           esPromocion: input.esPromocion ?? false,
           requiereFactura: input.requiereFactura,
@@ -829,6 +852,7 @@ export async function duplicateQuote(db: PrismaClient, id: string, actor: Actor)
     fecha: src.fechaEvento.toISOString().slice(0, 10),
     cliente: src.client?.nombre ?? '',
     spaceIds: src.spaceIds,
+    sinSalon: sinSalonDe(src),
   };
   const etiqueta = await generarEtiqueta(db, datosCodigo);
 
@@ -845,6 +869,7 @@ export async function duplicateQuote(db: PrismaClient, id: string, actor: Actor)
           horasExtra: src.horasExtra,
           usaCapilla: src.usaCapilla,
           capillaHorario: src.capillaHorario,
+          capillaMonto: src.capillaMonto,
           usaDjHoraExtra: src.usaDjHoraExtra,
           foodPackageId: src.foodPackageId,
           addOns: src.addOns as unknown as Prisma.InputJsonValue,
@@ -1036,7 +1061,7 @@ export async function updateQuote(db: PrismaClient, id: string, rawInput: unknow
   // llevando a este evento. El folio, la llave interna, no se toca nunca.
   const nombreCliente =
     input.client?.nombre ?? nombreClienteAntes;
-  const datosCodigo = { fecha: input.fecha, cliente: nombreCliente, spaceIds: input.spaceIds };
+  const datosCodigo = { fecha: input.fecha, cliente: nombreCliente, spaceIds: input.spaceIds, sinSalon: sinSalonDe(input) };
   const etiqueta = await calcularCodigo(db, datosCodigo, { id, etiqueta: existing.etiqueta });
   const cambioDeCodigo =
     etiqueta !== existing.etiqueta
@@ -1069,6 +1094,7 @@ export async function updateQuote(db: PrismaClient, id: string, rawInput: unknow
         horasExtra: input.horasExtra,
         usaCapilla: input.usaCapilla ?? false,
         capillaHorario: input.capillaHorario ?? null,
+        capillaMonto: input.usaCapilla ? (input.capillaMonto ?? null) : null,
         esCortesia: input.esCortesia ?? false,
         esPromocion: input.esPromocion ?? false,
         requiereFactura: input.requiereFactura,

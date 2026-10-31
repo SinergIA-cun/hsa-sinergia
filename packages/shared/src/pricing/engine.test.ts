@@ -140,6 +140,23 @@ describe('computeQuote', () => {
     expect(jueCon.rentaTotal).toBe(jueSin.rentaTotal);
   });
 
+  // 30-oct-2026: "siempre poder cobrar variable la capilla".
+  it('el cobro de capilla del evento manda sobre la regla del día', () => {
+    const viernes = computeQuote(catalog, mk({ fecha: '2027-05-07', usaCapilla: true, capillaMonto: 1500 }));
+    expect(viernes.lines.find((l) => l.concepto === 'Capilla')).toMatchObject({ monto: 1500, detalle: undefined });
+    const sabado = computeQuote(catalog, mk({ usaCapilla: true, capillaMonto: 2000 }));
+    expect(sabado.rentaTotal).toBe(108500 + 2000);
+    const cortesia = computeQuote(catalog, mk({ usaCapilla: true, capillaMonto: 0 }));
+    expect(cortesia.lines.find((l) => l.concepto === 'Capilla')).toMatchObject({ monto: 0, detalle: 'cortesía' });
+  });
+
+  it('solo capilla: sin salón, la renta es la capilla y su cupo es de 170', () => {
+    const r = computeQuote(catalog, mk({ spaceIds: [], invitados: 120, usaCapilla: true, capillaMonto: 3000 }));
+    expect(r.rentaTotal).toBe(3000);
+    expect(r.lines.map((l) => l.concepto)).toEqual(['Capilla']);
+    expect(() => computeQuote(catalog, mk({ spaceIds: [], invitados: 171, usaCapilla: true }))).toThrow(/cupo 170/);
+  });
+
   it('lanza error si el espacio no tiene rango para los invitados', () => {
     expect(() => computeQuote(catalog, mk({ invitados: 700 }))).toThrow(/rango/i);
   });

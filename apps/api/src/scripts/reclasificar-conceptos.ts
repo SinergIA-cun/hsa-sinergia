@@ -16,7 +16,7 @@ import { reclasificarConceptos } from '../payments/conceptos.js';
 async function main(): Promise<void> {
   const quotes = await prisma.quote.findMany({
     where: { deletedAt: null, payments: { some: {} } },
-    select: { id: true, rentaTotal: true, fechaEvento: true, status: true, spaceIds: true, breakdown: true },
+    select: { id: true, rentaTotal: true, fechaEvento: true, status: true, spaceIds: true, usaCapilla: true, breakdown: true },
   });
   let eventos = 0;
   let pagos = 0;

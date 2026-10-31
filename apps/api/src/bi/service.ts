@@ -381,7 +381,7 @@ export async function biPagos(db: PrismaClient, r: RangoBI) {
 export async function biPagosEsperados(db: PrismaClient, r: RangoBI) {
   const quotes = await db.quote.findMany({
     where: { deletedAt: null, status: { in: ['formalizada', 'complementada'] } },
-    select: { id: true, etiqueta: true, rentaTotal: true, fechaEvento: true, status: true, spaceIds: true, breakdown: true,
+    select: { id: true, etiqueta: true, rentaTotal: true, fechaEvento: true, status: true, spaceIds: true, usaCapilla: true, breakdown: true,
               client: { select: { nombre: true } } },
     orderBy: { fechaEvento: 'asc' },
     take: r.limit,

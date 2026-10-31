@@ -65,6 +65,7 @@ function toInitial(q: Quote): Partial<QuoteFormInitial> {
     horasExtra: q.horasExtra,
     usaCapilla: q.usaCapilla ?? false,
     capillaHorario: q.capillaHorario ?? '',
+    capillaMonto: q.capillaMonto ?? null,
     esCortesia: q.esCortesia ?? false,
     esPromocion: q.esPromocion ?? false,
     usaDjHoraExtra: q.usaDjHoraExtra ?? false,

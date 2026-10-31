@@ -1,5 +1,5 @@
 import type { Catalog, QuoteBreakdown, QuoteLine, RentalPriceRow } from '../types.js';
-import { AUMENTO_PCT_MAXIMO, type QuoteSelection } from '../schemas.js';
+import { AUMENTO_PCT_MAXIMO, CUPO_CAPILLA, type QuoteSelection } from '../schemas.js';
 import { findBracket, nivelConExtras } from './brackets.js';
 import { bracketDeParte, capacidadTotal, repartirInvitados } from './reparto.js';
 import { tablaDeRenta } from './tablasRenta.js';
@@ -60,6 +60,10 @@ export function computeQuote(
     throw new Error(
       `Ajuste de precio inválido: ${sel.descuentoPct}% (baja hasta 100% o sube hasta ${AUMENTO_PCT_MAXIMO}%)`,
     );
+  }
+  // Solo capilla: sin salón, su cupo es el de la capilla.
+  if (sel.spaceIds.length === 0 && sel.usaCapilla && sel.invitados > CUPO_CAPILLA) {
+    throw new Error(`${sel.invitados} invitados no caben en la capilla (cupo ${CUPO_CAPILLA})`);
   }
   const col = columnaDelEvento(catalog, sel.fecha);
   const diaSemana = diaYMes(sel.fecha).dia;
@@ -196,13 +200,15 @@ export function computeQuote(
   // 3b. Capilla (opcional): cortesía entre semana, $5,000 en sábado. Va al total
   //     (rentaConIva) pero NUNCA se descuenta ni entra a la base de horas extra o
   //     del descuento por alimentos: "se cobra en los días que se cobra".
+  //     Desde el 30-oct-2026 el monto de cada evento se puede cambiar
+  //     (`capillaMonto`); la regla del día es solo lo que se propone.
   if (sel.usaCapilla) {
     // La capilla se cobra por el día real de la semana, no por la columna.
-    const monto = diaSemana === 6 ? catalog.capillaSabado : 0;
+    const monto = sel.capillaMonto ?? (diaSemana === 6 ? catalog.capillaSabado : 0);
     rentaConIva += monto;
     lines.push({
       concepto: 'Capilla',
-      detalle: diaSemana === 6 ? undefined : 'cortesía',
+      detalle: monto === 0 ? 'cortesía' : undefined,
       monto: round2(monto),
       ivaIncluido: true,
       grupo: 'renta',

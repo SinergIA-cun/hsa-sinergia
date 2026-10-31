@@ -220,6 +220,7 @@ describe('quotes service', () => {
       fechaEvento: q.fechaEvento,
       status: 'formalizada',
       spaceIds: q.spaceIds,
+      usaCapilla: false,
     });
     const comp = estadoCuenta.plan!.find((m) => m.key === 'complemento')!;
     expect(comp.venceISO).not.toBeNull();

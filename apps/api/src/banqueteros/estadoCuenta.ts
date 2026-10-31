@@ -45,7 +45,7 @@ export async function estadoCuentaBanquetero(
         status: true,
         total: true,
         rentaTotal: true,
-        spaceIds: true,
+        spaceIds: true, usaCapilla: true,
         breakdown: true,
         festejado: true,
         festejadoTelefono: true,
