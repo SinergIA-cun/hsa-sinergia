@@ -11,6 +11,7 @@ import {
   datosFiscalesEditables,
   hoyCivilMexico,
   motivoObligatorio,
+  montoNoNegativoSchema,
   conEspacioOCapilla,
   unSoloDescuento,
   unModoHoraExtra,
@@ -97,6 +98,8 @@ export const createQuoteSchema = quoteSelectionSchema
     esPromocion: z.boolean().default(false),
     requiereFactura: z.boolean().default(false),
     capillaHorario: z.string().max(20).nullable().optional(),
+    // El formulario manda `null` cuando el cobro se deja vacío (= la regla del día).
+    capillaMonto: montoNoNegativoSchema.nullish(),
     clientId: z.string().optional(),
     client: clientSchema.optional(),
     ...paraQuienSchema,
@@ -120,6 +123,8 @@ export const updateQuoteSchema = quoteSelectionSchema
     esPromocion: z.boolean().default(false),
     requiereFactura: z.boolean().default(false),
     capillaHorario: z.string().max(20).nullable().optional(),
+    // El formulario manda `null` cuando el cobro se deja vacío (= la regla del día).
+    capillaMonto: montoNoNegativoSchema.nullish(),
     client: clientSchema.optional(),
     ...paraQuienSchema,
     // Sin la llave, se quedan como están: los caminos que recalculan sin el

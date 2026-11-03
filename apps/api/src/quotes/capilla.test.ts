@@ -64,6 +64,22 @@ describe('capilla con cobro variable', () => {
     expect(lineaCapilla(otra.breakdown)).toMatchObject({ monto: 1_500 });
   });
 
+  // El formulario manda `capillaMonto: null` con el campo vacío: tumbó el alta y
+  // la edición de todos los eventos (3-nov-2026).
+  it('acepta capillaMonto en null, al crear y al editar', async () => {
+    const q = await createQuote(
+      prisma,
+      { ...base('2065-05-02'), spaceIds: [arcosId], eventTypeId: bodaId, usaCapilla: true, capillaMonto: null },
+      admin,
+    );
+    quotes.push(q.id);
+    expect(q.capillaMonto).toBeNull();
+    expect(lineaCapilla(q.breakdown)).toMatchObject({ monto: 5_000 }); // sábado: la regla del día
+    const guardada = await prisma.quote.findUniqueOrThrow({ where: { id: q.id }, include: SELECCION_INCLUDE });
+    const otra = await updateQuote(prisma, q.id, { ...seleccionGuardada(guardada), capillaMonto: null }, admin);
+    expect(otra.capillaMonto).toBeNull();
+  });
+
   it('sin la capilla no se guarda un cobro de capilla', async () => {
     const q = await createQuote(
       prisma,

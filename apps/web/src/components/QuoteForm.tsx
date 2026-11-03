@@ -667,7 +667,8 @@ export function QuoteForm({
         descuentoAlimentosPct: promoAlimentosPct.pct,
         usaCapilla,
         capillaHorario: usaCapilla ? capillaHorario || null : null,
-        capillaMonto: capillaMonto.monto ?? null,
+        // Sin monto no se manda: la API lo guarda como `null` (la regla del día).
+        capillaMonto: capillaMonto.monto,
         esCortesia,
         esPromocion,
         usaDjHoraExtra,
