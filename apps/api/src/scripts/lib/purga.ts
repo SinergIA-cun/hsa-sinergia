@@ -46,6 +46,13 @@ export const TABLAS_MOVIMIENTO = [
   // Los cambios del folio de arranque: con la purga el folio vuelve a empezar,
   // así que su historial ya no describe nada.
   'CambioFolio',
+  // Los servicios que el banquetero cobra en cada evento: se van con su evento.
+  'ServicioBanquetero',
+  // Los correos al cliente de cada evento (cola de envío): se van con su evento.
+  'CorreoCliente',
+  // Los apartados rápidos: referencian tipo de evento, usuarios y, si se
+  // convirtieron, su evento.
+  'ApartadoRapido',
 ] as const;
 
 /**
@@ -57,6 +64,9 @@ export const TABLAS_MOVIMIENTO = [
  */
 export const TABLAS_CATALOGO = [
   'PriceList',
+  // Las tablas de renta de cada lista de precios: se van con su lista.
+  'TablaRenta',
+  'ColumnaRenta',
   'Space',
   'EventType',
   'Banquetero',
@@ -80,6 +90,21 @@ export const TABLAS_CATALOGO = [
  * Reiniciar el folio del recibo solo es correcto porque los pagos se van con la
  * purga: no queda ningún recibo impreso con el que un folio 1 pudiera choocar.
  */
+/**
+ * Las tablas que la purga NO toca nunca, con su razón. Junto con las dos listas
+ * de arriba tienen que cubrir TODOS los modelos del esquema: una prueba lo
+ * revisa, porque una tabla nueva que nadie agregó aquí hace que el `TRUNCATE`
+ * truene (le pasó al demo el 6-nov-2026 con `ServicioBanquetero`).
+ */
+export const TABLAS_NUNCA = [
+  // La bitácora forense: la purga la borra y la vuelve a sembrar aparte.
+  'AuditoriaDb',
+  // Ajustes de la instalación (clave/valor), no datos de operación.
+  'Ajuste',
+  // El catálogo de proveedores lo carga el cliente y no cuelga de nada que se purgue.
+  'Proveedor',
+] as const;
+
 export const SECUENCIAS = ['recibo_folio_seq', 'client_ref_seq'] as const;
 
 export interface CensoTabla {
