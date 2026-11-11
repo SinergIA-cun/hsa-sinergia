@@ -38,6 +38,7 @@ import { calcularCodigo, motivosDelCambio, renglonDeCodigo, historialDeCodigos }
 import { resumenCancelacion } from './ciclo.js';
 import { archivarEvento, yaPaso } from '../historico/archivar.js';
 import { computeEstadoCuenta, esUpgrade, type EstadoCuenta, type SpaceRuleWithRent } from './estadoCuenta.js';
+import { ligarProveedores } from '../proveedores/ligar.js';
 
 export interface Actor {
   id: string;
@@ -164,7 +165,7 @@ export const includeRels = {
   cerradoBy: { select: { nombre: true } },
   // Los servicios sueltos del evento: no viven en el catálogo, así que la única
   // forma de recuperarlos para reeditar (y para recalcular) es leerlos de aquí.
-  extras: { select: { nombre: true, kind: true, monto: true, cantidad: true, proveedor: true, comisionPct: true, comisionMonto: true } },
+  extras: { select: { nombre: true, kind: true, monto: true, cantidad: true, proveedor: true, proveedorId: true, productoProveedorId: true, comisionPct: true, comisionMonto: true } },
   // Lo que pone el banquetero: informativo, no entra al precio.
   serviciosBanquetero: { select: { nombre: true, cantidad: true, monto: true }, orderBy: { id: 'asc' as const } },
 };
@@ -343,7 +344,7 @@ export function toSelection(input: {
  * `seleccionGuardada` no acepta el objeto. Ese es el candado.
  */
 export const SELECCION_INCLUDE = {
-  extras: { select: { nombre: true, kind: true, monto: true, cantidad: true, proveedor: true, comisionPct: true, comisionMonto: true } },
+  extras: { select: { nombre: true, kind: true, monto: true, cantidad: true, proveedor: true, proveedorId: true, productoProveedorId: true, comisionPct: true, comisionMonto: true } },
 } as const;
 
 /** Una cotización guardada, con TODO lo que el motor necesita para recalcular. */
@@ -460,8 +461,12 @@ function cambiaronLosOtros(
 ): boolean {
   const servicios = (a: { addOnId: string; cantidad: number }[]) =>
     JSON.stringify([...a].sort((x, y) => x.addOnId.localeCompare(y.addOnId)).map((x) => [x.addOnId, x.cantidad]));
+  // Con proveedor ligado cuenta su id, no el nombre: renombrarlo en Proveedores
+  // no es cambiar el servicio (ligar pone el nombre de hoy al guardar).
   const extras = (e: QuoteExtra[]) =>
-    JSON.stringify(e.map((x) => [x.nombre, x.kind, x.monto, x.cantidad, x.proveedor ?? null, x.comisionPct ?? null, x.comisionMonto ?? null]));
+    JSON.stringify(
+      e.map((x) => [x.nombre, x.kind, x.monto, x.cantidad, x.proveedorId ? null : (x.proveedor ?? null), x.proveedorId ?? null, x.productoProveedorId ?? null, x.comisionPct ?? null, x.comisionMonto ?? null]),
+    );
   const dj = (usa: boolean | undefined, horas: number) => (usa ? horas : 0);
   return (
     (antes.foodPackageId ?? null) !== (despues.foodPackageId || null) ||
@@ -771,7 +776,9 @@ export async function createQuote(
   actor: Actor,
   opts: CreateQuoteOpts = {},
 ) {
-  const input = createQuoteSchema.parse(rawInput);
+  const parsed = createQuoteSchema.parse(rawInput);
+  // Proveedor y producto escogidos de "Proveedores": validados y con su nombre.
+  const input = { ...parsed, extras: await ligarProveedores(db, parsed.extras) };
   // Antes de CUALQUIER escritura (incluida la del cliente): una cotización
   // rechazada no debe dejar un cliente huérfano en la base.
   await assertEspaciosDisponibles(db, input.fecha, input.spaceIds, undefined, opts.excludeApartadoId);
@@ -999,7 +1006,8 @@ export async function updateQuote(db: PrismaClient, id: string, rawInput: unknow
   // (Jorge, 16-oct-2026: nombre, PAX, tipo, fecha…; "los pagos no"). Que sea
   // suyo ya lo exige la búsqueda de arriba; los pagos tienen sus propios
   // candados de admin (anular, corregir, mover, folios).
-  const input = updateQuoteSchema.parse(rawInput);
+  const parsed = updateQuoteSchema.parse(rawInput);
+  const input = { ...parsed, extras: await ligarProveedores(db, parsed.extras) };
   // Se excluye a sí misma: editar sin mover fecha ni espacio no se auto-bloquea.
   await assertEspaciosDisponibles(db, input.fecha, input.spaceIds, id);
   await assertBanquetero(db, input.banqueteroId);

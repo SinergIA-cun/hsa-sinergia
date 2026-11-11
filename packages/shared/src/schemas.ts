@@ -20,6 +20,9 @@ import { z } from 'zod';
  */
 export const camposComision = {
   proveedor: z.string().trim().max(120).nullish(),
+  /** Escogidos de "Proveedores" (11-nov-2026): el BI recibe el proveedor por su id. */
+  proveedorId: z.string().min(1).nullish(),
+  productoProveedorId: z.string().min(1).nullish(),
   comisionPct: z.number().min(0).max(100).nullish(),
   comisionMonto: montoNoNegativoSchema.nullish(),
 };

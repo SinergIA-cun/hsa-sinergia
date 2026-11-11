@@ -5,7 +5,6 @@ import { UsersSection } from '../components/admin/UsersSection.tsx';
 import { PersonalSection } from '../components/admin/PersonalSection.tsx';
 import { CatalogosSection } from '../components/admin/CatalogosSection.tsx';
 import { FoliosSection } from '../components/admin/FoliosSection.tsx';
-import { ProveedoresSection } from '../components/admin/ProveedoresSection.tsx';
 import { WhatsappSection } from '../components/admin/WhatsappSection.tsx';
 
 export function AdminPage() {
@@ -41,7 +40,8 @@ export function AdminPage() {
           Las secciones viejas "Configuración" y "Extras" escribían sobre el
           catálogo activo y eran un segundo camino al mismo dato; se retiraron. */}
       <WhatsappSection />
-      <ProveedoresSection />
+      {/* Los proveedores se fueron a su propia pantalla (`/proveedores`, 11-nov-2026):
+          ficha, productos y comisión pactada; ventas también la consulta. */}
       <CatalogosSection />
     </div>
   );

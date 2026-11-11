@@ -38,3 +38,20 @@ export const TIPO_CLIENTE: Record<TipoCliente, { label: string }> = {
   persona: { label: 'Cliente' },
   empresa: { label: 'Empresa' },
 };
+
+/**
+ * Giros sugeridos de "Proveedores" (11-nov-2026: "flores, sonido, DJ, pista de
+ * baile…"). Es texto libre: la lista solo propone, para que se escriban igual.
+ */
+export const GIROS_PROVEEDOR = [
+  'Flores',
+  'Sonido',
+  'DJ',
+  'Música en vivo',
+  'Pista de baile',
+  'Iluminación',
+  'Mobiliario',
+  'Decoración',
+  'Foto y video',
+  'Otro',
+] as const;

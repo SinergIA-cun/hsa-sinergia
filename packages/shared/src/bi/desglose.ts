@@ -35,7 +35,14 @@ export interface RenglonBI {
   /** Solo `pactado` con paquete (importados, BI #4): su clave y la comisión fija. */
   pactadoPaquete?: { clave: string; comisionMonto: number | null };
   /** `servicioEvento` o `cargoContrato` con proveedor o comisión (11-nov-2026): lo tecleado en el evento. */
-  tecleado?: { proveedorNombre: string | null; comisionPct: number | null; comisionMonto: number | null };
+  tecleado?: {
+    proveedorNombre: string | null;
+    /** Escogido de "Proveedores": su id y el del producto. */
+    proveedorId: string | null;
+    productoProveedorId: string | null;
+    comisionPct: number | null;
+    comisionMonto: number | null;
+  };
 }
 
 /** La comisión de un renglón: en monto fijo el % se deduce; en % sale el monto. Sobre el subtotal sin IVA. */
@@ -110,10 +117,12 @@ export function desgloseParaBI(
         ? { pactadoPaquete: { clave: l.ref.paqueteClave, comisionMonto: l.ref.comisionMonto ?? null } }
         : {}),
       ...((tipo === 'servicioEvento' || tipo === 'cargoContrato') &&
-      (l.ref?.proveedorNombre || l.ref?.comisionPct != null || l.ref?.comisionMonto != null)
+      (l.ref?.proveedorNombre || l.ref?.proveedorId || l.ref?.comisionPct != null || l.ref?.comisionMonto != null)
         ? {
             tecleado: {
               proveedorNombre: l.ref.proveedorNombre ?? null,
+              proveedorId: l.ref.proveedorId ?? null,
+              productoProveedorId: l.ref.productoProveedorId ?? null,
               comisionPct: l.ref.comisionPct ?? null,
               comisionMonto: l.ref.comisionMonto ?? null,
             },

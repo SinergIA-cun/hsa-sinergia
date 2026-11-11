@@ -353,6 +353,8 @@ export function computeQuote(
         precioUnitario: e.monto,
         // Proveedor y comisión del servicio, congelados con el evento (11-nov-2026).
         ...(e.proveedor ? { proveedorNombre: e.proveedor } : {}),
+        ...(e.proveedorId ? { proveedorId: e.proveedorId } : {}),
+        ...(e.productoProveedorId ? { productoProveedorId: e.productoProveedorId } : {}),
         ...(e.comisionMonto != null ? { comisionMonto: e.comisionMonto } : e.comisionPct != null ? { comisionPct: e.comisionPct } : {}),
       },
     });

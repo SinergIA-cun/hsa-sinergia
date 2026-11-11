@@ -62,7 +62,8 @@ const lineasDe = (b: unknown): QuoteLine[] => (b as Breakdownish)?.lines ?? [];
  */
 async function referenciasDelDesglose(db: PrismaClient, lineas: QuoteLine[]) {
   const ids = (tipo: string) => [...new Set(lineas.filter((l) => l.ref?.tipo === tipo && l.ref.id).map((l) => l.ref!.id!))];
-  const [servicios, paquetes, proveedores, profesionales] = await Promise.all([
+  const productoIds = [...new Set(lineas.map((l) => l.ref?.productoProveedorId).filter((x): x is string => Boolean(x)))];
+  const [servicios, paquetes, proveedores, profesionales, productos] = await Promise.all([
     db.addOn.findMany({
       where: { id: { in: ids('servicioCatalogo') } },
       select: { id: true, clave: true, categoria: true, comisionPct: true, proveedorId: true, cobra: true },
@@ -70,8 +71,10 @@ async function referenciasDelDesglose(db: PrismaClient, lineas: QuoteLine[]) {
     db.foodPackage.findMany({ where: { id: { in: ids('alimentos') } }, select: { id: true, clave: true, comisionPct: true } }),
     db.proveedor.findMany({ select: { id: true, nombre: true } }),
     db.banquetero.findMany({ select: { id: true, nombre: true, tipo: true, comisionPct: true } }),
+    db.productoProveedor.findMany({ where: { id: { in: productoIds } }, select: { id: true, nombre: true } }),
   ]);
   return {
+    productoProveedor: new Map(productos.map((p) => [p.id, p.nombre])),
     servicio: new Map(servicios.map((a) => [a.id, a])),
     paquete: new Map(paquetes.map((p) => [p.id, p])),
     proveedor: new Map(proveedores.map((p) => [p.id, p.nombre])),
@@ -166,7 +169,10 @@ function desgloseDelEvento(
       cobra: datos?.cobra ?? null,
       proveedor: datos?.proveedorId
         ? { clave: datos.proveedorId, nombre: refs.proveedor.get(datos.proveedorId) ?? null }
-        : tecleado?.proveedorNombre
+        : tecleado?.proveedorId
+          ? // Escogido de "Proveedores": por su id, como los del catálogo.
+            { clave: tecleado.proveedorId, nombre: refs.proveedor.get(tecleado.proveedorId) ?? tecleado.proveedorNombre }
+          : tecleado?.proveedorNombre
           ? // Servicio del evento o cargo del punto de venta: el proveedor se teclea.
             { clave: null, nombre: tecleado.proveedorNombre }
           : null,
@@ -189,6 +195,10 @@ function desgloseDelEvento(
           : agenciaTecleada
             ? { clave: agenciaTecleada.clave, nombre: agenciaTecleada.nombre, tipo: agenciaTecleada.tipo }
             : null,
+      /** El producto de "Proveedores" con el que se vendió (11-nov-2026). `null` si se tecleó. */
+      productoProveedor: tecleado?.productoProveedorId
+        ? { clave: tecleado.productoProveedorId, nombre: refs.productoProveedor.get(tecleado.productoProveedorId) ?? null }
+        : null,
       banquetero: null as { id: string; nombre: string } | null,
     };
   });
@@ -212,6 +222,7 @@ function desgloseDelEvento(
         proveedor: null,
         comision: null,
         agencia: null,
+        productoProveedor: null,
         banquetero: { id: q.banquetero!.id, nombre: q.banquetero!.nombre },
       }))
     : [];
@@ -666,6 +677,9 @@ export async function biCargos(db: PrismaClient, r: RangoBI) {
     // Un servicio vendido aquí (el grupo musical, 11-nov-2026): quién lo da y la
     // comisión de la hacienda, sobre el subtotal sin IVA.
     proveedor: c.proveedor,
+    /** Escogidos de "Proveedores" (11-nov-2026): sus ids (`/catalogos.proveedores`). `null` si se tecleó. */
+    proveedorId: c.proveedorId,
+    productoProveedorId: c.productoProveedorId,
     // Si el proveedor es alguien de Prof. Evento: su id, como la agencia del paquete.
     agencia: agencia ? { clave: agencia.clave, nombre: agencia.nombre, tipo: agencia.tipo } : null,
     comision: comisionDeRenglon(
@@ -809,7 +823,7 @@ export async function biCatalogos(db: PrismaClient) {
       include: { brackets: { orderBy: { min: 'asc' } }, eventType: { select: { id: true, nombre: true } } },
       orderBy: [{ priceListId: 'asc' }, { nombre: 'asc' }],
     }),
-    db.proveedor.findMany({ orderBy: { nombre: 'asc' } }),
+    db.proveedor.findMany({ orderBy: { nombre: 'asc' }, include: { productos: { orderBy: { nombre: 'asc' } } } }),
   ]);
   const nombreProveedor = new Map(proveedores.map((p) => [p.id, p.nombre]));
   return {
@@ -847,7 +861,27 @@ export async function biCatalogos(db: PrismaClient) {
       comisionPct: p.comisionPct,
       precios: p.brackets.map((b) => ({ min: b.min, max: b.max, precioPorPersona: b.pricePerPerson })),
     })),
-    proveedores: proveedores.map((p) => ({ clave: p.id, nombre: p.nombre, activo: p.activo })),
+    // Desde el 11-nov-2026, con su ficha y sus productos con la comisión pactada
+    // (`clave` del producto = `productoProveedor.clave` de `desglose[]` y de `/cargos`).
+    proveedores: proveedores.map((p) => ({
+      clave: p.id,
+      nombre: p.nombre,
+      activo: p.activo,
+      giro: p.giro,
+      contacto: p.contacto,
+      telefono: p.telefono,
+      correo: p.correo,
+      razonSocial: p.razonSocial,
+      rfc: p.rfc,
+      productos: p.productos.map((x) => ({
+        clave: x.id,
+        nombre: x.nombre,
+        precio: x.precio,
+        comisionPct: x.comisionPct,
+        comisionMonto: x.comisionMonto,
+        activo: x.activo,
+      })),
+    })),
     tiposRenglon: [
       'rentaSalon', 'descuento', 'horasExtra', 'capilla', 'descuentoAlimentos', 'cargoContrato',
       'alimentos', 'servicioCatalogo', 'djHoraExtra', 'servicioEvento', 'pactado', 'otro', 'servicioBanquetero',

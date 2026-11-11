@@ -128,6 +128,8 @@ export function lineaDeCargo(c: {
   precioUnitario: number;
   total: number;
   proveedor?: string | null;
+  proveedorId?: string | null;
+  productoProveedorId?: string | null;
   comisionPct?: number | null;
   comisionMonto?: number | null;
 }): QuoteLine {
@@ -146,6 +148,8 @@ export function lineaDeCargo(c: {
       precioUnitario: c.precioUnitario,
       // Un servicio vendido en el punto de venta (el grupo musical): su proveedor y comisión.
       ...(c.proveedor ? { proveedorNombre: c.proveedor } : {}),
+      ...(c.proveedorId ? { proveedorId: c.proveedorId } : {}),
+      ...(c.productoProveedorId ? { productoProveedorId: c.productoProveedorId } : {}),
       ...(c.comisionMonto != null ? { comisionMonto: c.comisionMonto } : c.comisionPct != null ? { comisionPct: c.comisionPct } : {}),
     },
   };

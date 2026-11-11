@@ -1580,6 +1580,8 @@ export function QuoteForm({
                   valor={e}
                   base={e.kind === 'fijo' ? e.monto : e.kind === 'porPersona' ? e.monto * invitados : e.monto * e.cantidad}
                   onChange={(patch) => actualizarExtra(i, patch)}
+                  // El precio de un producto es de una venta, no por persona.
+                  onProducto={(p) => actualizarExtra(i, { nombre: p.nombre, kind: 'fijo', cantidad: 1, ...(p.precio != null ? { monto: p.precio } : {}) })}
                 />
               </div>
             ))}
@@ -1710,7 +1712,10 @@ function firmaDeOtros(foodPackageId: string, addOns: Record<string, number>, ext
   return JSON.stringify([
     foodPackageId || null,
     Object.entries(addOns).sort(([a], [b]) => a.localeCompare(b)),
-    extras.map((e) => [e.nombre, e.kind, e.monto, e.cantidad, e.proveedor || null, e.comisionPct ?? null, e.comisionMonto ?? null]),
+    extras.map((e) => [
+      e.nombre, e.kind, e.monto, e.cantidad, e.proveedor || null, e.proveedorId ?? null, e.productoProveedorId ?? null,
+      e.comisionPct ?? null, e.comisionMonto ?? null,
+    ]),
     horasDj,
   ]);
 }
