@@ -1,5 +1,5 @@
 import type { PrismaClient } from '@hsa/database';
-import { TIPO_PROFESIONAL, comisionDelEvento, comisionDeRenglon, type TipoProfesional } from '@hsa/shared';
+import { TIPO_PROFESIONAL, comisionDelEvento, comisionDeRenglon, normalizaTexto, type TipoProfesional } from '@hsa/shared';
 import { resumenCancelacion } from '../quotes/ciclo.js';
 import {
   restarDinero,
@@ -62,19 +62,45 @@ const lineasDe = (b: unknown): QuoteLine[] => (b as Breakdownish)?.lines ?? [];
  */
 async function referenciasDelDesglose(db: PrismaClient, lineas: QuoteLine[]) {
   const ids = (tipo: string) => [...new Set(lineas.filter((l) => l.ref?.tipo === tipo && l.ref.id).map((l) => l.ref!.id!))];
-  const [servicios, paquetes, proveedores] = await Promise.all([
+  const [servicios, paquetes, proveedores, profesionales] = await Promise.all([
     db.addOn.findMany({
       where: { id: { in: ids('servicioCatalogo') } },
       select: { id: true, clave: true, categoria: true, comisionPct: true, proveedorId: true, cobra: true },
     }),
     db.foodPackage.findMany({ where: { id: { in: ids('alimentos') } }, select: { id: true, clave: true, comisionPct: true } }),
     db.proveedor.findMany({ select: { id: true, nombre: true } }),
+    db.banquetero.findMany({ select: { id: true, nombre: true, tipo: true, comisionPct: true } }),
   ]);
   return {
     servicio: new Map(servicios.map((a) => [a.id, a])),
     paquete: new Map(paquetes.map((p) => [p.id, p])),
     proveedor: new Map(proveedores.map((p) => [p.id, p.nombre])),
+    profesionalPorNombre: profesionalesPorNombre(profesionales),
   };
+}
+
+type Profesional = { id: string; nombre: string; tipo: TipoProfesional; comisionPct: number };
+
+/**
+ * Prof. Evento por nombre, sin acentos ni mayúsculas (11-nov-2026). El proveedor
+ * de un servicio del evento o de un cargo se teclea; si es alguien de Prof.
+ * Evento (un banquetero que vendió los alimentos), el BI lo recibe como
+ * `agencia`, con su id, igual que la del paquete. Un nombre repetido no liga a
+ * nadie: no se adivina.
+ */
+function profesionalesPorNombre(lista: Profesional[]): Map<string, Profesional> {
+  const porNombre = new Map<string, Profesional | null>();
+  for (const p of lista) {
+    const k = normalizaTexto(p.nombre);
+    porNombre.set(k, porNombre.has(k) ? null : p);
+  }
+  return new Map([...porNombre].filter((e): e is [string, Profesional] => e[1] != null));
+}
+
+/** La agencia de Prof. Evento con ese nombre, como la lee el BI. */
+function agenciaPorNombre(porNombre: Map<string, Profesional>, nombre: string | null | undefined) {
+  const p = nombre ? porNombre.get(normalizaTexto(nombre)) : undefined;
+  return p ? { clave: p.id, nombre: p.nombre, tipo: TIPO_PROFESIONAL[p.tipo].codigo, comisionPct: p.comisionPct } : null;
 }
 
 /**
@@ -131,6 +157,8 @@ function desgloseDelEvento(
       r.tipo === 'alimentos'
         ? comisionDelEvento(q).pct
         : datos?.proveedorId ? datos.comisionPct : null;
+    // Servicio del evento o cargo cuyo proveedor es alguien de Prof. Evento.
+    const agenciaTecleada = agenciaPorNombre(refs.profesionalPorNombre, tecleado?.proveedorNombre);
     return {
       ...r,
       clave,
@@ -149,13 +177,18 @@ function desgloseDelEvento(
           ? { comisionMonto: pactadoPaquete.comisionMonto }
           : pct != null
             ? { comisionPct: pct }
-            : (tecleado ?? {}),
+            : tecleado?.comisionPct != null || tecleado?.comisionMonto != null
+              ? tecleado
+              : // Ligado a Prof. Evento sin comisión capturada: la de su ficha.
+                { comisionPct: agenciaTecleada?.comisionPct ?? null },
       ),
       /** El renglón del paquete (`alimentos`, o `pactado` con paquete): la agencia que paga su comisión. */
       agencia:
         (r.tipo === 'alimentos' || (r.tipo === 'pactado' && pactadoPaquete)) && agencia
           ? { clave: agencia.id, nombre: agencia.nombre, tipo: TIPO_PROFESIONAL[agencia.tipo].codigo }
-          : null,
+          : agenciaTecleada
+            ? { clave: agenciaTecleada.clave, nombre: agenciaTecleada.nombre, tipo: agenciaTecleada.tipo }
+            : null,
       banquetero: null as { id: string; nombre: string } | null,
     };
   });
@@ -606,7 +639,13 @@ export async function biCargos(db: PrismaClient, r: RangoBI) {
     take: r.limit,
     ...(r.cursor ? { skip: 1, cursor: { id: r.cursor } } : {}),
   });
-  return cargos.map((c) => ({
+  const porNombre = cargos.some((c) => c.proveedor)
+    ? profesionalesPorNombre(await db.banquetero.findMany({ select: { id: true, nombre: true, tipo: true, comisionPct: true } }))
+    : new Map<string, Profesional>();
+  return cargos.map((c) => {
+    const agencia = agenciaPorNombre(porNombre, c.proveedor);
+    const subtotal = Math.round((c.total / (1 + (c.quote.priceList?.ivaRate ?? 0.16))) * 100) / 100;
+    return {
     id: c.id,
     quoteId: c.quoteId,
     eventoFolio: c.quote.folio,
@@ -627,11 +666,17 @@ export async function biCargos(db: PrismaClient, r: RangoBI) {
     // Un servicio vendido aquí (el grupo musical, 11-nov-2026): quién lo da y la
     // comisión de la hacienda, sobre el subtotal sin IVA.
     proveedor: c.proveedor,
-    comision: comisionDeRenglon(Math.round((c.total / (1 + (c.quote.priceList?.ivaRate ?? 0.16))) * 100) / 100, c),
+    // Si el proveedor es alguien de Prof. Evento: su id, como la agencia del paquete.
+    agencia: agencia ? { clave: agencia.clave, nombre: agencia.nombre, tipo: agencia.tipo } : null,
+    comision: comisionDeRenglon(
+      subtotal,
+      c.comisionPct != null || c.comisionMonto != null ? c : { comisionPct: agencia?.comisionPct ?? null },
+    ),
     registradoPor: c.registradoBy?.nombre ?? null,
     anulado: c.anuladoAt != null,
     motivoAnulacion: c.motivoAnulacion,
-  }));
+    };
+  });
 }
 
 /**
