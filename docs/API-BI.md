@@ -214,7 +214,7 @@ Cada renglón del desglose guardado con el evento, en datos y no en texto:
 | `subtotal`, `total` | Sin IVA y con IVA. El último renglón de cada bloque absorbe los centavos de redondeo. |
 | `origen` | `contrato`, o `puntoDeVenta` para un cargo que sube el contrato (`cargoId` trae el id del cargo de `/cargos`). |
 | `proveedor`, `comision` | En `servicioCatalogo` con proveedor: `{ clave, nombre }` y `{ porcentaje, monto }`. En `alimentos`: `comision` es lo que la agencia le paga a la hacienda por el paquete (`proveedor` va `null`; la agencia va en `agencia`). La comisión es un % sobre el **subtotal sin IVA** del renglón, congelado al guardar el evento. En `pactado` con paquete (importados, ver `/importar/paquetes`): `comision.monto` es el monto fijo que mandó el BI **o que la hacienda capturó en el evento** (desde el 11-nov-2026, si el BI no la mandó) y `porcentaje` se deduce del subtotal. **En `servicioEvento` y `cargoContrato` (desde el 11-nov-2026)**: el proveedor y la comisión que se teclearon en el evento o en el cargo del punto de venta (p. ej. un grupo musical): `proveedor` es `{ clave: null, nombre }` (texto libre, no está en el catálogo) y `comision` es `{ porcentaje, monto }`, capturada en % o en monto fijo (el otro se deduce del subtotal sin IVA). `null` si no tiene. |
-| `agencia` | Solo en el renglón del paquete (`alimentos`, o `pactado` con `clave`): `{ clave, nombre, tipo }` de la agencia que paga la comisión (`tipo`: `B`, `BG`, `A` o `WP`). Es la **agencia del paquete** que la hacienda escoge a mano en el evento, de la lista de banqueteros; si no escogió, el banquetero del evento. `clave` es un `id` de banquetero (el mismo de `banquetero.id` y del `banqueteroId` de `/pagos`). Escoger agencia **no** pone banquetero al evento: el cliente sigue siendo el mismo. `null` si no hay ninguna, y en los demás renglones. |
+| `agencia` | Solo en el renglón del paquete (`alimentos`, o `pactado` con `clave`): `{ clave, nombre, tipo }` de la agencia que paga la comisión (`tipo`: `B`, `BG`, `A` o `WP`). Es la **agencia del paquete** que la hacienda escoge a mano en el evento, de la lista de banqueteros; si no escogió, el banquetero del evento. `clave` es un `id` de banquetero (el mismo de `banquetero.id` y del `banqueteroId` de `/pagos`). Escoger agencia **no** pone banquetero al evento: el cliente sigue siendo el mismo. **También en `servicioEvento` y `cargoContrato` (desde el 11-nov-2026)** cuando el proveedor tecleado es alguien de Prof. Evento (se compara el nombre sin acentos ni mayúsculas; un nombre repetido en Prof. Evento no liga): misma forma, con su `id` en `clave`. Es el caso de unos alimentos vendidos como servicio del evento por un banquetero dado de alta. Si ese renglón no trae comisión capturada, `comision` sale con el % de su ficha. `null` si no hay ninguna. |
 | `cobra` | Solo en `servicioCatalogo`: `proveedor` (el cliente le paga directo al proveedor, que le debe la comisión a la hacienda) o `hacienda` (la hacienda lo cobra y le paga al proveedor). `null` en los demás. |
 | `banquetero` | Solo en `bloque: "banquetero"`: `{ id, nombre }`. `null` en los demás. |
 
@@ -417,6 +417,7 @@ el `afectaContrato` del renglón, no el del producto.
     "precioUnitario": 5425,
     "total": 10850,
     "proveedor": null,
+    "agencia": null,
     "comision": null,
     "registradoPor": "Administrador",
     "anulado": false,
@@ -431,7 +432,9 @@ el `afectaContrato` del renglón, no el del producto.
 **`proveedor` y `comision` (desde el 11-nov-2026):** un servicio vendido en el punto de venta (p. ej.
 un grupo musical cargado como `otro`) puede llevar quién lo da (`proveedor`, texto libre) y lo que
 le paga a la hacienda: `comision: { porcentaje, monto }` sobre el **subtotal sin IVA** del cargo,
-capturada en % o en monto fijo (el otro se deduce). `null` si no se capturó. Se puede poner o
+capturada en % o en monto fijo (el otro se deduce). `null` si no se capturó. Si el proveedor es
+alguien de Prof. Evento, `agencia: { clave, nombre, tipo }` trae su id (como en `desglose[]`) y,
+sin comisión capturada, `comision` usa el % de su ficha. Se puede poner o
 cambiar después de registrar el cargo: no cambia lo que se cobra, así que no mueve `total`. Si el
 cargo sube el contrato, su renglón `cargoContrato` de `/eventos.desglose[]` trae lo mismo.
 

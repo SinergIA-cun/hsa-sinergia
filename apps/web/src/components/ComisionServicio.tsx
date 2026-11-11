@@ -1,5 +1,9 @@
+import { useId } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { normalizaTexto } from '@hsa/shared';
 import { MoneyInput, SelectInput, TextInput } from './ui.tsx';
 import { formatMXN } from '../lib/money.ts';
+import { api } from '../lib/api.ts';
 
 /** Proveedor y comisión de un servicio: lo que le paga a la hacienda (% o monto, uno u otro). */
 export interface DatosComision {
@@ -29,6 +33,18 @@ export function ComisionServicio({
   onChange: (patch: DatosComision) => void;
   disabled?: boolean;
 }) {
+  const listaId = useId();
+  // Prof. Evento: si el proveedor es uno de ellos, el BI lo recibe como agencia
+  // (con su id) y, sin comisión capturada, con la de su ficha.
+  const { data } = useQuery({
+    queryKey: ['banqueteros'],
+    queryFn: () => api.get<{ banqueteros: { id: string; nombre: string; comisionPct?: number }[] }>('/api/banqueteros'),
+    staleTime: 5 * 60_000,
+  });
+  const profesionales = data?.banqueteros ?? [];
+  const ligado = valor.proveedor
+    ? profesionales.find((p) => normalizaTexto(p.nombre) === normalizaTexto(valor.proveedor!))
+    : undefined;
   const modo: Modo = valor.comisionMonto != null ? 'monto' : valor.comisionPct != null ? 'pct' : 'ninguna';
   const deja =
     modo === 'monto' ? valor.comisionMonto! : modo === 'pct' ? Math.round((base / IVA) * valor.comisionPct!) / 100 : null;
@@ -40,9 +56,15 @@ export function ComisionServicio({
         onChange={(e) => onChange({ proveedor: e.target.value || null })}
         placeholder="Proveedor (opcional)"
         aria-label="Proveedor del servicio"
+        list={listaId}
         className="min-w-[11rem] flex-1 sm:max-w-64"
         disabled={disabled}
       />
+      <datalist id={listaId}>
+        {profesionales.map((p) => (
+          <option key={p.id} value={p.nombre} />
+        ))}
+      </datalist>
       <SelectInput
         value={modo}
         onChange={(e) => {
@@ -89,6 +111,12 @@ export function ComisionServicio({
       {deja != null && deja > 0 && (
         <span className="text-xs text-charcoal-soft">
           Le deja a la hacienda <span className="font-medium text-ink">{formatMXN(deja)}</span>
+        </span>
+      )}
+      {ligado && (
+        <span className="w-full text-xs text-emerald-700">
+          De Prof. Evento: el BI lo ve como agencia
+          {modo === 'ninguna' && ligado.comisionPct != null ? `, con la comisión de su ficha (${ligado.comisionPct}%)` : ''}.
         </span>
       )}
     </div>

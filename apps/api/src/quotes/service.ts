@@ -1197,8 +1197,10 @@ export async function updateQuote(db: PrismaClient, id: string, rawInput: unknow
       quoteId: id,
       tipo: 'edicion',
       descripcion:
-        `Alimentos y servicios actualizados con el precio de la renta congelado: ` +
-        `total ${existing.total} → ${centavos(conOtros.total)}; la renta se queda en ${existing.rentaTotal}.`,
+        centavos(conOtros.total) === existing.total
+          ? 'Proveedor o comisión de los servicios actualizados (el total no cambió).'
+          : `Alimentos y servicios actualizados con el precio de la renta congelado: ` +
+            `total ${existing.total} → ${centavos(conOtros.total)}; la renta se queda en ${existing.rentaTotal}.`,
       meta: { precioCongelado: true, otrosRecalculados: true, totalAntes: existing.total, totalDespues: centavos(conOtros.total) },
       actorId: actor.id,
     });

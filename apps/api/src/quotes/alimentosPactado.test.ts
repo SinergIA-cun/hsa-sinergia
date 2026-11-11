@@ -42,6 +42,7 @@ afterAll(async () => {
   await prisma.codigoEvento.deleteMany({ where: { quoteId: { in: quotes } } });
   await prisma.quote.deleteMany({ where: { id: { in: quotes } } });
   await prisma.client.deleteMany({ where: { id: { in: qs.map((q) => q.clientId) } } });
+  await prisma.banquetero.deleteMany({ where: { nombre: { startsWith: 'Agencia Ligada Prueba' } } });
   await app.close();
 });
 
@@ -188,5 +189,32 @@ describe('comisión de un cargo del punto de venta', () => {
       payload: { comisionPct: 10, comisionMonto: 1_000 },
     });
     expect(ambas.statusCode).toBe(400);
+  });
+});
+
+describe('proveedor que es de Prof. Evento', () => {
+  it('el servicio y el cargo le llegan al BI con la agencia y, sin comisión capturada, la de su ficha', async () => {
+    const nombre = `Agencia Ligada Prueba ${Date.now()}`;
+    const ag = await prisma.banquetero.create({ data: { nombre, telefono: '5500000001', comisionPct: 12 } });
+    const q = await importado(151_000, 0);
+    // Tecleado con otras mayúsculas: igual liga.
+    const alimentos = { nombre: 'ALIMENTOS', kind: 'fijo' as const, monto: 116_000, cantidad: 1, proveedor: nombre.toUpperCase() };
+    await updateQuote(prisma, q.id, { ...(await guardada(q.id)), extras: [alimentos] }, admin);
+    const cargo = await app.inject({
+      method: 'POST', url: `/api/quotes/${q.id}/cargos`, cookies: cookie,
+      payload: { producto: 'otro', cantidad: 1, precioUnitario: 11_600, descripcion: 'Extra', fecha: '2066-01-10', proveedor: nombre, comisionMonto: 500 },
+    });
+    expect(cargo.statusCode).toBe(201);
+
+    const bi = (path: string) => app.inject({ method: 'GET', url: `/api/bi/${path}?ids=${q.id}`, headers: { 'x-api-key': LLAVE } });
+    const desglose = (await bi('eventos')).json().datos[0].desglose;
+    const servicio = desglose.find((x: { tipo: string }) => x.tipo === 'servicioEvento');
+    expect(servicio.agencia).toMatchObject({ clave: ag.id, nombre });
+    expect(servicio.comision).toMatchObject({ porcentaje: 12, monto: 12_000 }); // 12% de 100,000 sin IVA
+    const enContrato = desglose.find((x: { tipo: string }) => x.tipo === 'cargoContrato');
+    expect(enContrato.agencia).toMatchObject({ clave: ag.id });
+    expect(enContrato.comision).toMatchObject({ monto: 500 });
+    const enCargos = (await bi('cargos')).json().datos[0];
+    expect(enCargos.agencia).toMatchObject({ clave: ag.id, nombre });
   });
 });
