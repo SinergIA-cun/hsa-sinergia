@@ -102,7 +102,9 @@ export const TABLAS_NUNCA = [
   // Ajustes de la instalación (clave/valor), no datos de operación.
   'Ajuste',
   // El catálogo de proveedores lo carga el cliente y no cuelga de nada que se purgue.
+  // Sus productos tampoco: lo vendido que los nombra los suelta solo (FK SetNull).
   'Proveedor',
+  'ProductoProveedor',
 ] as const;
 
 export const SECUENCIAS = ['recibo_folio_seq', 'client_ref_seq'] as const;

@@ -86,6 +86,9 @@ export async function registrarCargo(db: PrismaClient, quoteId: string, rawInput
   }
   const descripcion = input.descripcion || info.nombre;
   const total = centavos(input.cantidad * input.precioUnitario);
+  if (input.comisionMonto != null && input.comisionMonto > total) {
+    throw new QuoteError(400, 'La comisión no puede ser mayor que el cargo.');
+  }
   const cargo = await db.cargoEvento.create({
     data: {
       quoteId,

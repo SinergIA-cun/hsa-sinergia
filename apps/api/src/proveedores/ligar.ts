@@ -13,8 +13,9 @@ export interface ConProveedor {
  * (11-nov-2026) en servicios del evento o cargos.
  *
  * - El producto manda: trae a su proveedor, y uno de otro proveedor se rechaza.
- * - `proveedor` (el texto) queda con el nombre del proveedor escogido, para que
- *   lo vendido diga quién fue aunque después se renombre o se desactive.
+ * - `proveedor` (el texto) queda con el nombre de hoy del proveedor escogido, para
+ *   que lo vendido diga quién fue aunque después se desactive. Renombrarlo no
+ *   cuenta como cambio del servicio: `cambiaronLosOtros` compara el id.
  * - Sin proveedor escogido, el texto tecleado se queda como está.
  *
  * Un proveedor o producto desactivado se acepta si ya venía en el renglón:

@@ -4,7 +4,17 @@ import type { PrismaClient } from '@hsa/database';
 export interface ServiciosDeCotizacion {
   foodPackageId: string | null;
   addOns: { addOnId: string; cantidad: number }[];
-  extras: { nombre: string; kind: string; monto: number; cantidad: number }[];
+  extras: {
+    nombre: string;
+    kind: string;
+    monto: number;
+    cantidad: number;
+    proveedor?: string | null;
+    proveedorId?: string | null;
+    productoProveedorId?: string | null;
+    comisionPct?: number | null;
+    comisionMonto?: number | null;
+  }[];
   /** Lo que pone el banquetero (no entra al precio). */
   serviciosBanquetero?: { nombre: string; cantidad: number; monto: number | null }[];
 }
@@ -35,7 +45,18 @@ function renglones(s: ServiciosDeCotizacion): Map<string, Renglon> {
       tipo: 'servicioEvento',
       id: null,
       nombre: e.nombre,
-      detalle: { tipoCobro: e.kind, monto: e.monto, cantidad: e.cantidad },
+      // Quién lo da y su comisión también cuentan (con proveedor ligado, su id y
+      // no el nombre: renombrarlo en Proveedores no es cambiar el servicio).
+      detalle: {
+        tipoCobro: e.kind,
+        monto: e.monto,
+        cantidad: e.cantidad,
+        proveedor: e.proveedorId ? null : (e.proveedor || null),
+        proveedorId: e.proveedorId ?? null,
+        productoProveedorId: e.productoProveedorId ?? null,
+        comisionPct: e.comisionPct ?? null,
+        comisionMonto: e.comisionMonto ?? null,
+      },
     });
   }
   for (const b of s.serviciosBanquetero ?? []) {

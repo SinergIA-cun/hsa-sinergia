@@ -150,7 +150,8 @@ describe('desglose del BI', () => {
       expect.objectContaining({ id: servicio.id, clave: servicio.clave, catalogoId, categoria: 'Dulces', tipoCobro: 'porPersona', unidad: 'personas', precio: 110, comisionPct: 10, proveedor: { clave: proveedorId, nombre: `Dulces Lupita ${SUF}` } }),
     );
     expect(c.paquetesAlimentos).toContainEqual(expect.objectContaining({ id: paquete.id, clave: paquete.clave, catalogoId }));
-    expect(c.proveedores).toContainEqual({ clave: proveedorId, nombre: `Dulces Lupita ${SUF}`, activo: true });
+    // Desde el 11-nov-2026 también trae su ficha y sus productos.
+    expect(c.proveedores).toContainEqual(expect.objectContaining({ clave: proveedorId, nombre: `Dulces Lupita ${SUF}`, activo: true, productos: [] }));
     expect(c.catalogos).toContainEqual(expect.objectContaining({ id: catalogoId, activo: true }));
   });
 

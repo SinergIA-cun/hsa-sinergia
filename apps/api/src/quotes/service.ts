@@ -461,9 +461,11 @@ function cambiaronLosOtros(
 ): boolean {
   const servicios = (a: { addOnId: string; cantidad: number }[]) =>
     JSON.stringify([...a].sort((x, y) => x.addOnId.localeCompare(y.addOnId)).map((x) => [x.addOnId, x.cantidad]));
+  // Con proveedor ligado cuenta su id, no el nombre: renombrarlo en Proveedores
+  // no es cambiar el servicio (ligar pone el nombre de hoy al guardar).
   const extras = (e: QuoteExtra[]) =>
     JSON.stringify(
-      e.map((x) => [x.nombre, x.kind, x.monto, x.cantidad, x.proveedor ?? null, x.proveedorId ?? null, x.productoProveedorId ?? null, x.comisionPct ?? null, x.comisionMonto ?? null]),
+      e.map((x) => [x.nombre, x.kind, x.monto, x.cantidad, x.proveedorId ? null : (x.proveedor ?? null), x.proveedorId ?? null, x.productoProveedorId ?? null, x.comisionPct ?? null, x.comisionMonto ?? null]),
     );
   const dj = (usa: boolean | undefined, horas: number) => (usa ? horas : 0);
   return (

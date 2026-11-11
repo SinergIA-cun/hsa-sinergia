@@ -20,7 +20,7 @@ export function ProveedoresPage() {
   const { user } = useAuth();
   const esAdmin = user?.role === 'admin';
   const qc = useQueryClient();
-  const { data: proveedores = [], isLoading } = useProveedoresLista();
+  const { data: proveedores = [], isLoading, isError, error: errorCarga, refetch } = useProveedoresLista();
   const [busqueda, setBusqueda] = useState('');
   const [giro, setGiro] = useState('');
   const [verInactivos, setVerInactivos] = useState(false);
@@ -113,6 +113,11 @@ export function ProveedoresPage() {
 
       {isLoading ? (
         <p className="text-sm text-charcoal-soft">Cargando…</p>
+      ) : isError ? (
+        <Card className="space-y-3 p-8 text-center text-sm">
+          <p role="alert" className="text-wine">{apiErrorMessage(errorCarga, 'No se pudieron cargar los proveedores.')}</p>
+          <Button variant="ghost" onClick={() => void refetch()}>Reintentar</Button>
+        </Card>
       ) : visibles.length === 0 ? (
         <Card className="p-8 text-center text-sm text-charcoal-soft">
           {proveedores.length === 0

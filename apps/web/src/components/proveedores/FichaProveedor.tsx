@@ -103,7 +103,8 @@ export function FichaProveedor({ proveedor, esAdmin }: { proveedor: ProveedorCon
   const [d, setD] = useState<DatosFicha>(() => desdeProveedor(proveedor));
   const [error, setError] = useState('');
   const original = desdeProveedor(proveedor);
-  const cambio = JSON.stringify(d) !== JSON.stringify(original);
+  // Se compara lo que se mandaría: espacios de más no son un cambio pendiente.
+  const cambio = JSON.stringify(cuerpoFicha(d)) !== JSON.stringify(cuerpoFicha(original));
   const refrescar = async () => {
     await qc.invalidateQueries({ queryKey: PROVEEDORES_LISTA_KEY });
     await qc.invalidateQueries({ queryKey: PROVEEDORES_KEY });

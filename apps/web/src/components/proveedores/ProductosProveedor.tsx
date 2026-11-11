@@ -91,8 +91,9 @@ export function ProductosProveedor({
   const editar = useMutation({
     mutationFn: ({ id, data }: { id: string; data: Record<string, unknown> }) =>
       api.patch(`/api/admin/proveedores/${proveedorId}/productos/${id}`, data),
-    onSuccess: async () => {
-      setEditando(null);
+    // Desactivar otro producto no cierra la edición en curso.
+    onSuccess: async (_r, { id }) => {
+      setEditando((e) => (e?.id === id ? null : e));
       setError('');
       await refrescar();
     },

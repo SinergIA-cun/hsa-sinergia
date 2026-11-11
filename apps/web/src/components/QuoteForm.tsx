@@ -1580,7 +1580,8 @@ export function QuoteForm({
                   valor={e}
                   base={e.kind === 'fijo' ? e.monto : e.kind === 'porPersona' ? e.monto * invitados : e.monto * e.cantidad}
                   onChange={(patch) => actualizarExtra(i, patch)}
-                  onProducto={(p) => actualizarExtra(i, { nombre: p.nombre, ...(p.precio != null ? { monto: p.precio } : {}) })}
+                  // El precio de un producto es de una venta, no por persona.
+                  onProducto={(p) => actualizarExtra(i, { nombre: p.nombre, kind: 'fijo', cantidad: 1, ...(p.precio != null ? { monto: p.precio } : {}) })}
                 />
               </div>
             ))}

@@ -213,7 +213,8 @@ Cada renglón del desglose guardado con el evento, en datos y no en texto:
 | `precioUnitario` | Con IVA. Es el precio del catálogo **del evento** (cada evento se queda con su catálogo); no hay descuento por renglón. |
 | `subtotal`, `total` | Sin IVA y con IVA. El último renglón de cada bloque absorbe los centavos de redondeo. |
 | `origen` | `contrato`, o `puntoDeVenta` para un cargo que sube el contrato (`cargoId` trae el id del cargo de `/cargos`). |
-| `proveedor`, `comision` | En `servicioCatalogo` con proveedor: `{ clave, nombre }` y `{ porcentaje, monto }`. En `alimentos`: `comision` es lo que la agencia le paga a la hacienda por el paquete (`proveedor` va `null`; la agencia va en `agencia`). La comisión es un % sobre el **subtotal sin IVA** del renglón, congelado al guardar el evento. En `pactado` con paquete (importados, ver `/importar/paquetes`): `comision.monto` es el monto fijo que mandó el BI **o que la hacienda capturó en el evento** (desde el 11-nov-2026, si el BI no la mandó) y `porcentaje` se deduce del subtotal. **En `servicioEvento` y `cargoContrato` (desde el 11-nov-2026)**: el proveedor y la comisión que se teclearon en el evento o en el cargo del punto de venta (p. ej. un grupo musical): `proveedor` es `{ clave: null, nombre }` (texto libre, no está en el catálogo) y `comision` es `{ porcentaje, monto }`, capturada en % o en monto fijo (el otro se deduce del subtotal sin IVA). `null` si no tiene. |
+| `proveedor`, `comision` | En `servicioCatalogo` con proveedor: `{ clave, nombre }` y `{ porcentaje, monto }`. En `alimentos`: `comision` es lo que la agencia le paga a la hacienda por el paquete (`proveedor` va `null`; la agencia va en `agencia`). La comisión es un % sobre el **subtotal sin IVA** del renglón, congelado al guardar el evento. En `pactado` con paquete (importados, ver `/importar/paquetes`): `comision.monto` es el monto fijo que mandó el BI **o que la hacienda capturó en el evento** (desde el 11-nov-2026, si el BI no la mandó) y `porcentaje` se deduce del subtotal. **En `servicioEvento` y `cargoContrato` (desde el 11-nov-2026)**: el proveedor y la comisión que se teclearon en el evento o en el cargo del punto de venta (p. ej. un grupo musical): `proveedor` es `{ clave: null, nombre }` (texto libre, no está en el catálogo) y `comision` es `{ porcentaje, monto }`, capturada en % o en monto fijo (el otro se deduce del subtotal sin IVA). **Si se escogió un producto del apartado "Proveedores" (desde el 11-nov-2026)**, `proveedor.clave` es el id del proveedor (el de `/catalogos.proveedores`) y la comisión es la pactada para ese producto, copiada al vender (cambiar el producto después no la mueve). `null` si no tiene. |
+| `productoProveedor` | Desde el 11-nov-2026, en `servicioEvento` y `cargoContrato`: `{ clave, nombre }` del producto de "Proveedores" con el que se vendió (`clave` = `productos[].clave` de `/catalogos.proveedores`). `null` si se tecleó o en los demás renglones. |
 | `agencia` | Solo en el renglón del paquete (`alimentos`, o `pactado` con `clave`): `{ clave, nombre, tipo }` de la agencia que paga la comisión (`tipo`: `B`, `BG`, `A` o `WP`). Es la **agencia del paquete** que la hacienda escoge a mano en el evento, de la lista de banqueteros; si no escogió, el banquetero del evento. `clave` es un `id` de banquetero (el mismo de `banquetero.id` y del `banqueteroId` de `/pagos`). Escoger agencia **no** pone banquetero al evento: el cliente sigue siendo el mismo. **También en `servicioEvento` y `cargoContrato` (desde el 11-nov-2026)** cuando el proveedor tecleado es alguien de Prof. Evento (se compara el nombre sin acentos ni mayúsculas; un nombre repetido en Prof. Evento no liga): misma forma, con su `id` en `clave`. Es el caso de unos alimentos vendidos como servicio del evento por un banquetero dado de alta. Si ese renglón no trae comisión capturada, `comision` sale con el % de su ficha. `null` si no hay ninguna. |
 | `cobra` | Solo en `servicioCatalogo`: `proveedor` (el cliente le paga directo al proveedor, que le debe la comisión a la hacienda) o `hacienda` (la hacienda lo cobra y le paga al proveedor). `null` en los demás. |
 | `banquetero` | Solo en `bloque: "banquetero"`: `{ id, nombre }`. `null` en los demás. |
@@ -417,6 +418,8 @@ el `afectaContrato` del renglón, no el del producto.
     "precioUnitario": 5425,
     "total": 10850,
     "proveedor": null,
+    "proveedorId": null,
+    "productoProveedorId": null,
     "agencia": null,
     "comision": null,
     "registradoPor": "Administrador",
@@ -434,7 +437,11 @@ un grupo musical cargado como `otro`) puede llevar quién lo da (`proveedor`, te
 le paga a la hacienda: `comision: { porcentaje, monto }` sobre el **subtotal sin IVA** del cargo,
 capturada en % o en monto fijo (el otro se deduce). `null` si no se capturó. Si el proveedor es
 alguien de Prof. Evento, `agencia: { clave, nombre, tipo }` trae su id (como en `desglose[]`) y,
-sin comisión capturada, `comision` usa el % de su ficha. Se puede poner o
+sin comisión capturada, `comision` usa el % de su ficha.
+
+**`proveedorId` y `productoProveedorId` (desde el 11-nov-2026):** si el cargo se vendió con un
+producto del apartado "Proveedores", sus ids (los de `/catalogos.proveedores` y sus `productos`).
+`null` si el proveedor se tecleó. Se puede poner o
 cambiar después de registrar el cargo: no cambia lo que se cobra, así que no mueve `total`. Si el
 cargo sube el contrato, su renglón `cargoContrato` de `/eventos.desglose[]` trae lo mismo.
 
@@ -605,6 +612,11 @@ Si la edición agregó, quitó o cambió alimentos o servicios, `detalle.servici
 }
 ```
 
+Desde el 11-nov-2026 el `detalle` de un `servicioEvento` trae también `proveedor`, `proveedorId`,
+`productoProveedorId`, `comisionPct` y `comisionMonto`: cambiar solo quién lo da o su comisión
+también sale en `cambiados`. Con `proveedorId`, `proveedor` va en `null` (renombrar al proveedor en
+Proveedores no cuenta como cambio); el nombre está en el `desglose[]` del evento.
+
 **Recibos corregidos o movidos (desde el 6-oct-2026).** Un admin puede corregir un recibo ya
 registrado (monto, fecha, forma de pago, referencia o folio de papel) o moverlo al evento correcto,
 siempre con motivo:
@@ -644,7 +656,11 @@ Y el catálogo de lo que se vende, **tal como lo tiene la hacienda** (todos los 
   `comisionPct`: lo que la agencia le paga a la hacienda por el paquete, % del subtotal sin IVA
   (`null` = sin comisión). El mismo paquete con otra captura en otro catálogo ("Taquiza" /
   "TAQUIZA") comparte `clave` desde el 14-oct-2026.
-- `proveedores`: `[{ clave, nombre, activo }]`.
+- `proveedores`: `[{ clave, nombre, activo, giro, contacto, telefono, correo, razonSocial, rfc, productos }]`.
+  Desde el 11-nov-2026 trae la ficha del apartado "Proveedores" (todo `null` si no se capturó) y
+  `productos: [{ clave, nombre, precio, comisionPct, comisionMonto, activo }]`: lo que vende cada
+  uno y la comisión pactada para la hacienda (% del subtotal sin IVA **o** monto fijo, uno de los
+  dos en `null`). `precio` es sugerido, con IVA, o `null`. Los inactivos se siguen listando.
 - `tiposRenglon`: los `tipo` de `desglose[]`.
 
 Un cambio al catálogo no sale en `/cambios`: el BI relee `/catalogos` en cada vuelta.

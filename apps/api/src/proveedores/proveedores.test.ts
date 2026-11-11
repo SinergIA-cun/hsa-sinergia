@@ -163,6 +163,37 @@ describe('al vender', () => {
     await expect(updateQuote(prisma, q.id, { ...(await guardada(q.id)), extras: [servicio] }, admin)).rejects.toMatchObject({ status: 400 });
   });
 
+  it('cambiar solo la comisión deja rastro para el BI; renombrar al proveedor no cuenta como cambio', async () => {
+    const provId = await nuevoProveedor(`Grupo prueba ${sufijo}`, { giro: 'Música en vivo' });
+    const q = await evento();
+    const servicio = { nombre: 'Grupo musical', kind: 'fijo' as const, monto: 15_000, cantidad: 1, proveedorId: provId };
+    await updateQuote(prisma, q.id, { ...(await guardada(q.id)), extras: [servicio] }, admin);
+    const ultimaEdicion = async () =>
+      (await prisma.activityLog.findFirst({ where: { quoteId: q.id, tipo: 'edicion' }, orderBy: { createdAt: 'desc' } }))?.id;
+
+    const antesComision = await ultimaEdicion();
+    await updateQuote(prisma, q.id, { ...(await guardada(q.id)), extras: [{ ...servicio, comisionPct: 10 }] }, admin);
+    const log = await prisma.activityLog.findFirstOrThrow({ where: { quoteId: q.id, tipo: 'edicion' }, orderBy: { createdAt: 'desc' } });
+    expect(log.id).not.toBe(antesComision);
+    expect(JSON.stringify(log.meta)).toContain('"comisionPct":10');
+
+    expect((await pedir('PATCH', `/api/admin/proveedores/${provId}`, cookieAdmin, { nombre: `Grupo prueba ${sufijo} SA` })).statusCode).toBe(200);
+    const antesRenombre = await ultimaEdicion();
+    const totalAntes = (await prisma.quote.findUniqueOrThrow({ where: { id: q.id } })).total;
+    await updateQuote(prisma, q.id, await guardada(q.id), admin);
+    expect(await ultimaEdicion()).toBe(antesRenombre);
+    expect((await prisma.quote.findUniqueOrThrow({ where: { id: q.id } })).total).toBe(totalAntes);
+    expect((await guardada(q.id)).extras[0]!.proveedor).toBe(`Grupo prueba ${sufijo} SA`);
+  });
+
+  it('un cargo no acepta una comisión mayor que el cargo', async () => {
+    const q = await evento();
+    const r = await pedir('POST', `/api/quotes/${q.id}/cargos`, cookieAdmin, {
+      producto: 'otro', cantidad: 1, precioUnitario: 2_000, descripcion: 'Pista', fecha: '2067-03-01', proveedor: 'Alguien', comisionMonto: 3_000,
+    });
+    expect(r.statusCode).toBe(400);
+  });
+
   it('un cargo del punto de venta con producto: /cargos trae su proveedor y producto', async () => {
     const provId = await nuevoProveedor(`Iluminación prueba ${sufijo}`, { giro: 'Iluminación' });
     const prod = await nuevoProducto(provId, { nombre: 'Luz arquitectónica', comisionMonto: 1_000 });
