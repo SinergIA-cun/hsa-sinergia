@@ -9,6 +9,8 @@ import {
   AUMENTO_PCT_MAXIMO,
   DESCUENTO_ALIMENTOS_MAXIMO,
   CUPO_CAPILLA,
+  conOtrosRecalculados,
+  seleccionSoloOtros,
   tieneContacto,
   MENSAJE_SIN_CONTACTO,
   type DatosFiscales,
@@ -29,6 +31,7 @@ import { BreakdownGrouped } from './BreakdownGrouped.tsx';
 import type { Catalog, Availability, SpaceAvailability, QuoteExtraInput, ServicioBanqueteroInput } from '../lib/types.ts';
 import { ServiciosBanqueteroCampo } from './ServiciosBanqueteroCampo.tsx';
 import { ServiciosSelector } from './ServiciosSelector.tsx';
+import { ComisionServicio } from './ComisionServicio.tsx';
 
 const MAX_ESPACIOS = 3; // Hay graduaciones que juntan salones; el tope es 3.
 
@@ -537,8 +540,24 @@ export function QuoteForm({
     [fecha, invitados, spaceIds, horasExtra, horaExtra, promoAlimentosPct, usaCapilla, capillaMonto, usaDjHoraExtra, eventTypeId, foodPackageId, addOns, extrasValidos, pctValido, montoValido, descuentoMotivo, esPromocion],
   );
 
+  // Lo que define alimentos y servicios, para saber si cambió respecto a lo guardado.
+  const firmaOtros = firmaDeOtros(foodPackageId, addOns, extrasValidos, usaDjHoraExtra ? horasExtra : 0);
+  const [firmaOtrosInicial] = useState(() =>
+    firmaDeOtros(initial?.foodPackageId ?? '', initial?.addOns ?? {}, initial?.extras ?? [], initial?.usaDjHoraExtra ? (initial.horasExtra ?? 0) : 0),
+  );
+
   const { breakdown, calcError } = useMemo(() => {
-    if (precioPactado) return { breakdown: precioPactado, calcError: '' };
+    if (precioPactado) {
+      // Con precio pactado la renta no se recotiza; si cambiaron alimentos o
+      // servicios, esos renglones sí (igual que hace el servidor al guardar).
+      if (firmaOtros === firmaOtrosInicial) return { breakdown: precioPactado, calcError: '' };
+      try {
+        const otros = computeQuote(catalog.engine, seleccionSoloOtros(selection));
+        return { breakdown: conOtrosRecalculados(precioPactado, otros, catalog.engine.ivaRate), calcError: '' };
+      } catch (e) {
+        return { breakdown: null, calcError: e instanceof Error ? e.message : 'No se pudo calcular' };
+      }
+    }
     if (spaceIds.length === 0 && !usaCapilla) return { breakdown: null as QuoteBreakdown | null, calcError: '' };
     try {
       const calculado = computeQuote(catalog.engine, selection);
@@ -552,7 +571,7 @@ export function QuoteForm({
     } catch (e) {
       return { breakdown: null, calcError: e instanceof Error ? e.message : 'No se pudo calcular' };
     }
-  }, [catalog, selection, spaceIds.length, usaCapilla, precioPactado, cargosContrato]);
+  }, [catalog, selection, spaceIds.length, usaCapilla, precioPactado, cargosContrato, firmaOtros, firmaOtrosInicial]);
 
   // El selector solo OFRECE los add-ons vigentes. Uno dado de baja aparece SOLO
   // si esta cotización ya lo trae seleccionado: el motor lo sigue cobrando, así
@@ -1395,10 +1414,9 @@ export function QuoteForm({
           )}
         </SeccionPlegable>
 
-        {/* Con precio pactado, lo que solo mueve el precio no se enseña. */}
-        {!precioPactado && (
-          <>
-
+        {/* Alimentos y servicios se enseñan también con precio pactado (11-nov-2026):
+            lo que se le paga al proveedor se agrega aunque el evento esté formalizado
+            o liquidado; la renta pactada no se mueve. */}
         <SeccionPlegable titulo="Alimentos" resumen={resumenAlimentos} abiertaAlInicio={false}>
           <SelectInput value={foodPackageId} onChange={(e) => setFoodPackageId(e.target.value)} disabled={!eventType}>
             <option value="">Sin alimentos</option>
@@ -1409,9 +1427,15 @@ export function QuoteForm({
             ))}
           </SelectInput>
           {!eventType && <p className="text-xs text-charcoal-soft">Selecciona un tipo de evento primero.</p>}
+          {precioPactado && (
+            <p className="text-xs text-charcoal-soft">
+              El evento tiene precio pactado: el paquete se suma aparte y la renta no cambia.
+            </p>
+          )}
           {/* Contratar alimentos YA NO da siempre el descuento (21-oct-2026): es una
-              promoción que se palomea, de hasta 5% de la renta. */}
-          {foodPackageId && (
+              promoción que se palomea, de hasta 5% de la renta. Con precio pactado no:
+              se restaría de una renta que no se mueve. */}
+          {foodPackageId && !precioPactado && (
             <div className="space-y-2">
               <label
                 className={`flex cursor-pointer items-start gap-3 rounded-lg border px-4 py-3 text-sm transition-colors ${
@@ -1551,6 +1575,12 @@ export function QuoteForm({
                 >
                   <Trash2 size={15} />
                 </button>
+                {/* Quién lo da y lo que le paga a la hacienda (11-nov-2026: el grupo musical). */}
+                <ComisionServicio
+                  valor={e}
+                  base={e.kind === 'fijo' ? e.monto : e.kind === 'porPersona' ? e.monto * invitados : e.monto * e.cantidad}
+                  onChange={(patch) => actualizarExtra(i, patch)}
+                />
               </div>
             ))}
 
@@ -1567,8 +1597,6 @@ export function QuoteForm({
             <ServiciosBanqueteroCampo servicios={serviciosBanquetero} onChange={setServiciosBanquetero} />
           )}
         </SeccionPlegable>
-          </>
-        )}
 
         <FacturacionSection
           requiereFactura={requiereFactura}
@@ -1675,4 +1703,14 @@ function AvailabilityBanner({
       </span>
     </div>
   );
+}
+
+/** Alimentos y servicios en un texto comparable (paquete, servicios del catálogo y del evento, DJ). */
+function firmaDeOtros(foodPackageId: string, addOns: Record<string, number>, extras: QuoteExtraInput[], horasDj: number): string {
+  return JSON.stringify([
+    foodPackageId || null,
+    Object.entries(addOns).sort(([a], [b]) => a.localeCompare(b)),
+    extras.map((e) => [e.nombre, e.kind, e.monto, e.cantidad, e.proveedor || null, e.comisionPct ?? null, e.comisionMonto ?? null]),
+    horasDj,
+  ]);
 }

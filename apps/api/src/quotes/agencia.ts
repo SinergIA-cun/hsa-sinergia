@@ -1,6 +1,6 @@
 import { z } from 'zod';
-import type { PrismaClient } from '@hsa/database';
-import { COMISION_HSA_POR_OMISION, type QuoteBreakdown } from '@hsa/shared';
+import type { PrismaClient, Prisma } from '@hsa/database';
+import { COMISION_HSA_POR_OMISION, montoNoNegativoSchema, pesosTexto, type QuoteBreakdown } from '@hsa/shared';
 import { QuoteError, ownershipWhere, assertNotTrashed, type Actor } from './service.js';
 import { logActivity } from './activityLog.js';
 
@@ -81,4 +81,41 @@ export async function cambiarAgencia(db: PrismaClient, quoteId: string, rawInput
     actorId: actor.id,
   });
   return { agencia: nueva };
+}
+
+export const comisionPaqueteSchema = z.object({ comisionMonto: montoNoNegativoSchema.nullable() });
+
+/**
+ * La comisión de la agencia por un paquete que vino del BI (11-nov-2026: hay
+ * paquetes importados sin comisión y no había dónde ponerla). Es un monto fijo, igual que la que
+ * manda el BI en `/importar/paquetes`, y vive en el renglón pactado. `null` la quita.
+ */
+export async function cambiarComisionPaquete(db: PrismaClient, quoteId: string, rawInput: unknown, actor: Actor) {
+  const { comisionMonto } = comisionPaqueteSchema.parse(rawInput);
+  const quote = await db.quote.findFirst({ where: { id: quoteId, ...ownershipWhere(actor) } });
+  if (!quote) throw new QuoteError(404, 'Cotización no encontrada');
+  assertNotTrashed(quote);
+  const paquete = await paqueteDelEvento(db, quote);
+  if (paquete?.origen !== 'pactado') {
+    throw new QuoteError(409, 'Solo un paquete que vino del BI lleva comisión en monto; la de un paquete del catálogo es en %.');
+  }
+  const desglose = quote.breakdown as unknown as QuoteBreakdown;
+  const i = desglose.lines.findIndex((l) => l.ref?.tipo === 'pactado' && l.ref.paqueteClave);
+  const linea = desglose.lines[i]!;
+  if (comisionMonto != null && comisionMonto > linea.monto) {
+    throw new QuoteError(400, `La comisión no puede ser mayor que los alimentos y servicios pactados (${pesosTexto(linea.monto)}).`);
+  }
+  const antes = linea.ref?.comisionMonto ?? null;
+  if (antes === comisionMonto) return { comisionMonto };
+  const lines = desglose.lines.map((l, j) => (j === i ? { ...l, ref: { ...l.ref!, comisionMonto } } : l));
+  await db.quote.update({ where: { id: quoteId }, data: { breakdown: { ...desglose, lines } as unknown as Prisma.InputJsonValue } });
+  const texto = (n: number | null) => (n == null ? '(sin comisión)' : pesosTexto(n));
+  await logActivity(db, {
+    quoteId,
+    tipo: 'edicion',
+    descripcion: `Comisión de la agencia por el paquete: ${texto(antes)} → ${texto(comisionMonto)}`,
+    meta: { comisionMontoAntes: antes, comisionMontoDespues: comisionMonto },
+    actorId: actor.id,
+  });
+  return { comisionMonto };
 }

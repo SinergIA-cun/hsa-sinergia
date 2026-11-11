@@ -34,6 +34,20 @@ export interface RenglonBI {
   paquete?: { comisionPct: number | null };
   /** Solo `pactado` con paquete (importados, BI #4): su clave y la comisión fija. */
   pactadoPaquete?: { clave: string; comisionMonto: number | null };
+  /** `servicioEvento` o `cargoContrato` con proveedor o comisión (11-nov-2026): lo tecleado en el evento. */
+  tecleado?: { proveedorNombre: string | null; comisionPct: number | null; comisionMonto: number | null };
+}
+
+/** La comisión de un renglón: en monto fijo el % se deduce; en % sale el monto. Sobre el subtotal sin IVA. */
+export function comisionDeRenglon(
+  subtotal: number,
+  c: { comisionPct?: number | null; comisionMonto?: number | null },
+): { porcentaje: number; monto: number } | null {
+  if (c.comisionMonto != null) {
+    return { porcentaje: subtotal > 0 ? Math.round((c.comisionMonto / subtotal) * 10_000) / 100 : 0, monto: c.comisionMonto };
+  }
+  if (c.comisionPct != null) return { porcentaje: c.comisionPct, monto: Math.round(subtotal * c.comisionPct) / 100 };
+  return null;
 }
 
 const r2 = (n: number): number => Math.round(n * 100) / 100;
@@ -94,6 +108,16 @@ export function desgloseParaBI(
       ...(tipo === 'alimentos' && l.ref && l.ref.comisionPct !== undefined ? { paquete: { comisionPct: l.ref.comisionPct } } : {}),
       ...(tipo === 'pactado' && l.ref?.paqueteClave
         ? { pactadoPaquete: { clave: l.ref.paqueteClave, comisionMonto: l.ref.comisionMonto ?? null } }
+        : {}),
+      ...((tipo === 'servicioEvento' || tipo === 'cargoContrato') &&
+      (l.ref?.proveedorNombre || l.ref?.comisionPct != null || l.ref?.comisionMonto != null)
+        ? {
+            tecleado: {
+              proveedorNombre: l.ref.proveedorNombre ?? null,
+              comisionPct: l.ref.comisionPct ?? null,
+              comisionMonto: l.ref.comisionMonto ?? null,
+            },
+          }
         : {}),
     };
   });

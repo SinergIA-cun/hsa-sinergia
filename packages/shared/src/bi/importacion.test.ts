@@ -157,6 +157,16 @@ describe('conPrecioPactado', () => {
     expect(() => conPrecioPactado(catalogo, { renta: 1, otros: 2 }, 0.16)).toThrow(/catálogo/);
     expect(conPrecioPactado(catalogo, { renta: 30_000 }, 0.16).lines.at(-1)).toMatchObject({ concepto: 'Menú', monto: 80_000 });
   });
+
+  it('con renglón pactado y un paquete agregado después, ajusta solo el pactado', () => {
+    const conPaquete: QuoteBreakdown = {
+      ...importado,
+      lines: [...importado.lines, { concepto: 'Alimentos SUPREME', monto: 100_000, ivaIncluido: false, grupo: 'otros', ref: { tipo: 'alimentos', cantidad: 100, unidad: 'personas', precioUnitario: 1_000 } }],
+    };
+    const r = conPrecioPactado(conPaquete, { renta: 40_000, otros: 5_000 }, 0.16);
+    expect(r.lines.filter((l) => l.grupo === 'otros').map((l) => l.monto)).toEqual([5_000, 100_000]);
+    expect(r.otrosTotal).toBe(5_000 + 116_000);
+  });
 });
 
 describe('conSalones', () => {

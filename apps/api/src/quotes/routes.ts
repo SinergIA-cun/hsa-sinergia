@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { cambiarAgencia, cambiarComision } from './agencia.js';
+import { cambiarAgencia, cambiarComision, cambiarComisionPaquete } from './agencia.js';
 import { z } from 'zod';
 import { requireAdmin, requireAuth } from '../auth/plugin.js';
 import { completarCorreoDelCliente, encolarCorreo, exigirCorreoParaFormalizar } from '../correos/cola.js';
@@ -231,6 +231,16 @@ export async function quoteRoutes(app: FastifyInstance): Promise<void> {
   app.patch<{ Params: { id: string } }>('/quotes/:id/comision', { preHandler: requireAuth }, async (req, reply) => {
     try {
       return await cambiarComision(app.prisma, req.params.id, req.body, req.user as Actor);
+    } catch (e) {
+      if (e instanceof QuoteError) return reply.code(e.status).send({ error: e.message });
+      throw e;
+    }
+  });
+
+  // La comisión en monto de un paquete que vino del BI (11-nov-2026).
+  app.patch<{ Params: { id: string } }>('/quotes/:id/comision-paquete', { preHandler: requireAuth }, async (req, reply) => {
+    try {
+      return await cambiarComisionPaquete(app.prisma, req.params.id, req.body, req.user as Actor);
     } catch (e) {
       if (e instanceof QuoteError) return reply.code(e.status).send({ error: e.message });
       throw e;

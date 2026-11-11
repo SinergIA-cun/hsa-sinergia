@@ -1,5 +1,5 @@
 import type { PrismaClient } from '@hsa/database';
-import { TIPO_PROFESIONAL, comisionDelEvento, type TipoProfesional } from '@hsa/shared';
+import { TIPO_PROFESIONAL, comisionDelEvento, comisionDeRenglon, type TipoProfesional } from '@hsa/shared';
 import { resumenCancelacion } from '../quotes/ciclo.js';
 import {
   restarDinero,
@@ -113,7 +113,7 @@ function desgloseDelEvento(
   // La agencia del paquete: la escogida a mano (importados, BI #4) o, si no, el
   // banquetero del evento.
   const agencia = q.agencia ?? q.banquetero;
-  const vendidos = renglones.map(({ refId, servicio: congelado, paquete: paqueteCongelado, pactadoPaquete, ...r }) => {
+  const vendidos = renglones.map(({ refId, servicio: congelado, paquete: paqueteCongelado, pactadoPaquete, tecleado, ...r }) => {
     const servicio = r.tipo === 'servicioCatalogo' && refId ? refs.servicio.get(refId) : undefined;
     const paquete = r.tipo === 'alimentos' && refId ? refs.paquete.get(refId) : undefined;
     const clave =
@@ -136,12 +136,21 @@ function desgloseDelEvento(
       clave,
       categoria: servicio?.categoria ?? null,
       cobra: datos?.cobra ?? null,
-      proveedor: datos?.proveedorId ? { clave: datos.proveedorId, nombre: refs.proveedor.get(datos.proveedorId) ?? null } : null,
-      comision:
+      proveedor: datos?.proveedorId
+        ? { clave: datos.proveedorId, nombre: refs.proveedor.get(datos.proveedorId) ?? null }
+        : tecleado?.proveedorNombre
+          ? // Servicio del evento o cargo del punto de venta: el proveedor se teclea.
+            { clave: null, nombre: tecleado.proveedorNombre }
+          : null,
+      // En monto fijo (paquete importado, servicio del evento, cargo) el % se deduce.
+      comision: comisionDeRenglon(
+        r.subtotal,
         pactadoPaquete?.comisionMonto != null
-          ? // Importado: la comisión viene del libro como monto; el % se deduce.
-            { porcentaje: r.subtotal > 0 ? Math.round((pactadoPaquete.comisionMonto / r.subtotal) * 10_000) / 100 : 0, monto: pactadoPaquete.comisionMonto }
-          : pct != null ? { porcentaje: pct, monto: Math.round(r.subtotal * pct) / 100 } : null,
+          ? { comisionMonto: pactadoPaquete.comisionMonto }
+          : pct != null
+            ? { comisionPct: pct }
+            : (tecleado ?? {}),
+      ),
       /** El renglón del paquete (`alimentos`, o `pactado` con paquete): la agencia que paga su comisión. */
       agencia:
         (r.tipo === 'alimentos' || (r.tipo === 'pactado' && pactadoPaquete)) && agencia
@@ -590,7 +599,7 @@ export async function biCargos(db: PrismaClient, r: RangoBI) {
   const cargos = await db.cargoEvento.findMany({
     where: r.ids ? { quoteId: { in: r.ids }, quote: { deletedAt: null } } : { fecha: { gte: r.desde, lte: r.hasta }, quote: { deletedAt: null } },
     include: {
-      quote: { select: { id: true, folio: true, etiqueta: true, fechaEvento: true, client: { select: { nombre: true } } } },
+      quote: { select: { id: true, folio: true, etiqueta: true, fechaEvento: true, client: { select: { nombre: true } }, priceList: { select: { ivaRate: true } } } },
       registradoBy: { select: { nombre: true } },
     },
     orderBy: [{ fecha: 'asc' }, DESEMPATE],
@@ -615,6 +624,10 @@ export async function biCargos(db: PrismaClient, r: RangoBI) {
     cantidad: c.cantidad,
     precioUnitario: c.precioUnitario,
     total: c.total,
+    // Un servicio vendido aquí (el grupo musical, 11-nov-2026): quién lo da y la
+    // comisión de la hacienda, sobre el subtotal sin IVA.
+    proveedor: c.proveedor,
+    comision: comisionDeRenglon(Math.round((c.total / (1 + (c.quote.priceList?.ivaRate ?? 0.16))) * 100) / 100, c),
     registradoPor: c.registradoBy?.nombre ?? null,
     anulado: c.anuladoAt != null,
     motivoAnulacion: c.motivoAnulacion,

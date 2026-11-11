@@ -6,7 +6,7 @@ import { UtensilsCrossed } from 'lucide-react';
 import { api } from '../lib/api.ts';
 import { apiErrorMessage } from './admin/shared.tsx';
 import { formatMXN } from '../lib/money.ts';
-import { Button, SelectInput, TextInput } from './ui.tsx';
+import { Button, MoneyInput, SelectInput, TextInput } from './ui.tsx';
 import type { PaqueteDelEvento } from '../lib/types.ts';
 
 /**
@@ -39,6 +39,23 @@ export function AgenciaPaquete({
   const comision = paquete.comision;
   const [pct, setPct] = useState(String(comision?.pct ?? COMISION_HSA_POR_OMISION));
   const pctValido = pct.trim() !== '' && Number(pct) >= 0 && Number(pct) <= 100;
+  // Un paquete que vino del BI lleva su comisión en monto (11-nov-2026: si el BI
+  // no la mandó, se captura aquí).
+  const [monto, setMonto] = useState(paquete.comisionMonto != null ? String(paquete.comisionMonto) : '');
+  const montoNuevo = monto.trim() === '' ? null : Number(monto);
+
+  async function guardarComisionMonto() {
+    setError('');
+    setGuardando(true);
+    try {
+      await api.patch(`/api/quotes/${quoteId}/comision-paquete`, { comisionMonto: montoNuevo });
+      await qc.invalidateQueries({ queryKey: ['quote', quoteId] });
+    } catch (e) {
+      setError(apiErrorMessage(e, 'No se pudo guardar la comisión.'));
+    } finally {
+      setGuardando(false);
+    }
+  }
 
   async function guardarComision() {
     setError('');
@@ -88,11 +105,31 @@ export function AgenciaPaquete({
         <div>
           <p className="text-sm text-ink">
             <strong className="font-medium">{paquete.nombre}</strong>
-            {paquete.comisionMonto != null && (
-              <span className="text-charcoal-soft"> · comisión de la agencia {formatMXN(paquete.comisionMonto)}</span>
-            )}
           </p>
-          {comision && paquete.comisionMonto == null && (
+          {paquete.origen === 'pactado' && (
+            <div className="mt-3 text-sm">
+              <p className="text-xs font-medium uppercase tracking-wide text-charcoal-soft">Comisión de la agencia</p>
+              <div className="mt-1 flex flex-wrap items-center gap-2">
+                <MoneyInput
+                  value={monto}
+                  onValue={setMonto}
+                  placeholder="Sin comisión"
+                  disabled={readOnly || guardando}
+                  aria-label="Comisión de la agencia (monto)"
+                  className="w-36"
+                />
+                {!readOnly && montoNuevo !== (paquete.comisionMonto ?? null) && (
+                  <Button variant="gold" className="px-3 py-1.5 text-xs" disabled={guardando} onClick={() => void guardarComisionMonto()}>
+                    Guardar
+                  </Button>
+                )}
+                <span className="block w-full text-xs text-charcoal-soft">
+                  En monto, como la manda el BI. {paquete.comisionMonto != null ? `Hoy: ${formatMXN(paquete.comisionMonto)}.` : 'Vacío = sin comisión.'}
+                </span>
+              </div>
+            </div>
+          )}
+          {comision && paquete.origen !== 'pactado' && (
             <div className="mt-3 text-sm">
               <p className="text-xs font-medium uppercase tracking-wide text-charcoal-soft">Comisión de HSA</p>
               {comision.fuente === 'cliente' ? (

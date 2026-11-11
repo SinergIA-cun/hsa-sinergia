@@ -213,7 +213,7 @@ Cada renglón del desglose guardado con el evento, en datos y no en texto:
 | `precioUnitario` | Con IVA. Es el precio del catálogo **del evento** (cada evento se queda con su catálogo); no hay descuento por renglón. |
 | `subtotal`, `total` | Sin IVA y con IVA. El último renglón de cada bloque absorbe los centavos de redondeo. |
 | `origen` | `contrato`, o `puntoDeVenta` para un cargo que sube el contrato (`cargoId` trae el id del cargo de `/cargos`). |
-| `proveedor`, `comision` | En `servicioCatalogo` con proveedor: `{ clave, nombre }` y `{ porcentaje, monto }`. En `alimentos`: `comision` es lo que la agencia le paga a la hacienda por el paquete (`proveedor` va `null`; la agencia va en `agencia`). La comisión es un % sobre el **subtotal sin IVA** del renglón, congelado al guardar el evento. En `pactado` con paquete (importados, ver `/importar/paquetes`): `comision.monto` es el monto fijo que mandó el BI y `porcentaje` se deduce del subtotal. `null` si no tiene. |
+| `proveedor`, `comision` | En `servicioCatalogo` con proveedor: `{ clave, nombre }` y `{ porcentaje, monto }`. En `alimentos`: `comision` es lo que la agencia le paga a la hacienda por el paquete (`proveedor` va `null`; la agencia va en `agencia`). La comisión es un % sobre el **subtotal sin IVA** del renglón, congelado al guardar el evento. En `pactado` con paquete (importados, ver `/importar/paquetes`): `comision.monto` es el monto fijo que mandó el BI **o que la hacienda capturó en el evento** (desde el 11-nov-2026, si el BI no la mandó) y `porcentaje` se deduce del subtotal. **En `servicioEvento` y `cargoContrato` (desde el 11-nov-2026)**: el proveedor y la comisión que se teclearon en el evento o en el cargo del punto de venta (p. ej. un grupo musical): `proveedor` es `{ clave: null, nombre }` (texto libre, no está en el catálogo) y `comision` es `{ porcentaje, monto }`, capturada en % o en monto fijo (el otro se deduce del subtotal sin IVA). `null` si no tiene. |
 | `agencia` | Solo en el renglón del paquete (`alimentos`, o `pactado` con `clave`): `{ clave, nombre, tipo }` de la agencia que paga la comisión (`tipo`: `B`, `BG`, `A` o `WP`). Es la **agencia del paquete** que la hacienda escoge a mano en el evento, de la lista de banqueteros; si no escogió, el banquetero del evento. `clave` es un `id` de banquetero (el mismo de `banquetero.id` y del `banqueteroId` de `/pagos`). Escoger agencia **no** pone banquetero al evento: el cliente sigue siendo el mismo. `null` si no hay ninguna, y en los demás renglones. |
 | `cobra` | Solo en `servicioCatalogo`: `proveedor` (el cliente le paga directo al proveedor, que le debe la comisión a la hacienda) o `hacienda` (la hacienda lo cobra y le paga al proveedor). `null` en los demás. |
 | `banquetero` | Solo en `bloque: "banquetero"`: `{ id, nombre }`. `null` en los demás. |
@@ -254,6 +254,12 @@ banquetero. `nombre`, `cantidad` y `total` (lo que cobra el banquetero; puede se
 - **Un servicio tecleado en el evento sigue siendo `servicioEvento`** aunque después se dé de alta
   en el catálogo: el renglón no se liga solo. Para ligarlo, se edita el evento y se cambia por el
   del catálogo (queda como `servicioCatalogo` con su `clave`, al precio del catálogo).
+- **Alimentos y servicios en eventos con precio pactado o ya pasados (desde el 11-nov-2026).** Un
+  evento importado, un apartado con renta acordada o un evento que ya pasó no se recotiza, pero
+  sí se le puede agregar o cambiar el paquete y los servicios: la renta (y sus renglones) se
+  queda igual y solo cambian los renglones de `otros`. El renglón `pactado` del BI se conserva;
+  lo agregado va aparte (`alimentos`, `servicioCatalogo`, `servicioEvento`). Así, un evento
+  importado puede traer **`pactado` y `alimentos` a la vez**.
 - No hay fecha ni autor por renglón. Lo agregado después de contratar sale de `/cambios`
   (`detalle.servicios` de cada `edicion`) y de `/cargos` (punto de venta).
 
@@ -410,6 +416,8 @@ el `afectaContrato` del renglón, no el del producto.
     "cantidad": 2,
     "precioUnitario": 5425,
     "total": 10850,
+    "proveedor": null,
+    "comision": null,
     "registradoPor": "Administrador",
     "anulado": false,
     "motivoAnulacion": null
@@ -419,6 +427,13 @@ el `afectaContrato` del renglón, no el del producto.
 `producto` es uno de `horaExtra`, `djHoraExtra`, `invitadoExtra` (su renta),
 `invitadoExtraAlimentos` (sus alimentos, que se le pagan al proveedor), `danos`, `multa`,
 `gastoImprevisto`, `otro`. Los montos traen IVA incluido.
+
+**`proveedor` y `comision` (desde el 11-nov-2026):** un servicio vendido en el punto de venta (p. ej.
+un grupo musical cargado como `otro`) puede llevar quién lo da (`proveedor`, texto libre) y lo que
+le paga a la hacienda: `comision: { porcentaje, monto }` sobre el **subtotal sin IVA** del cargo,
+capturada en % o en monto fijo (el otro se deduce). `null` si no se capturó. Se puede poner o
+cambiar después de registrar el cargo: no cambia lo que se cobra, así que no mueve `total`. Si el
+cargo sube el contrato, su renglón `cargoContrato` de `/eventos.desglose[]` trae lo mismo.
 
 ### `GET /api/bi/devoluciones`
 

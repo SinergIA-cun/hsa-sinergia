@@ -145,15 +145,18 @@ export interface LineaRef {
   precioUnitario: number;
   /** Solo `servicioCatalogo`: lo que tenía el servicio cuando se guardó el evento. */
   proveedorId?: string | null;
-  /** `servicioCatalogo` y `alimentos` (comisión de la agencia por el paquete),
-   *  congelada al guardar. Ausente = evento guardado antes de congelarla. */
+  /** Solo `servicioEvento`: el proveedor tecleado en el evento (no está en el catálogo). */
+  proveedorNombre?: string | null;
+  /** `servicioCatalogo`, `servicioEvento` y `alimentos` (comisión de la agencia
+   *  por el paquete), congelada al guardar. Ausente = evento guardado antes de congelarla. */
   comisionPct?: number | null;
   cobra?: CobraServicio;
   /** Solo `pactado` de un evento importado: la `clave` del paquete de alimentos
    *  que se vendió (BI #4). El monto sigue siendo el pactado, no por persona. */
   paqueteClave?: string;
-  /** Solo `pactado` con paquete: la comisión de la agencia como monto fijo, con
-   *  la que vino del libro del BI. `null` = sin comisión. */
+  /** `pactado` con paquete: la comisión de la agencia como monto fijo (del libro
+   *  del BI, o capturada en el evento). `servicioEvento`: la comisión del
+   *  proveedor en monto fijo. `null` = sin comisión. */
   comisionMonto?: number | null;
 }
 

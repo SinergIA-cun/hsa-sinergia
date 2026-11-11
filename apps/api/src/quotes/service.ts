@@ -24,6 +24,8 @@ import {
   TIPOS_CLIENTE,
   comisionDelEvento,
   type QuoteBreakdown as DesgloseCotizacion,
+  conOtrosRecalculados,
+  seleccionSoloOtros,
 } from '@hsa/shared';
 import { loadCatalog } from '../catalog/loader.js';
 import { getAvailability } from '../availability/service.js';
@@ -162,7 +164,7 @@ export const includeRels = {
   cerradoBy: { select: { nombre: true } },
   // Los servicios sueltos del evento: no viven en el catálogo, así que la única
   // forma de recuperarlos para reeditar (y para recalcular) es leerlos de aquí.
-  extras: { select: { nombre: true, kind: true, monto: true, cantidad: true } },
+  extras: { select: { nombre: true, kind: true, monto: true, cantidad: true, proveedor: true, comisionPct: true, comisionMonto: true } },
   // Lo que pone el banquetero: informativo, no entra al precio.
   serviciosBanquetero: { select: { nombre: true, cantidad: true, monto: true }, orderBy: { id: 'asc' as const } },
 };
@@ -341,7 +343,7 @@ export function toSelection(input: {
  * `seleccionGuardada` no acepta el objeto. Ese es el candado.
  */
 export const SELECCION_INCLUDE = {
-  extras: { select: { nombre: true, kind: true, monto: true, cantidad: true } },
+  extras: { select: { nombre: true, kind: true, monto: true, cantidad: true, proveedor: true, comisionPct: true, comisionMonto: true } },
 } as const;
 
 /** Una cotización guardada, con TODO lo que el motor necesita para recalcular. */
@@ -443,6 +445,30 @@ export function seleccionGuardada(q: SeleccionGuardadaInput): SeleccionGuardada 
     festejado: q.festejado,
     festejadoTelefono: q.festejadoTelefono,
   };
+}
+
+/** ¿Cambió lo que define alimentos y servicios? (paquete, servicios, DJ de horas extra) */
+function cambiaronLosOtros(
+  antes: SeleccionGuardada,
+  despues: {
+    foodPackageId?: string;
+    addOns: { addOnId: string; cantidad: number }[];
+    extras: QuoteExtra[];
+    usaDjHoraExtra?: boolean;
+    horasExtra: number;
+  },
+): boolean {
+  const servicios = (a: { addOnId: string; cantidad: number }[]) =>
+    JSON.stringify([...a].sort((x, y) => x.addOnId.localeCompare(y.addOnId)).map((x) => [x.addOnId, x.cantidad]));
+  const extras = (e: QuoteExtra[]) =>
+    JSON.stringify(e.map((x) => [x.nombre, x.kind, x.monto, x.cantidad, x.proveedor ?? null, x.comisionPct ?? null, x.comisionMonto ?? null]));
+  const dj = (usa: boolean | undefined, horas: number) => (usa ? horas : 0);
+  return (
+    (antes.foodPackageId ?? null) !== (despues.foodPackageId || null) ||
+    servicios(antes.addOns) !== servicios(despues.addOns) ||
+    extras(antes.extras) !== extras(despues.extras) ||
+    dj(antes.usaDjHoraExtra, antes.horasExtra) !== dj(despues.usaDjHoraExtra, despues.horasExtra)
+  );
 }
 
 /** Un evento sin salón con la capilla marcada: se renta solo la capilla. */
@@ -1017,6 +1043,22 @@ export async function updateQuote(db: PrismaClient, id: string, rawInput: unknow
     precioPactado ||
     (yaPaso(existing.fechaEvento) && yaPaso(new Date(`${input.fecha}T00:00:00.000Z`)));
 
+  /**
+   * Con el precio congelado, alimentos y servicios SÍ se agregan (11-nov-2026:
+   * "meter un banquete o paquete aunque el evento esté formalizado o hasta
+   * liquidado"). La renta se queda como está y solo se recalculan los renglones
+   * de alimentos y servicios, y solo si cambiaron: editar el festejado de un
+   * evento pasado no tiene por qué repreciar su paquete.
+   */
+  const conOtros =
+    congelaPrecio && cambiaronLosOtros(seleccionGuardada(existing), input)
+      ? conOtrosRecalculados(
+          existing.breakdown as unknown as DesgloseCotizacion,
+          (await computeAndEnrich(db, seleccionSoloOtros(toSelection(input)), existing.priceListId)).breakdown,
+          (await db.priceList.findUnique({ where: { id: existing.priceListId }, select: { ivaRate: true } }))?.ivaRate ?? 0.16,
+        )
+      : null;
+
   // El nombre ANTES de editar al cliente: sirve para explicar por qué cambió el código.
   const nombreClienteAntes =
     (await db.client.findUnique({ where: { id: existing.clientId }, select: { nombre: true } }))?.nombre ?? '';
@@ -1125,8 +1167,8 @@ export async function updateQuote(db: PrismaClient, id: string, rawInput: unknow
         banqueteroId: input.banqueteroId ?? null,
         festejado: input.festejado ?? null,
         festejadoTelefono: input.festejadoTelefono ?? null,
-        breakdown: (congelaPrecio ? existing.breakdown : enriched) as unknown as Prisma.InputJsonValue,
-        total: congelaPrecio ? existing.total : centavos(breakdown.total),
+        breakdown: (conOtros ?? (congelaPrecio ? existing.breakdown : enriched)) as unknown as Prisma.InputJsonValue,
+        total: conOtros ? centavos(conOtros.total) : congelaPrecio ? existing.total : centavos(breakdown.total),
         rentaTotal: congelaPrecio ? existing.rentaTotal : centavos(breakdown.rentaTotal),
       },
       include: includeRels,
@@ -1150,7 +1192,17 @@ export async function updateQuote(db: PrismaClient, id: string, rawInput: unknow
   // Que el precio se haya quedado quieto NO puede ser silencioso. Quien editó un
   // evento pasado esperando ver otro total tiene que encontrar la explicación en
   // la bitácora, y no concluir que la aplicación perdió su cambio.
-  if (congelaPrecio && centavos(breakdown.total) !== existing.total) {
+  if (conOtros) {
+    await logActivity(db, {
+      quoteId: id,
+      tipo: 'edicion',
+      descripcion:
+        `Alimentos y servicios actualizados con el precio de la renta congelado: ` +
+        `total ${existing.total} → ${centavos(conOtros.total)}; la renta se queda en ${existing.rentaTotal}.`,
+      meta: { precioCongelado: true, otrosRecalculados: true, totalAntes: existing.total, totalDespues: centavos(conOtros.total) },
+      actorId: actor.id,
+    });
+  } else if (congelaPrecio && centavos(breakdown.total) !== existing.total) {
     await logActivity(db, {
       quoteId: id,
       tipo: 'edicion',

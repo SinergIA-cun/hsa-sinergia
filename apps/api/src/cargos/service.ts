@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import type { PrismaClient } from '@hsa/database';
-import { PRODUCTOS_CARGO, PRODUCTO_INFO, afectaContrato, formatFolio, type ProductoCargo, montoSchema, restarDinero, centavos } from '@hsa/shared';
+import { PRODUCTOS_CARGO, PRODUCTO_INFO, afectaContrato, formatFolio, type ProductoCargo, montoSchema, restarDinero, centavos, camposComision, unaComision, pesosTexto } from '@hsa/shared';
 import { cuentaDelEvento } from './cuenta.js';
 import { sincronizarContrato } from './contrato.js';
 import { QuoteError, ownershipWhere, assertNotTrashed, loadEstadoCuenta, type Actor } from '../quotes/service.js';
@@ -35,7 +35,11 @@ export const cargoSchema = z.object({
   precioUnitario: montoSchema,
   descripcion: z.string().trim().max(200).optional(),
   fecha: fechaISO,
-});
+  /** Un servicio vendido aquí (el grupo musical): quién lo da y la comisión de la hacienda. */
+  ...camposComision,
+}).refine(unaComision.check, unaComision.opts);
+
+export const comisionCargoSchema = z.object(camposComision).refine(unaComision.check, unaComision.opts);
 
 export { cuentaDelEvento, productosDelEvento } from './cuenta.js';
 
@@ -91,6 +95,9 @@ export async function registrarCargo(db: PrismaClient, quoteId: string, rawInput
       total,
       sumaAlContrato: afectaContrato(input.producto as ProductoCargo),
       fecha: new Date(`${input.fecha}T00:00:00.000Z`),
+      proveedor: input.proveedor || null,
+      comisionPct: input.comisionPct ?? null,
+      comisionMonto: input.comisionMonto ?? null,
       registradoById: actor.id,
     },
   });
@@ -185,4 +192,49 @@ export async function validarCobroDeCargos(db: PrismaClient, quote: { id: string
 /** Texto del pago a la cuenta para la bitácora. */
 export function descripcionPagoCargos(folio: number, monto: number, formas: string) {
   return `Pago ${formatFolio(folio)} a la cuenta del evento $${monto} (${formas})`;
+}
+
+/** "Grupo X · 10%", "Grupo X · $2,000" o "(sin comisión)", para la bitácora. */
+function textoComision(c: { proveedor: string | null; comisionPct: number | null; comisionMonto: number | null }): string {
+  const cuanto = c.comisionMonto != null ? pesosTexto(c.comisionMonto) : c.comisionPct != null ? `${c.comisionPct}%` : null;
+  return [c.proveedor, cuanto].filter(Boolean).join(' · ') || '(sin comisión)';
+}
+
+/**
+ * El proveedor y la comisión de un cargo ya registrado (11-nov-2026: el grupo
+ * musical de un evento se cargó en el punto de venta y no había dónde poner lo
+ * que le pagan a la hacienda). No toca lo que se cobra: solo lo que ve el BI.
+ */
+export async function cambiarComisionCargo(
+  db: PrismaClient,
+  quoteId: string,
+  cargoId: string,
+  rawInput: unknown,
+  actor: Actor,
+) {
+  const input = comisionCargoSchema.parse(rawInput);
+  const quote = await db.quote.findFirst({ where: { id: quoteId, ...ownershipWhere(actor) } });
+  if (!quote) throw new QuoteError(404, 'Evento no encontrado');
+  assertNotTrashed(quote);
+  const cargo = await db.cargoEvento.findFirst({ where: { id: cargoId, quoteId } });
+  if (!cargo) throw new QuoteError(404, 'Cargo no encontrado');
+  if (cargo.anuladoAt) throw new QuoteError(409, 'Ese cargo está anulado.');
+  const nuevo = { proveedor: input.proveedor || null, comisionPct: input.comisionPct ?? null, comisionMonto: input.comisionMonto ?? null };
+  if (nuevo.comisionMonto != null && nuevo.comisionMonto > cargo.total) {
+    throw new QuoteError(400, `La comisión no puede ser mayor que el cargo (${pesosTexto(cargo.total)}).`);
+  }
+  const antes = textoComision(cargo);
+  const despues = textoComision(nuevo);
+  if (antes === despues) return { cargo };
+  const actualizado = await db.cargoEvento.update({ where: { id: cargoId }, data: nuevo });
+  // El renglón del contrato lleva la comisión para el BI: se pone al día (el total no cambia).
+  if (cargo.sumaAlContrato) await sincronizarContrato(db, quoteId);
+  await logActivity(db, {
+    quoteId,
+    tipo: 'cargo',
+    descripcion: `Comisión del cargo "${cargo.descripcion}": ${antes} → ${despues}`,
+    meta: { cargoId, antes: { proveedor: cargo.proveedor, comisionPct: cargo.comisionPct, comisionMonto: cargo.comisionMonto }, despues: nuevo },
+    actorId: actor.id,
+  });
+  return { cargo: actualizado };
 }

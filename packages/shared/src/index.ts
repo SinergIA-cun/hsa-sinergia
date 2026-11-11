@@ -28,3 +28,4 @@ export * from './pricing/tablasRenta.js';
 export * from './marca.js';
 export * from './profesionales.js';
 export * from './whatsapp.js';
+export * from './pricing/otros.js';
