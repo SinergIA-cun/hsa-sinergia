@@ -782,6 +782,12 @@ model QuoteExtra {
   kind     AddOnKind // fijo | porPersona | porUnidad
   monto    Float
   cantidad Int       @default(1) // solo se usa en porUnidad
+  /// Quién da el servicio y lo que le paga a la hacienda (11-nov-2026). El
+  /// proveedor se teclea; la comisión va en % del subtotal sin IVA o en monto
+  /// fijo, una u otra. Todo `null` = sin comisión.
+  proveedor     String?
+  comisionPct   Float?
+  comisionMonto Float?
 
   @@index([quoteId])
 }
@@ -1167,6 +1173,12 @@ model CargoEvento {
   /// momento y no se recalcula: desde el 30-oct-2026 todo sube salvo multas y
   /// daños, pero los cargos de antes se quedan como estaban (ya se cuadraron).
   sumaAlContrato  Boolean       @default(false)
+  /// Un servicio vendido aquí (el grupo musical, 11-nov-2026): quién lo da y lo
+  /// que le paga a la hacienda, en % del subtotal sin IVA o en monto fijo. No
+  /// cambia lo que se cobra; es para el BI.
+  proveedor       String?
+  comisionPct     Float?
+  comisionMonto   Float?
   /// El día de la venta (medianoche UTC, como `Payment.fecha`).
   fecha           DateTime
   registradoBy    User?         @relation("CargoRegistradoBy", fields: [registradoById], references: [id])

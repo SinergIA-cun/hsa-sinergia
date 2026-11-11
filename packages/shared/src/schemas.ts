@@ -11,6 +11,24 @@ import { z } from 'zod';
  *
  * El monto SIEMPRE trae IVA incluido (decisión del dueño): lo teclado es lo final.
  */
+/**
+ * Quién da un servicio y cuánto le paga a la hacienda por él (11-nov-2026: el
+ * grupo musical de un evento). El proveedor se teclea —casi nunca está dado de
+ * alta— y la comisión va en % del subtotal sin IVA o en monto fijo, una u otra.
+ * Sin ninguna, no deja comisión. Lo usan los servicios del evento y los cargos
+ * del punto de venta.
+ */
+export const camposComision = {
+  proveedor: z.string().trim().max(120).nullish(),
+  comisionPct: z.number().min(0).max(100).nullish(),
+  comisionMonto: montoNoNegativoSchema.nullish(),
+};
+export const unaComision = {
+  check: (d: { comisionPct?: number | null; comisionMonto?: number | null }): boolean =>
+    !(d.comisionPct != null && d.comisionMonto != null),
+  opts: { message: 'La comisión es en porcentaje o en monto fijo, no las dos.', path: ['comisionMonto'] },
+};
+
 export const quoteExtraSchema = z.object({
   nombre: z.string().min(1).max(120),
   kind: z.enum(['fijo', 'porPersona', 'porUnidad']),
@@ -18,7 +36,9 @@ export const quoteExtraSchema = z.object({
   monto: montoNoNegativoSchema,
   /** Solo se usa en `porUnidad`; `fijo` y `porPersona` la ignoran. */
   cantidad: z.number().int().positive().default(1),
-});
+  /** Proveedor y comisión (ver `camposComision`). */
+  ...camposComision,
+}).refine(unaComision.check, unaComision.opts);
 
 export type QuoteExtra = z.infer<typeof quoteExtraSchema>;
 

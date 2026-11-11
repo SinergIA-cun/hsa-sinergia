@@ -120,7 +120,17 @@ function unidadDeRenglon(unidad: string): 'horas' | 'personas' | 'unidades' {
 }
 
 /** El renglón de renta de un cargo que sube el contrato. */
-export function lineaDeCargo(c: { id: string; producto: ProductoCargo; descripcion: string; cantidad: number; precioUnitario: number; total: number }): QuoteLine {
+export function lineaDeCargo(c: {
+  id: string;
+  producto: ProductoCargo;
+  descripcion: string;
+  cantidad: number;
+  precioUnitario: number;
+  total: number;
+  proveedor?: string | null;
+  comisionPct?: number | null;
+  comisionMonto?: number | null;
+}): QuoteLine {
   return {
     concepto: c.descripcion || PRODUCTO_INFO[c.producto].nombre,
     detalle: `${c.cantidad} × ${pesosTexto(c.precioUnitario)} · punto de venta`,
@@ -134,6 +144,9 @@ export function lineaDeCargo(c: { id: string; producto: ProductoCargo; descripci
       cantidad: c.cantidad,
       unidad: unidadDeRenglon(PRODUCTO_INFO[c.producto].unidad),
       precioUnitario: c.precioUnitario,
+      // Un servicio vendido en el punto de venta (el grupo musical): su proveedor y comisión.
+      ...(c.proveedor ? { proveedorNombre: c.proveedor } : {}),
+      ...(c.comisionMonto != null ? { comisionMonto: c.comisionMonto } : c.comisionPct != null ? { comisionPct: c.comisionPct } : {}),
     },
   };
 };

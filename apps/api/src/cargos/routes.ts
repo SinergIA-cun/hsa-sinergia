@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { requireAuth } from '../auth/plugin.js';
 import { QuoteError, ownershipWhere, type Actor } from '../quotes/service.js';
-import { registrarCargo, anularCargo, cuentaDelEvento, productosDelEvento } from './service.js';
+import { registrarCargo, anularCargo, cambiarComisionCargo, cuentaDelEvento, productosDelEvento } from './service.js';
 
 /** El punto de venta del evento: su cuenta de cargos posteriores a contratar. */
 export async function cargoRoutes(app: FastifyInstance): Promise<void> {
@@ -40,6 +40,20 @@ export async function cargoRoutes(app: FastifyInstance): Promise<void> {
       throw e; // ZodError → 400 vía el handler global
     }
   });
+
+  // Proveedor y comisión de un cargo (11-nov-2026): no mueve dinero, ventas también.
+  app.patch<{ Params: { id: string; cargoId: string } }>(
+    '/quotes/:id/cargos/:cargoId/comision',
+    { preHandler: requireAuth },
+    async (req, reply) => {
+      try {
+        return await cambiarComisionCargo(app.prisma, req.params.id, req.params.cargoId, req.body, req.user as Actor);
+      } catch (e) {
+        if (e instanceof QuoteError) return reply.code(e.status).send({ error: e.message });
+        throw e;
+      }
+    },
+  );
 
   app.patch<{ Params: { id: string; cargoId: string } }>(
     '/quotes/:id/cargos/:cargoId/anular',

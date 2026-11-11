@@ -195,7 +195,14 @@ export function conPrecioPactado(b: QuoteBreakdown, nuevo: { renta: number; otro
   const esOtrosPactado = (l: QuoteLine) => l.grupo === 'otros' && !l.cargoId && l.ref?.tipo === 'pactado';
   const deSalon = b.lines.filter(esRentaSalon);
   if (deSalon.length === 0) throw new Error('El evento no tiene renta de salón en su desglose.');
-  if (nuevo.otros !== undefined && b.lines.some((l) => l.grupo === 'otros' && !l.cargoId && !esOtrosPactado(l))) {
+  // Sin renglón pactado, los alimentos son del catálogo: se cambian editando el
+  // evento. Con él, solo se ajusta ese renglón; lo que se agregó después del
+  // catálogo (11-nov-2026: paquete o servicios en un evento importado) se queda.
+  if (
+    nuevo.otros !== undefined &&
+    !b.lines.some(esOtrosPactado) &&
+    b.lines.some((l) => l.grupo === 'otros' && !l.cargoId)
+  ) {
     throw new Error('Los alimentos de este evento vienen del catálogo: aquí solo se ajusta la renta.');
   }
 
@@ -244,8 +251,12 @@ export function conPrecioPactado(b: QuoteBreakdown, nuevo: { renta: number; otro
   const rentaTotal = r2(lines.filter((l) => l.grupo === 'renta').reduce((s, l) => s + l.monto, 0));
   const rentaSubtotal = r2(rentaTotal / (1 + ivaRate));
   const rentaIva = r2(rentaTotal - rentaSubtotal);
-  const otrosTotal = nuevo.otros === undefined ? (b.otrosTotal ?? 0) : r2(lines.filter((l) => l.grupo === 'otros').reduce((s, l) => s + l.monto, 0));
-  const otrosSubtotal = nuevo.otros === undefined ? (b.otrosSubtotal ?? 0) : r2(otrosTotal / (1 + ivaRate));
+  // Un paquete del catálogo puede venir sin IVA (`ivaIncluido: false`): se le agrega.
+  const deOtros = lines.filter((l) => l.grupo === 'otros');
+  const otrosTotal =
+    nuevo.otros === undefined ? (b.otrosTotal ?? 0) : r2(deOtros.reduce((s, l) => s + (l.ivaIncluido ? l.monto : l.monto * (1 + ivaRate)), 0));
+  const otrosSubtotal =
+    nuevo.otros === undefined ? (b.otrosSubtotal ?? 0) : r2(deOtros.reduce((s, l) => s + (l.ivaIncluido ? l.monto / (1 + ivaRate) : l.monto), 0));
   const otrosIva = nuevo.otros === undefined ? (b.otrosIva ?? 0) : r2(otrosTotal - otrosSubtotal);
   return {
     ...b,

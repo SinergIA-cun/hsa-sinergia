@@ -1,5 +1,5 @@
 import { SeccionPlegable } from './SeccionPlegable.tsx';
-import { useState, type FormEvent } from 'react';
+import { Fragment, useState, type FormEvent } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Receipt, ShoppingBag } from 'lucide-react';
 import { ReciboWhatsApp, type ClienteContacto } from './ReciboWhatsApp.tsx';
@@ -12,6 +12,7 @@ import { FormasPagoCampo, errorFormas, formasEnFormData, formasIniciales } from 
 import { apiErrorMessage } from './admin/shared.tsx';
 import type { CuentaEvento, ProductoPuntoDeVenta } from '../lib/types.ts';
 import { NotasCampo } from './NotasPago.tsx';
+import { ComisionServicio, type DatosComision } from './ComisionServicio.tsx';
 
 /**
  * El punto de venta del evento.
@@ -53,6 +54,27 @@ export function PuntoDeVentaPanel({
   };
 
   const cargosVivos = cuenta.cargos.filter((c) => !c.anuladoAt);
+
+  // Proveedor y comisión de un cargo (11-nov-2026: el grupo musical). Se edita en su renglón.
+  const [comisionDe, setComisionDe] = useState<string | null>(null);
+  const [borrador, setBorrador] = useState<DatosComision>({});
+  const [guardandoComision, setGuardandoComision] = useState(false);
+  async function guardarComision(cargoId: string) {
+    setGuardandoComision(true);
+    try {
+      await api.patch(`/api/quotes/${quoteId}/cargos/${cargoId}/comision`, {
+        proveedor: borrador.proveedor?.trim() || null,
+        comisionPct: borrador.comisionPct ?? null,
+        comisionMonto: borrador.comisionMonto ?? null,
+      });
+      setComisionDe(null);
+      await refrescar();
+    } catch (e) {
+      window.alert(apiErrorMessage(e, 'No se pudo guardar la comisión.'));
+    } finally {
+      setGuardandoComision(false);
+    }
+  }
 
   async function anular(cargoId: string) {
     const motivo = window.prompt('Motivo de la anulación:');
@@ -118,7 +140,8 @@ export function PuntoDeVentaPanel({
           </thead>
           <tbody className="divide-y divide-cream-200">
             {cuenta.cargos.map((c) => (
-              <tr key={c.id} className={c.anuladoAt ? 'text-charcoal-soft line-through' : ''}>
+              <Fragment key={c.id}>
+              <tr className={c.anuladoAt ? 'text-charcoal-soft line-through' : ''}>
                 <td className="py-2 pr-3">{formatEventDate(c.fecha)}</td>
                 <td className="py-2 pr-3">
                   {c.descripcion}
@@ -130,6 +153,20 @@ export function PuntoDeVentaPanel({
                       En el contrato
                     </span>
                   )}
+                  {(c.proveedor || c.comisionPct != null || c.comisionMonto != null) && (
+                    <span className="block text-xs text-charcoal-soft">
+                      {[
+                        c.proveedor,
+                        c.comisionMonto != null
+                          ? `comisión ${formatMXN(c.comisionMonto)}`
+                          : c.comisionPct != null
+                            ? `comisión ${c.comisionPct}%`
+                            : null,
+                      ]
+                        .filter(Boolean)
+                        .join(' · ')}
+                    </span>
+                  )}
                   {c.anuladoAt && c.motivoAnulacion && (
                     <span className="block text-xs text-wine no-underline">Anulado: {c.motivoAnulacion}</span>
                   )}
@@ -137,7 +174,19 @@ export function PuntoDeVentaPanel({
                 <td className="py-2 text-right tabular-nums">{c.cantidad}</td>
                 <td className="py-2 text-right tabular-nums">{formatMXN(c.precioUnitario)}</td>
                 <td className="py-2 text-right tabular-nums">{formatMXN(c.total)}</td>
-                <td className="py-2 pl-3 text-right">
+                <td className="space-x-3 whitespace-nowrap py-2 pl-3 text-right">
+                  {!readOnly && !c.anuladoAt && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setComisionDe(comisionDe === c.id ? null : c.id);
+                        setBorrador({ proveedor: c.proveedor, comisionPct: c.comisionPct, comisionMonto: c.comisionMonto });
+                      }}
+                      className="text-xs text-charcoal-soft hover:text-ink hover:underline"
+                    >
+                      Comisión
+                    </button>
+                  )}
                   {isAdmin && !readOnly && !c.anuladoAt && (
                     <button type="button" onClick={() => anular(c.id)} className="text-xs text-wine hover:underline">
                       Anular
@@ -145,6 +194,32 @@ export function PuntoDeVentaPanel({
                   )}
                 </td>
               </tr>
+              {comisionDe === c.id && (
+                <tr>
+                  <td colSpan={6} className="pb-3">
+                    <div className="space-y-2 rounded-lg bg-cream-200/60 px-3 py-2">
+                      <p className="text-xs text-charcoal-soft">
+                        Quién da este servicio y cuánto le paga a la hacienda. No cambia lo que se cobra.
+                      </p>
+                      <ComisionServicio
+                        valor={borrador}
+                        base={c.total}
+                        onChange={(patch) => setBorrador((b) => ({ ...b, ...patch }))}
+                        disabled={guardandoComision}
+                      />
+                      <div className="flex justify-end gap-2">
+                        <Button variant="ghost" onClick={() => setComisionDe(null)} disabled={guardandoComision}>
+                          Cancelar
+                        </Button>
+                        <Button variant="gold" onClick={() => guardarComision(c.id)} disabled={guardandoComision}>
+                          {guardandoComision ? 'Guardando…' : 'Guardar comisión'}
+                        </Button>
+                      </div>
+                    </div>
+                  </td>
+                </tr>
+              )}
+              </Fragment>
             ))}
           </tbody>
         </table>

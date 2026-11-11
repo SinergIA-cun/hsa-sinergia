@@ -351,6 +351,9 @@ export function computeQuote(
         cantidad: e.kind === 'fijo' ? 1 : e.kind === 'porPersona' ? sel.invitados : e.cantidad,
         unidad: UNIDAD_DE[e.kind],
         precioUnitario: e.monto,
+        // Proveedor y comisión del servicio, congelados con el evento (11-nov-2026).
+        ...(e.proveedor ? { proveedorNombre: e.proveedor } : {}),
+        ...(e.comisionMonto != null ? { comisionMonto: e.comisionMonto } : e.comisionPct != null ? { comisionPct: e.comisionPct } : {}),
       },
     });
   }

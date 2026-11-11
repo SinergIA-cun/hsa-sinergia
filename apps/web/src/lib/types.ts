@@ -254,6 +254,10 @@ export interface QuoteExtraInput {
   kind: 'fijo' | 'porPersona' | 'porUnidad';
   monto: number;
   cantidad: number;
+  /** Quién da el servicio y cuánto le paga a la hacienda (% o monto, uno u otro). */
+  proveedor?: string | null;
+  comisionPct?: number | null;
+  comisionMonto?: number | null;
 }
 
 /** Lo que pone el banquetero en un evento suyo. No entra al precio ni al total. */
@@ -580,6 +584,10 @@ export interface CargoEvento {
   registradoBy?: { nombre: string } | null;
   anuladoAt: string | null;
   motivoAnulacion: string | null;
+  /** Un servicio vendido aquí (el grupo musical): quién lo da y lo que le paga a la hacienda. */
+  proveedor?: string | null;
+  comisionPct?: number | null;
+  comisionMonto?: number | null;
 }
 
 /** La cuenta del evento: sus cargos, sus cobros y el saldo. No toca el valor del evento. */
