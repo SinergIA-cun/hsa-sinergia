@@ -71,6 +71,31 @@ export interface Proveedor {
   telefono: string | null;
   activo: boolean;
   _count?: { servicios: number };
+  /** La ficha del apartado "Proveedores" (11-nov-2026). */
+  giro?: string | null;
+  contacto?: string | null;
+  correo?: string | null;
+  razonSocial?: string | null;
+  rfc?: string | null;
+  notas?: string | null;
+}
+
+/** Lo que vende un proveedor y lo que le paga a la hacienda (% o monto, uno u otro). */
+export interface ProductoProveedor {
+  id: string;
+  proveedorId: string;
+  nombre: string;
+  /** Sugerido, con IVA. */
+  precio: number | null;
+  comisionPct: number | null;
+  comisionMonto: number | null;
+  activo: boolean;
+}
+
+/** Un proveedor como lo lista el apartado "Proveedores": ficha, productos y servicios del catálogo. */
+export interface ProveedorConProductos extends Proveedor {
+  productos: ProductoProveedor[];
+  serviciosCatalogo: { id: string; nombre: string; price: number; kind: string; comisionPct: number | null; activo: boolean; catalogo: string }[];
 }
 
 export interface Catalog {
@@ -256,6 +281,9 @@ export interface QuoteExtraInput {
   cantidad: number;
   /** Quién da el servicio y cuánto le paga a la hacienda (% o monto, uno u otro). */
   proveedor?: string | null;
+  /** Escogidos de "Proveedores". */
+  proveedorId?: string | null;
+  productoProveedorId?: string | null;
   comisionPct?: number | null;
   comisionMonto?: number | null;
 }
@@ -586,6 +614,8 @@ export interface CargoEvento {
   motivoAnulacion: string | null;
   /** Un servicio vendido aquí (el grupo musical): quién lo da y lo que le paga a la hacienda. */
   proveedor?: string | null;
+  proveedorId?: string | null;
+  productoProveedorId?: string | null;
   comisionPct?: number | null;
   comisionMonto?: number | null;
 }

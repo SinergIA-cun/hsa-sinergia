@@ -145,8 +145,10 @@ export interface LineaRef {
   precioUnitario: number;
   /** Solo `servicioCatalogo`: lo que tenía el servicio cuando se guardó el evento. */
   proveedorId?: string | null;
-  /** Solo `servicioEvento`: el proveedor tecleado en el evento (no está en el catálogo). */
+  /** `servicioEvento` y `cargoContrato`: el nombre del proveedor (tecleado, o el de "Proveedores"). */
   proveedorNombre?: string | null;
+  /** `servicioEvento` y `cargoContrato` escogidos de "Proveedores": el producto (11-nov-2026). */
+  productoProveedorId?: string | null;
   /** `servicioCatalogo`, `servicioEvento` y `alimentos` (comisión de la agencia
    *  por el paquete), congelada al guardar. Ausente = evento guardado antes de congelarla. */
   comisionPct?: number | null;

@@ -7,6 +7,7 @@ import { QuoteError, ownershipWhere, assertNotTrashed, loadEstadoCuenta, type Ac
 import { ponerAlDia } from '../payments/estatus.js';
 import { logActivity } from '../quotes/activityLog.js';
 import { archivarEvento } from '../historico/archivar.js';
+import { ligarProveedores } from '../proveedores/ligar.js';
 
 /**
  * El punto de venta del evento: su cuenta de cargos.
@@ -78,7 +79,7 @@ async function alContrato(db: PrismaClient, quoteId: string, actorId: string, qu
 
 export async function registrarCargo(db: PrismaClient, quoteId: string, rawInput: unknown, actor: Actor) {
   await eventoParaCargos(db, quoteId, actor);
-  const input = cargoSchema.parse(rawInput);
+  const input = (await ligarProveedores(db, [cargoSchema.parse(rawInput)]))[0]!;
   const info = PRODUCTO_INFO[input.producto as ProductoCargo];
   if (info.pideDescripcion && !input.descripcion) {
     throw new QuoteError(400, `Describe qué pasó: "${info.nombre}" sin descripción no se puede cobrar ni aclarar después.`);
@@ -96,6 +97,8 @@ export async function registrarCargo(db: PrismaClient, quoteId: string, rawInput
       sumaAlContrato: afectaContrato(input.producto as ProductoCargo),
       fecha: new Date(`${input.fecha}T00:00:00.000Z`),
       proveedor: input.proveedor || null,
+      proveedorId: input.proveedorId ?? null,
+      productoProveedorId: input.productoProveedorId ?? null,
       comisionPct: input.comisionPct ?? null,
       comisionMonto: input.comisionMonto ?? null,
       registradoById: actor.id,
@@ -212,20 +215,27 @@ export async function cambiarComisionCargo(
   rawInput: unknown,
   actor: Actor,
 ) {
-  const input = comisionCargoSchema.parse(rawInput);
+  const input = (await ligarProveedores(db, [comisionCargoSchema.parse(rawInput)]))[0]!;
   const quote = await db.quote.findFirst({ where: { id: quoteId, ...ownershipWhere(actor) } });
   if (!quote) throw new QuoteError(404, 'Evento no encontrado');
   assertNotTrashed(quote);
   const cargo = await db.cargoEvento.findFirst({ where: { id: cargoId, quoteId } });
   if (!cargo) throw new QuoteError(404, 'Cargo no encontrado');
   if (cargo.anuladoAt) throw new QuoteError(409, 'Ese cargo está anulado.');
-  const nuevo = { proveedor: input.proveedor || null, comisionPct: input.comisionPct ?? null, comisionMonto: input.comisionMonto ?? null };
+  const nuevo = {
+    proveedor: input.proveedor || null,
+    proveedorId: input.proveedorId ?? null,
+    productoProveedorId: input.productoProveedorId ?? null,
+    comisionPct: input.comisionPct ?? null,
+    comisionMonto: input.comisionMonto ?? null,
+  };
   if (nuevo.comisionMonto != null && nuevo.comisionMonto > cargo.total) {
     throw new QuoteError(400, `La comisión no puede ser mayor que el cargo (${pesosTexto(cargo.total)}).`);
   }
   const antes = textoComision(cargo);
   const despues = textoComision(nuevo);
-  if (antes === despues) return { cargo };
+  const mismoLigue = cargo.proveedorId === nuevo.proveedorId && cargo.productoProveedorId === nuevo.productoProveedorId;
+  if (antes === despues && mismoLigue) return { cargo };
   const actualizado = await db.cargoEvento.update({ where: { id: cargoId }, data: nuevo });
   // El renglón del contrato lleva la comisión para el BI: se pone al día (el total no cambia).
   if (cargo.sumaAlContrato) await sincronizarContrato(db, quoteId);

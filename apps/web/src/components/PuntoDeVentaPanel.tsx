@@ -64,6 +64,8 @@ export function PuntoDeVentaPanel({
     try {
       await api.patch(`/api/quotes/${quoteId}/cargos/${cargoId}/comision`, {
         proveedor: borrador.proveedor?.trim() || null,
+        proveedorId: borrador.proveedorId ?? null,
+        productoProveedorId: borrador.productoProveedorId ?? null,
         comisionPct: borrador.comisionPct ?? null,
         comisionMonto: borrador.comisionMonto ?? null,
       });
@@ -180,7 +182,13 @@ export function PuntoDeVentaPanel({
                       type="button"
                       onClick={() => {
                         setComisionDe(comisionDe === c.id ? null : c.id);
-                        setBorrador({ proveedor: c.proveedor, comisionPct: c.comisionPct, comisionMonto: c.comisionMonto });
+                        setBorrador({
+                          proveedor: c.proveedor,
+                          proveedorId: c.proveedorId,
+                          productoProveedorId: c.productoProveedorId,
+                          comisionPct: c.comisionPct,
+                          comisionMonto: c.comisionMonto,
+                        });
                       }}
                       className="text-xs text-charcoal-soft hover:text-ink hover:underline"
                     >
@@ -300,12 +308,15 @@ function AgregarCargo({
   const [fecha, setFecha] = useState(hoy);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  // Quién da lo que se vende y su comisión; un producto de "Proveedores" la llena (11-nov-2026).
+  const [comision, setComision] = useState<DatosComision>({});
 
   function elegir(p: ProductoPuntoDeVenta) {
     setElegido(p);
     setCantidad('1');
     setPrecio(p.precioSugerido != null ? String(p.precioSugerido) : '');
     setDescripcion('');
+    setComision({});
     setError('');
   }
 
@@ -331,6 +342,11 @@ function AgregarCargo({
         precioUnitario: Number(precio),
         descripcion: descripcion.trim() || undefined,
         fecha,
+        proveedor: comision.proveedor?.trim() || null,
+        proveedorId: comision.proveedorId ?? null,
+        productoProveedorId: comision.productoProveedorId ?? null,
+        comisionPct: comision.comisionPct ?? null,
+        comisionMonto: comision.comisionMonto ?? null,
       });
       setElegido(null);
       await onListo();
@@ -402,6 +418,20 @@ function AgregarCargo({
               />
             </Field>
           </div>
+          {/* Multas y daños no son la venta de un proveedor: sin comisión. */}
+          {elegido.producto !== 'multa' && elegido.producto !== 'danos' && (
+            <div className="sm:col-span-4">
+              <ComisionServicio
+                valor={comision}
+                base={total}
+                onChange={(patch) => setComision((c) => ({ ...c, ...patch }))}
+                onProducto={(p) => {
+                  setDescripcion(p.nombre);
+                  if (p.precio != null) setPrecio(String(p.precio));
+                }}
+              />
+            </div>
+          )}
           {error && <p className="text-sm text-wine sm:col-span-4">{error}</p>}
           <div className="flex gap-2 sm:col-span-4">
             <Button type="submit" variant="gold" disabled={busy}>

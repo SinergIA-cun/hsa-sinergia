@@ -788,6 +788,12 @@ model QuoteExtra {
   proveedor     String?
   comisionPct   Float?
   comisionMonto Float?
+  /// El proveedor y el producto escogidos de "Proveedores" (11-nov-2026). Con
+  /// ellos, el BI recibe el proveedor por su id. `proveedor` guarda su nombre.
+  proveedorId         String?
+  proveedorRef        Proveedor?         @relation(fields: [proveedorId], references: [id], onDelete: SetNull)
+  productoProveedorId String?
+  productoProveedor   ProductoProveedor? @relation(fields: [productoProveedorId], references: [id], onDelete: SetNull)
 
   @@index([quoteId])
 }
@@ -874,12 +880,47 @@ model ServicioBanquetero {
 /// Proveedor de servicios (mesa de dulces, grupo, cabina…). Global, no por
 /// catálogo: su `id` es la clave fija que ve el BI.
 model Proveedor {
-  id        String   @id @default(cuid())
-  nombre    String   @unique
-  telefono  String?
-  activo    Boolean  @default(true)
-  createdAt DateTime @default(now())
-  servicios AddOn[]
+  id          String              @id @default(cuid())
+  nombre      String              @unique
+  telefono    String?
+  /// Su ficha (11-nov-2026, apartado "Proveedores"): a qué se dedica y cómo
+  /// contactarlo. Todo opcional menos el nombre.
+  giro        String?
+  contacto    String?
+  correo      String?
+  razonSocial String?
+  rfc         String?
+  notas       String?
+  activo      Boolean             @default(true)
+  createdAt   DateTime            @default(now())
+  servicios   AddOn[]
+  productos   ProductoProveedor[]
+  extras      QuoteExtra[]
+  cargos      CargoEvento[]
+}
+
+/// Lo que vende un proveedor y lo que le paga a la hacienda por cada cosa
+/// (11-nov-2026: "comisión pactada por producto"). Al vender un servicio del
+/// evento o un cargo se puede escoger uno: llena nombre, precio, proveedor y
+/// comisión, que se copian al renglón (cambiar el producto después no represia
+/// lo vendido). No se borra: se desactiva.
+model ProductoProveedor {
+  id            String        @id @default(cuid())
+  proveedor     Proveedor     @relation(fields: [proveedorId], references: [id])
+  proveedorId   String
+  nombre        String
+  /// Precio sugerido, con IVA. `null` = se captura al vender.
+  precio        Float?
+  /// Comisión para la hacienda: % del subtotal sin IVA o monto fijo, una u otra.
+  comisionPct   Float?
+  comisionMonto Float?
+  activo        Boolean       @default(true)
+  createdAt     DateTime      @default(now())
+  extras        QuoteExtra[]
+  cargos        CargoEvento[]
+
+  @@unique([proveedorId, nombre])
+  @@index([proveedorId])
 }
 
 model SpacePaymentRule {
@@ -1179,6 +1220,11 @@ model CargoEvento {
   proveedor       String?
   comisionPct     Float?
   comisionMonto   Float?
+  /// El proveedor y el producto escogidos de "Proveedores" (ver `QuoteExtra`).
+  proveedorId         String?
+  proveedorRef        Proveedor?         @relation(fields: [proveedorId], references: [id], onDelete: SetNull)
+  productoProveedorId String?
+  productoProveedor   ProductoProveedor? @relation(fields: [productoProveedorId], references: [id], onDelete: SetNull)
   /// El día de la venta (medianoche UTC, como `Payment.fecha`).
   fecha           DateTime
   registradoBy    User?         @relation("CargoRegistradoBy", fields: [registradoById], references: [id])
