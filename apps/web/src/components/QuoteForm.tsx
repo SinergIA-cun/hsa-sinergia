@@ -22,7 +22,7 @@ import { Sparkles, AlertTriangle, CheckCircle2, Ban, UserCheck, X, Plus, Trash2 
 import { FechasLibres } from './FechasLibres.tsx';
 import { api } from '../lib/api.ts';
 import { formatMXN } from '../lib/money.ts';
-import { Button, Card, Field, MoneyInput, TextInput, SelectInput } from './ui.tsx';
+import { Button, Card, Field, MoneyInput, TextInput, TimeInput, SelectInput } from './ui.tsx';
 import { ClienteCombobox, type ClienteLite } from './ClienteSearch.tsx';
 import { BanqueteroPicker, TipoClienteChips, type BanqueteroLite, type ModoVenta } from './banqueteros/BanqueteroPicker.tsx';
 import { FacturacionSection } from './FacturacionSection.tsx';
@@ -1069,11 +1069,11 @@ export function QuoteForm({
               <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2 pl-7">
                 <span className="flex items-center gap-2">
                   <span className="text-xs font-medium text-charcoal-soft">Horario de la capilla</span>
-                  <TextInput
-                    type="time"
+                  <TimeInput
+                    aria-label="Horario de la capilla"
                     value={capillaHorario}
                     onChange={(e) => setCapillaHorario(e.target.value)}
-                    className="w-32"
+                    className="w-40"
                   />
                 </span>
                 <span className="flex items-center gap-2">

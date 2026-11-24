@@ -10,7 +10,7 @@ const TIPO_LABEL: Record<CambioCatalogo['tipo'], string> = {
 };
 
 const hora = (iso: string) =>
-  new Date(iso).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' });
+  new Date(iso).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
 
 /**
  * La bitácora del catálogo: qué se cambió, quién y cuántas cotizaciones había en
