@@ -1,5 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
+import type { PeriodoLista } from '@hsa/shared';
+import { useAuth } from '../auth/auth.tsx';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, CalendarCheck, Lock } from 'lucide-react';
 import { api } from '../lib/api.ts';
@@ -46,9 +48,10 @@ export function ConvertirApartadoPage() {
   const banqueteroId = apartado?.banqueteroId ?? null;
   const deCliente = apartado != null && apartado.banqueteroId == null;
 
+  const { user } = useAuth();
   const { data: listas } = useQuery({
     queryKey: ['price-lists-elegibles'],
-    queryFn: () => api.get<{ priceLists: CatalogoElegible[] }>('/api/price-lists'),
+    queryFn: () => api.get<{ priceLists: CatalogoElegible[]; periodos: PeriodoLista[] }>('/api/price-lists'),
   });
 
   /**
@@ -206,6 +209,8 @@ export function ConvertirApartadoPage() {
         catalog={catalogQ.data}
         /* Sin precio garantizado se puede elegir; con él, no hay nada que elegir. */
         catalogos={garantizado ? undefined : (listas?.priceLists ?? [])}
+        periodos={listas?.periodos}
+        isAdmin={user?.role === 'admin'}
         priceListId={priceListId}
         onPriceListChange={setElegido}
         initial={{

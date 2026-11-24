@@ -13,6 +13,8 @@ import {
   seleccionSoloOtros,
   tieneContacto,
   MENSAJE_SIN_CONTACTO,
+  listaParaFecha,
+  type PeriodoLista,
   type DatosFiscales,
   type QuoteBreakdown,
   type QuoteLine,
@@ -22,6 +24,7 @@ import { Sparkles, AlertTriangle, CheckCircle2, Ban, UserCheck, X, Plus, Trash2 
 import { FechasLibres } from './FechasLibres.tsx';
 import { api } from '../lib/api.ts';
 import { formatMXN } from '../lib/money.ts';
+import { formatEventDate } from '../lib/date.ts';
 import { Button, Card, Field, MoneyInput, TextInput, TimeInput, SelectInput } from './ui.tsx';
 import { ClienteCombobox, type ClienteLite } from './ClienteSearch.tsx';
 import { BanqueteroPicker, TipoClienteChips, type BanqueteroLite, type ModoVenta } from './banqueteros/BanqueteroPicker.tsx';
@@ -154,6 +157,11 @@ interface Props {
    * "Mover de catálogo", que avisa del impacto.
    */
   catalogos?: { id: string; nombre: string; anio: number; activa: boolean }[];
+  /**
+   * Los periodos de fechas ↔ lista que dio de alta la administración. Con
+   * ellos la fecha escoge la lista (`listaParaFecha`).
+   */
+  periodos?: PeriodoLista[];
   /** El catálogo con el que se está cotizando ahora mismo. */
   priceListId?: string;
   /** Pide a la pantalla que cargue otro catálogo. */
@@ -225,6 +233,7 @@ export function QuoteForm({
   catalog,
   catalogos,
   priceListId,
+  periodos,
   onPriceListChange,
   initial,
   submitLabel,
@@ -431,28 +440,39 @@ export function QuoteForm({
 
   // ── El catálogo con el que se cotiza ──────────────────────────────────────
   //
-  // La operación no cotiza con "el catálogo activo hoy": cotiza con el del AÑO
-  // DEL EVENTO. Alguien que en septiembre de 2026 pide una boda de 2028 tiene
-  // que ver precios de 2028. Por eso la fecha SUGIERE el catálogo.
+  // La operación no cotiza con "el catálogo activo hoy": cotiza con el que
+  // corresponde a la FECHA DEL EVENTO. Desde el 24-nov-2026 la administración
+  // casa periodos de fechas con listas (Admin → Catálogos), y la fecha escoge
+  // la lista sola: el periodo más corto que la contenga gana. Sin periodo, la
+  // regla de antes: el único catálogo del año.
   //
-  // Sugiere, no impone: en cuanto el vendedor elige uno a mano, esa elección
-  // manda y la fecha deja de moverlo. Hay negociaciones que se cierran con el
-  // catálogo del año pasado, y el sistema no tiene por qué pelearse con eso.
+  // Con periodo, ventas NO elige: escoger la lista a mano era justo el error que
+  // se quería quitar. La administración sí puede cambiarla (negociaciones que
+  // se cierran con la lista del año pasado). Sin periodo, sugiere y la persona
+  // puede cambiarla, como antes.
   const [catalogoManual, setCatalogoManual] = useState(false);
 
-  const sugerido = useMemo(() => {
-    if (!catalogos || !fecha) return undefined;
-    const anio = Number(fecha.slice(0, 4));
-    const delAnio = catalogos.filter((c) => c.anio === anio);
-    // Con dos catálogos del mismo año —"2028" y "Bodas 2028"— no hay forma de
-    // adivinar cuál: se deja el que esté y que elija la persona.
-    return delAnio.length === 1 ? delAnio[0] : undefined;
-  }, [catalogos, fecha]);
+  const sugerido = useMemo(
+    () => (catalogos && fecha ? listaParaFecha(fecha, periodos ?? [], catalogos) : undefined),
+    [catalogos, periodos, fecha],
+  );
+  const idSugerido = sugerido && sugerido.motivo !== 'conflicto' ? sugerido.priceListId : undefined;
+  const listaBloqueada = !isAdmin && sugerido?.motivo === 'periodo';
+  const periodoAplicado =
+    sugerido?.motivo === 'periodo' ? periodos?.find((p) => p.id === sugerido.periodoId) : undefined;
+
+  const hintLista = periodoAplicado
+    ? `Según la fecha: periodo del ${formatEventDate(periodoAplicado.desde)} al ${formatEventDate(periodoAplicado.hasta)}${periodoAplicado.nota ? ` (${periodoAplicado.nota})` : ''}.${listaBloqueada ? '' : ' Como admin puedes cambiarla.'}`
+    : sugerido?.motivo === 'conflicto'
+      ? 'Dos periodos chocan en esta fecha: elige la lista y avisa a la administración.'
+      : catalogoManual
+        ? 'Elegida a mano. La fecha ya no la cambia.'
+        : 'Se propone por el año del evento. Puedes cambiarla.';
 
   useEffect(() => {
-    if (catalogoManual || !sugerido || !onPriceListChange) return;
-    if (sugerido.id !== priceListId) onPriceListChange(sugerido.id);
-  }, [sugerido, catalogoManual, priceListId, onPriceListChange]);
+    if ((catalogoManual && !listaBloqueada) || !idSugerido || !onPriceListChange) return;
+    if (idSugerido !== priceListId) onPriceListChange(idSugerido);
+  }, [idSugerido, catalogoManual, listaBloqueada, priceListId, onPriceListChange]);
 
   // Al cambiar de catálogo, lo que se eligió del anterior deja de existir: los
   // paquetes de alimentos y los servicios son SUYOS. Se limpian en vez de dejar
@@ -1320,14 +1340,11 @@ export function QuoteForm({
             {catalogos && catalogos.length > 0 && (
               <Field
                 label="Lista de precios"
-                hint={
-                  catalogoManual
-                    ? 'Elegida a mano. La fecha ya no la cambia.'
-                    : 'Se propone por el año del evento. Puedes cambiarla.'
-                }
+                hint={hintLista}
               >
                 <SelectInput
                   value={priceListId ?? ''}
+                  disabled={listaBloqueada}
                   onChange={(e) => {
                     setCatalogoManual(true);
                     onPriceListChange?.(e.target.value);

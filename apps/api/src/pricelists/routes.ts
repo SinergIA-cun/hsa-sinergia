@@ -19,6 +19,7 @@ import { impactoDeCatalogo } from './impacto.js';
 import { contenidoDeCatalogo } from './contenido.js';
 import { guardarTablaRenta } from './tablaRenta.js';
 import { listarBitacoraCatalogo } from './audit.js';
+import { borrarPeriodo, crearPeriodo, listarPeriodos } from './periodos.js';
 
 /**
  * Traduce `QuoteError` al código HTTP que trae. Lo demás sube al manejador global
@@ -205,5 +206,25 @@ export async function priceListRoutes(app: FastifyInstance): Promise<void> {
       conErrores(reply, async () => ({
         priceList: await editarParametros(app.prisma, req.params.id, req.body, req.user as Actor),
       })),
+  );
+
+  // --- Periodos de fechas ↔ lista (24-nov-2026) ---
+  // Al cotizar, la fecha escoge la lista. La lectura para ventas viaja en
+  // `GET /price-lists`; aquí la administración los da de alta y los quita.
+  app.get('/admin/periodos-lista', { preHandler: requireAdmin }, async () => ({
+    periodos: await listarPeriodos(app.prisma),
+  }));
+
+  app.post('/admin/periodos-lista', { preHandler: requireAdmin }, async (req, reply) =>
+    conErrores(reply, async () => {
+      const periodo = await crearPeriodo(app.prisma, req.body, req.user as Actor);
+      return reply.code(201).send({ periodo });
+    }),
+  );
+
+  app.delete<{ Params: { id: string } }>(
+    '/admin/periodos-lista/:id',
+    { preHandler: requireAdmin },
+    async (req, reply) => conErrores(reply, async () => borrarPeriodo(app.prisma, req.params.id, req.user as Actor)),
   );
 }

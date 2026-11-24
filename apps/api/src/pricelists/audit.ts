@@ -2,8 +2,8 @@ import type { Prisma } from '@hsa/database';
 import type { Actor } from '../quotes/service.js';
 import { impactoDeCatalogo, type Db } from './impacto.js';
 
-/** Las cinco superficies editables de un catálogo. */
-export type TipoCambioCatalogo = 'renta' | 'servicio' | 'paquete' | 'dj' | 'parametros';
+/** Las superficies editables de un catálogo (y sus periodos de fechas). */
+export type TipoCambioCatalogo = 'renta' | 'servicio' | 'paquete' | 'dj' | 'parametros' | 'periodo';
 
 export interface CambioCatalogo {
   priceListId: string;

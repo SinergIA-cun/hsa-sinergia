@@ -232,7 +232,7 @@ export interface ImpactoCatalogo {
 /** Un renglón de la bitácora del catálogo. */
 export interface CambioCatalogo {
   id: string;
-  tipo: 'renta' | 'servicio' | 'paquete' | 'dj' | 'parametros';
+  tipo: 'renta' | 'servicio' | 'paquete' | 'dj' | 'parametros' | 'periodo';
   descripcion: string;
   /** Cuántas cotizaciones había casadas al catálogo AL MOMENTO del cambio. */
   cotizacionesEnRiesgo: number;

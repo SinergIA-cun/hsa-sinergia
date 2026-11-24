@@ -7,6 +7,7 @@ const TIPO_LABEL: Record<CambioCatalogo['tipo'], string> = {
   paquete: 'Alimentos',
   dj: 'DJ',
   parametros: 'Parámetros',
+  periodo: 'Fechas',
 };
 
 const hora = (iso: string) =>

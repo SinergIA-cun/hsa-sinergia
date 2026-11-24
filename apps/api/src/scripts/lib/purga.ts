@@ -67,6 +67,8 @@ export const TABLAS_CATALOGO = [
   // Las tablas de renta de cada lista de precios: se van con su lista.
   'TablaRenta',
   'ColumnaRenta',
+  // Los periodos de fechas de cada lista: también se van con su lista.
+  'PeriodoLista',
   'Space',
   'EventType',
   'Banquetero',

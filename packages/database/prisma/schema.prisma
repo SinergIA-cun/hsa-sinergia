@@ -153,6 +153,28 @@ model PriceList {
   auditoria    PriceListAudit[]
   /// Apartados con precio garantizado contra este catálogo.
   apartados    ApartadoFecha[]
+  /// Las fechas que cubre: al cotizar, la fecha del evento escoge la lista.
+  periodos     PeriodoLista[]
+}
+
+/// Un periodo de fechas casado a una lista de precios (24-nov-2026).
+///
+/// Al cotizar, la fecha del evento escoge la lista sola —ver `@hsa/shared` →
+/// `listaParaFecha`—: el periodo más corto que la contenga gana, así que un mes
+/// de temporada alta puede ir dentro de un año completo. Ventas ya no escoge la
+/// lista a mano cuando hay periodo; la administración sí puede.
+model PeriodoLista {
+  id          String    @id @default(cuid())
+  priceList   PriceList @relation(fields: [priceListId], references: [id], onDelete: Cascade)
+  priceListId String
+  /// Incluido.
+  desde       DateTime  @db.Date
+  /// Incluido.
+  hasta       DateTime  @db.Date
+  nota        String?
+  createdAt   DateTime  @default(now())
+
+  @@index([desde, hasta])
 }
 
 /// Bitácora de cambios AL CONTENIDO de un catálogo. Separada de `ActivityLog`

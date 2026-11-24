@@ -1,5 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import type { PeriodoLista } from '@hsa/shared';
+import { useAuth } from '../auth/auth.tsx';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft } from 'lucide-react';
 import { api } from '../lib/api.ts';
@@ -35,9 +37,10 @@ export function NewQuotePage() {
 
   // Los catálogos entre los que se puede cotizar. Van por un endpoint propio y
   // no por el de admin: quien cotiza es ventas.
+  const { user } = useAuth();
   const { data: listas } = useQuery({
     queryKey: ['price-lists-elegibles'],
-    queryFn: () => api.get<{ priceLists: CatalogoElegible[] }>('/api/price-lists'),
+    queryFn: () => api.get<{ priceLists: CatalogoElegible[]; periodos: PeriodoLista[] }>('/api/price-lists'),
   });
   const catalogos = listas?.priceLists ?? [];
 
@@ -96,6 +99,8 @@ export function NewQuotePage() {
         initial={initial}
         telefonoObligatorio={Boolean(apartadoId)}
         catalogos={catalogos}
+        periodos={listas?.periodos}
+        isAdmin={user?.role === 'admin'}
         priceListId={priceListId ?? catalogos.find((c) => c.activa)?.id}
         onPriceListChange={setPriceListId}
         submitLabel="Crear evento"
