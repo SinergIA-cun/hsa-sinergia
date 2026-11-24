@@ -187,29 +187,79 @@ export const MoneyInput = forwardRef<
   );
 });
 
-/** Normaliza un valor de hora a HH:MM (rellena "2:30" → "02:30") para <input type="time">. */
-function toTimeValue(v: unknown): string {
-  if (typeof v !== 'string') return '';
-  const m = v.match(/^(\d{1,2}):(\d{2})/);
-  if (!m) return '';
-  const hh = (m[1] ?? '').padStart(2, '0');
-  return `${hh}:${m[2] ?? ''}`;
+/**
+ * Lee una hora guardada como `[H]H:MM` (lo que siempre ha guardado la app) y la
+ * parte en hora 0–23 y minutos. Tolera "7:30 PM" por si algún dato viejo o
+ * importado viene así, para no mostrarlo vacío.
+ */
+function partirHora(v: unknown): { h: string; m: string } {
+  if (typeof v !== 'string') return { h: '', m: '' };
+  const r = v.trim().match(/^(\d{1,2}):(\d{2})\s*([ap])?\.?\s*m?\.?$/i);
+  if (!r) return { h: '', m: '' };
+  let h = Number(r[1]);
+  const sufijo = r[3]?.toLowerCase();
+  if (sufijo === 'p' && h < 12) h += 12;
+  if (sufijo === 'a' && h === 12) h = 0;
+  if (h > 23) return { h: '', m: '' };
+  return { h: String(h).padStart(2, '0'), m: r[2] ?? '00' };
 }
 
-/** Selector de hora nativo (rueda en tablet/móvil): no pide capturar ":" ni AM/PM. */
-export const TimeInput = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement>>(
-  function TimeInput({ className, value, ...props }, ref) {
-    return (
-      <input
-        ref={ref}
-        type="time"
-        value={toTimeValue(value)}
-        className={cn(inputBase, className)}
-        {...props}
-      />
-    );
-  },
-);
+const HORAS = Array.from({ length: 24 }, (_, i) => String(i).padStart(2, '0'));
+const MINUTOS = Array.from({ length: 12 }, (_, i) => String(i * 5).padStart(2, '0'));
+
+type TimeInputProps = {
+  value?: string | null;
+  /** Mismo contrato que un <input>: `e.target.value` trae "HH:MM" o "" (sin hora). */
+  onChange?: (e: { target: { value: string } }) => void;
+  className?: string;
+  disabled?: boolean;
+  'aria-label'?: string;
+};
+
+/**
+ * Selector de hora en formato 24 h (00–23 : minutos de 5 en 5).
+ *
+ * Antes era el `<input type="time">` nativo, que pinta AM/PM o 24 h según el
+ * idioma del sistema de cada equipo: no hay forma de forzarlo. Dos `<select>`
+ * se ven igual en todos lados y siguen dando la rueda nativa en tablet/móvil.
+ * Guarda exactamente lo mismo que antes ("HH:MM"), así que no hay migración.
+ */
+export function TimeInput({ value, onChange, className, disabled, 'aria-label': ariaLabel }: TimeInputProps) {
+  const { h, m } = partirHora(value);
+  // Un minuto guardado que no cae en múltiplo de 5 (p. ej. 19:07) se respeta.
+  const minutos = m && !MINUTOS.includes(m) ? [...MINUTOS, m].sort() : MINUTOS;
+  const emitir = (hh: string, mm: string) => onChange?.({ target: { value: hh ? `${hh}:${mm || '00'}` : '' } });
+  const base = cn(inputBase, 'appearance-none px-2 text-center tabular-nums');
+  return (
+    <span className={cn('inline-flex w-full items-center gap-1', className)} role="group" aria-label={ariaLabel}>
+      <select
+        aria-label={ariaLabel ? `${ariaLabel} (hora)` : 'Hora'}
+        value={h}
+        disabled={disabled}
+        onChange={(e) => emitir(e.target.value, m)}
+        className={base}
+      >
+        <option value="">--</option>
+        {HORAS.map((x) => (
+          <option key={x} value={x}>{x}</option>
+        ))}
+      </select>
+      <span className="text-charcoal-soft">:</span>
+      <select
+        aria-label={ariaLabel ? `${ariaLabel} (minutos)` : 'Minutos'}
+        value={h ? m || '00' : ''}
+        disabled={disabled || !h}
+        onChange={(e) => emitir(h, e.target.value)}
+        className={base}
+      >
+        {!h && <option value="">--</option>}
+        {minutos.map((x) => (
+          <option key={x} value={x}>{x}</option>
+        ))}
+      </select>
+    </span>
+  );
+}
 
 export const SelectInput = forwardRef<HTMLSelectElement, SelectHTMLAttributes<HTMLSelectElement>>(
   function SelectInput({ className, children, ...props }, ref) {
