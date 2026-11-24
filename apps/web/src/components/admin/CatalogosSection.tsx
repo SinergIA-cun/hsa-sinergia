@@ -8,6 +8,7 @@ import { Button, Card, Field, TextInput, SelectInput } from '../ui.tsx';
 import type { PriceList } from '../../lib/types.ts';
 import { apiErrorMessage, ConfirmDelete } from './shared.tsx';
 import { CatalogoEditor } from './catalogo/CatalogoEditor.tsx';
+import { PeriodosListas } from './catalogo/PeriodosListas.tsx';
 
 export function CatalogosSection() {
   const qc = useQueryClient();
@@ -84,6 +85,9 @@ export function CatalogosSection() {
           </Card>
 
           <NuevoCatalogoCard priceLists={priceLists} onCreated={invalidate} />
+          <div className="lg:col-span-2">
+            <PeriodosListas priceLists={priceLists} />
+          </div>
         </div>
       )}
     </section>

@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import type { PrismaClient } from '@hsa/database';
 import { requireAuth } from '../auth/plugin.js';
 import { loadCatalog } from './loader.js';
+import { listarPeriodos } from '../pricelists/periodos.js';
 import { ordenarEspacios } from '@hsa/shared';
 
 export async function catalogRoutes(app: FastifyInstance): Promise<void> {
@@ -24,6 +25,9 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
       orderBy: [{ anio: 'asc' }, { nombre: 'asc' }],
       select: { id: true, nombre: true, anio: true, activa: true },
     }),
+    // Los periodos de fechas de cada lista: con ellos la fecha del evento escoge
+    // la lista sola (`listaParaFecha`). Son fechas, no precios.
+    periodos: await listarPeriodos(app.prisma),
   }));
 
   app.get<{ Querystring: { priceListId?: string } }>('/catalog', { preHandler: requireAuth }, async (req) => {
