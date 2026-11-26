@@ -8,6 +8,7 @@ import { iniciarCorreos } from './correos/cola.js';
 import { iniciarApartados } from './apartadosRapidos/service.js';
 import { marcaDe } from './correos/marca.js';
 import { facturadorDesdeEnv, revisarFacturador } from './facturacion/facturador.js';
+import { iniciarSincronizacionPac } from './facturacion/sincronizar.js';
 
 async function main(): Promise<void> {
   const config = loadConfig();
@@ -60,6 +61,8 @@ async function main(): Promise<void> {
 
   // Si las llaves de Facturador sirven (solo lee; no factura). No detiene el arranque.
   void revisarFacturador(facturadorDesdeEnv()).then((linea) => console.log(linea));
+  // Las facturas del PAC (incluidas las del portal): 8:00, 13:00 y 19:00 de Cancún.
+  iniciarSincronizacionPac(prisma, app.lectorPac);
 }
 
 main().catch((err) => {

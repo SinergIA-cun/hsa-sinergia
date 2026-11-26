@@ -18,6 +18,7 @@ import { Facturador, FacturadorError, facturadorDesdeEnv, serieParaFacturas, typ
 import { QuoteError, ownershipWhere, type Actor } from '../quotes/service.js';
 import { logActivity } from '../quotes/activityLog.js';
 import type { Mailer } from '../correos/mailer.js';
+import { registrarFacturaDeLaApp } from './sincronizar.js';
 
 /*
  * Facturar pagos con el PAC (Facturador.com). Reglas (Fernando, 16 y 30-oct-2026):
@@ -256,6 +257,16 @@ export async function facturarPago(db: PrismaClient, paymentId: string, o: Opcio
     }
 
     await db.payment.update({ where: { id: p.id }, data: { facturadoAt: ahora, facturaUuid: r.uuid, desbloqueoAt: null } });
+    // Al momento en el espejo del PAC: el BI y el panel la ven sin esperar la revisión.
+    // Si esto falla la factura ya existe; la siguiente revisión la trae igual.
+    await registrarFacturaDeLaApp(db, {
+      uuid: r.uuid,
+      fecha: ahora,
+      total: a.monto,
+      serie: ctx.serie.nombre,
+      receptorRfc: a.receptor.rfc,
+      receptorNombre: a.receptor.nombre,
+    }).catch((e) => console.error('Facturas del PAC: no se pudo registrar la factura de la app.', e));
     const aQuien = a.receptor.tipo === 'cliente' ? `${a.receptor.nombre} (${a.receptor.rfc})` : 'público en general';
     await logActivity(db, {
       quoteId: p.quoteId,

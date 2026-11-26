@@ -1058,6 +1058,10 @@ model User {
   /// pendiente de ver la misma, y una la ve sin que la otra deje de verla.
   /// `null` = nunca la ha abierto: toda su papelera cuenta.
   papeleraVistaAt           DateTime?
+  /// Puede entrar al panel de Facturación (26-nov-2026). Es un permiso aparte
+  /// del rol: lo pidió el dueño para UNA persona, y un admin no lo tiene solo
+  /// por ser admin. Lo prende un admin en Admin → Usuarios.
+  accesoFacturacion         Boolean          @default(false)
   quotesCreated             Quote[]          @relation("QuoteCreatedBy")
   paymentsRegistrados       Payment[]        @relation("PaymentRegistradoBy")
   paymentsAnulados          Payment[]        @relation("PaymentAnuladoBy")
@@ -1403,4 +1407,62 @@ model Ajuste {
   clave     String   @id
   valor     Json
   updatedAt DateTime @updatedAt
+}
+
+/// Una factura tal como la tiene el PAC (Facturador.com), 26-nov-2026.
+///
+/// La llena la sincronización que lee el listado del PAC tres veces al día
+/// (8:00, 13:00 y 19:00 de Cancún) y, al momento, cada factura que timbra la
+/// app. Incluye las que se hicieron directo en el portal del PAC, fuera de la
+/// app. El ligue con el pago es por `uuid` = `Payment.facturaUuid`, al leer: no
+/// se guarda aquí para que un sello manual posterior ("Ya la hice en el PAC")
+/// también ligue.
+model FacturaPac {
+  uuid            String   @id
+  idComprobante   Int?
+  /// Fecha de emisión que reporta el PAC.
+  fecha           DateTime
+  serie           String?
+  folio           String?
+  /// "Factura", "Pago", "Nota de Crédito"… como lo nombra el PAC.
+  tipoComprobante String?
+  /// Vigente / cancelada, como lo reporta el PAC (texto suyo).
+  estatus         String?
+  subestatus      String?
+  /// Derivado de `estatus`/`subestatus` para no interpretar el texto en cada lado.
+  cancelada       Boolean  @default(false)
+  subtotal        Float?
+  impuestos       Float?
+  total           Float
+  moneda          String?
+  receptorRfc     String?
+  receptorNombre  String?
+  formaPagoClave  String?
+  formaPagoNombre String?
+  /// "app" = la timbró esta app; "pac" = solo la conocemos por el listado del PAC.
+  origen          String   @default("pac")
+  /// El renglón tal cual vino del PAC, por si mañana hace falta otro campo.
+  crudo           Json?
+  createdAt       DateTime @default(now())
+  actualizadoAt   DateTime @updatedAt
+
+  @@index([fecha])
+}
+
+/// Cada vuelta de la sincronización con el PAC: cuándo, qué trajo y si falló.
+/// El panel muestra la última; el BI la recibe junto con las facturas.
+model SincronizacionPac {
+  id          String   @id @default(cuid())
+  inicio      DateTime @default(now())
+  fin         DateTime?
+  ok          Boolean  @default(false)
+  /// "programada" | "manual"
+  motivo      String
+  desde       DateTime
+  hasta       DateTime
+  nuevas      Int      @default(0)
+  actualizadas Int     @default(0)
+  error       String?
+
+  @@index([inicio])
 }

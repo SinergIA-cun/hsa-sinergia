@@ -33,13 +33,17 @@ const clients: string[] = [];
 let emitidos: Record<string, unknown>[] = [];
 let correos: Mensaje[] = [];
 let rechazar = false;
+// Cada factura timbrada también queda en `FacturaPac`: se borran al final.
+const timbrados: string[] = [];
 
 const contexto: ContextoFactura = {
   pac: {
     emitir: async (c) => {
       emitidos.push(c as Record<string, unknown>);
       if (rechazar) return { esValido: false, idComprobante: 0, uuid: null, subEstatusId: 0, descripcion: null, errores: [{ codigo: 'CFDI40147', mensaje: 'RFC del receptor' }] };
-      return { esValido: true, idComprobante: emitidos.length, uuid: randomUUID().toUpperCase(), subEstatusId: 1, descripcion: null, errores: null };
+      const uuid = randomUUID().toUpperCase();
+      timbrados.push(uuid);
+      return { esValido: true, idComprobante: emitidos.length, uuid, subEstatusId: 1, descripcion: null, errores: null };
     },
     xml: async () => '<cfdi:Comprobante/>',
     pdf: async () => Buffer.from('%PDF-1.4'),
@@ -102,6 +106,7 @@ beforeEach(() => {
 });
 
 afterAll(async () => {
+  await prisma.facturaPac.deleteMany({ where: { uuid: { in: timbrados } } });
   await prisma.payment.deleteMany({ where: { quoteId: { in: quotes } } });
   await prisma.activityLog.deleteMany({ where: { quoteId: { in: quotes } } });
   await prisma.quote.deleteMany({ where: { id: { in: quotes } } });

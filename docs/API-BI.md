@@ -748,6 +748,50 @@ Reglas (Fernando, 16 y 30-oct-2026):
 }
 ```
 
+### `GET /api/bi/facturacion/facturas` — las facturas tal como las tiene el PAC (desde el 26-nov-2026)
+
+Todas las facturas del emisor en Facturador.com: las que timbró la app **y las que se hicieron
+directo en el portal del PAC**, con su estatus (vigente / cancelada) y, si salen de un pago de
+la app, a qué pago y evento corresponden. Llave de lectura (`BI_API_KEY`).
+
+- Parámetros `desde` y `hasta` como `AAAA-MM-DD` (hora de Cancún, `hasta` incluido). Sin ellos,
+  del día 1 del mes en curso a hoy. No pagina.
+- **De dónde salen:** la API lee el listado del PAC tres veces al día, a las **8:00, 13:00 y
+  19:00 de Cancún** (también al pulsar "Revisar ahora" en el panel de Facturación). Cada lectura
+  cubre del día 1 del mes anterior a ese momento, para alcanzar cancelaciones tardías. Las que
+  timbra la app aparecen al momento (`origen: "app"`) y la siguiente lectura las completa.
+- `ultimaRevision` dice cuándo fue la última lectura y si salió bien.
+- `pago` viene `null` en las hechas fuera de la app.
+- `tipoComprobante` como lo nombra el PAC: `"Ingreso"` (factura), `"Pago"` (complemento) o
+  `"Egreso"` (nota de crédito). Para sumar lo facturado, contar solo `Ingreso`/`Factura` con
+  `cancelada: false`.
+- El efectivo no se factura: aquí solo hay lo que de verdad se timbró.
+
+```json
+{
+  "desde": "2026-11-01",
+  "hasta": "2026-11-26",
+  "ultimaRevision": { "inicio": "2026-11-26T18:00:01.000Z", "ok": true, "nuevas": 2, "actualizadas": 41, "error": null },
+  "facturas": [
+    {
+      "uuid": "0F1E2D3C-4B5A-6978-8796-A5B4C3D2E1F0",
+      "fecha": "2026-11-20T15:15:00.000Z",
+      "serieFolio": "A-12", "serie": "A", "folio": "12",
+      "tipoComprobante": "Ingreso",
+      "total": 15000, "subtotal": 12931.03, "impuestos": 2068.97, "moneda": "MXN",
+      "receptorRfc": "EKU9003173C9", "receptorNombre": "ESCUELA KEMPER URGATE",
+      "estatus": "Emitido", "estatusPac": "Emitido", "subestatusPac": "Emitido",
+      "cancelada": false,
+      "origen": "app",
+      "idComprobante": 77,
+      "formaPagoClave": null, "formaPagoNombre": null,
+      "pago": { "pagoId": "cm…", "folio": 5481, "destino": "evento", "quoteId": "cm…", "eventoCodigo": "14MAR27-JPEREZ-ARCOS" },
+      "actualizadoAt": "2026-11-26T18:00:02.000Z"
+    }
+  ]
+}
+```
+
 ### `POST /api/bi/facturacion/facturar` — timbrar con el PAC (escritura, llave de importación)
 
 Factura con Facturador.com, pago por pago, y le manda al cliente su XML y PDF por correo (si

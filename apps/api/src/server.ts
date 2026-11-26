@@ -30,6 +30,8 @@ import { proveedorRoutes } from './proveedores/routes.js';
 import { correoRoutes } from './correos/routes.js';
 import { crearMailer, type Mailer } from './correos/mailer.js';
 import { proveedorDesdeEnv, type ProveedorFactura } from './facturacion/facturar.js';
+import { lectorDesdeEnv, type LectorPac } from './facturacion/sincronizar.js';
+import { facturacionRoutes } from './facturacion/routes.js';
 import { apartadoRapidoRoutes } from './apartadosRapidos/routes.js';
 import { whatsappRoutes } from './whatsapp/routes.js';
 import { candadoDeEventoCerrado } from './quotes/cierre.js';
@@ -42,6 +44,8 @@ declare module 'fastify' {
     mailer: Mailer | null;
     /** El PAC para timbrar; `null` sin llaves de Facturador. */
     facturacion: ProveedorFactura | null;
+    /** Quien lee el listado de facturas del PAC; `null` sin llaves de Facturador. */
+    lectorPac: LectorPac | null;
   }
   interface FastifyRequest {
     user?: { id: string; role: 'ventas' | 'admin' };
@@ -55,6 +59,8 @@ export interface BuildOptions {
   mailer?: Mailer | null;
   /** En pruebas, un PAC de mentiras. Omitido = Facturador con las llaves del entorno. */
   facturacion?: ProveedorFactura | null;
+  /** En pruebas, un listado del PAC de mentiras. Omitido = Facturador con las llaves del entorno. */
+  lectorPac?: LectorPac | null;
 }
 
 export async function buildServer(opts: BuildOptions = {}): Promise<FastifyInstance> {
@@ -66,6 +72,7 @@ export async function buildServer(opts: BuildOptions = {}): Promise<FastifyInsta
   app.decorate('prisma', db);
   app.decorate('mailer', opts.mailer !== undefined ? opts.mailer : crearMailer(config));
   app.decorate('facturacion', opts.facturacion !== undefined ? opts.facturacion : proveedorDesdeEnv());
+  app.decorate('lectorPac', opts.lectorPac !== undefined ? opts.lectorPac : lectorDesdeEnv());
 
   await app.register(helmet, { contentSecurityPolicy: false });
   await app.register(cors, { origin: [config.PUBLIC_WEB_URL], credentials: true });
@@ -124,6 +131,7 @@ export async function buildServer(opts: BuildOptions = {}): Promise<FastifyInsta
   await app.register(historicoRoutes, { prefix: '/api' });
   await app.register(proveedorRoutes, { prefix: '/api' });
   await app.register(correoRoutes, { prefix: '/api' });
+  await app.register(facturacionRoutes, { prefix: '/api' });
 
   return app;
 }

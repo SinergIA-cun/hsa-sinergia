@@ -10,6 +10,8 @@ export interface SessionUser {
   nombre: string;
   email: string;
   role: 'ventas' | 'admin';
+  /** Puede entrar al panel de Facturación (26-nov-2026). */
+  accesoFacturacion?: boolean;
 }
 
 export interface SpacePaymentRule {
@@ -111,6 +113,8 @@ export interface User {
   email: string;
   role: 'ventas' | 'admin';
   activo: boolean;
+  /** Puede entrar al panel de Facturación (permiso aparte del rol). */
+  accesoFacturacion: boolean;
   createdAt: string;
 }
 
