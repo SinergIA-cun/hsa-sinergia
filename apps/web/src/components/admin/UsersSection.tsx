@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { UserPlus, Save, Pencil } from 'lucide-react';
+import { UserPlus, Save, Pencil, Receipt } from 'lucide-react';
 import { api, ApiError } from '../../lib/api.ts';
 import { Button, Card, Field, TextInput, SelectInput } from '../ui.tsx';
 import type { User } from '../../lib/types.ts';
@@ -9,7 +9,7 @@ import { MARCA } from '../../lib/marca.ts';
 
 const ROLE_LABEL: Record<User['role'], string> = { admin: 'Admin', ventas: 'Ventas' };
 
-type UserPatch = { nombre?: string; email?: string; role?: User['role']; activo?: boolean; password?: string };
+type UserPatch = { nombre?: string; email?: string; role?: User['role']; activo?: boolean; password?: string; accesoFacturacion?: boolean };
 
 export function UsersSection() {
   const qc = useQueryClient();
@@ -222,6 +222,20 @@ function UserRow({
         >
           {ROLE_LABEL[u.role]}
         </span>
+        {/* Permiso aparte del rol (26-nov-2026): el panel de Facturación es
+            solo para quien el dueño diga, aunque haya otros admins. */}
+        <button
+          type="button"
+          aria-pressed={u.accesoFacturacion}
+          disabled={saving}
+          title={u.accesoFacturacion ? 'Quitarle el acceso al panel de Facturación' : 'Darle acceso al panel de Facturación'}
+          onClick={() => onSave({ accesoFacturacion: !u.accesoFacturacion })}
+          className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[0.65rem] font-semibold uppercase tracking-wide transition-colors disabled:opacity-50 ${
+            u.accesoFacturacion ? 'bg-emerald-600 text-white hover:bg-emerald-700' : 'border border-dashed border-ink/25 text-charcoal-soft hover:border-ink/50 hover:text-ink'
+          }`}
+        >
+          <Receipt size={12} /> Facturación{u.accesoFacturacion ? ' · sí' : ''}
+        </button>
         <Button type="button" variant="outline" className="px-2.5 py-1.5 text-xs" onClick={() => setEditing(true)}>
           <Pencil size={13} /> Editar
         </Button>

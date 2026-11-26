@@ -17,6 +17,8 @@ const updateUserSchema = z.object({
   role: z.enum(['ventas', 'admin']).optional(),
   activo: z.boolean().optional(),
   password: z.string().min(8, 'La contraseña debe tener al menos 8 caracteres').optional(),
+  /** Entrar al panel de Facturación (26-nov-2026). Permiso aparte del rol. */
+  accesoFacturacion: z.boolean().optional(),
 });
 
 /** Cuenta cuántos admins activos hay (para no dejar el sistema sin admin). */
@@ -24,7 +26,7 @@ async function contarAdminsActivos(prisma: FastifyInstance['prisma']): Promise<n
   return prisma.user.count({ where: { role: 'admin', activo: true } });
 }
 
-const select = { id: true, nombre: true, email: true, role: true, activo: true, createdAt: true };
+const select = { id: true, nombre: true, email: true, role: true, activo: true, accesoFacturacion: true, createdAt: true };
 
 export async function userRoutes(app: FastifyInstance): Promise<void> {
   app.get('/users', { preHandler: requireAdmin }, async () => {
@@ -65,7 +67,7 @@ export async function userRoutes(app: FastifyInstance): Promise<void> {
       return reply.code(409).send({ error: 'No puedes dejar el sistema sin un admin activo.' });
     }
 
-    const { nombre, email, role, activo, password } = parsed.data;
+    const { nombre, email, role, activo, password, accesoFacturacion } = parsed.data;
     if (email !== undefined && email !== target.email) {
       const otro = await app.prisma.user.findUnique({ where: { email } });
       if (otro) return reply.code(409).send({ error: 'Ya hay otro usuario con ese correo.' });
@@ -77,6 +79,7 @@ export async function userRoutes(app: FastifyInstance): Promise<void> {
         ...(email !== undefined ? { email } : {}),
         ...(role !== undefined ? { role } : {}),
         ...(activo !== undefined ? { activo } : {}),
+        ...(accesoFacturacion !== undefined ? { accesoFacturacion } : {}),
         ...(password !== undefined ? { passwordHash: await hashPassword(password) } : {}),
       },
       select,

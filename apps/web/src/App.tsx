@@ -13,6 +13,7 @@ import { AgendaPage } from './pages/AgendaPage.tsx';
 import { PublicQuotePage } from './pages/PublicQuotePage.tsx';
 import { BanqueterosPage } from './pages/BanqueterosPage.tsx';
 import { ProveedoresPage } from './pages/ProveedoresPage.tsx';
+import { FacturacionPage } from './pages/FacturacionPage.tsx';
 import { BanqueteroPage } from './pages/BanqueteroPage.tsx';
 import { BanqueteroPublicoPage } from './pages/BanqueteroPublicoPage.tsx';
 import { ContratoPage } from './pages/ContratoPage.tsx';
@@ -54,6 +55,13 @@ function ProtectedBare({ children }: { children: ReactNode }) {
 function AdminOnly({ children }: { children: ReactNode }) {
   const { user } = useAuth();
   if (user?.role !== 'admin') return <Navigate to="/eventos" replace />;
+  return <>{children}</>;
+}
+
+/** Solo quien tenga el permiso de facturación. La API lo vuelve a exigir. */
+function FacturacionOnly({ children }: { children: ReactNode }) {
+  const { user } = useAuth();
+  if (!user?.accesoFacturacion) return <Navigate to="/eventos" replace />;
   return <>{children}</>;
 }
 
@@ -135,6 +143,16 @@ export function App() {
             />
             {/* Proveedores (11-nov-2026): todos los ven —ventas escoge un producto al
                 vender—; dar de alta y cambiar comisiones es de admin (la API lo exige). */}
+            <Route
+              path="/facturacion"
+              element={
+                <Protected>
+                  <FacturacionOnly>
+                    <FacturacionPage />
+                  </FacturacionOnly>
+                </Protected>
+              }
+            />
             <Route
               path="/proveedores"
               element={

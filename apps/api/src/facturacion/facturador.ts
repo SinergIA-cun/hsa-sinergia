@@ -181,6 +181,30 @@ export class Facturador {
     return (await r.json()) as Record<string, unknown>;
   }
 
+  /**
+   * Una página del listado de comprobantes del emisor entre dos fechas (26-nov-2026).
+   * `GET /emisores/{id}/comprobantes?finicial&ffinal&skip&take`, fechas en Unix
+   * (segundos). Solo lee. Devuelve los renglones tal cual (`resumenComprobante`)
+   * y el total del filtro (`numeroComprobantes`) para paginar.
+   */
+  async listarComprobantes(
+    emisorId: number,
+    q: { desde: Date; hasta: Date; skip: number; take: number },
+  ): Promise<{ total: number; renglones: Record<string, unknown>[] }> {
+    const params = new URLSearchParams({
+      finicial: String(Math.floor(q.desde.getTime() / 1000)),
+      ffinal: String(Math.floor(q.hasta.getTime() / 1000)),
+      skip: String(q.skip),
+      take: String(q.take),
+    });
+    const r = await this.pedir(`/emisores/${emisorId}/comprobantes?${params.toString()}`);
+    const j = (await r.json()) as { numeroComprobantes?: number; resumenComprobante?: Record<string, unknown>[] } | Record<string, unknown>[];
+    // Por si alguna versión devuelve el arreglo pelón.
+    if (Array.isArray(j)) return { total: j.length, renglones: j };
+    const renglones = Array.isArray(j.resumenComprobante) ? j.resumenComprobante : [];
+    return { total: Number(j.numeroComprobantes ?? renglones.length), renglones };
+  }
+
   /** El XML timbrado. */
   async xml(emisorId: number, uuid: string): Promise<string> {
     const r = await this.pedir(`/emisores/${emisorId}/descargacomprobantes/${uuid}?tipoContenido=xml`);

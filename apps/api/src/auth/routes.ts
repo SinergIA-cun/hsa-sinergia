@@ -29,7 +29,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
       path: '/',
       maxAge: 60 * 60 * 24 * 7,
     });
-    return { user: { id: user.id, nombre: user.nombre, email: user.email, role: user.role } };
+    return { user: { id: user.id, nombre: user.nombre, email: user.email, role: user.role, accesoFacturacion: user.accesoFacturacion } };
   });
 
   app.post('/logout', async (_req, reply) => {
@@ -40,6 +40,6 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
   app.get('/me', { preHandler: requireAuth }, async (req) => {
     const user = await app.prisma.user.findUnique({ where: { id: req.user!.id } });
     if (!user) return { user: null };
-    return { user: { id: user.id, nombre: user.nombre, email: user.email, role: user.role } };
+    return { user: { id: user.id, nombre: user.nombre, email: user.email, role: user.role, accesoFacturacion: user.accesoFacturacion } };
   });
 }

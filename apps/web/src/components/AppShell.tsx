@@ -9,6 +9,7 @@ import {
   CalendarClock,
   ChefHat,
   Truck,
+  Receipt,
   Archive,
   SlidersHorizontal,
   Trash2,
@@ -86,6 +87,8 @@ export function AppShell({ children }: { children: ReactNode }) {
     { to: '/banqueteros', icon: <ChefHat size={18} />, label: 'Prof. Evento' },
     { to: '/proveedores', icon: <Truck size={18} />, label: 'Proveedores' },
     { to: '/historico', icon: <Archive size={18} />, label: 'Histórico' },
+    // Facturación (26-nov-2026): solo quien tenga el permiso, aunque no sea admin.
+    ...(user?.accesoFacturacion ? [{ to: '/facturacion', icon: <Receipt size={18} />, label: 'Facturación' }] : []),
     { to: '/papelera', icon: <Trash2 size={18} />, label: 'Papelera', badge: pendientes },
     ...(user?.role === 'admin' ? [{ to: '/admin', icon: <SlidersHorizontal size={18} />, label: 'Admin' }] : []),
   ];

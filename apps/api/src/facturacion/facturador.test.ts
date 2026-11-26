@@ -25,6 +25,31 @@ const json = (cuerpo: unknown, status = 200) => new Response(JSON.stringify(cuer
 const token = () => json({ access_token: 'tok-1', refresh_token: 'ref-1', expires_in: 3600 });
 
 describe('cliente de Facturador', () => {
+  it('lista comprobantes por rango con fechas Unix y paginado (solo lee)', async () => {
+    const s = servidor({
+      '/connect/token': token,
+      '/emisores/208/comprobantes?': () => json({ numeroComprobantes: 3, resumenComprobante: [{ uuid: 'U1', total: 100 }] }),
+    });
+    const f = new Facturador(config, s.http);
+    const r = await f.listarComprobantes(208, {
+      desde: new Date('2026-10-01T05:00:00Z'),
+      hasta: new Date('2026-11-26T18:00:00Z'),
+      skip: 100,
+      take: 100,
+    });
+    expect(r).toEqual({ total: 3, renglones: [{ uuid: 'U1', total: 100 }] });
+    const url = new URL(s.pedidas.at(-1)!.url);
+    expect(url.pathname).toBe('/BusinessEmision/api/v1/emisores/208/comprobantes');
+    const unix = (iso: string) => String(Date.parse(iso) / 1000);
+    expect(Object.fromEntries(url.searchParams)).toEqual({
+      finicial: unix('2026-10-01T05:00:00Z'),
+      ffinal: unix('2026-11-26T18:00:00Z'),
+      skip: '100',
+      take: '100',
+    });
+    expect(s.pedidas.at(-1)!.init.method ?? 'GET').toBe('GET');
+  });
+
   it('pide el token con usuario, contraseña MD5 y llaves, y lo reusa', async () => {
     const s = servidor({ '/connect/token': token, '/connect/userinfo': () => json({ emisorid: '208', rfc: 'RFC_PRUEBA' }) });
     const f = new Facturador(config, s.http);

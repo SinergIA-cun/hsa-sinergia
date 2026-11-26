@@ -53,6 +53,10 @@ export const TABLAS_MOVIMIENTO = [
   // Los apartados rápidos: referencian tipo de evento, usuarios y, si se
   // convirtieron, su evento.
   'ApartadoRapido',
+  // Las facturas que se leen del PAC y cada vuelta de esa lectura. Son espejo del
+  // PAC: tras purgar, la siguiente sincronización las vuelve a traer.
+  'FacturaPac',
+  'SincronizacionPac',
 ] as const;
 
 /**

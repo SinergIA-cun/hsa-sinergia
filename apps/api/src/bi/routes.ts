@@ -7,6 +7,7 @@ import { conciliarBanqueteros, importarBanqueteros } from './banqueteros.js';
 import { conciliarApartados, importarApartados } from './apartados.js';
 import { conciliarPaquetes, importarPaquetes } from './paquetes.js';
 import { facturarVarios, mesActual, mesSchema, pagosDelMes } from '../facturacion/facturar.js';
+import { facturasParaBI } from '../facturacion/panel.js';
 import { biEventos, biPagos, biIngresos, biCargos, biDevoluciones, biPagosEsperados, biCambios, biFacturacion, biApartados, biCatalogos, type RangoBI } from './service.js';
 
 const LIMITE_MAX = 500;
@@ -70,6 +71,22 @@ export async function biRoutes(app: FastifyInstance): Promise<void> {
     const mes = z.object({ mes: mesSchema.optional() }).safeParse(req.query);
     if (!mes.success) return reply.code(400).send({ error: 'mes como AAAA-MM' });
     return pagosDelMes(app.prisma, mes.data.mes ?? mesActual());
+  });
+
+  // Las facturas tal como las tiene el PAC (26-nov-2026): las timbradas por la app
+  // y las hechas directo en el portal, con su estatus (vigente/cancelada) y el
+  // pago al que corresponden. Se leen del PAC a las 8:00, 13:00 y 19:00 de
+  // Cancún; `ultimaRevision` dice cuándo fue la última. Fechas en hora de Cancún,
+  // `hasta` incluido; por omisión, del día 1 del mes en curso a hoy.
+  app.get('/bi/facturacion/facturas', { preHandler: guardia }, async (req, reply) => {
+    const dia = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+    const q = z.object({ desde: dia.optional(), hasta: dia.optional() }).safeParse(req.query);
+    if (!q.success) return reply.code(400).send({ error: 'desde y hasta como AAAA-MM-DD' });
+    const hoy = new Date(Date.now() - 5 * 3600_000).toISOString().slice(0, 10);
+    const desde = q.data.desde ?? `${hoy.slice(0, 7)}-01`;
+    const hasta = q.data.hasta ?? hoy;
+    if (desde > hasta) return reply.code(400).send({ error: 'desde no puede ser después de hasta' });
+    return facturasParaBI(app.prisma, desde, hasta);
   });
 
   for (const [nombre, consulta] of endpoints) {
